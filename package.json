@@ -1,0 +1,13 @@
+{
+  "name": "dsh-body",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "files": ["index.js", "gateway.js", "script-worker.js", "json-safe.js", "body-modules.json", "startup/", "cordis.patch.yml"],
+  "scripts": { "test": "node --test" },
+  "engines": { "node": ">=22.18" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  }
+}

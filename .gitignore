@@ -1,0 +1,5 @@
+.DS_Store
+node_modules/
+/body-state.json
+/body-state.json.tmp
+/systems/nervous/notifications/

@@ -1,0 +1,6 @@
+{
+  "startupScripts": ["./startup/reset-parts.js"],
+  "scripts": [],
+  "catchUpMinutes": 720,
+  "scriptTimeoutMs": 10000
+}
