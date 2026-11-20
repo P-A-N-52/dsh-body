@@ -41,6 +41,7 @@ import { writeFileSync } from 'node:fs';
 export const id = 'probe';
 export const actionTypes = [];
 export const initialState = { heartbeats: 0 };
+export const fields = {};
 
 export function initialize() {
   writeFileSync(${JSON.stringify(markerPath)}, 'ran');

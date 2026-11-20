@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { parentPort, workerData } from 'node:worker_threads';
 import { assertJsonValue, isPlainObject as isRecord } from '../json-safe.js';
 import { maxNotificationTextLength } from './config.js';
+import { createFieldRegistry } from './operations.js';
 
 const modules = new Map();
 const frozenObjects = new WeakSet();
@@ -14,9 +15,12 @@ function freezeJson(value) {
   return Object.freeze(value);
 }
 
-function describe({ id, heartbeat, step, actionTypes = [], functions = {}, initialState = {}, resetOnStart = [] }) {
+function describe({ id, heartbeat, step, actionTypes = [], functions = {}, initialState = {}, resetOnStart = [], fields }) {
   if (typeof id !== 'string' || !id || typeof (heartbeat ?? step) !== 'function' || !isRecord(initialState)) {
     throw new Error('Expected an id, a heartbeat function (or legacy step) and an object for initialState');
+  }
+  if (!isRecord(fields)) {
+    throw new Error(`Body module "${id}" must export a fields object`);
   }
   if (!isRecord(functions) || !Object.values(functions).every((fn) => typeof fn === 'function')) {
     throw new Error('functions must be an object of functions');
@@ -39,11 +43,14 @@ function describe({ id, heartbeat, step, actionTypes = [], functions = {}, initi
 
   const initialStateCopy = structuredClone(initialState);
   assertJsonValue(initialStateCopy, 'initialState');
+  const fieldsCopy = structuredClone(fields);
+  assertJsonValue(fieldsCopy, 'fields');
   return {
     id,
     initialState: initialStateCopy,
     resetOnStart,
     actionTypes,
+    fields: fieldsCopy,
   };
 }
 
@@ -83,6 +90,7 @@ async function describeModules() {
   }
 
   descriptions = [...modules.values()].map(({ description }) => description);
+  createFieldRegistry(descriptions);
   return descriptions;
 }
 
@@ -134,6 +142,8 @@ async function heartbeat({ snapshot, actions, dt, simulatedSeconds, wallTimeMs }
 
   const updates = [];
   const notifications = [];
+  const adds = [];
+  const transfers = [];
 
   function notify({ mode, sessionId, text }) {
     if ((mode !== 'context' && mode !== 'wake') || typeof sessionId !== 'string' || !sessionId
@@ -157,15 +167,23 @@ async function heartbeat({ snapshot, actions, dt, simulatedSeconds, wallTimeMs }
         part = copy;
       }
 
+      function add(partId, field, delta) {
+        adds.push({ caller: id, partId, field, delta });
+      }
+
+      function transfer(fromPart, fromField, toPart, toField, amount) {
+        transfers.push({ caller: id, fromPart, fromField, toPart, toField, amount });
+      }
+
       if (advance != null) {
-        await advance(Object.freeze({ ...contexts.get(id), write, notify }));
+        await advance(Object.freeze({ ...contexts.get(id), write, notify, add, transfer }));
       } else {
         write(await step(snapshot, dt, actions));
       }
       if (part !== undefined) updates.push([id, part]);
     });
   }
-  return { parts: Object.fromEntries(updates), notifications };
+  return { parts: Object.fromEntries(updates), notifications, adds, transfers };
 }
 
 const operations = { describe: describeModules, initialize, heartbeat };

@@ -3,6 +3,7 @@ export function counterSource({ id = 'counter', actionTypes = ['eat'] } = {}) {
 export const id = ${JSON.stringify(id)};
 export const actionTypes = ${JSON.stringify(actionTypes)};
 export const initialState = { rounds: [], applied: [], volumeMl: 0 };
+export const fields = {};
 
 export function heartbeat(io) {
   const prev = io.read(${JSON.stringify(id)}) ?? {};
@@ -33,6 +34,7 @@ import { dirname } from 'node:path';
 export const id = ${JSON.stringify(id)};
 export const actionTypes = ${JSON.stringify(actionTypes)};
 export const initialState = { rounds: [], applied: [] };
+export const fields = {};
 
 export async function heartbeat(io) {
   mkdirSync(dirname(${JSON.stringify(startedPath)}), { recursive: true });
@@ -61,6 +63,7 @@ import { dirname } from 'node:path';
 export const id = ${JSON.stringify(id)};
 export const actionTypes = ${JSON.stringify(actionTypes)};
 export const initialState = { rounds: [], applied: [] };
+export const fields = {};
 
 export async function heartbeat(io) {
   mkdirSync(dirname(${JSON.stringify(startedPath)}), { recursive: true });
@@ -88,6 +91,7 @@ export function hangSource({ id = 'hang', actionTypes = ['eat'] } = {}) {
 export const id = ${JSON.stringify(id)};
 export const actionTypes = ${JSON.stringify(actionTypes)};
 export const initialState = { rounds: [] };
+export const fields = {};
 
 export async function heartbeat() {
   await new Promise((resolve) => setTimeout(resolve, 60000));
@@ -107,6 +111,7 @@ export function notifySource({
 export const id = ${JSON.stringify(id)};
 export const actionTypes = ${JSON.stringify(actionTypes)};
 export const initialState = { rounds: 0 };
+export const fields = {};
 
 export function heartbeat(io) {
   const prev = io.read(${JSON.stringify(id)}) ?? { rounds: 0 };
@@ -124,6 +129,7 @@ export function defaultsSource({ id = 'defaults', actionTypes = [] } = {}) {
 export const id = ${JSON.stringify(id)};
 export const actionTypes = ${JSON.stringify(actionTypes)};
 export const initialState = { nested: { a: 1, b: 2 }, flat: 3 };
+export const fields = {};
 
 export function heartbeat(io) {
   const prev = io.read(${JSON.stringify(id)}) ?? {};
@@ -137,6 +143,7 @@ export function getterSource({ id = 'getter' } = {}) {
 export const id = ${JSON.stringify(id)};
 export const actionTypes = [];
 export const initialState = { ok: true };
+export const fields = {};
 
 let first = true;
 export function heartbeat(io) {
@@ -158,6 +165,7 @@ export function sharedSource({ id = 'shared' } = {}) {
 export const id = ${JSON.stringify(id)};
 export const actionTypes = [];
 export const initialState = { ok: true };
+export const fields = {};
 
 export function heartbeat(io) {
   const shared = { x: 1 };
@@ -172,6 +180,7 @@ export const id = ${JSON.stringify(id)};
 export const actionTypes = new Array(2);
 actionTypes[1] = 'eat';
 export const initialState = { ok: true };
+export const fields = {};
 
 export function heartbeat(io) {
   io.write({ ok: true });
@@ -191,6 +200,7 @@ export function badJsonSource({ id = 'bad', actionTypes = [], kind = 'bigint' } 
 export const id = ${JSON.stringify(id)};
 export const actionTypes = ${JSON.stringify(actionTypes)};
 export const initialState = { ok: true };
+export const fields = {};
 
 export function heartbeat(io) {
   io.write(${value});

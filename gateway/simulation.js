@@ -3,6 +3,7 @@ import { isPlainObject as isRecord } from '../json-safe.js';
 import { setAction } from './actions.js';
 import { emptyCheckpoint } from './checkpoint.js';
 import { heartbeatSeconds } from './config.js';
+import { applyOperations, createFieldRegistry } from './operations.js';
 import { formatError } from './runner.js';
 
 function truncateError(error) {
@@ -28,6 +29,8 @@ export function createBodySimulation({
 }) {
   let heartbeatWork;
   let timer;
+  let registry = new Map();
+  let fatalFailure = null;
   let lastHeartbeat = {
     lastSuccessAtMs: null,
     lastErrorAtMs: null,
@@ -51,17 +54,24 @@ export function createBodySimulation({
   }
 
   async function runHeartbeat(current, batch, { suppressNotifications = false } = {}) {
-    const { parts, notifications } = await runner.heartbeat({
+    const { parts, notifications, adds, transfers } = await runner.heartbeat({
       snapshot: current.snapshot,
       actions: batch.actionIds.map((id) => current.actions[id].action),
       dt: heartbeatSeconds,
       simulatedSeconds: batch.targetSimulatedSeconds,
       wallTimeMs: batch.targetWallTimeMs,
     });
+    const nextParts = applyOperations({
+      registry,
+      snapshotParts: current.snapshot.parts,
+      writes: parts,
+      adds,
+      transfers,
+    });
     return {
       snapshot: {
         simulatedSeconds: batch.targetSimulatedSeconds,
-        parts: { ...current.snapshot.parts, ...parts },
+        parts: { ...current.snapshot.parts, ...nextParts },
       },
       notifications: suppressNotifications ? [] : notifications.map((notification) => ({
         id: randomUUID(),
@@ -70,6 +80,23 @@ export function createBodySimulation({
         createdAtWallTimeMs: batch.targetWallTimeMs,
       })),
     };
+  }
+
+  function recordFatal(error, batchTargetSimulatedSeconds) {
+    const atMs = now();
+    const { module = null, operation = null, partId = null, field = null, target = null, reason = null } = error.fatal;
+    fatalFailure = {
+      module,
+      operation,
+      partId,
+      field,
+      target,
+      reason,
+      message: truncateError(error),
+      atWallTimeMs: atMs,
+      batchTargetSimulatedSeconds,
+    };
+    lastHeartbeat = { ...lastHeartbeat, lastErrorAtMs: atMs, lastError: truncateError(error) };
   }
 
   function applyBatch(current, result, batch) {
@@ -160,6 +187,10 @@ export function createBodySimulation({
       }
       return next;
     } catch (error) {
+      if (error?.fatal) {
+        recordFatal(error, next.activeBatch?.targetSimulatedSeconds ?? null);
+        return { ...next, activeBatch: null, catchUpError: truncateError(error) };
+      }
       const failed = failBatch(next, error);
       return { ...failed, catchUpError: truncateError(error) };
     }
@@ -186,6 +217,7 @@ export function createBodySimulation({
 
   async function restore(saved, modules, initializers) {
     const startedAtMs = now();
+    registry = createFieldRegistry(modules);
     const current = saved ?? emptyCheckpoint(startedAtMs);
     const { active } = current;
     const resumedFromPause = active && saved?.startup?.active === false;
@@ -264,15 +296,17 @@ export function createBodySimulation({
     const checkpoint = store.current;
     const degraded = lastHeartbeat.consecutiveFailures > 0
       || (checkpoint.activeBatch?.attempts ?? 0) > 0;
+    const status = fatalFailure ? 'fatal' : degraded ? 'degraded' : 'ok';
     return {
-      ok: !degraded,
-      status: degraded ? 'degraded' : 'ok',
+      ok: status === 'ok',
+      status,
       active: checkpoint.active,
       port,
       simulatedSeconds: checkpoint.snapshot.simulatedSeconds,
       wallTimeMs: checkpoint.wallTimeMs,
       pendingActions: checkpoint.pendingActionIds.length,
       notifications: checkpoint.notifications.length,
+      fatal: fatalFailure,
       heartbeat: {
         lastSuccessAtMs: lastHeartbeat.lastSuccessAtMs,
         lastErrorAtMs: lastHeartbeat.lastErrorAtMs,
@@ -292,6 +326,7 @@ export function createBodySimulation({
   async function heartbeatOnce({ force = false } = {}) {
     if (isStopping() || !store.current) return { ran: false, failed: false };
     if (!store.current.active) return { ran: false, failed: false, paused: true };
+    if (fatalFailure) return { ran: false, failed: true, fatal: true };
     let warning;
     let failed = false;
     try {
@@ -327,19 +362,30 @@ export function createBodySimulation({
       failed = true;
       if (!isStopping()) {
         console.error('Heartbeat failed', error);
-        if (store.current.activeBatch) {
+        if (error?.fatal) {
+          recordFatal(error, store.current.activeBatch?.targetSimulatedSeconds ?? null);
           try {
-            store.commit(failBatch(store.current, error));
+            if (store.current.activeBatch) {
+              store.commit({ ...store.current, activeBatch: null });
+            }
           } catch (commitError) {
-            console.error('Failed to persist the failed batch', commitError);
+            console.error('Failed to persist the state after a fatal operation', commitError);
           }
+        } else {
+          if (store.current.activeBatch) {
+            try {
+              store.commit(failBatch(store.current, error));
+            } catch (commitError) {
+              console.error('Failed to persist the failed batch', commitError);
+            }
+          }
+          lastHeartbeat = {
+            ...lastHeartbeat,
+            lastErrorAtMs: now(),
+            lastError: truncateError(error),
+            consecutiveFailures: lastHeartbeat.consecutiveFailures + 1,
+          };
         }
-        lastHeartbeat = {
-          ...lastHeartbeat,
-          lastErrorAtMs: now(),
-          lastError: truncateError(error),
-          consecutiveFailures: lastHeartbeat.consecutiveFailures + 1,
-        };
       }
     } finally {
       clearTimeout(warning);
@@ -356,7 +402,7 @@ export function createBodySimulation({
   }
 
   function scheduleHeartbeat(delay) {
-    if (isStopping()) return;
+    if (isStopping() || fatalFailure) return;
     const wait = delay ?? Math.max(0, store.current.wallTimeMs + heartbeatIntervalMs - now());
     timer = setTimeout(() => {
       if (heartbeatWork) {
