@@ -1,3 +1,29 @@
+/*
+ * 胃（stomach）动力与排空脚本；部位 `stomach` 的唯一写者。
+ * 每轮先按当前内容量排空，再让本轮摄入切片进入胃；多轮摄入的余量放在 `mealQueue` 跨轮释放。
+ *
+ * 来源（均只读摘要、未读全文；登记见 organs/human-organs/references/source-index.csv）：
+ * - SRC-MUDIE-2014 / mudie-2014：笔记 organs/human-organs/stomach/references/notes/mudie-2014.md，
+ *   摘要 Results（PMID 25115349）。空腹一次 240 mL 白水的 T50 为 13 min（n=12，mean ± 1，± 类型未
+ *   逐项标注）。支撑 stomach.emptying.halfTimeMin = 13 min（design），作为白水排空的工程截距。
+ *   边界：摘要未定义 T50 的起算点与相对基线；只适用于空腹 240 mL 白水，不是固餐或含能液餐，
+ *   不能当作餐型半衰期；胃水体积也不是胃总内容量的直接测量。
+ * - SRC-CAMPS-2016 / camps-2016：笔记 organs/human-organs/stomach/references/notes/camps-2016.md，
+ *   摘要 Results（PMID 27281305）。支撑 stomach.emptying.energyDensityGainMinPerKcalPerMl = 53.75
+ *   （fitted_dev）：同一批 15 名男性、500 mL 奶昔的 thin-100 与 thin-500 两臂 t50 为 26.5 / 69.5 min，
+ *   (69.5-26.5)/(1.0-0.2) = 53.75 min/(kcal/mL)；截距固定为白水 13 min 后，两臂预测 23.75 / 66.75，
+ *   观测 26.5 / 69.5。边界：只用了这两臂，黏度与其他餐型未建模，不是独立验证；t50 的定义与 ± 类型
+ *   摘要未注明。
+ * - SRC-TOUGAS-2000 / tougas-2000：笔记 organs/human-organs/stomach/references/notes/tougas-2000.md，
+ *   摘要 Results（PMID 10894578）。低脂标记餐 60/120/240 min 的胃内残留中位数 69/24/1.2%，只作固餐
+ *   的组级参照，当前方程未使用。残留百分比是初始标记量的比例，不是胃总内容量 mL，不能换算出 t50
+ *   （摘要也没给 T50 数值）。
+ *
+ * 工程假设（design）：一阶指数排空的离散形式 emptiedMl = max(0, V − baselineMl)(1 − 2^(−dt/h))、
+ * 半时随能量密度线性增加 h = halfTimeMin + gain × energyDensity、`mealQueue` 的轮切片，都不是
+ * 论文原方程。`mealKind` 只记录、不参与计算；baselineMl = 0 是设计选择（不设不可排空残余），
+ * 不是 Mudie 的空腹胃水 35 mL。
+ */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
 export const id = 'stomach';
