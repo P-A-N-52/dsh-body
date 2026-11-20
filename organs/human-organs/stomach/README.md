@@ -1,0 +1,108 @@
+# 胃（stomach）
+
+P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）、胃壁机械感受。三个脚本各写一个部位，互不写对方状态；机械感受只读 `stomach.volumeMl`。
+
+实现状态：脚本与参数已在 `organs/human-organs/stomach/`；根清单 `body-modules.json` 的 `scripts` 仍为 `[]`，这些脚本尚未挂进真实身体，启用是后续的单独提交。
+
+## 1. 脚本与部位
+
+| 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
+| --- | --- | --- | --- | --- |
+| `motility.ts` | `stomach` | `volumeMl`、`energyKcal`、`emptiedMl`、`emptiedKcal`、`lastIntakeAt`、`mealQueue` | 自己的轮初状态 `stomach`；`io.actions` 里的 `drink` / `eat` | `motility.parameters.json` |
+| `ghrelin.ts` | `stomachGhrelin` | `relativeConcentration` | 自己的轮初状态 `stomachGhrelin`；`io.actions` 里含能量的 `eat` | `ghrelin.parameters.json` |
+| `gastric-sensory.ts` | `stomachSensory` | `mechanical` | `stomach.volumeMl` | `gastric-sensory.parameters.json` |
+
+参数文件与脚本同目录，模块在 import 时经 `lib/parameters.js` 只读加载；参数是证据默认值，不做运行中热切换。
+
+## 2. 字段与单位
+
+所有字段都是 `fields` 里声明的 `absolute` 写入，只有对应部位自己的脚本写它。
+
+### `stomach`
+
+| 字段 | 单位 | 含义 |
+| --- | --- | --- |
+| `volumeMl` | `mL` | 轮末胃内容物体积（状态） |
+| `energyKcal` | `kcal` | 轮末胃内剩余能量（状态） |
+| `emptiedMl` | `mL` | 本轮排出的体积（每轮通量，不是累计） |
+| `emptiedKcal` | `kcal` | 本轮排出的能量（每轮通量，不是累计）；十二指肠读这个字段 |
+| `lastIntakeAt` | `s` | 最近一次有摄入进入胃的轮末仿真秒（`io.simulatedSeconds`）；`null` 表示还没有摄入 |
+| `mealQueue` | `1` | 内部队列，不是读数：多轮摄入在胃内待释放的余量 |
+
+`emptiedMl` / `emptiedKcal` 每轮按当轮状态重新计算，不累加；需要累计排出量时由读者按轮求和。`mealQueue` 只用来保留并发摄入的时间分布，不对应任何生理测量。`lastIntakeAt` 的单位是仿真秒，不是现实时间戳。
+
+动力方程（一阶指数排空，先排空后入胃）：
+
+- `energyDensity = volumeMl > 0 ? energyKcal / volumeMl : 0`，单位 `kcal/mL`；
+- `h = halfTimeMin + energyDensityGain × energyDensity`，单位 `min`；
+- `emptiedMl = max(0, volumeMl − baselineMl) × (1 − 2^(−dtMin/h))`，`emptiedKcal = emptiedMl × energyDensity`；
+- 摄入切片在本轮排空之后进入 `volumeMl` / `energyKcal`。
+
+摄入动作：`drink` 按白水处理（0 kcal、`liquid`）；`eat` 需要 `energyKcal ≥ 0` 与 `mealKind`（`liquid` / `solid` / `mixed`）。两者都可带 `durationMin`，按轮切片进入，避免一次大餐整体落在同一轮。字段缺失、单位或取值非法的动作被忽略。
+
+| 参数 ID | 值 | 单位 | 状态 | 来源 |
+| --- | --- | --- | --- | --- |
+| `stomach.emptying.halfTimeMin` | 13 | `min` | `design` | `SRC-MUDIE-2014` |
+| `stomach.emptying.baselineMl` | 0 | `mL` | `design` | `SRC-MUDIE-2014` |
+| `stomach.emptying.energyDensityGainMinPerKcalPerMl` | 53.75 | `min/(kcal/mL)` | `fitted_dev` | `SRC-CAMPS-2016` |
+
+### `stomachGhrelin`
+
+| 字段 | 单位 | 含义 |
+| --- | --- | --- |
+| `relativeConcentration` | `1` | 相对浓度（空腹基线为 1，餐后谷值为 0.5），不是 `pg/mL` 或任何绝对浓度 |
+
+只有含能量的 `eat`（`energyKcal > 0`）会在本轮把相对浓度压到不高于谷值（`min(current, nadir)`），白水不抑制；随后按表观半时向基线指数恢复。`actionTypes = ['eat']` 只是声明，脚本自己再检查能量。
+
+| 参数 ID | 值 | 单位 | 状态 | 来源 |
+| --- | --- | --- | --- | --- |
+| `stomachGhrelin.fasting.baseline` | 1 | `1` | `design` | — |
+| `stomachGhrelin.postmeal.nadir` | 0.5 | `1` | `design` | — |
+| `stomachGhrelin.recovery.apparentHalfTimeMin` | 90 | `min` | `design` | — |
+
+### `stomachSensory`
+
+| 字段 | 单位 | 含义 |
+| --- | --- | --- |
+| `mechanical` | `1` | 胃壁机械感受代理，取值 0–1；不是胃壁张力，也不是迷走传入放电 |
+
+`mechanical = min(1, volumeMl / referenceVolumeMl) ^ exponent`。
+
+| 参数 ID | 值 | 单位 | 状态 | 来源 |
+| --- | --- | --- | --- | --- |
+| `stomachSensory.referenceVolumeMl` | 1000 | `mL` | `design` | — |
+| `stomachSensory.response.exponent` | 1 | `1` | `design` | — |
+
+### 与其他器官的接口
+
+十二指肠的 `nutrient-exposure.ts` 读本部位的 `emptiedKcal`，滤波成 `nutrientExposure`（单位 `kcal/min` 的代理）。胃不写该字段。
+
+## 3. 调节方式
+
+P0 只接两类输入：
+
+1. **摄入**：`drink` 与 `eat` 动作；体积、能量、餐型和进食时长都来自动作载荷。
+2. **自身状态**：胃内容量与剩余能量按上一轮状态自洽推进；机械感受只读 `volumeMl`。
+
+以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
+
+- 迷走神经与肠神经系统的反馈；
+- CCK、GLP-1、胃泌素、促胰液素等胃肠激素；
+- 餐时表、昼夜节律与餐前饥饿素上升；
+- 体位、运动、胃酸分泌、黏膜与胃内混合。
+
+## 4. 证据入口
+
+- 共享登记簿：[`../references/source-index.csv`](../references/source-index.csv)
+- 字段字典与证据卡模板：[`../references/m1-data-dictionary.md`](../references/m1-data-dictionary.md)
+- 逐篇笔记：[`references/notes/`](references/notes/)（Mudie 2014、Tougas 2000、Camps 2016、Levine 2015、Cummings 2001、Leone 2022，以及模板）
+- 器官设计：[`docs/superpowers/specs/2026-11-20-organ-model-design.md`](../../../docs/superpowers/specs/2026-11-20-organ-model-design.md)
+
+## 5. 当前限制
+
+- **饥饿素不建模餐前上升**：没有餐时表，P0 无法触发餐前升；只做“含能量摄入抑制 → 表观半时恢复”。
+- **机械感受是代理**：`mechanical` 是归一化充盈代理，不是张力或神经放电；参考量与指数都是 `design`，不是人体拟合。
+- **半衰期只来自白水摘要**：13 min 来自 Mudie 2014 摘要，摘要未写 T50 定义与起算点，只作工程假设；固餐与液餐不能共用这个半衰期。
+- **能量密度增益是开发集拟合**：53.75 只用 Camps 2016 同一批 15 人的 thin-100 与 thin-500 两臂，标为 `fitted_dev`，不是独立验证。
+- 没有不可排空残余：`baselineMl` 只是可调偏置，模型允许胃排到 0。
+- 不做胃内混合、分层、胃酸、温度和黏膜状态；也不消费 `mechanical` 或 `relativeConcentration`（P0 没有感受与上报脚本）。
