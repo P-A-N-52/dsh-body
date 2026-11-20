@@ -19,6 +19,7 @@
 | [`body-modules.json`](../body-modules.json)（`manifestPath`） | 开发者改，Gateway 启动时读 | 声明要加载的脚本、每个脚本读取的状态字段、补算上限和脚本超时。 |
 | `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active` | **一具身体一份存档**：所有部位的值、时钟、动作和通知都在一起。不要为每个系统或每个脚本再建存档。 |
 | [`package.json`](../package.json) | 项目维护者改，由 Node/npm 使用 | 声明 ESM、Node 版本、测试命令和发布文件，不登记心跳脚本，也不存身体数据。[`cordis.patch.yml`](../cordis.patch.yml) 是 DSH 插件装载描述，不是身体 JSON。 |
+| `systems/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 组件的证据默认值：参数值、单位、证据状态、范围与来源。不是某具身体的最终值，也不做运行中热切换。 |
 
 **清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径，仓库默认是 `[]`。`startupScripts` 是有序的启动脚本路径数组，仓库默认挂了 [`startup/reset-parts.js`](../startup/reset-parts.js)。两个数组的路径都相对**清单所在目录**。`catchUpMinutes` 单位分钟，默认 `720`。`scriptTimeoutMs` 用于监督 Worker 响应和每个脚本的执行，单位毫秒，默认 `10000`。
 
@@ -45,12 +46,32 @@ DSH 插件的默认存档是 `$DSH_HOME/dsh-body/body-state.json`（通常是 `~
 
 | 谁提供 | 脚本怎么取、怎么交回 |
 | --- | --- |
-| **脚本作者**给初值、固定参数和单位 | 如 `initialState = { totalMl: 0 }`。模块级常量可保存固定参数，跨轮状态通过 `io.write` 存回本部位。 |
+| **脚本作者**给初值、固定常数和单位 | 如 `initialState = { totalMl: 0 }`。模块级常量只保存全人类一致、不随个体或标定变化的常数；可调参数放组件自己的 `*.parameters.json`（见下）。跨轮状态通过 `io.write` 存回本部位。 |
 | **调用方**给每次动作的参数 | 如 `{ "id": "cup-1", "type": "drink", "volumeMl": 200 }`。`io.actions` 是本轮**全部原始动作**，不是回执，也不会按 `actionTypes` 给每个模块过滤。脚本自己检查 `type`、字段和单位；TS 类型不会替你校验收到的 JSON。 |
 | **Gateway**给状态与时间 | `io.read()` 读轮初 `{ simulatedSeconds, parts }`；`io.read(id)` 读某一部位，找不到返回 `undefined`。`io.dt` 是本轮步长（60 秒），`io.simulatedSeconds` 是**轮末**仿真时刻，`io.wallTimeMs` 是预定轮末的现实时间戳（毫秒）。计算用这些值，不要用 `Date.now()` 猜过了多久。 |
 | **脚本**把结果交回 Gateway | `io.write(nextPart)` 暂存**本部位完整的新对象**，不是补丁；只改一项时可用 `{ ...prev, 新字段: 新值 }`。不调用则保留原部位。`heartbeat` 的返回值不作为输出。其他部位只能读，输入快照不能原地改。 |
 
 状态必须是可保存的 JSON：普通对象、数组、字符串、布尔值、有限数字或 `null`；部位最外层必须是对象。不要写 `undefined`、`NaN`、`Infinity`、`BigInt`、`Map` 或循环引用。项目要求 **Node ≥ 22.18**，可直接加载本地 `.ts`，不需要 `ts-node`。使用可擦除的类型语法（`type`、`interface`、类型标注）；相对导入带扩展名，避免 `enum`、参数属性等需要编译转换的语法。如果打包到 `node_modules`，先把 TS 编译成 JS，再让清单指向发布的文件。当前 `package.json` 的 `files` 不含 `systems/`；打包时也要把编译产物纳入 `files`。
+
+### 参数文件是只读输入
+
+可调参数不放脚本常量，放组件自己的 `*.parameters.json`；脚本只写通用模型。当前 Gateway 不替模块读参数文件，也不提供热切换；模块在 **import 时**自己读一次，之后整轮心跳都用这份值。只读通道在 [`systems/lib/parameters.js`](../systems/lib/parameters.js)，只有两个函数：
+
+| 函数 | 行为 |
+| --- | --- |
+| `loadParameters(parametersUrl)` | 读 JSON，返回 `{ [参数 ID]: 值 }`。校验 `schemaVersion === 1`、`owner` 非空、每个参数 `id` 以 `owner.` 开头且不重复、`status: "unset"` 与 `value: null` 一一对应。 |
+| `requireParameter(values, id)` | 返回值；若值为 `null` 或缺失，抛出带参数 ID 的错误。脚本需要的参数还没标定时，应当在这里失败，而不是拿 `0` 继续跑。 |
+
+`parametersUrl` 可以是文件 URL（`URL` 对象）或文件系统路径；相对路径按进程工作目录解析，所以模块里用 `new URL('./stomach.parameters.json', import.meta.url)` 最稳：
+
+```js
+import { loadParameters, requireParameter } from '../lib/parameters.js';
+
+const parameters = loadParameters(new URL('./stomach.parameters.json', import.meta.url));
+const halfTimeMin = requireParameter(parameters, 'stomach.emptying.halfTimeMin');
+```
+
+边界：参数文件是**证据默认值**，不是某具身体的最终值；年龄、体重、器官倍率等个体差异属于身体预设或运行时覆盖，不写回参数文件。`unset` 参数的值必须是 `null`，缺失值不用 `0` 代替。参数变更不做运行中热切换，改完要重启 Gateway。`package.json` 的 `files` 目前不含 `systems/`；打包生理脚本时，脚本与它读的参数文件要一起进 `files`，否则运行时会找不到。
 
 ### 在清单里声明状态读取函数
 
