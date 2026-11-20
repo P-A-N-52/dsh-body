@@ -1,6 +1,8 @@
 # DSH 虚拟身体设计草案
 
-身体 Gateway 由 DSH 插件在宿主进程内运行。会话通过本机接口共用一具身体、同一个仿真时钟和一份存档。Gateway 按脚本清单加载 TypeScript 模块，每分钟调度一轮 `heartbeat`。浏览器也从这个 Gateway 读取状态、曲线和病况。
+[Gateway 开发指南：JSON 文件、脚本参数与可运行的 TypeScript 示例](./gateway-and-scripts.md) 说明现在已经可以怎么用。本文同时记录后续设计。
+
+身体 Gateway 由 DSH 插件在宿主进程内运行，管理一具身体、同一个仿真时钟和一份存档。身体启用时，Gateway 按脚本清单加载模块，每分钟调度一轮 `heartbeat`。会话工具和浏览器的曲线、病况页面是后续接入计划。
 
 ## 1. 身体系统
 
@@ -131,9 +133,9 @@ M6 接入基础病对身体参数的持续修正。M7 接入当前病况的触�
 
 ## 5. 身体 Gateway 与 DSH 接入
 
-进食、饮水和主动如厕由 DSH 会话里的模型发起。胃排空、膀胱充盈和尿意由身体脚本随心跳推进。会话空闲时，在线的 Gateway 继续计时。DSH 退出或崩溃时心跳停止，停机期间新增的主动动作为零。
+进食、饮水和主动如厕由 DSH 会话里的模型发起。胃排空、膀胱充盈和尿意由身体脚本随心跳推进。Gateway 在线且身体启用时，即使会话空闲也继续计时；暂停身体或 DSH 退出（含崩溃）时心跳停止，心跳停止期间新增的主动动作为零。
 
-当前插件已接入 Gateway 的启停，默认清单的 `scripts` 为空。空清单下所有动作都会因为没有模块声明对应类型而返回 `422`；这是有意的 fail-fast，接入模块后按 `actionTypes` 放行。下文的会话工具、食物估算和体感交付是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
+当前插件已接入 Gateway 的启动与关闭，默认清单的 `scripts` 为空。启用时，空清单下新动作都会因为没有模块声明对应类型而返回 `422`；停用时新动作返回 `409`，见「启用、暂停与恢复」。这是有意的 fail-fast，接入模块后按 `actionTypes` 放行。下文的会话工具、食物估算和体感交付是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
 
 ### 加载插件
 
@@ -146,23 +148,25 @@ dsh web
 
 DSH 加载插件时启动 Gateway，退出或卸载插件时关闭监听、定时器和正在执行的 Worker。Gateway 默认监听 `127.0.0.1:3210`。可在 profile 的 `dsh-body` 条目中设置 `port`、`manifestPath` 和 `statePath`。端口也可用 `DSH_BODY_PORT` 指定；端口必须是 0–65535 的整数，空值回退 3210。 [DSH 插件安装](https://deepseek-harness.github.io/deepseek-harness/en/develop/basic/publish) · [Cordis 生命周期](https://deepseek-harness.github.io/deepseek-harness/en/develop/framework/)
 
-存档默认写入 `$DSH_HOME/dsh-body/body-state.json`，DSH 的默认数据目录是 `~/.dsh`。首次加载可接续脚本清单目录已有的 `body-state.json`。
+存档默认写入 `$DSH_HOME/dsh-body/body-state.json`，DSH 的默认数据目录是 `~/.dsh`。首次加载可接续脚本清单目录已有的 `body-state.json`。存档顶层的 `active` 决定本次启动是否推进身体，修改方法见「启用、暂停与恢复」。
 
 - `GET /state` 返回最近一次提交的 `simulatedSeconds` 和各部位状态 `parts`。
-- `POST /actions` 接收包含 `id` 和 `type` 的 JSON 动作，必须使用 `Content-Type: application/json`。新动作返回 `202` 和 `{ id, type, status: "queued", effectiveAt }`；同 id、同载荷返回 `200` 和原回执；同 id、不同载荷返回 `409`；没有模块声明该类型返回 `422`，且不写入存档。
-- `GET /actions/:id` 返回动作记录和状态；`GET /capabilities` 返回各模块声明的动作类型；`GET /health` 返回仿真时钟、在途批次、连续失败次数和队列计数。
+- `POST /actions` 接收包含 `id` 和 `type` 的 JSON 动作，必须使用 `Content-Type: application/json`。启用时，有处理者的新动作返回 `202` 和 `{ id, type, status: "queued", effectiveAt }`；没有模块声明该类型则返回 `422`，且不写入存档。只要动作记录仍在，同 id、同载荷返回 `200` 和当前回执，同 id、不同载荷返回 `409`。
+- `GET /actions/:id` 返回动作记录和状态；`GET /capabilities` 按动作类型列出处理它的模块 ID，例如 `{ "drink": ["waterIntake"] }`（暂停时为空对象）；`GET /health` 返回本次启动实际采用的 `active`、仿真时钟、在途批次、连续失败次数和队列计数。
 - `GET /notifications` 返回待确认通知；`POST /notifications/ack` 提交 `{ "id": "…" }`，返回 `{ id, acked }`，未知 id 也返回 200 和 `acked: false`。
 
 HTTP 边界：请求体上限 64 KiB；非 JSON 的 POST 返回 `415`；`Host` 必须是 `127.0.0.1:<port>` 或 `localhost:<port>`，非 GET 的 `Origin` 只允许同源，否则返回 `403`；错误方法返回 `405`。存档默认上限 2 MiB，入队前会预留元数据空间，超过预算返回 `413`，不会把队列写坏；可用 `maxCheckpointBytes` 调整。当前不引入 token；同进程的 `body_act` 应直接调用 Gateway 句柄，HTTP 只服务本地调试和未来的浏览器页。
 
 ### 脚本清单与启动
 
-Gateway 启动时读取 `body-modules.json`，以清单所在目录为基准解析相对路径。下面是 M1 生理模块的挂载示例。神经系统的轮末体感脚本需要单独的调度入口，随 M1 接入。
+Gateway 启动时读取 `body-modules.json`，以清单所在目录为基准解析相对路径。示例中，胃脚本声明要读取的饥饿素状态。神经系统的轮末体感脚本需要单独的调度入口，随 M1 接入。
 
 ```json
 {
   "startupScripts": ["./startup/reset-parts.js"],
-  "scripts": ["./systems/digestive/stomach.ts", "./systems/endocrine/ghrelin.ts"],
+  "scripts": [
+    { "path": "./systems/digestive/stomach.ts", "inject": { "ghrelinLevel": ["ghrelin", "relativeConcentration"] } }
+  ],
   "catchUpMinutes": 720,
   "scriptTimeoutMs": 10000
 }
@@ -170,45 +174,91 @@ Gateway 启动时读取 `body-modules.json`，以清单所在目录为基准解�
 
 清单中的 `.ts` 模块由 Node 直接做类型擦除，只能使用可擦除语法：`enum`、含运行时值的 `namespace`、参数属性和装饰器不可用；相对导入必须带扩展名；`node_modules` 下的 `.ts` 不会被加载，发布到 npm 时应预编译为 `.js`。
 
-Gateway 用 `initialState` 补齐新部位，并递归补齐已有部位缺失的嵌套对象键；数组整体替换。有存档时继承身体现值、仿真时间、待处理动作和动作记录。`catchUpMinutes` 只限制启动时最多补算多少分钟，随附清单和代码的默认值均为 720 分钟。[当前清单](../body-modules.json) · [恢复实现](../gateway.js)
+Gateway 用 `initialState` 补齐新部位，并递归补齐已有部位缺失的嵌套对象键；数组整体替换。有存档时继承身体现值、仿真时间、待处理动作和动作记录。`catchUpMinutes` 只限制启动时最多补算多少分钟，随附清单和代码的默认值均为 720 分钟。[当前清单](../body-modules.json) · [恢复实现](../gateway/simulation.js)
 
 #### 停机恢复的 12 小时分界
+
+以下补算只适用于 `active`→`active` 的普通停机；停用后恢复不补算。
 
 - **间隔不超过 12 小时。** 从上次存档逐分钟推进已经过去的完整分钟，恰好 12 小时补 720 轮。
 - **间隔超过 12 小时。** 启动脚本结合部位存档、距上次快照的时长 `sinceCheckpointMs` 和重启的现实时刻 `startedAtMs`，计算恢复时的状态。比如昼夜节律可按启动时的当地时刻和预设的相位偏移计算。长停时直接恢复，还是先回放最近 12 小时再修正，留作一个独立的设计选择。
 
 例如，模型刚吃完半块蛋糕，DSH 随即关闭两小时。重启时应连续推进 120 轮，算出那半块蛋糕消化到了哪一步。如果停机前另有已入账、尚未生效的动作，它仍按原回执在对应轮次结算一次。下一次吃饭、喝水或去厕所，要等模型恢复后决定。
 
-现行 Gateway 在补算完成后按 `startupScripts` 的清单顺序调用各脚本导出的同步函数 `initialize(snapshot, context)`，每次启动各执行一次。返回值按部位列出要改写的字段，后一个脚本读取前一个脚本更新过的快照。全部执行完成后，把快照和本次启动记录一并保存，启动日志也输出这份记录。
+启用时，Gateway 先补算并重试在途批次；完成后若没有在途 `activeBatch`，再按 `startupScripts` 的清单顺序调用各脚本导出的同步函数 `initialize(snapshot, context)`，每次启动各执行一次。返回值按部位列出要改写的字段，后一个脚本读取前一个脚本更新过的快照。全部执行完成后，把快照和本次启动记录一并保存，启动日志也输出这份记录。
 
-`context.hasSavedState` 表示启动时是否找到有效存档。`startedAtMs`、`previousStartedAtMs` 是现实时间戳。`sincePreviousStartMs` 从上次启动算起，`sinceCheckpointMs` 从存档中最后一轮对应的现实时间算起，两者均以毫秒计。`caughtUpSeconds` 是实际补算的仿真秒数。`initialParts` 提供模块初值，`resetOnStart` 提供各部位标出的重置字段。旧存档从原有快照补算，启动时间从首次使用该功能时开始记录。
+`context.hasSavedState` 表示启动时是否找到有效存档。`startedAtMs`、`previousStartedAtMs` 是现实时间戳。`sincePreviousStartMs` 从上次启动算起，`sinceCheckpointMs` 从存档中最后一轮对应的现实时间算起，两者均以毫秒计。`caughtUpSeconds` 是实际补算的仿真秒数。`initialParts` 提供模块初值，`resetOnStart` 提供各部位标出的重置字段。initializer 直接读 `context.active` 和 `context.resumedFromPause`，这两个值持久化为 `startup.active` 和 `startup.resumedFromPause`；从 `active: false` 恢复时 `sinceCheckpointMs` 为 0。旧存档从原有快照补算，启动时间从首次使用该功能时开始记录。
 
-默认的 `startup/reset-parts.js` 在每次启动时，将 `resetOnStart` 中列出的字段恢复为模块初值。需要跨重启连续的身体字段不要列入 `resetOnStart`；M1 的胃容量和饥饿素浓度应继承存档。长停时哪些身体字段需要重算、重置或继承，由对应部位的恢复规则决定。
+默认的 `startup/reset-parts.js` 在运行 initializer 的启动中，将 `resetOnStart` 中列出的字段恢复为模块初值。需要跨重启连续的身体字段不要列入 `resetOnStart`；M1 的胃容量和饥饿素浓度应继承存档。长停时哪些身体字段需要重算、重置或继承，由对应部位的恢复规则决定。
 
-若恢复批次在启动补算中失败，本次启动跳过 initializer，保留 `activeBatch` 并由在线重试继续；`resetOnStart` 字段会等到批次恢复成功后的下一次启动再重置。
+若补算或停用恢复后仍有在途 `activeBatch`（例如上次补算失败或停用恢复保留了批次），本次启动不运行 initializer，保留批次供在线重试；等后续某次启动没有在途批次时再运行，`resetOnStart` 也随之后移。
+
+#### 启用、暂停与恢复
+
+存档顶层的 `active` 是启停开关，只接受布尔值。缺省或旧 v1/v2 缺字段按 `true`；非法值拒绝启动且不回写。关闭 Gateway（退出 DSH、卸载插件）会停止监听、定时器和查询；`active: false` 不同，Gateway 仍启动并可查询，只是不推进身体。
+
+`active` 只在启动时读取一次。在线改文件不生效，下一次保存还可能覆盖。切换步骤：停 Gateway → 只改实际 `statePath` 存档顶层的 `active`（默认 `$DSH_HOME/dsh-body/body-state.json`）→ 再启动。不要改 `startup.active` 或 `activeBatch`；前者是上次启动记录，后者是在途批次，都不是开关。只改这一个字段，不能拿片段替换整份存档，也不能改 `body-modules.json` 代替。当前一具身体对应一个 `statePath`，没有多身体选择器、热切换或按会话路由。
+
+```json
+"active": false
+```
+
+- **`active: true`（或缺省）**：正常恢复、调度心跳。
+- **`active: false`**：不跑初始化脚本、不补算、不调度心跳，`tick()` 不推进；`GET /state`、`GET /actions/:id`、`GET /notifications` 仍可查询，原回执保留。新动作 `POST /actions` 返回 `409`（响应含 `active: false`），既有动作同载荷重试仍返回原回执；`GET /capabilities` 仍为 `200 {}`。暂停不按墙钟裁剪动作，恢复后沿用原有的条数和时间窗保留规则。
+- 暂停保留 `activeBatch`、待处理动作、动作记录和通知。恢复从最后提交的仿真时刻继续，不补算停用时长，现实时间锚点移到本次启动；原批次按原目标和顺序先重试，之后才处理恢复后新动作。
+
+### Gateway 分工与常驻 BodyWorker
+
+[`gateway.js`](../gateway.js) 负责启动和关闭。HTTP、存档、动作队列、仿真调度和脚本运行器各有自己的模块。身体启用时，运行器为这一具身体启动一个常驻 BodyWorker。
+
+#### 脚本从 Gateway 接收状态输入
+
+启动时，脚本向运行器登记 `id`、`initialState`、`actionTypes` 和 `heartbeat`。每轮由 Gateway 提供 `io.read()`、`io.write()`、`io.notify()`、动作批次和时间参数。
+
+`body-modules.json` 中每个脚本的 `inject` 把函数名映射到轮初身体状态路径 `[partId, ...stateKeys]`。胃脚本通过 `io.functions.ghrelinLevel()` 读取轮初的 `snapshot.parts.ghrelin.relativeConcentration`。各脚本把新计算出的状态交给 Gateway，在轮末一起提交。
+
+模块级常量适合保存固定参数。跨轮变化的身体数据写回 part，通知通过 `io.notify()` 暂存。心跳返回前完成本轮的异步计算，以便整轮失败时从相同输入重试。
+
+#### 清单、存档与内存对象
+
+启动时解析清单和存档，计算与查询使用内存中的对象。
+
+- `manifest` 是启动时读取的脚本清单，包含每个脚本声明的状态读取函数。
+- `checkpoint`：主进程内已提交的快照、动作、通知和在途批次。查询直接读内存。提交时先原子替换存档，再更新内存中的版本。
+- 模块注册表在常驻 BodyWorker 内保存 `heartbeat`、状态路径和初值。模块在 Worker 生命周期内加载一次。
+
+BodyWorker 只持有计算输入和暂存结果。脚本报错、超时或 Worker 退出后，主进程用保留的状态和批次重建计算环境。
+
+#### 一具身体一个常驻 BodyWorker
+
+每轮向 BodyWorker 传递一份轮初快照。各模块依清单顺序读取同一份只读输入，暂存各自 part 的更新和通知，由主进程一起提交。
+
+启动补算复用同一个 Worker，由主进程逐轮接收结果，启动完成时统一落盘。脚本错误或超时会保留已经成功的轮次和失败的 `activeBatch`，上线后从该批次重试。DSH 若在这次启动写入存档前退出，下次从磁盘上最后一次提交恢复。
+
+[`runner.js`](../gateway/runner.js) 提供 `describe`、`initialize`、`heartbeat` 和 `close`，并从主进程监督脚本超时。M1 的轮末体感计划在同一 Worker 内接续执行，读取生理模块暂存结果汇总成的轮末快照。
 
 ### 每分钟 heartbeat
 
-清单 `scripts` 中的模块导出唯一的 `id` 和同步或异步的 `heartbeat(io)`。模块可以导出 `initialState` 为新部位提供初值，也可以通过 `functions` 导出供其他模块调用的函数。已有的同步 `step(snapshot, dt, actions)` 仍可使用，其返回值作为本部位的下一状态。
+清单 `scripts` 中的模块导出唯一的 `id` 和同步或异步的 `heartbeat(io)`。模块可以导出 `initialState` 为新部位提供初值。旧的 `step(snapshot, dt, actions)` 仍可返回本部位的下一状态。
 
 | Gateway 提供的接口 | 含义 |
 | --- | --- |
 | `io.read(partId?)` | 读取指定部位在轮初的状态。省略 `partId` 时返回整份快照。 |
 | `io.write(nextPart)` | 暂存当前模块负责的部位的完整下一状态。 |
-| `io.call(partId, name, ...args)` | 调用指定模块在 `functions` 中导出的函数。函数的第一个参数是本轮只读上下文，后续参数来自调用方。 |
+| `io.functions[alias]()` | 读取脚本在 `inject` 中为该名称声明的轮初状态。部位或字段缺失时返回 `undefined`。 |
 | `io.notify({ mode, sessionId, text })` | 当前向所有心跳脚本提供，暂存发往指定会话的通知。M1 设计将体感通报入口集中到神经系统的轮末脚本。 |
 | `io.actions` | 本轮开始时确定的只读动作批次，动作在轮末生效。 |
 | `io.dt`、`io.simulatedSeconds`、`io.wallTimeMs` | 固定步长 60 仿真秒、本轮结束的仿真时间、预定轮末的现实时间戳（毫秒）。 |
 
-Gateway 并发调度同一轮的脚本，每个脚本在单独的 Node.js Worker 中运行，收到同一份轮初快照、动作批次和时间参数的只读副本。`io.call` 在调用方的 Worker 中用同一轮数据计算，耗时计入调用方的预算。脚本先推进过去一分钟的变化，再处理轮末动作。例如消化脚本先推进原有胃内容物的排空，再加上这次进食。全部脚本成功后，Gateway 按清单顺序汇总状态和通知，并一次提交。
+脚本先推进过去一分钟的变化，再处理轮末动作。例如消化脚本先推进原有胃内容物的排空，再加上这次进食。全部脚本成功后，Gateway 按清单顺序汇总状态和通知，并一次提交。
 
-生理脚本通过 `io` 读取仿真输入，暂存本部位状态。Gateway 负责身体存档，适配器负责与 DSH 通信。启动脚本用 `snapshot`、`context` 和返回的补丁交换数据。每次调用使用新的 Worker，需要跨轮保留的生理数据写入部位状态。
+启动脚本用 `snapshot`、`context` 和返回的补丁交换数据。
 
 组织可按需在自己的 `snapshot.parts[id]` 里留少量恢复记录。例如胃模块如果要按上次进食时间推算，可以在动作生效时记下该餐的时间，并与当前胃内容量一起提交。只靠现值就能恢复的组织继续保存现值。各组织共用 Gateway 的时钟和同一份存档。
 
-`scriptTimeoutMs` 是单次脚本调用的时间上限，默认 10,000 毫秒，从启动 Worker 起计，涵盖模块加载和执行，也适用于启动脚本。超时时 Gateway 终止对应 Worker。任一脚本失败或超时，整轮暂存的状态和通知作废，已提交的快照和待处理动作保留。Gateway 在开算前把 `activeBatch`（目标仿真时刻、有序动作 ID、尝试次数）写入存档；失败重试复用同一批次和目标，新提交的动作进入后续批次。重试等待期不会让后到的动作越过先到批次，`GET /actions/:id` 可以看到尝试次数和最后一次错误。
+`scriptTimeoutMs` 默认 10,000 毫秒。运行器用它监督 Worker 响应和每个脚本的装载或执行，包括启动脚本。任一脚本失败或超时，Gateway 结束该 Worker，丢弃整轮暂存结果，保留已提交快照和待处理动作。在线开算前，Gateway 把 `activeBatch`（目标仿真时刻、有序动作 ID、尝试次数）写入存档。重试沿用同一批次和目标，新动作进入后续批次。`GET /actions/:id` 可以查看尝试次数和最后一次错误。
 
-Gateway 在线时每 60 个现实秒调度一轮，每轮成功提交后推进 60 仿真秒。计算提前完成就等到下一个预定时刻，已经到期的轮次则依次追赶。每轮实际用时由脚本和运行硬件决定。
+Gateway 在线且身体启用时每 60 个现实秒调度一轮，每轮成功提交后推进 60 仿真秒。计算提前完成就等到下一个预定时刻，已经到期的轮次则依次追赶。每轮实际用时由脚本和运行硬件决定。
 
 ### 模型如何提交动作和估算食物
 
@@ -224,7 +274,7 @@ Gateway 将动作原文和采用的数值随动作 ID 一起保存，工具重�
 
 - **动作入账。** `POST /actions` 将动作排进下一轮并返回回执。一轮开始后收到的动作在后一轮生效。接入 DSH 后，由 `body_act` 用来源会话与工具调用的 `callId` 组成动作标识。同一标识、同一载荷重试时返回原回执；同一标识、不同载荷返回 `409`。没有模块声明该类型时返回 `422`，且不创建回执。 [DSH 工具执行信息](https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/tools) · [LifeBody 动作接口](https://github.com/ShuangziG/maibot-body-emulator/blob/v1.2.4/docs/%E5%8F%AA%E8%AF%BB%E7%8A%B6%E6%80%81API.md)
 - **状态查询。** `body_state`、`GET /state` 和浏览器读取最近一次提交的内存快照；`GET /actions/:id` 查询单条动作，`GET /capabilities` 查询可处理的类型，`GET /health` 查询时钟和心跳健康。一轮执行期间，查询继续返回上一次提交的状态和仿真时间。
-- **动作记录与存档恢复。** 存档 v2 保存 `schemaVersion`、`snapshot`、`pendingActionIds`、`actions` 和 `activeBatch`。每条动作记录包含原始载荷、载荷指纹、状态（`queued` / `applied` / `failed`）、预定和实际生效时刻、批次、尝试次数及最后一次错误。`applied` 表示所在批次成功提交，不表示模块一定改变了状态；领域效果以模块自己的 part 记录为准。`queued` 和在途动作永不裁剪，`applied` / `failed` 按条数或时间窗口保留。每轮成功后把新快照、动作状态和批次记录一起写到临时文件，再替换存档。重启时按停机时长恢复身体，随后恢复定时推进。 [LifeBody 仿真与存档配置](https://github.com/ShuangziG/maibot-body-emulator/blob/v1.2.4/docs/%E9%85%8D%E7%BD%AE%E6%8C%87%E5%8D%97.md)
+- **动作记录与存档恢复。** 存档 v2 保存 `schemaVersion`、`active`、`snapshot`、`pendingActionIds`、`actions` 和 `activeBatch`。每条动作记录包含原始载荷、载荷指纹、状态（`queued` / `applied` / `failed`）、预定和实际生效时刻、批次、尝试次数及最后一次错误。`applied` 表示所在批次成功提交，不表示模块一定改变了状态；领域效果以模块自己的 part 记录为准。`queued` 和在途动作永不裁剪，`applied` / `failed` 按条数或时间窗口保留。每轮成功后把新快照、动作状态和批次记录一起写到临时文件，再替换存档。普通停机重启后按停机时长恢复身体，随后恢复定时推进。 [LifeBody 仿真与存档配置](https://github.com/ShuangziG/maibot-body-emulator/blob/v1.2.4/docs/%E9%85%8D%E7%BD%AE%E6%8C%87%E5%8D%97.md)
 
 后续若加入日程联动，调度模块可向 DSH 提供日程事件，由模型决定是否发出相应动作。
 
@@ -232,7 +282,7 @@ Gateway 将动作原文和采用的数值随动作 ID 一起保存，工具重�
 
 **只有神经系统向会话通报身体感受。** 各组织负责更新生理状态，感觉器提供局部感觉信号。神经系统仍属于上述 11 个系统，独立挂载的体感脚本拟放在 `systems/nervous/perception.ts`。它负责整合感受、选择目标会话，并决定何时值得通报。
 
-当前 Gateway 将所有心跳脚本并发运行。M1 计划在一次心跳内按以下顺序处理，以便进食当轮就能反映新的感受。
+M1 计划在一次心跳内按以下顺序处理，以便进食当轮就能反映新的感受。
 
 1. 胃和饥饿素等生理脚本读取轮初快照。胃先计算过去一分钟的排空，再把轮末吃下的半块蛋糕计入胃内容量。
 2. Gateway 汇总各部位结果，形成尚待提交的轮末快照。体感脚本用感觉器的规则从新的胃内容量算出充盈信号，再结合本轮饥饿素作用，更新全身共享的饥饿感。
@@ -292,7 +342,7 @@ M1–M4 全部通过实机验收后，首期交付完成。首期用会话工具
 
 | 里程碑 | 交付范围 | DSH 实机验收 |
 | --- | --- | --- |
-| M1 · 基础身体与进食 | Gateway 加载身体预设、免疫档位和脚本清单。胃与饥饿素脚本从轮初快照计算进食、排空和激素变化。神经系统读取轮末结果，体感与身体状态一次提交。 | 核对自定义参数和部位档位。在会话 A 提交“吃了半块奶油蛋糕”并重试，从会话 B 观察共享体感，在存档中确认同一动作只入账一次且沿用原估值。核对生理脚本并发读取同一份轮初快照，执行期间提交的动作在下一轮生效。让一个脚本超时，核对整轮状态和通知作废，待处理动作保留，成功重试后推进 60 秒。观察会话空闲时的胃排空，停机两小时后再核对这次进食的消化进度和恢复时的饱腹感。 |
+| M1 · 基础身体与进食 | Gateway 加载身体预设、免疫档位和脚本清单。胃与饥饿素脚本从轮初快照计算进食、排空和激素变化。神经系统读取轮末结果，体感与身体状态一次提交。 | 核对自定义参数和部位档位。在会话 A 提交“吃了半块奶油蛋糕”并重试，从会话 B 观察共享体感，在存档中确认同一动作只入账一次且沿用原估值。核对生理脚本按清单顺序读取同一份轮初快照，执行期间提交的动作在下一轮生效。让一个脚本超时，核对整轮状态和通知作废，待处理动作保留，成功重试后推进 60 秒。观察会话空闲时的胃排空，停机两小时后再核对这次进食的消化进度和恢复时的饱腹感。 |
 | M2 · 餐后血糖 | 接上肠道吸收、肝糖输出、组织摄糖、胰岛素和胰高血糖素。先打通餐后反馈，再接皮质醇对胰岛素作用的调节。 [Dalla Man 等，图 2 和式 (1)、(13)、(18)](https://isbgroup.eu/files/Dalla%20Man%202007.pdf) | 选两种碳水量相同的餐型，分别从相同的身体状态开始，比较葡萄糖入血、胰岛素的三个状态和血糖曲线。再对照持续应激前后的胰岛素作用。 |
 | M3 · 饮水与睡眠 | 先接饮水吸收、ADH 和肾脏保水，再接睡眠压力与褪黑素节律。 [HumMod 水分调节](https://pmc.ncbi.nlm.nih.gov/articles/PMC5358000/) · [睡眠双过程模型](https://pubmed.ncbi.nlm.nih.gov/6696142/) | 饮水后观察 ADH 和肾脏保水的变化。睡眠单独验收，观察入夜时及睡眠前后的困意。 |
 | M4 · 活动与身体分区 | 以左右小腿为第一组分区，接入肌群负荷、疲劳、延迟酸痛和同一区域的皮肤状态。 | 在单侧离心活动中对照两侧小腿的负荷、疲劳和后续酸痛。从同一部位查询皮肤状态。 |
@@ -323,7 +373,7 @@ M1 的 Gateway 动作记录保存动作标识、类型、原始载荷、载荷�
 - **重试时的动作顺序。** 已实现：开算前持久化 `activeBatch` 的目标仿真时刻和有序动作 ID；失败重试复用同一批次，新动作进入后续批次，重启后按同一批次恢复。
 - **可处理的动作。** 已实现：模块通过 `actionTypes` 声明可处理类型；无 handler 的动作入队返回 `422`，启动对账时发现 handler 已消失的旧 pending 动作标记 `failed(no-handler)`。
 - **电脑休眠。** 启动补算受 `catchUpMinutes` 限制，DSH 随电脑休眠再唤醒时则会追赶所有到期轮次。两种恢复方式是否共用上限仍待确定。
-- **补算耗时。** 按每个模块每轮新建一个 Worker 的实现，仅胃和饥饿素两个生理脚本补满 12 小时就会创建 1,440 个心跳 Worker。等 M1 接入后，在真实 DSH 上测一次完整恢复耗时，再决定是否复用 Worker。
+- **执行模型与补算耗时。** 已切换到常驻 BodyWorker。旧实现的临时基准使用 Apple M1、8 GB 内存和极简模块：11 个模块每轮约 44 ms、峰值 RSS 约 203 MB；40 个模块每轮约 169 ms、峰值 RSS 约 508 MB；补满 720 轮时，2 个模块约 12.1 秒，11 个模块约 31.4 秒。接入生理模块后在真实 DSH 中记录完整恢复耗时。
 
 ### 曲线与参数的文献依据
 

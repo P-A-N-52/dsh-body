@@ -1,0 +1,396 @@
+import { randomUUID } from 'node:crypto';
+import { isPlainObject as isRecord } from '../json-safe.js';
+import { setAction } from './actions.js';
+import { emptyCheckpoint } from './checkpoint.js';
+import { heartbeatSeconds } from './config.js';
+import { formatError } from './runner.js';
+
+function truncateError(error) {
+  return formatError(error).slice(0, 500);
+}
+
+function withDefaults(defaults, saved, label = 'body part') {
+  if (saved === undefined) return structuredClone(defaults);
+  if (!isRecord(saved)) throw new Error(`${label} is not an object`);
+  const result = { ...saved };
+  for (const [key, value] of Object.entries(defaults)) {
+    if (!Object.hasOwn(result, key)) {
+      result[key] = structuredClone(value);
+    } else if (isRecord(value) && isRecord(result[key])) {
+      result[key] = withDefaults(value, result[key]);
+    }
+  }
+  return result;
+}
+
+export function createBodySimulation({
+  store, actions, runner, now, autoTick, heartbeatIntervalMs, catchUpMinutes, maxNotifications, isStopping,
+}) {
+  let heartbeatWork;
+  let timer;
+  let lastHeartbeat = {
+    lastSuccessAtMs: null,
+    lastErrorAtMs: null,
+    lastError: null,
+    consecutiveFailures: 0,
+  };
+
+  function makeBatch(current) {
+    const targetSimulatedSeconds = current.snapshot.simulatedSeconds + heartbeatSeconds;
+    return {
+      id: targetSimulatedSeconds,
+      targetSimulatedSeconds,
+      targetWallTimeMs: current.wallTimeMs + heartbeatIntervalMs,
+      actionIds: current.pendingActionIds.filter(
+        (id) => current.actions[id].effectiveAt <= targetSimulatedSeconds,
+      ),
+      attempts: 0,
+      lastError: null,
+      startedAtWallTimeMs: now(),
+    };
+  }
+
+  async function runHeartbeat(current, batch, { suppressNotifications = false } = {}) {
+    const { parts, notifications } = await runner.heartbeat({
+      snapshot: current.snapshot,
+      actions: batch.actionIds.map((id) => current.actions[id].action),
+      dt: heartbeatSeconds,
+      simulatedSeconds: batch.targetSimulatedSeconds,
+      wallTimeMs: batch.targetWallTimeMs,
+    });
+    return {
+      snapshot: {
+        simulatedSeconds: batch.targetSimulatedSeconds,
+        parts: { ...current.snapshot.parts, ...parts },
+      },
+      notifications: suppressNotifications ? [] : notifications.map((notification) => ({
+        id: randomUUID(),
+        ...notification,
+        createdAtSimulatedSeconds: batch.targetSimulatedSeconds,
+        createdAtWallTimeMs: batch.targetWallTimeMs,
+      })),
+    };
+  }
+
+  function applyBatch(current, result, batch) {
+    const appliedAtWallTimeMs = now();
+    const actions = { ...current.actions };
+    for (const id of batch.actionIds) {
+      setAction(actions, id, {
+        ...actions[id],
+        status: 'applied',
+        batchId: batch.id,
+        attempts: batch.attempts,
+        lastError: null,
+        appliedAtSimulatedSeconds: batch.targetSimulatedSeconds,
+        appliedAtWallTimeMs,
+      });
+    }
+    const appliedIds = new Set(batch.actionIds);
+    const pendingActionIds = current.pendingActionIds.filter((id) => !appliedIds.has(id));
+    const overdue = pendingActionIds.filter(
+      (id) => actions[id].effectiveAt <= batch.targetSimulatedSeconds,
+    );
+    if (overdue.length) {
+      console.warn(
+        `Batch ${batch.targetSimulatedSeconds}s committed with due actions outside the batch: ${overdue.join(', ')}`,
+      );
+    }
+    let notifications = [...current.notifications, ...result.notifications];
+    if (notifications.length > maxNotifications) {
+      notifications = notifications.slice(-maxNotifications);
+    }
+    return {
+      ...current,
+      wallTimeMs: Math.min(batch.targetWallTimeMs, appliedAtWallTimeMs),
+      snapshot: result.snapshot,
+      pendingActionIds,
+      actions,
+      activeBatch: null,
+      notifications,
+    };
+  }
+
+  function failBatch(current, error) {
+    if (!current.activeBatch) return current;
+    const attempts = current.activeBatch.attempts + 1;
+    const lastError = truncateError(error);
+    const actions = { ...current.actions };
+    for (const id of current.activeBatch.actionIds) {
+      setAction(actions, id, { ...actions[id], attempts, lastError });
+    }
+    return {
+      ...current,
+      actions,
+      activeBatch: {
+        ...current.activeBatch,
+        attempts,
+        lastError,
+      },
+    };
+  }
+
+  async function catchUp(current, nowMs, limit) {
+    if (nowMs < current.wallTimeMs) return { ...current, wallTimeMs: nowMs };
+    const elapsed = Math.floor((nowMs - current.wallTimeMs) / heartbeatIntervalMs);
+    if (elapsed === 0) return current;
+
+    let next = current;
+    let remaining = Math.min(elapsed, limit);
+    try {
+      if (next.activeBatch) {
+        const batch = next.activeBatch;
+        const result = await runHeartbeat(next, batch, { suppressNotifications: true });
+        next = store.prune(applyBatch(next, result, batch));
+        remaining -= 1;
+        if (remaining <= 0) return next;
+      }
+
+      const elapsedAfter = Math.floor((nowMs - next.wallTimeMs) / heartbeatIntervalMs);
+      const replay = Math.min(elapsedAfter, remaining);
+      next = {
+        ...next,
+        wallTimeMs: next.wallTimeMs + (elapsedAfter - replay) * heartbeatIntervalMs,
+      };
+      for (let index = 0; index < replay; index++) {
+        const batch = makeBatch(next);
+        next = { ...next, activeBatch: batch };
+        const result = await runHeartbeat(next, batch, { suppressNotifications: true });
+        next = store.prune(applyBatch(next, result, batch));
+      }
+      return next;
+    } catch (error) {
+      const failed = failBatch(next, error);
+      return { ...failed, catchUpError: truncateError(error) };
+    }
+  }
+
+  function startupRecord({ startedAtMs, saved, active, resumedFromPause, caughtUpSeconds, catchUpError }) {
+    const previousStartedAtMs = Number.isSafeInteger(saved?.startup?.startedAtMs)
+      ? saved.startup.startedAtMs
+      : null;
+    return {
+      startedAtMs,
+      previousStartedAtMs,
+      sincePreviousStartMs: previousStartedAtMs === null ? null : Math.max(0, startedAtMs - previousStartedAtMs),
+      hasSavedState: saved !== null,
+      sinceCheckpointMs: resumedFromPause
+        ? 0
+        : saved ? Math.max(0, startedAtMs - saved.wallTimeMs) : null,
+      caughtUpSeconds,
+      catchUpError,
+      active,
+      resumedFromPause,
+    };
+  }
+
+  async function restore(saved, modules, initializers) {
+    const startedAtMs = now();
+    const current = saved ?? emptyCheckpoint(startedAtMs);
+    const { active } = current;
+    const resumedFromPause = active && saved?.startup?.active === false;
+    if (!active) {
+      return {
+        ...current,
+        catchUpError: undefined,
+        startup: startupRecord({
+          startedAtMs,
+          saved,
+          active: false,
+          resumedFromPause: false,
+          caughtUpSeconds: 0,
+          catchUpError: null,
+        }),
+      };
+    }
+
+    const reconciled = actions.reconcile(current);
+    const initialParts = Object.fromEntries(modules.map(({ id, initialState }) => [id, initialState]));
+    const loadedParts = Object.fromEntries(modules.map(({ id, initialState }) => [
+      id, withDefaults(initialState, reconciled.snapshot.parts[id], `Body part ${id}`),
+    ]));
+    const highestPendingEffectiveAt = reconciled.pendingActionIds.length
+      ? Math.max(...reconciled.pendingActionIds.map((id) => reconciled.actions[id].effectiveAt))
+      : 0;
+    const seeded = {
+      ...reconciled,
+      catchUpError: undefined,
+      notifications: reconciled.notifications ?? [],
+      lastEffectiveAt: Math.max(reconciled.lastEffectiveAt ?? 0, highestPendingEffectiveAt, 0),
+      snapshot: {
+        ...reconciled.snapshot,
+        parts: { ...reconciled.snapshot.parts, ...loadedParts },
+      },
+    };
+
+    const restored = resumedFromPause
+      ? {
+        ...seeded,
+        wallTimeMs: startedAtMs,
+        activeBatch: seeded.activeBatch
+          ? { ...seeded.activeBatch, targetWallTimeMs: startedAtMs + heartbeatIntervalMs }
+          : null,
+      }
+      : await catchUp(seeded, startedAtMs, catchUpMinutes);
+
+    const startup = startupRecord({
+      startedAtMs,
+      saved,
+      active: true,
+      resumedFromPause,
+      caughtUpSeconds: restored.snapshot.simulatedSeconds - seeded.snapshot.simulatedSeconds,
+      catchUpError: restored.catchUpError ?? null,
+    });
+
+    let snapshot = restored.snapshot;
+    if (!restored.catchUpError && !restored.activeBatch) {
+      const context = {
+        ...startup,
+        initialParts,
+        resetOnStart: Object.fromEntries(modules.map(({ id, resetOnStart }) => [id, resetOnStart])),
+      };
+      for (const url of initializers) {
+        const patches = await runner.initialize(url, snapshot, context);
+        const updates = Object.fromEntries(Object.entries(patches).map(([id, part]) => [
+          id, { ...snapshot.parts[id], ...part },
+        ]));
+        snapshot = { ...snapshot, parts: { ...snapshot.parts, ...updates } };
+      }
+    }
+    return { ...restored, snapshot, startup };
+  }
+
+  function health(port) {
+    const checkpoint = store.current;
+    const degraded = lastHeartbeat.consecutiveFailures > 0
+      || (checkpoint.activeBatch?.attempts ?? 0) > 0;
+    return {
+      ok: !degraded,
+      status: degraded ? 'degraded' : 'ok',
+      active: checkpoint.active,
+      port,
+      simulatedSeconds: checkpoint.snapshot.simulatedSeconds,
+      wallTimeMs: checkpoint.wallTimeMs,
+      pendingActions: checkpoint.pendingActionIds.length,
+      notifications: checkpoint.notifications.length,
+      heartbeat: {
+        lastSuccessAtMs: lastHeartbeat.lastSuccessAtMs,
+        lastErrorAtMs: lastHeartbeat.lastErrorAtMs,
+        lastError: lastHeartbeat.lastError,
+        consecutiveFailures: lastHeartbeat.consecutiveFailures,
+        inFlight: checkpoint.activeBatch !== null,
+      },
+      batch: checkpoint.activeBatch
+        ? {
+          targetSimulatedSeconds: checkpoint.activeBatch.targetSimulatedSeconds,
+          attempts: checkpoint.activeBatch.attempts,
+        }
+        : null,
+    };
+  }
+
+  async function heartbeatOnce({ force = false } = {}) {
+    if (isStopping() || !store.current) return { ran: false, failed: false };
+    if (!store.current.active) return { ran: false, failed: false, paused: true };
+    let warning;
+    let failed = false;
+    try {
+      const nowMs = now();
+      if (nowMs < store.current.wallTimeMs) {
+        store.commit({ ...store.current, wallTimeMs: nowMs });
+        if (!force) return { ran: false, failed: false };
+      }
+      if (!force && nowMs < store.current.wallTimeMs + heartbeatIntervalMs) {
+        return { ran: false, failed: false };
+      }
+
+      let batch = store.current.activeBatch;
+      if (!batch) {
+        batch = makeBatch(store.current);
+        store.commit({ ...store.current, activeBatch: batch });
+      }
+      warning = setTimeout(
+        () => console.warn(`Heartbeat ${batch.targetSimulatedSeconds}s is still running after ${heartbeatIntervalMs}ms`),
+        heartbeatIntervalMs,
+      );
+
+      const result = await runHeartbeat(store.current, batch);
+      if (isStopping()) return { ran: true, failed: false };
+      store.commit(applyBatch(store.current, result, batch));
+      lastHeartbeat = {
+        lastSuccessAtMs: now(),
+        lastErrorAtMs: lastHeartbeat.lastErrorAtMs,
+        lastError: null,
+        consecutiveFailures: 0,
+      };
+    } catch (error) {
+      failed = true;
+      if (!isStopping()) {
+        console.error('Heartbeat failed', error);
+        if (store.current.activeBatch) {
+          try {
+            store.commit(failBatch(store.current, error));
+          } catch (commitError) {
+            console.error('Failed to persist the failed batch', commitError);
+          }
+        }
+        lastHeartbeat = {
+          ...lastHeartbeat,
+          lastErrorAtMs: now(),
+          lastError: truncateError(error),
+          consecutiveFailures: lastHeartbeat.consecutiveFailures + 1,
+        };
+      }
+    } finally {
+      clearTimeout(warning);
+    }
+    return { ran: true, failed };
+  }
+
+  function tick() {
+    if (heartbeatWork) return heartbeatWork;
+    heartbeatWork = heartbeatOnce({ force: true }).finally(() => {
+      heartbeatWork = null;
+    });
+    return heartbeatWork;
+  }
+
+  function scheduleHeartbeat(delay) {
+    if (isStopping()) return;
+    const wait = delay ?? Math.max(0, store.current.wallTimeMs + heartbeatIntervalMs - now());
+    timer = setTimeout(() => {
+      if (heartbeatWork) {
+        scheduleHeartbeat(heartbeatIntervalMs);
+        return;
+      }
+      heartbeatWork = heartbeatOnce()
+        .then((outcome) => {
+          scheduleHeartbeat(outcome.failed ? heartbeatIntervalMs : undefined);
+          return outcome;
+        })
+        .finally(() => {
+          heartbeatWork = null;
+        });
+    }, wait);
+  }
+
+  function start() {
+    const checkpoint = store.current;
+    if (!checkpoint.active) return;
+    const lastError = checkpoint.startup.catchUpError;
+    lastHeartbeat = {
+      lastSuccessAtMs: now(),
+      lastErrorAtMs: lastError ? now() : null,
+      lastError,
+      consecutiveFailures: lastError ? 1 : 0,
+    };
+    if (autoTick) scheduleHeartbeat();
+  }
+
+  function stop() {
+    clearTimeout(timer);
+    return heartbeatWork;
+  }
+
+  return { restore, health, start, stop, tick };
+}
