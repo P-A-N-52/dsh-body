@@ -26,6 +26,7 @@ function probeSource() {
 export const id = 'probe';
 export const actionTypes = ['eat'];
 export const initialState = { value: 100, seen: null };
+export const fields = {};
 
 export function heartbeat(io) {
   const prev = io.read('probe') ?? {};
@@ -53,6 +54,7 @@ writeFileSync(${JSON.stringify(loadMarker)}, 'loaded');
 export const id = 'counter';
 export const actionTypes = ['eat'];
 export const initialState = { rounds: [], applied: [], volumeMl: 0 };
+export const fields = {};
 
 export function heartbeat(io) {
   mkdirSync(dirname(${JSON.stringify(heartbeatMarker)}), { recursive: true });
