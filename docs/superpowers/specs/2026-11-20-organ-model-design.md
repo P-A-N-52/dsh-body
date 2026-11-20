@@ -1,6 +1,6 @@
 # 器官级身体模型设计
 
-**状态：** 待批准。批准后进入 `superpowers:writing-plans`，再拆 tower mission。
+**状态：** 已批准（2026-11-20）。实施计划见 [`2026-11-20-organ-model-p0.md`](../plans/2026-11-20-organ-model-p0.md)。
 
 ## 1. 意图与为什么
 
