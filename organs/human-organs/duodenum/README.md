@@ -41,6 +41,7 @@ P0 只接胃流出能量这一条输入，自身状态只做一阶滤波。以�
 
 ## 4. 证据入口
 
+- 脚本头部的块注释逐条列出来源、原文定位、支撑的方程/参数与不能推出的边界；本节只做入口摘要。
 - 共享登记簿：[`../references/source-index.csv`](../references/source-index.csv)
 - 字段字典与证据卡模板：[`../references/m1-data-dictionary.md`](../references/m1-data-dictionary.md)
 - 逐篇笔记：[`../stomach/references/notes/`](../stomach/references/notes/)：P0 没有十二指肠专属来源，现有证据是胃排空、饥饿素与饱感/胃饱满的笔记。

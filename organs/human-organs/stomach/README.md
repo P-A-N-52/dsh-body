@@ -97,6 +97,7 @@ P0 只接两类输入：
 
 ## 4. 证据入口
 
+- 脚本头部的块注释逐条列出来源、原文定位、支撑的方程/参数与不能推出的边界；本节只做入口摘要。
 - 共享登记簿：[`../references/source-index.csv`](../references/source-index.csv)
 - 字段字典与证据卡模板：[`../references/m1-data-dictionary.md`](../references/m1-data-dictionary.md)
 - 逐篇笔记：[`references/notes/`](references/notes/)（Mudie 2014、Tougas 2000、Camps 2016、Levine 2015、Cummings 2001、Leone 2022，以及模板）

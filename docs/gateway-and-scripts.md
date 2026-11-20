@@ -51,6 +51,8 @@ DSH 插件的默认存档是 `$DSH_HOME/dsh-body/body-state.json`（通常是 `~
 | **Gateway**给状态与时间 | `io.read()` 读轮初 `{ simulatedSeconds, parts }`；`io.read(id)` 读某一部位，找不到返回 `undefined`。`io.dt` 是本轮步长（60 秒），`io.simulatedSeconds` 是**轮末**仿真时刻，`io.wallTimeMs` 是预定轮末的现实时间戳（毫秒）。计算用这些值，不要用 `Date.now()` 猜过了多久。 |
 | **脚本**把结果交回 Gateway | `io.write(nextPart)` 暂存**本部位完整的新对象**，不是补丁；只改一项时可用 `{ ...prev, 新字段: 新值 }`。不调用则保留原部位。`heartbeat` 的返回值不作为输出。其他部位只能读，输入快照不能原地改。 |
 
+**脚本头部要写来源。** 每个生理脚本在第一个 `import` 前用块注释列出：依赖的 `source_id` / citekey、证据笔记路径、原文定位（摘要 Results、Table、Methods 等）、支撑的方程或参数，以及不能推出的边界。参数文件里的 `source` 只回答“这个值来自哪条登记”；脚本注释要回答“哪条方程或假设来自哪里、哪些只是 `design`”。没有直接来源的代理量要明确写“无直接证据”，不能只挂一个论文标题或 DOI。
+
 状态必须是可保存的 JSON：普通对象、数组、字符串、布尔值、有限数字或 `null`；部位最外层必须是对象。不要写 `undefined`、`NaN`、`Infinity`、`BigInt`、`Map` 或循环引用。项目要求 **Node ≥ 22.18**，可直接加载本地 `.ts`，不需要 `ts-node`。使用可擦除的类型语法（`type`、`interface`、类型标注）；相对导入带扩展名，避免 `enum`、参数属性等需要编译转换的语法。如果打包到 `node_modules`，先把 TS 编译成 JS，再让清单指向发布的文件。`package.json` 的 `files` 已包含 `organs/` 与 `lib/`；打包时脚本、同目录参数文件和 `lib/parameters.js` 要一起纳入 `files`。
 
 ### 参数文件是只读输入
