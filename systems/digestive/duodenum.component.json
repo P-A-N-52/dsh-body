@@ -3,7 +3,7 @@
   "id": "duodenum",
   "system": "digestive",
   "kind": "organ",
-  "implementation": "planned",
+  "implementation": "ready",
   "module": "./duodenum.ts",
   "version": 1,
   "model": {

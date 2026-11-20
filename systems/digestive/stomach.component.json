@@ -3,7 +3,7 @@
   "id": "stomach",
   "system": "digestive",
   "kind": "organ",
-  "implementation": "planned",
+  "implementation": "ready",
   "module": "./stomach.ts",
   "version": 1,
   "model": {
