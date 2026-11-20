@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "gastricSensory",
+  "system": "sensory",
+  "kind": "sensory",
+  "implementation": "planned",
+  "module": "./gastric-sensory.ts",
+  "version": 1,
+  "model": {
+    "mechanical": "saturatingPower"
+  },
+  "signals": {
+    "gastricSensory.mechanical": {
+      "unit": "1",
+      "range": [0, 1],
+      "kind": "state",
+      "commit": "roundEnd",
+      "derivedFrom": ["stomach.volumeMl"],
+      "description": "机械输入代理；不是张力实测，也不是饱感"
+    }
+  },
+  "reads": ["stomach.volumeMl"],
+  "writes": ["gastricSensory.mechanical"],
+  "parameters": "./gastric-sensory.parameters.json",
+  "state": {
+    "mechanical": { "type": "number", "unit": "1", "min": 0, "max": 1, "initial": 0, "visibility": "public" }
+  },
+  "resetOnStart": []
+}

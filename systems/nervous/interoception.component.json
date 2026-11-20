@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "id": "interoception",
+  "system": "nervous",
+  "kind": "neural",
+  "implementation": "planned",
+  "module": "./interoception.ts",
+  "version": 1,
+  "model": {
+    "hunger": "linear",
+    "fullness": "linear",
+    "discomfortFullness": "threshold"
+  },
+  "signals": {
+    "interoception.hunger": {
+      "unit": "mm",
+      "range": [0, 100],
+      "kind": "readout",
+      "commit": "roundEnd",
+      "nullable": true,
+      "description": "100-mm VAS 饥饿"
+    },
+    "interoception.fullness": {
+      "unit": "mm",
+      "range": [0, 100],
+      "kind": "readout",
+      "commit": "roundEnd",
+      "nullable": true,
+      "description": "100-mm VAS 饱满"
+    },
+    "interoception.discomfortFullness": {
+      "unit": "score",
+      "range": [0, 10],
+      "kind": "readout",
+      "commit": "roundEnd",
+      "nullable": true,
+      "description": "餐后过度饱满，0–10；未问或非餐后为 null"
+    }
+  },
+  "reads": [
+    "gastricSensory.mechanical",
+    "ghrelin.relativeConcentration",
+    "duodenum.nutrientExposure",
+    "stomach.lastIntakeAt"
+  ],
+  "writes": [
+    "interoception.hunger",
+    "interoception.fullness",
+    "interoception.discomfortFullness"
+  ],
+  "readouts": "./readouts.json",
+  "parameters": "./interoception.parameters.json",
+  "state": {
+    "hunger": { "type": ["number", "null"], "unit": "mm", "min": 0, "max": 100, "initial": null, "visibility": "public" },
+    "fullness": { "type": ["number", "null"], "unit": "mm", "min": 0, "max": 100, "initial": null, "visibility": "public" },
+    "discomfortFullness": { "type": ["number", "null"], "unit": "score", "min": 0, "max": 10, "initial": null, "visibility": "public" }
+  },
+  "resetOnStart": []
+}

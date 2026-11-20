@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "owner": "duodenum",
+  "parameters": [
+    {
+      "id": "duodenum.exposure.timeConstantMin",
+      "unit": "min",
+      "value": 10,
+      "status": "design",
+      "range": [1, 120],
+      "source": null,
+      "note": "一阶滤波时间常数；用于 M1b 重放，不是人体测量"
+    }
+  ]
+}

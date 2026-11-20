@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "m1-liquid-meal-levine-355",
+  "source": "pending:levine-2015",
+  "protocol": {
+    "preMeal": [
+      { "atMin": -120, "description": "118 mL 苹果汁 + 1 片白吐司" }
+    ],
+    "actions": [
+      {
+        "atMin": 0,
+        "type": "eat",
+        "volumeMl": 237,
+        "energyKcal": 355,
+        "mealKind": "liquid",
+        "durationMin": 5
+      }
+    ]
+  },
+  "baseline": {
+    "interoception.fullness": 5.7
+  },
+  "observe": {
+    "postMealMin": [0, 10, 20, 30, 45, 60],
+    "signals": ["interoception.fullness"]
+  },
+  "expected": {
+    "interoception.fullness": [26.7, 23.3, 20.4, 19.1, 17.9, 10.5]
+  },
+  "note": "16 名健康成人安慰剂臂均值；SE 见原文表 1；不是个体曲线。"
+}

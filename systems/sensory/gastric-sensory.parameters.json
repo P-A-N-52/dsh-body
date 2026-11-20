@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "owner": "gastricSensory",
+  "parameters": [
+    {
+      "id": "gastricSensory.referenceVolumeMl",
+      "unit": "mL",
+      "value": 1000,
+      "status": "design",
+      "range": [200, 3000],
+      "source": null,
+      "note": "归一化参考量，不截断胃容量"
+    },
+    {
+      "id": "gastricSensory.response.exponent",
+      "unit": "1",
+      "value": 1,
+      "status": "design",
+      "range": [0.2, 3],
+      "source": null,
+      "note": "饱和曲线形状；不是人体拟合"
+    }
+  ]
+}

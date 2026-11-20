@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "m1-water-240",
+  "source": "SRC-MUDIE-2014",
+  "protocol": {
+    "fasted": true,
+    "actions": [
+      { "atMin": 0, "type": "drink", "volumeMl": 240, "durationMin": 0 }
+    ]
+  },
+  "baseline": {
+    "stomach.volumeMl": 35
+  },
+  "observe": {
+    "atMin": [0, 5, 10, 15, 30, 45, 60, 90],
+    "signals": ["stomach.volumeMl", "stomach.emptiedMl"]
+  },
+  "expected": {},
+  "note": "35 mL 为空腹 MRI 胃水基线；T50 13 min 待核定义与零点，expected 留空。"
+}

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "owner": "stomach",
+  "parameters": [
+    {
+      "id": "stomach.emptying.halfTimeMin",
+      "unit": "min",
+      "value": null,
+      "status": "unset",
+      "range": [1, 240],
+      "source": "SRC-MUDIE-2014",
+      "note": "仅在 T50 定义、零点与测量对象核对后填写"
+    },
+    {
+      "id": "stomach.emptying.baselineMl",
+      "unit": "mL",
+      "value": null,
+      "status": "unset",
+      "range": [0, 500],
+      "source": "SRC-MUDIE-2014",
+      "note": "仅在 T50 指高于空腹基线的增量减半时使用；不是胃容量下限"
+    }
+  ]
+}

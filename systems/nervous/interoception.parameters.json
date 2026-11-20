@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "owner": "interoception",
+  "parameters": [
+    {
+      "id": "interoception.hunger.baselineMm",
+      "unit": "mm",
+      "value": 50,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "首轮默认值；不是空腹人体测量"
+    },
+    {
+      "id": "interoception.fullness.baselineMm",
+      "unit": "mm",
+      "value": 0,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "首轮默认值；不是人体测量"
+    },
+    {
+      "id": "interoception.hunger.ghrelinGainAbsolute",
+      "unit": "mm/(ng/mL)",
+      "value": 97.51,
+      "status": "fitted_dev",
+      "range": [0, 200],
+      "source": "SRC-LEONE-2022",
+      "note": "女性参考组 60/180 min；120 min 已见，非独立验证；需空腹 ng/mL 才能换算为相对单位，当前相对模型不直接使用"
+    },
+    {
+      "id": "interoception.fullness.ghrelinGainAbsolute",
+      "unit": "mm/(ng/mL)",
+      "value": -107.28,
+      "status": "fitted_dev",
+      "range": [-200, 0],
+      "source": "SRC-LEONE-2022",
+      "note": "女性参考组 60/180 min；120 min 已见，非独立验证；需空腹 ng/mL 才能换算为相对单位，当前相对模型不直接使用"
+    },
+    {
+      "id": "interoception.hunger.ghrelinGain",
+      "unit": "mm/1",
+      "value": 50,
+      "status": "design",
+      "range": [0, 200],
+      "source": null,
+      "note": "相对浓度每变化 1 个单位；设计值，不是人体拟合"
+    },
+    {
+      "id": "interoception.fullness.ghrelinGain",
+      "unit": "mm/1",
+      "value": -50,
+      "status": "design",
+      "range": [-200, 0],
+      "source": null,
+      "note": "相对浓度每变化 1 个单位；设计值，不是人体拟合"
+    },
+    {
+      "id": "interoception.hunger.mechanicalGain",
+      "unit": "mm/1",
+      "value": -20,
+      "status": "design",
+      "range": [-100, 0],
+      "source": null,
+      "note": "机械输入 0–1 对饥饿的线性斜率；设计值"
+    },
+    {
+      "id": "interoception.fullness.mechanicalGain",
+      "unit": "mm/1",
+      "value": 100,
+      "status": "design",
+      "range": [0, 200],
+      "source": null,
+      "note": "机械输入 0–1 对饱满的线性斜率；设计值"
+    },
+    {
+      "id": "interoception.hunger.nutrientGain",
+      "unit": "mm/(kcal/min)",
+      "value": -5,
+      "status": "design",
+      "range": [-50, 0],
+      "source": null,
+      "note": "营养暴露对饥饿的线性斜率；设计值"
+    },
+    {
+      "id": "interoception.fullness.nutrientGain",
+      "unit": "mm/(kcal/min)",
+      "value": 10,
+      "status": "design",
+      "range": [0, 50],
+      "source": null,
+      "note": "营养暴露对饱满的线性斜率；设计值"
+    },
+    {
+      "id": "interoception.discomfort.threshold",
+      "unit": "1",
+      "value": null,
+      "status": "unset",
+      "range": [0, 1],
+      "source": "pending:schamberg-2023",
+      "note": "需要健康组逐时 D 或同题分布"
+    },
+    {
+      "id": "interoception.discomfort.slope",
+      "unit": "score/1",
+      "value": null,
+      "status": "unset",
+      "range": [0, 10],
+      "source": "pending:schamberg-2023",
+      "note": "需要健康组逐时 D 或同题分布"
+    }
+  ]
+}

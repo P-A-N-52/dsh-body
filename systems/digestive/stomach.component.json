@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "stomach",
+  "system": "digestive",
+  "kind": "organ",
+  "implementation": "planned",
+  "module": "./stomach.ts",
+  "version": 1,
+  "model": {
+    "emptying": "exponential"
+  },
+  "signals": {
+    "stomach.volumeMl": {
+      "unit": "mL",
+      "range": [0, null],
+      "kind": "state",
+      "commit": "roundEnd",
+      "description": "轮末胃内容物总量"
+    },
+    "stomach.energyKcal": {
+      "unit": "kcal",
+      "range": [0, null],
+      "kind": "state",
+      "commit": "roundEnd",
+      "description": "轮末胃内剩余能量"
+    },
+    "stomach.emptiedMl": {
+      "unit": "mL/round",
+      "range": [0, null],
+      "kind": "flux",
+      "commit": "roundEnd",
+      "description": "本轮流出胃的体积"
+    },
+    "stomach.emptiedKcal": {
+      "unit": "kcal/round",
+      "range": [0, null],
+      "kind": "flux",
+      "commit": "roundEnd",
+      "description": "本轮流出胃的能量，不是吸收量"
+    },
+    "stomach.lastIntakeAt": {
+      "unit": "s",
+      "range": [0, null],
+      "kind": "state",
+      "commit": "roundEnd",
+      "nullable": true,
+      "description": "最近一次入胃动作的仿真时刻；没有则 null"
+    }
+  },
+  "reads": [],
+  "writes": [
+    "stomach.volumeMl",
+    "stomach.energyKcal",
+    "stomach.emptiedMl",
+    "stomach.emptiedKcal",
+    "stomach.lastIntakeAt"
+  ],
+  "actions": "./stomach.actions.json",
+  "parameters": "./stomach.parameters.json",
+  "state": {
+    "volumeMl": { "type": "number", "unit": "mL", "min": 0, "initial": 0, "visibility": "public" },
+    "energyKcal": { "type": "number", "unit": "kcal", "min": 0, "initial": 0, "visibility": "public" },
+    "emptiedMl": { "type": "number", "unit": "mL", "min": 0, "initial": 0, "visibility": "public" },
+    "emptiedKcal": { "type": "number", "unit": "kcal", "min": 0, "initial": 0, "visibility": "public" },
+    "lastIntakeAt": { "type": ["number", "null"], "unit": "s", "initial": null, "visibility": "public" },
+    "meal": { "type": ["object", "null"], "unit": null, "initial": null, "visibility": "private" }
+  },
+  "resetOnStart": []
+}

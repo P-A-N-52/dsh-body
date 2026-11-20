@@ -3,3 +3,5 @@
 每种激素分别记录生产来源与速率、循环中的现有浓度、对靶组织的作用。M1 先查饥饿素。对照空腹至餐后的时间曲线，记清原文测的是总饥饿素还是酰化饥饿素、采用什么单位，以及用哪个时间点作基线。[已有激素资料](../../docs/virtual-body.md#分阶段接入的激素)
 
 M2 接胰岛素、胰高血糖素，再查皮质醇对靶点敏感度的调节。M3 的饮水与睡眠分别跟进抗利尿激素和褪黑素。共享器官通过同一份部位状态参与反馈。[消化系统](../digestive/README.md) · [泌尿系统](../urinary/README.md)
+
+M1 饥饿素来源见[共享登记簿](../digestive/references/source-index.csv)，逐篇笔记：[Cummings 2001](references/notes/cummings-2001.md)。

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "owner": "ghrelin",
+  "parameters": [
+    {
+      "id": "ghrelin.fasting.baseline",
+      "unit": "1",
+      "value": 1,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "相对浓度基线，不是绝对浓度"
+    },
+    {
+      "id": "ghrelin.postmeal.nadir",
+      "unit": "1",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "摘要只给方向和相对趋势；此值仅用于让 M1b 可运行"
+    },
+    {
+      "id": "ghrelin.recovery.apparentHalfTimeMin",
+      "unit": "min",
+      "value": 90,
+      "status": "design",
+      "range": [10, 360],
+      "source": null,
+      "note": "表观恢复时间，不是清除率"
+    },
+    {
+      "id": "ghrelin.premeal.leadMin",
+      "unit": "min",
+      "value": 30,
+      "status": "design",
+      "range": [0, 120],
+      "source": null,
+      "note": "固定餐时研究中的餐前上升；不是因果触发"
+    }
+  ]
+}
