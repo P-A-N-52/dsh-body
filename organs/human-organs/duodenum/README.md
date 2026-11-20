@@ -2,7 +2,7 @@
 
 P0 的十二指肠只有一个脚本：把胃排出的能量流做成一阶滤波的“近期营养暴露”代理。
 
-实现状态：脚本与参数已在 `organs/human-organs/duodenum/`；根清单已挂载这些脚本；启动 Gateway 即加载。
+实现状态：脚本与参数已在 `organs/human-organs/duodenum/`；根清单已挂载这些脚本；身体启用时，启动 Gateway 即加载。
 
 ## 1. 脚本与部位
 

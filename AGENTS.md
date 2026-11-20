@@ -14,8 +14,8 @@
 
 | 状态 | 内容 |
 | --- | --- |
-| 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；`lib/parameters.js` 的只读参数加载；身体启停与暂停恢复；P0 四个器官脚本（`organs/human-organs/stomach/` 的 `motility.ts`、`ghrelin.ts`、`gastric-sensory.ts`，`organs/human-organs/duodenum/` 的 `nutrient-exposure.ts`）及同目录四份参数文件；器官 README、共享证据台账和重放场景；`test/` 下的测试。 |
-| 未实现 | 11 个功能标签的完整生理脚本（目前只有 P0 的胃与十二指肠）；根清单 `body-modules.json` 已列出四条 P0 器官脚本，Gateway 启动即加载；`body_act` / `body_state` 会话工具；通知到 DSH 的实际投递；浏览器数据页；多身体、会话绑定、器官间转移、病况。 |
+| 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；`lib/parameters.js` 的只读参数加载；身体启停与暂停恢复；P0 四个器官脚本（`organs/human-organs/stomach/` 的 `motility.ts`、`ghrelin.ts`、`gastric-sensory.ts`，`organs/human-organs/duodenum/` 的 `nutrient-exposure.ts`）及同目录四份参数文件；器官 README、共享证据台账和重放场景；`test/` 下的测试；根清单 `body-modules.json` 已列出四条 P0 器官脚本，Gateway 启动即加载。 |
+| 未实现 | 11 个功能标签的完整生理脚本（目前只有 P0 的胃与十二指肠）；`body_act` / `body_state` 会话工具；通知到 DSH 的实际投递；浏览器数据页；多身体、会话绑定、器官间转移、病况。 |
 | M1 进行中 | 器官级 P0：胃（动力、饥饿素、机械感受）与十二指肠（营养暴露）的脚本、参数、README、证据和重放已就位；旧的组件/动作/读数 JSON 契约层已删除；其余 `systems/*/` 只保留 legacy 证据与参数。 |
 
 当前 P0 的部位与信号以 `organs/human-organs/<organ>/README.md` 的表格为准，参数在 `organs/human-organs/**/*.parameters.json`，模块导出见 `organs/human-organs/**/*.ts`；设计是 `docs/superpowers/specs/2026-11-20-organ-model-design.md`，实施计划是 `docs/superpowers/plans/2026-11-20-organ-model-p0.md`。旧的 M1 计划已标废弃。具体文件以目录和 `git status` 为准。

@@ -1,20 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startGateway } from '../gateway.js';
+import { checkpoint } from '../test-support/harness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('the root manifest loads all four organ scripts', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-'));
+  const statePath = join(dir, 'body-state.json');
+  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
   const gateway = startGateway({
     manifestPath: join(root, 'body-modules.json'),
-    statePath: join(dir, 'body-state.json'),
+    statePath,
     port: 0,
     autoTick: false,
+    now: () => 0,
   });
   t.after(async () => {
     await gateway.stop();
