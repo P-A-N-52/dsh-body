@@ -68,6 +68,8 @@ P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）�
 
 `mechanical = min(1, volumeMl / referenceVolumeMl) ^ exponent`。
 
+`mechanical` 读的是轮初快照里的 `stomach.volumeMl`，同一轮摄入要到下一轮才反映。
+
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
 | `stomachSensory.referenceVolumeMl` | 1000 | `mL` | `design` | — |

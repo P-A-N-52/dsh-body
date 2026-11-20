@@ -76,6 +76,7 @@
 | --- | --- |
 | `id` | 唯一、稳定的 camelCase 部位键；改名会被视为新部位。 |
 | `initialState` | 本部位初值，默认 `{}`；只补缺失键，不每次重置。 |
+| `fields` | 本部位字段声明；每个字段写 `unit` 与 `mode`（`absolute`/`additive`），规则见 `docs/gateway-operations.md`；不能省略，只做 `io.write` 的模块也要 `export const fields = {};`。 |
 | `actionTypes` | 能处理的动作名数组，默认 `[]`；不是过滤器。 |
 | `heartbeat(io)` | 每轮入口，可同步或异步；返回值不作为输出。 |
 | `initialize(snapshot, context)` | 仅启动脚本；同步；返回按部位 ID 分组的字段补丁，不是整部位对象。 |

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { heartbeat, initialState } from '../organs/human-organs/stomach/gastric-sensory.ts';
+import { heartbeat } from '../organs/human-organs/stomach/gastric-sensory.ts';
 
 function round(stomach) {
   let written;

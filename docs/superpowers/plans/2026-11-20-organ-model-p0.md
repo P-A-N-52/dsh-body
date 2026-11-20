@@ -47,7 +47,7 @@
 - Consumes: 无。
 - Produces: `lib/parameters.js` 的 `loadParameters(parametersUrl)` 与 `requireParameter(values, id)`；`stomach` 模块（`motility.ts`）与 `duodenum` 模块（`nutrient-exposure.ts`）仍导出 `id`、`actionTypes`、`initialState`、`heartbeat`，新增 `fields`。
 
-- [ ] **Step 1: 写失败的模块契约测试**
+- [x] **Step 1: 写失败的模块契约测试**
 
 ```js
 // test/organs.modules.test.mjs
@@ -99,12 +99,12 @@ test('duodenum filters 10 kcal/min with the 10 min time constant', async () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test test/organs.modules.test.mjs`
 Expected: FAIL，`ERR_MODULE_NOT_FOUND`，找不到 `organs/human-organs/stomach/motility.ts`。
 
-- [ ] **Step 3: 移动文件并补 `fields`**
+- [x] **Step 3: 移动文件并补 `fields`**
 
 用 `git mv` 保持历史：
 
@@ -138,7 +138,7 @@ export const fields = {
 
 参数文件内容不变，owner 仍是 `stomach` / `duodenum`。同步更新 `test/parameters.test.mjs` 的两处路径和 `../lib/parameters.js` import，并删掉已不存在的 `systems/digestive` 标签。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test test/organs.modules.test.mjs test/parameters.test.mjs`
 Expected: PASS。
@@ -146,7 +146,7 @@ Expected: PASS。
 Run: `npm test`
 Expected: 全部 PASS（原 71 项，标签更新）。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add lib organs/human-organs/stomach organs/human-organs/duodenum test/parameters.test.mjs test/organs.modules.test.mjs
@@ -165,7 +165,7 @@ git commit -m "refactor: 迁移胃与十二指肠脚本到器官目录并补 fie
 - Consumes: Task 1 的 `motility.ts` 与 `fields`。
 - Produces: `initialState.mealQueue: Meal[]`；`Meal` 形状不变（`remainingMl`、`remainingKcal`、`rateMlPerRound`、`rateKcalPerRound`、`remainingRounds`、`mealKind`）。其他模块不读这个字段。
 
-- [ ] **Step 1: 写失败的队列测试**
+- [x] **Step 1: 写失败的队列测试**
 
 ```js
 // test/organs.motility.test.mjs
@@ -226,12 +226,12 @@ test('intake mass is conserved over 200 rounds', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test test/organs.motility.test.mjs`
 Expected: FAIL，`next.mealQueue` 为 `undefined`。
 
-- [ ] **Step 3: 实现 `mealQueue`**
+- [x] **Step 3: 实现 `mealQueue`**
 
 `initialState` 把 `meal: null` 改成 `mealQueue: []`，`fields` 把 `meal` 改成 `mealQueue`。`heartbeat` 保留“先排空、再处理已有餐、最后处理新动作”的顺序：
 
@@ -240,7 +240,7 @@ Expected: FAIL，`next.mealQueue` 为 `undefined`。
 - 新动作逐条 `startIntake`，把剩余部分 `push` 到队列；删除 `mergeMeals`。
 - 输出 `mealQueue` 只含仍有剩余轮次或剩余量的项。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test test/organs.motility.test.mjs`
 Expected: PASS。
@@ -248,7 +248,7 @@ Expected: PASS。
 Run: `npm test`
 Expected: 全部 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add organs/human-organs/stomach/motility.ts test/organs.motility.test.mjs
@@ -268,7 +268,7 @@ git commit -m "fix: 胃动力改用 mealQueue 保留并发摄入的时间分布"
 - Consumes: `lib/parameters.js`；`io.actions` 里的 `eat`（读 `energyKcal`）。
 - Produces: 部位 `stomachGhrelin`，状态 `{ relativeConcentration: number }`；`fields` 为 `relativeConcentration: { unit: '1', mode: 'absolute' }`。
 
-- [ ] **Step 1: 写失败的 ghrelin 测试**
+- [x] **Step 1: 写失败的 ghrelin 测试**
 
 ```js
 // test/organs.ghrelin.test.mjs
@@ -321,12 +321,12 @@ test('a new energy intake never raises a lower value to nadir', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test test/organs.ghrelin.test.mjs`
 Expected: FAIL，模块不存在。
 
-- [ ] **Step 3: 写参数文件和脚本**
+- [x] **Step 3: 写参数文件和脚本**
 
 `ghrelin.parameters.json`：
 
@@ -352,7 +352,7 @@ Expected: FAIL，模块不存在。
 - 没有能量摄入时按 `current + (baseline - current) * (1 - 2 ** (-(io.dt / 60) / halfTimeMin))` 恢复。
 - `write({ relativeConcentration: Math.max(0, next) })`。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test test/organs.ghrelin.test.mjs`
 Expected: PASS。
@@ -360,7 +360,7 @@ Expected: PASS。
 Run: `npm test`（`test/parameters.test.mjs` 要加新参数文件路径，删旧 `systems/endocrine` 路径）
 Expected: 全部 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add organs/human-organs/stomach/ghrelin.ts organs/human-organs/stomach/ghrelin.parameters.json test/organs.ghrelin.test.mjs test/parameters.test.mjs
@@ -380,7 +380,7 @@ git commit -m "feat: 胃饥饿素只对含能量摄入抑制"
 - Consumes: `io.read('stomach').volumeMl`。
 - Produces: 部位 `stomachSensory`，状态 `{ mechanical: number }`；`fields` 为 `mechanical: { unit: '1', mode: 'absolute' }`。
 
-- [ ] **Step 1: 写失败的机械感受测试**
+- [x] **Step 1: 写失败的机械感受测试**
 
 ```js
 // test/organs.gastric-sensory.test.mjs
@@ -423,12 +423,12 @@ test('missing stomach and NaN volume map to zero', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test test/organs.gastric-sensory.test.mjs`
 Expected: FAIL，模块不存在。
 
-- [ ] **Step 3: 写参数文件和脚本**
+- [x] **Step 3: 写参数文件和脚本**
 
 `gastric-sensory.parameters.json`：
 
@@ -445,7 +445,7 @@ Expected: FAIL，模块不存在。
 
 `gastric-sensory.ts` 逻辑：读 `volumeMl`，非有限或负数按 0；`ratio = Math.min(1, volume / referenceVolumeMl)`；`mechanical = ratio ** exponent`；写回。`initialState = { mechanical: 0 }`。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test test/organs.gastric-sensory.test.mjs`
 Expected: PASS。
@@ -453,7 +453,7 @@ Expected: PASS。
 Run: `npm test`（参数测试路径同步更新）
 Expected: 全部 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add organs/human-organs/stomach/gastric-sensory.ts organs/human-organs/stomach/gastric-sensory.parameters.json test/organs.gastric-sensory.test.mjs test/parameters.test.mjs
@@ -477,7 +477,7 @@ git commit -m "feat: 胃壁机械感受代理"
 - Consumes: Task 1–4 的四个脚本与参数文件。
 - Produces: 器官 README 的脚本/字段/调节方式/证据入口；共享 `source-index.csv` 的 `note_path` 指向新笔记位置。
 
-- [ ] **Step 1: 移动证据并更新登记簿**
+- [x] **Step 1: 移动证据并更新登记簿**
 
 ```bash
 mkdir -p organs/human-organs/references organs/human-organs/stomach/references/notes
@@ -494,7 +494,7 @@ git mv systems/endocrine/references/notes/leone-2022.md organs/human-organs/stom
 
 把 `source-index.csv` 里的 `systems/digestive/references/notes/` 与 `systems/endocrine/references/notes/` 全部替换为 `organs/human-organs/stomach/references/notes/`。把 `m1-data-dictionary.md` 里的 `./notes/` 替换为 `../stomach/references/notes/`；`./source-index.csv` 保持不变。
 
-- [ ] **Step 2: 写两个器官 README**
+- [x] **Step 2: 写两个器官 README**
 
 `stomach/README.md` 至少包含：
 
@@ -510,7 +510,7 @@ git mv systems/endocrine/references/notes/leone-2022.md organs/human-organs/stom
 - 读取 `stomach.emptiedKcal`，一阶滤波；P0 不建肠内容量/吸收模型，不用 `transfer`。
 - 证据入口与当前限制。
 
-- [ ] **Step 3: 删除空壳目录并修死链**
+- [x] **Step 3: 删除空壳目录并修死链**
 
 ```bash
 git rm -r systems/digestive systems/endocrine systems/sensory
@@ -530,7 +530,7 @@ git rm -r systems/digestive systems/endocrine systems/sensory
 > **legacy evidence only, not simulation.** 仿真脚本已迁到 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
 ```
 
-- [ ] **Step 4: 验证路径与测试**
+- [x] **Step 4: 验证路径与测试**
 
 Run:
 
@@ -544,7 +544,7 @@ Expected: 没有 `MISSING`。
 Run: `npm test`
 Expected: 全部 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add -A organs systems docs
@@ -567,7 +567,7 @@ git commit -m "docs: 胃与十二指肠证据迁到器官目录并删除旧系�
 - Consumes: Task 5 的新路径与器官 README。
 - Produces: 仓库文档里的仿真路径只指向 `organs/human-organs/`；旧计划明确标为废弃。
 
-- [ ] **Step 1: 更新 `AGENTS.md`**
+- [x] **Step 1: 更新 `AGENTS.md`**
 
 - `systems/lib/parameters.js` → `lib/parameters.js`（全部出现处）。
 - `systems/digestive/references/source-index.csv` → `organs/human-organs/references/source-index.csv`。
@@ -577,7 +577,7 @@ git commit -m "docs: 胃与十二指肠证据迁到器官目录并删除旧系�
 - `package.json` 的 `files` 说明改成包含 `organs/` 与 `lib/`。
 - 模块契约表补一句：一个器官目录可放多个脚本，部位 id 不要求等于目录名。
 
-- [ ] **Step 2: 更新 `docs/virtual-body.md`**
+- [x] **Step 2: 更新 `docs/virtual-body.md`**
 
 - 顶部保留“设计草案”声明，并加一句：当前实现的仿真单元是 `organs/human-organs/<organ>/`，P0 见设计文档 §6。
 - 把 §1 的 11 系统表改成“器官层”表：仿真单元、功能标签、当前 P0、后续清单入口；11 个系统名只作为功能标签保留，不再作为目录或仿真层级。表骨架：
@@ -594,14 +594,14 @@ git commit -m "docs: 胃与十二指肠证据迁到器官目录并删除旧系�
 - 把旧部位名 `ghrelin`、`gastricSensory` 改成 `stomachGhrelin`、`stomachSensory`。
 - §7 的证据/管理表链接改为器官 README 或设计文档；删除指向已删目录的链接。
 
-- [ ] **Step 3: 更新 `docs/gateway-and-scripts.md`**
+- [x] **Step 3: 更新 `docs/gateway-and-scripts.md`**
 
 - `systems/lib/parameters.js` → `lib/parameters.js`。
 - 示例清单路径 `./systems/digestive/stomach.ts` → `./organs/human-organs/stomach/motility.ts`。
 - 教程里的 `$DEMO_DIR/systems/digestive/` 改成 `$DEMO_DIR/organs/human-organs/stomach/`，命令与清单同步。
 - 参数章节补一句：参数文件跟随器官脚本放同目录。
 
-- [ ] **Step 4: 给三份旧计划加废弃标记**
+- [x] **Step 4: 给三份旧计划加废弃标记**
 
 在每份文件标题下加：
 
@@ -609,7 +609,7 @@ git commit -m "docs: 胃与十二指肠证据迁到器官目录并删除旧系�
 > **已废弃（2026-11-20）：** 本计划的系统分层与脚本路径不再适用；器官级设计见 [`2026-11-20-organ-model-design.md`](../specs/2026-11-20-organ-model-design.md)，P0 实施见 [`2026-11-20-organ-model-p0.md`](./2026-11-20-organ-model-p0.md)。
 ```
 
-- [ ] **Step 5: 验证并提交**
+- [x] **Step 5: 验证并提交**
 
 Run:
 
@@ -639,7 +639,7 @@ git commit -m "docs: 把仿真路径与契约口径统一到器官目录"
 - Consumes: Task 1–4 的四个模块；`scenarios/m1-water-240.json` 与 `scenarios/m1-liquid-meal-levine-355.json`。
 - Produces: CLI `node tools/replay.mjs [scenarioPath]`，输出 JSON：`{ scenario, actionLagRounds: 1, note, observations }`；`observations` 每项含 `simMin` 与场景 `signals` 里的字段路径。
 
-- [ ] **Step 1: 写失败的 CLI 测试**
+- [x] **Step 1: 写失败的 CLI 测试**
 
 ```js
 // test/tools.replay.test.mjs
@@ -666,12 +666,12 @@ test('water replay reports the one-round action lag', () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test test/tools.replay.test.mjs`
 Expected: FAIL，`tools/replay.mjs` 不存在。
 
-- [ ] **Step 3: 实现重放工具**
+- [x] **Step 3: 实现重放工具**
 
 `tools/replay.mjs`：
 
@@ -685,7 +685,7 @@ Expected: FAIL，`tools/replay.mjs` 不存在。
 - 液餐场景的 `interoception.fullness` 在 P0 没有消费者；工具照常输出基线值，并在 `note` 里写明“P0 不产出体感”。
 - 只输出 `JSON.stringify(result, null, 2)`，不要额外日志。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `node --test test/tools.replay.test.mjs`
 Expected: PASS。
@@ -696,7 +696,7 @@ Expected: 能看到 `"actionLagRounds": 1` 和 `stomach.volumeMl` 序列。
 Run: `npm test`
 Expected: 全部 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add tools/replay.mjs test/tools.replay.test.mjs
@@ -716,7 +716,7 @@ git commit -m "feat: 增加器官级场景重放工具"
 - Consumes: Task 1–7 的全部交付物。
 - Produces: 根清单四条脚本路径；`package.json` 的 `files` 含 `organs/`、`lib/`；真实 Gateway 启动后 `/capabilities` 有 `drink`/`eat`，`/state` 有四个部位。
 
-- [ ] **Step 1: 写失败的 Gateway 验收测试**
+- [x] **Step 1: 写失败的 Gateway 验收测试**
 
 ```js
 // test/organs.gateway.test.mjs
@@ -764,12 +764,12 @@ test('the root manifest loads all four organ scripts', async (t) => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `node --test test/organs.gateway.test.mjs`
 Expected: FAIL，`capabilities.drink` 为空或 `/capabilities` 没有 `drink`。
 
-- [ ] **Step 3: 启用根清单与打包路径**
+- [x] **Step 3: 启用根清单与打包路径**
 
 `body-modules.json` 的 `scripts` 改为：
 
@@ -784,7 +784,7 @@ Expected: FAIL，`capabilities.drink` 为空或 `/capabilities` 没有 `drink`�
 
 `package.json` 的 `files` 加 `"organs/"`、`"lib/"`。
 
-- [ ] **Step 4: 运行验收**
+- [x] **Step 4: 运行验收**
 
 Run: `node --test test/organs.gateway.test.mjs`
 Expected: PASS。
@@ -792,7 +792,7 @@ Expected: PASS。
 Run: `npm test`
 Expected: 全部 PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add body-modules.json package.json test/organs.gateway.test.mjs
@@ -803,8 +803,8 @@ git commit -m "feat: 启用胃与十二指肠四个器官脚本"
 
 ## 交付检查
 
-- [ ] `npm test` 全绿。
-- [ ] `node tools/replay.mjs scenarios/m1-water-240.json` 输出 `actionLagRounds: 1` 与白水体积序列。
-- [ ] `git grep -nE 'systems/(digestive|endocrine|sensory)' -- ':!docs/superpowers/plans/*' ':!docs/superpowers/specs/*'` 无输出。
-- [ ] `body-modules.json` 只有四条器官脚本；`package.json` 的 `files` 含 `organs/`、`lib/`。
-- [ ] 真实 Gateway 启动后 `/capabilities` 的 `drink`/`eat` 都只指向 `stomach`，`/state` 有 `stomach`、`stomachGhrelin`、`stomachSensory`、`duodenum`。
+- [x] `npm test` 全绿。
+- [x] `node tools/replay.mjs scenarios/m1-water-240.json` 输出 `actionLagRounds: 1` 与白水体积序列。
+- [x] `git grep -nE 'systems/(digestive|endocrine|sensory)' -- ':!docs/superpowers/plans/*' ':!docs/superpowers/specs/*'` 无输出。
+- [x] `body-modules.json` 只有四条器官脚本；`package.json` 的 `files` 含 `organs/`、`lib/`。
+- [x] 真实 Gateway 启动后 `/capabilities` 为 `drink → ['stomach']`、`eat → ['stomach','stomachGhrelin']`（ghrelin 消费 `eat` 动作，因此声明该类型），`/state` 有 `stomach`、`stomachGhrelin`、`stomachSensory`、`duodenum`。

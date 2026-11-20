@@ -24,7 +24,7 @@ P0 的十二指肠只有一个脚本：把胃排出的能量流做成一阶滤�
 
 - 本轮的到达速率 `arrivalRate = stomach.emptiedKcal / dtMin`，单位 `kcal/min`；
 - `nutrientExposure` 以时间常数 `duodenum.exposure.timeConstantMin` 一阶跟随：`next = exposure + (1 − e^(−dtMin/τ)) × (arrivalRate − exposure)`，结果截到非负；
-- 读的是轮初快照里的 `stomach.emptiedKcal`，即胃上一轮结算后的排出量，所以胃→十二指肠在时间上有**一轮偏移**；`stomach` 缺失或 `emptiedKcal` 非有限时按 0 流入处理。
+- 读的是轮初快照里的 `stomach.emptiedKcal`，即胃上一轮结算后的排出量，所以胃→十二指肠在时间上有**一轮偏移**；`stomach` 缺失、非有限或负数时按 0 流入处理。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |

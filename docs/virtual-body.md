@@ -55,7 +55,7 @@
 | 感觉器 | 触觉、冷热、疼痛和胃充盈的感知阈值，用对应感觉信号的量纲设置 | 眼、耳可单独设置。皮肤和内脏的感受器取所在组织的档位。 |
 | 被皮 | 分区表面温度基线（℃）、湿润度基线（0–1）、出汗响应倍率 | 按第 3 节的皮肤分区设置，可细到左右和前后 |
 
-基础参数随对应模块接入。P0 已接胃排空、胃饥饿素和胃壁机械感受的参数；胃容量上限与充盈感知阈值仍是后续设计。P0 的 `stomachSensory.referenceVolumeMl` 只是归一化机械感受用的工程参考量，不截断胃容量。
+基础参数随对应模块接入。P0 已接胃排空、胃饥饿素、胃壁机械感受和十二指肠营养暴露时间常数的参数；胃容量上限与充盈感知阈值仍是后续设计。P0 的 `stomachSensory.referenceVolumeMl` 只是归一化机械感受用的工程参考量，不截断胃容量。
 
 ### 全身与局部免疫等级
 
@@ -220,7 +220,7 @@ Gateway 用 `initialState` 补齐新部位，并递归补齐已有部位缺失�
 
 #### 脚本从 Gateway 接收状态输入
 
-启动时，脚本向运行器登记 `id`、`initialState`、`actionTypes` 和 `heartbeat`。每轮由 Gateway 提供 `io.read()`、`io.write()`、`io.notify()`、动作批次和时间参数。
+启动时，脚本向运行器登记 `id`、`initialState`、`actionTypes`、`fields` 和 `heartbeat`。每轮由 Gateway 提供 `io.read()`、`io.write()`、`io.notify()`、动作批次和时间参数。
 
 `body-modules.json` 中每个脚本的 `inject` 把函数名映射到轮初身体状态路径 `[partId, ...stateKeys]`。胃脚本通过 `io.functions.stomachGhrelinLevel()` 读取轮初的 `snapshot.parts.stomachGhrelin.relativeConcentration`。各脚本把新计算出的状态交给 Gateway，在轮末一起提交。
 
@@ -232,7 +232,7 @@ Gateway 用 `initialState` 补齐新部位，并递归补齐已有部位缺失�
 
 - `manifest` 是启动时读取的脚本清单，包含每个脚本声明的状态读取函数。
 - `checkpoint`：主进程内已提交的快照、动作、通知和在途批次。查询直接读内存。提交时先原子替换存档，再更新内存中的版本。
-- 模块注册表在常驻 BodyWorker 内保存 `heartbeat`、状态路径和初值。模块在 Worker 生命周期内加载一次。
+- 模块注册表在常驻 BodyWorker 内保存 `heartbeat`、`fields`、状态路径和初值。模块在 Worker 生命周期内加载一次。
 
 BodyWorker 只持有计算输入和暂存结果。脚本报错、超时或 Worker 退出后，主进程用保留的状态和批次重建计算环境。
 
