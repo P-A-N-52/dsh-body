@@ -1,6 +1,6 @@
 # 呼吸系统
 
-> **legacy evidence only, not simulation.** 仿真脚本已迁到 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
+> **legacy evidence only, not simulation.** 本目录不再承载仿真；仿真脚本在 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
 
 候选状态包括呼吸频率、潮气量和活动后的通气恢复。肺与呼吸肌的状态可供神经系统评估气喘感。
 

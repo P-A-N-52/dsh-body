@@ -1,6 +1,6 @@
 # 被皮系统
 
-> **legacy evidence only, not simulation.** 仿真脚本已迁到 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
+> **legacy evidence only, not simulation.** 本目录不再承载仿真；仿真脚本在 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
 
 M4 先记录左右小腿皮肤的温度、湿润和刺激程度。皮肤与肌群沿用同一套身体分区，皮肤状态可供感觉器读取。
 

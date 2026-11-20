@@ -38,7 +38,7 @@ P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）�
 - `emptiedMl = max(0, volumeMl − baselineMl) × (1 − 2^(−dtMin/h))`，`emptiedKcal = emptiedMl × energyDensity`；
 - 摄入切片在本轮排空之后进入 `volumeMl` / `energyKcal`。
 
-摄入动作：`drink` 按白水处理（0 kcal、`liquid`）；`eat` 需要 `energyKcal ≥ 0` 与 `mealKind`（`liquid` / `solid` / `mixed`）。两者都可带 `durationMin`，按轮切片进入，避免一次大餐整体落在同一轮。字段缺失、单位或取值非法的动作被忽略。
+摄入动作：`drink` 只带 `volumeMl` 与可选的 `durationMin`，固定按白水处理（0 kcal、`liquid`），不接受能量或餐型；`eat` 需要 `volumeMl`、`energyKcal ≥ 0`、`mealKind`（`liquid` / `solid` / `mixed`）与可选的 `durationMin`。两者都按轮切片进入，避免一次大餐整体落在同一轮。字段缺失、单位或取值非法的动作被忽略。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
@@ -102,7 +102,7 @@ P0 只接两类输入：
 
 - **饥饿素不建模餐前上升**：没有餐时表，P0 无法触发餐前升；只做“含能量摄入抑制 → 表观半时恢复”。
 - **机械感受是代理**：`mechanical` 是归一化充盈代理，不是张力或神经放电；参考量与指数都是 `design`，不是人体拟合。
-- **半衰期只来自白水摘要**：13 min 来自 Mudie 2014 摘要，摘要未写 T50 定义与起算点，只作工程假设；固餐与液餐不能共用这个半衰期。
+- **所有餐型共用 13 min 截距**：`stomach.emptying.halfTimeMin` 不区分 `liquid` / `solid` / `mixed`，`mealKind` 只被记录、未进入方程。13 min 来自 Mudie 2014 白水摘要，摘要未写 T50 定义与起算点，只作工程假设；这是已知简化，不是“餐型已被区分”的证据。
 - **能量密度增益是开发集拟合**：53.75 只用 Camps 2016 同一批 15 人的 thin-100 与 thin-500 两臂，标为 `fitted_dev`，不是独立验证。
 - 没有不可排空残余：`baselineMl` 只是可调偏置，模型允许胃排到 0。
 - 不做胃内混合、分层、胃酸、温度和黏膜状态；也不消费 `mechanical` 或 `relativeConcentration`（P0 没有感受与上报脚本）。

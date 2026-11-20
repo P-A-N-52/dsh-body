@@ -1,6 +1,6 @@
 # 生殖系统
 
-> **legacy evidence only, not simulation.** 仿真脚本已迁到 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
+> **legacy evidence only, not simulation.** 本目录不再承载仿真；仿真脚本在 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
 
 按身体预设选择参与仿真的器官。记录某个组织时，注明资料适用的器官、周期阶段和测量条件。激素指标与内分泌系统共用。
 

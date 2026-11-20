@@ -1,6 +1,6 @@
 # 运动系统
 
-> **legacy evidence only, not simulation.** 仿真脚本已迁到 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
+> **legacy evidence only, not simulation.** 本目录不再承载仿真；仿真脚本在 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
 
 M4 从左右小腿开始。每侧分别记录活动负荷、疲劳和局部酸痛，与同一侧的皮肤状态按部位对应。
 

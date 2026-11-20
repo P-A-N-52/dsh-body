@@ -1,6 +1,6 @@
 # 身体 Gateway 开发指南：文件、时钟和第一个 TS 脚本
 
-**接一个新部位，只需写一个 TS 模块，再把路径加进脚本清单；不用造一份新的身体 JSON。** Gateway 管时钟、动作队列和存档，脚本只回答一个问题：给定轮初状态和这一轮的动作，我的部位在轮末是什么状态？本文说的是当前实现；11 个系统的规划见[虚拟身体设计草案](./virtual-body.md)。
+**接一个新部位，只需写一个 TS 模块，再把路径加进脚本清单；不用造一份新的身体 JSON。** Gateway 管时钟、动作队列和存档，脚本只回答一个问题：给定轮初状态和这一轮的动作，我的部位在轮末是什么状态？本文说的是当前实现；器官层设计与 P0 清单见[虚拟身体设计草案](./virtual-body.md)和[器官级身体模型设计](./superpowers/specs/2026-11-20-organ-model-design.md)。
 
 ## 1. Gateway 做什么，一轮怎么走？
 
@@ -17,9 +17,9 @@
 | 文件 | 谁写、何时读 | 用来做什么 |
 | --- | --- | --- |
 | [`body-modules.json`](../body-modules.json)（`manifestPath`） | 开发者改，Gateway 启动时读 | 声明要加载的脚本、每个脚本读取的状态字段、补算上限和脚本超时。 |
-| `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active` | **一具身体一份存档**：所有部位的值、时钟、动作和通知都在一起。不要为每个系统或每个脚本再建存档。 |
+| `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active` | **一具身体一份存档**：所有部位的值、时钟、动作和通知都在一起。不要为每个器官或每个脚本再建存档。 |
 | [`package.json`](../package.json) | 项目维护者改，由 Node/npm 使用 | 声明 ESM、Node 版本、测试命令和发布文件，不登记心跳脚本，也不存身体数据。[`cordis.patch.yml`](../cordis.patch.yml) 是 DSH 插件装载描述，不是身体 JSON。 |
-| `systems/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 组件的证据默认值：参数值、单位、证据状态、范围与来源。不是某具身体的最终值，也不做运行中热切换。 |
+| `organs/human-organs/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官组件的证据默认值：参数值、单位、证据状态、范围与来源。不是某具身体的最终值，也不做运行中热切换。`systems/nervous/interoception.parameters.json` 是唯一留在 `systems/` 的参数文件，属 legacy。 |
 
 **清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径，仓库默认是 `[]`。`startupScripts` 是有序的启动脚本路径数组，仓库默认挂了 [`startup/reset-parts.js`](../startup/reset-parts.js)。两个数组的路径都相对**清单所在目录**。`catchUpMinutes` 单位分钟，默认 `720`。`scriptTimeoutMs` 用于监督 Worker 响应和每个脚本的执行，单位毫秒，默认 `10000`。
 
@@ -51,27 +51,27 @@ DSH 插件的默认存档是 `$DSH_HOME/dsh-body/body-state.json`（通常是 `~
 | **Gateway**给状态与时间 | `io.read()` 读轮初 `{ simulatedSeconds, parts }`；`io.read(id)` 读某一部位，找不到返回 `undefined`。`io.dt` 是本轮步长（60 秒），`io.simulatedSeconds` 是**轮末**仿真时刻，`io.wallTimeMs` 是预定轮末的现实时间戳（毫秒）。计算用这些值，不要用 `Date.now()` 猜过了多久。 |
 | **脚本**把结果交回 Gateway | `io.write(nextPart)` 暂存**本部位完整的新对象**，不是补丁；只改一项时可用 `{ ...prev, 新字段: 新值 }`。不调用则保留原部位。`heartbeat` 的返回值不作为输出。其他部位只能读，输入快照不能原地改。 |
 
-状态必须是可保存的 JSON：普通对象、数组、字符串、布尔值、有限数字或 `null`；部位最外层必须是对象。不要写 `undefined`、`NaN`、`Infinity`、`BigInt`、`Map` 或循环引用。项目要求 **Node ≥ 22.18**，可直接加载本地 `.ts`，不需要 `ts-node`。使用可擦除的类型语法（`type`、`interface`、类型标注）；相对导入带扩展名，避免 `enum`、参数属性等需要编译转换的语法。如果打包到 `node_modules`，先把 TS 编译成 JS，再让清单指向发布的文件。当前 `package.json` 的 `files` 不含 `systems/`；打包时也要把编译产物纳入 `files`。
+状态必须是可保存的 JSON：普通对象、数组、字符串、布尔值、有限数字或 `null`；部位最外层必须是对象。不要写 `undefined`、`NaN`、`Infinity`、`BigInt`、`Map` 或循环引用。项目要求 **Node ≥ 22.18**，可直接加载本地 `.ts`，不需要 `ts-node`。使用可擦除的类型语法（`type`、`interface`、类型标注）；相对导入带扩展名，避免 `enum`、参数属性等需要编译转换的语法。如果打包到 `node_modules`，先把 TS 编译成 JS，再让清单指向发布的文件。当前 `package.json` 的 `files` 还不含 `organs/` 与 `lib/`（P0 的 Task 8 补上）；打包时要把脚本、参数文件和 `lib/parameters.js` 一起纳入 `files`。
 
 ### 参数文件是只读输入
 
-可调参数不放脚本常量，放组件自己的 `*.parameters.json`；脚本只写通用模型。当前 Gateway 不替模块读参数文件，也不提供热切换；模块在 **import 时**自己读一次，之后整轮心跳都用这份值。只读通道在 [`systems/lib/parameters.js`](../systems/lib/parameters.js)，只有两个函数：
+可调参数不放脚本常量，放组件自己的 `*.parameters.json`；脚本只写通用模型。参数文件跟随器官脚本放在同一目录，例如 `organs/human-organs/stomach/motility.parameters.json`。当前 Gateway 不替模块读参数文件，也不提供热切换；模块在 **import 时**自己读一次，之后整轮心跳都用这份值。只读通道在 [`lib/parameters.js`](../lib/parameters.js)，只有两个函数：
 
 | 函数 | 行为 |
 | --- | --- |
 | `loadParameters(parametersUrl)` | 读 JSON，返回 `{ [参数 ID]: 值 }`。校验 `schemaVersion === 1`、`owner` 非空、每个参数 `id` 以 `owner.` 开头且不重复、`status: "unset"` 与 `value: null` 一一对应。 |
 | `requireParameter(values, id)` | 返回值；若值为 `null` 或缺失，抛出带参数 ID 的错误。脚本需要的参数还没标定时，应当在这里失败，而不是拿 `0` 继续跑。 |
 
-`parametersUrl` 可以是文件 URL（`URL` 对象）或文件系统路径；相对路径按进程工作目录解析，所以模块里用 `new URL('./stomach.parameters.json', import.meta.url)` 最稳：
+`parametersUrl` 可以是文件 URL（`URL` 对象）或文件系统路径；相对路径按进程工作目录解析，所以模块里用 `new URL('./motility.parameters.json', import.meta.url)` 最稳：
 
 ```js
-import { loadParameters, requireParameter } from '../lib/parameters.js';
+import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
-const parameters = loadParameters(new URL('./stomach.parameters.json', import.meta.url));
+const parameters = loadParameters(new URL('./motility.parameters.json', import.meta.url));
 const halfTimeMin = requireParameter(parameters, 'stomach.emptying.halfTimeMin');
 ```
 
-边界：参数文件是**证据默认值**，不是某具身体的最终值；年龄、体重、器官倍率等个体差异属于身体预设或运行时覆盖，不写回参数文件。`unset` 参数的值必须是 `null`，缺失值不用 `0` 代替。参数变更不做运行中热切换，改完要重启 Gateway。`package.json` 的 `files` 目前不含 `systems/`；打包生理脚本时，脚本与它读的参数文件要一起进 `files`，否则运行时会找不到。
+边界：参数文件是**证据默认值**，不是某具身体的最终值；年龄、体重、器官倍率等个体差异属于身体预设或运行时覆盖，不写回参数文件。`unset` 参数的值必须是 `null`，缺失值不用 `0` 代替。参数变更不做运行中热切换，改完要重启 Gateway。`package.json` 的 `files` 还不含 `organs/` 与 `lib/`（P0 的 Task 8 补上）；打包生理脚本时，脚本与它读的参数文件要一起进 `files`，否则运行时会找不到。
 
 ### 在清单里声明状态读取函数
 
@@ -79,14 +79,14 @@ const halfTimeMin = requireParameter(parameters, 'stomach.emptying.halfTimeMin')
 
 ```json
 {
-  "path": "./systems/digestive/stomach.ts",
+  "path": "./organs/human-organs/stomach/motility.ts",
   "inject": {
-    "ghrelinLevel": ["ghrelin", "relativeConcentration"]
+    "stomachGhrelinLevel": ["stomachGhrelin", "relativeConcentration"]
   }
 }
 ```
 
-胃脚本调用 `io.functions.ghrelinLevel()`，得到当轮开始时的饥饿素相对浓度。只有部位 ID 的路径（如 `["ghrelin"]`）会返回该部位的完整只读状态。字段或部位缺失时返回 `undefined`。多个脚本读到的值都来自同一轮初快照。
+胃脚本调用 `io.functions.stomachGhrelinLevel()`，得到当轮开始时的饥饿素相对浓度。只有部位 ID 的路径（如 `["stomachGhrelin"]`）会返回该部位的完整只读状态。字段或部位缺失时返回 `undefined`。多个脚本读到的值都来自同一轮初快照。上面的条目是示意；P0 的 `motility.ts` 实际直接读自己的轮初状态，不声明 `inject`。
 
 ## 4. 跑通第一个模块：记录一杯水
 
@@ -94,11 +94,11 @@ const halfTimeMin = requireParameter(parameters, 'stomach.emptying.halfTimeMin')
 
 ```sh
 DEMO_DIR=$(mktemp -d "$PWD/.body-demo.XXXXXX")
-mkdir -p "$DEMO_DIR/systems/digestive"
+mkdir -p "$DEMO_DIR/organs/human-organs/stomach"
 printf '%s\n' "$DEMO_DIR"
 ```
 
-**① `$DEMO_DIR/systems/digestive/water-intake.ts`** — 正式开发时，你需要写的就是这样的部位模块。这里的 `IO` 只描述示例用到的接口，不是需要安装的 SDK。
+**① `$DEMO_DIR/organs/human-organs/stomach/water-intake.ts`** — 正式开发时，你需要写的就是这样的部位模块。这里的 `IO` 只描述示例用到的接口，不是需要安装的 SDK。
 
 ```ts
 export const id = 'waterIntake';
@@ -129,7 +129,7 @@ export function heartbeat(io: IO): void {
 
 ```json
 {
-  "scripts": ["./systems/digestive/water-intake.ts"],
+  "scripts": ["./organs/human-organs/stomach/water-intake.ts"],
   "startupScripts": [],
   "catchUpMinutes": 0,
   "scriptTimeoutMs": 10000

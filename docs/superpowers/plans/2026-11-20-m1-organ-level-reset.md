@@ -1,5 +1,7 @@
 # M1 器官级重置实施计划
 
+> **已废弃（2026-11-20）：** 本计划的系统分层与脚本路径不再适用；器官级设计见 [`2026-11-20-organ-model-design.md`](../specs/2026-11-20-organ-model-design.md)，P0 实施见 [`2026-11-20-organ-model-p0.md`](./2026-11-20-organ-model-p0.md)。
+
 **状态：待执行确认。** Gateway 操作层决策已并入：`fields` 由模块导出、所有模块必须声明、启动拒绝、运行 fatal。`set` 由现有 `io.write(完整 part)` 承担，只新增 `add` 与 `transfer`。确认后从 Task 0 开始拆 mission。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
