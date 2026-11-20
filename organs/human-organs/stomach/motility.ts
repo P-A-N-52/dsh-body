@@ -20,7 +20,7 @@ type StomachState = {
   emptiedMl: number;
   emptiedKcal: number;
   lastIntakeAt: number | null;
-  meal: Meal | null;
+  mealQueue: Meal[];
 };
 
 export const initialState: StomachState = {
@@ -29,7 +29,7 @@ export const initialState: StomachState = {
   emptiedMl: 0,
   emptiedKcal: 0,
   lastIntakeAt: null,
-  meal: null,
+  mealQueue: [],
 };
 
 export const fields = {
@@ -38,7 +38,7 @@ export const fields = {
   emptiedMl: { unit: 'mL', mode: 'absolute' },
   emptiedKcal: { unit: 'kcal', mode: 'absolute' },
   lastIntakeAt: { unit: 's', mode: 'absolute' },
-  meal: { unit: '1', mode: 'absolute' },
+  mealQueue: { unit: '1', mode: 'absolute' },
 };
 
 type Action = {
@@ -123,17 +123,6 @@ function advanceMeal(meal: Meal, slice: Slice): Meal | null {
   return { ...meal, remainingMl, remainingKcal, remainingRounds };
 }
 
-function mergeMeals(left: Meal, right: Meal): Meal {
-  return {
-    remainingMl: left.remainingMl + right.remainingMl,
-    remainingKcal: left.remainingKcal + right.remainingKcal,
-    rateMlPerRound: left.rateMlPerRound + right.rateMlPerRound,
-    rateKcalPerRound: left.rateKcalPerRound + right.rateKcalPerRound,
-    remainingRounds: Math.max(left.remainingRounds, right.remainingRounds),
-    mealKind: left.mealKind === right.mealKind ? left.mealKind : 'mixed',
-  };
-}
-
 function startIntake(intake: Intake): { slice: Slice; meal: Meal | null } {
   const slice = {
     ml: intake.volumeMl / intake.rounds,
@@ -168,19 +157,19 @@ export function heartbeat(io: IO): void {
   let nextVolumeMl = Math.max(0, volumeMl - emptiedMl);
   let nextEnergyKcal = Math.max(0, energyKcal - emptiedKcal);
   let lastIntakeAt = prev.lastIntakeAt ?? null;
-  let meal = prev.meal ?? null;
 
-  if (meal) {
+  const mealQueue: Meal[] = [];
+  for (const meal of prev.mealQueue.map((entry) => ({ ...entry }))) {
     const slice = takeSlice(meal);
     if (slice.ml > 0 || slice.kcal > 0) {
       nextVolumeMl += slice.ml;
       nextEnergyKcal += slice.kcal;
       lastIntakeAt = io.simulatedSeconds;
     }
-    meal = advanceMeal(meal, slice);
+    const advanced = advanceMeal(meal, slice);
+    if (advanced) mealQueue.push(advanced);
   }
 
-  let queued: Meal | null = null;
   for (const action of io.actions) {
     const intake = parseIntake(action, io.dt);
     if (intake === null) continue;
@@ -190,9 +179,8 @@ export function heartbeat(io: IO): void {
       nextEnergyKcal += started.slice.kcal;
       lastIntakeAt = io.simulatedSeconds;
     }
-    if (started.meal) queued = queued === null ? started.meal : mergeMeals(queued, started.meal);
+    if (started.meal) mealQueue.push(started.meal);
   }
-  if (queued) meal = meal === null ? queued : mergeMeals(meal, queued);
 
   io.write({
     volumeMl: Math.max(0, nextVolumeMl),
@@ -200,6 +188,6 @@ export function heartbeat(io: IO): void {
     emptiedMl: Math.max(0, emptiedMl),
     emptiedKcal: Math.max(0, emptiedKcal),
     lastIntakeAt,
-    meal,
+    mealQueue,
   });
 }
