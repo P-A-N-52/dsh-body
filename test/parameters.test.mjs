@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { loadParameters, requireParameter } from '../systems/lib/parameters.js';
+import { loadParameters, requireParameter } from '../lib/parameters.js';
 
 const parametersFiles = [
-  { label: 'systems/digestive/stomach.parameters.json', url: new URL('../systems/digestive/stomach.parameters.json', import.meta.url) },
-  { label: 'systems/digestive/duodenum.parameters.json', url: new URL('../systems/digestive/duodenum.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/stomach/motility.parameters.json', url: new URL('../organs/human-organs/stomach/motility.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/duodenum/nutrient-exposure.parameters.json', url: new URL('../organs/human-organs/duodenum/nutrient-exposure.parameters.json', import.meta.url) },
   { label: 'systems/endocrine/ghrelin.parameters.json', url: new URL('../systems/endocrine/ghrelin.parameters.json', import.meta.url) },
   { label: 'systems/sensory/gastric-sensory.parameters.json', url: new URL('../systems/sensory/gastric-sensory.parameters.json', import.meta.url) },
   { label: 'systems/nervous/interoception.parameters.json', url: new URL('../systems/nervous/interoception.parameters.json', import.meta.url) },

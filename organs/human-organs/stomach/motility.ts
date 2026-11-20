@@ -1,4 +1,4 @@
-import { loadParameters, requireParameter } from '../lib/parameters.js';
+import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
 export const id = 'stomach';
 export const actionTypes = ['drink', 'eat'];
@@ -32,6 +32,15 @@ export const initialState: StomachState = {
   meal: null,
 };
 
+export const fields = {
+  volumeMl: { unit: 'mL', mode: 'absolute' },
+  energyKcal: { unit: 'kcal', mode: 'absolute' },
+  emptiedMl: { unit: 'mL', mode: 'absolute' },
+  emptiedKcal: { unit: 'kcal', mode: 'absolute' },
+  lastIntakeAt: { unit: 's', mode: 'absolute' },
+  meal: { unit: '1', mode: 'absolute' },
+};
+
 type Action = {
   readonly type?: unknown;
   readonly volumeMl?: unknown;
@@ -48,7 +57,7 @@ type IO = {
   write(next: StomachState): void;
 };
 
-const parameters = loadParameters(new URL('./stomach.parameters.json', import.meta.url));
+const parameters = loadParameters(new URL('./motility.parameters.json', import.meta.url));
 const halfTimeMin = requireParameter(parameters, 'stomach.emptying.halfTimeMin');
 const baselineMl = requireParameter(parameters, 'stomach.emptying.baselineMl');
 const energyDensityGain = requireParameter(parameters, 'stomach.emptying.energyDensityGainMinPerKcalPerMl');

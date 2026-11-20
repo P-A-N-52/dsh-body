@@ -1,4 +1,4 @@
-import { loadParameters, requireParameter } from '../lib/parameters.js';
+import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
 export const id = 'duodenum';
 export const actionTypes: string[] = [];
@@ -15,6 +15,10 @@ export const initialState: DuodenumState = {
   nutrientExposure: 0,
 };
 
+export const fields = {
+  nutrientExposure: { unit: 'kcal/min', mode: 'absolute' },
+};
+
 type IO = {
   read(id: 'duodenum'): Readonly<DuodenumState> | undefined;
   read(id: 'stomach'): Readonly<StomachReading> | undefined;
@@ -22,7 +26,7 @@ type IO = {
   write(next: DuodenumState): void;
 };
 
-const parameters = loadParameters(new URL('./duodenum.parameters.json', import.meta.url));
+const parameters = loadParameters(new URL('./nutrient-exposure.parameters.json', import.meta.url));
 const timeConstantMin = requireParameter(parameters, 'duodenum.exposure.timeConstantMin');
 
 export function heartbeat(io: IO): void {
