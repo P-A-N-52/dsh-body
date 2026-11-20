@@ -33,6 +33,7 @@ test('a wall-clock rollback does not move simulated time backwards', async (t) =
     modules: { 'counter.mjs': counterSource() },
     seed,
     catchUpMinutes: 10,
+    heartbeatIntervalMs: 60_000,
   });
 
   let state = app.state();

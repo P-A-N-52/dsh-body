@@ -25,6 +25,7 @@ test('an action type with no handler is rejected without writing a receipt', asy
 test('a declared action type is queued and queryable', async (t) => {
   const app = await launch(t, {
     modules: { 'counter.mjs': counterSource() },
+    heartbeatIntervalMs: 60_000,
   });
 
   const capabilities = await (await app.get('/capabilities')).json();
