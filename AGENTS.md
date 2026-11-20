@@ -15,8 +15,8 @@
 | 状态 | 内容 |
 | --- | --- |
 | 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；`lib/parameters.js` 的只读参数加载；身体启停与暂停恢复；P0 四个器官脚本（`organs/human-organs/stomach/` 的 `motility.ts`、`ghrelin.ts`、`gastric-sensory.ts`，`organs/human-organs/duodenum/` 的 `nutrient-exposure.ts`）及同目录四份参数文件；器官 README、共享证据台账和重放场景；`test/` 下的测试。 |
-| 未实现 | 11 个功能标签的完整生理脚本（目前只有 P0 的胃与十二指肠）；根清单 `body-modules.json` 的 `scripts` 仍为 `[]`，Task 8 之后才启用真实身体；`body_act` / `body_state` 会话工具；通知到 DSH 的实际投递；浏览器数据页；多身体、会话绑定、器官间转移、病况。 |
-| M1 进行中 | 器官级 P0：胃（动力、饥饿素、机械感受）与十二指肠（营养暴露）的脚本、参数、README、证据和重放已就位；旧的组件/动作/读数 JSON 契约层已删除；其余 `systems/*/` 只保留 legacy 证据。 |
+| 未实现 | 11 个功能标签的完整生理脚本（目前只有 P0 的胃与十二指肠）；根清单 `body-modules.json` 已列出四条 P0 器官脚本，Gateway 启动即加载；`body_act` / `body_state` 会话工具；通知到 DSH 的实际投递；浏览器数据页；多身体、会话绑定、器官间转移、病况。 |
+| M1 进行中 | 器官级 P0：胃（动力、饥饿素、机械感受）与十二指肠（营养暴露）的脚本、参数、README、证据和重放已就位；旧的组件/动作/读数 JSON 契约层已删除；其余 `systems/*/` 只保留 legacy 证据与参数。 |
 
 当前 P0 的部位与信号以 `organs/human-organs/<organ>/README.md` 的表格为准，参数在 `organs/human-organs/**/*.parameters.json`，模块导出见 `organs/human-organs/**/*.ts`；设计是 `docs/superpowers/specs/2026-11-20-organ-model-design.md`，实施计划是 `docs/superpowers/plans/2026-11-20-organ-model-p0.md`。旧的 M1 计划已标废弃。具体文件以目录和 `git status` 为准。
 
@@ -27,7 +27,7 @@
 | # | 常见误解 | 实际 |
 | --- | --- | --- |
 | 1 | 把 `docs/virtual-body.md` 当成已实现功能清单 | 它是设计草案；开头新增的 5 条“已确认的行为契约（设计目标）”明确不是现状。当前实现以 `gateway/`、`test/` 和 `docs/gateway-and-scripts.md` 为准。 |
-| 2 | 以为 11 个系统目录就是仿真层级 | 仿真单元是器官目录 `organs/human-organs/<organ>/`；`systems/` 只剩 legacy 证据，脚本以 `organs/**/*.ts` 为准；`body-modules.json` 的 `scripts` 在 Task 8 前仍是 `[]`。 |
+| 2 | 以为 11 个系统目录就是仿真层级 | 仿真单元是器官目录 `organs/human-organs/<organ>/`；`systems/` 只剩 legacy 证据，脚本以 `organs/**/*.ts` 为准；`body-modules.json` 已列出四条 P0 器官脚本。 |
 | 3 | 把 `body-modules.json` 和 `body-state.json` 混为一谈 | 前者是脚本清单（开发者改），后者是一具身体的存档（Gateway 写；用户只在停机时改顶层 `active`）。 |
 | 4 | 运行中改存档 `active` 想热切换 | `active` 只在启动时读一次；必须停 Gateway → 改实际 `statePath` 的顶层 `active` → 再启动。运行中改不会生效，还可能被下次保存覆盖。 |
 | 5 | 把 `activeBatch` 或 `startup.active` 当启停开关 | 都不是。开关只有存档顶层 `active`；`activeBatch` 是在途批次，`startup.active` 是上次启动记录。 |
@@ -99,7 +99,7 @@
 - 只用可擦除语法：`type`、`interface`、类型标注；不要 `enum`、含运行时值的 `namespace`、参数属性、装饰器。相对导入带扩展名。
 - 状态必须 JSON-safe：普通对象/数组/有限数字/字符串/布尔/`null`；不要 `undefined`、`NaN`、`Infinity`、`BigInt`、`Map`、`Set`、稀疏数组、循环引用；部位最外层必须是对象。
 - 一个量只有一个写入者；其他部位只读。器官间转移是同一轮的两个写入，必须同时提交或同时作废。
-- `package.json` 的 `files` 需要包含 `organs/` 与 `lib/`（P0 的 Task 8 补上）；在此之前发布物里没有器官脚本、参数文件或参数加载库。
+- `package.json` 的 `files` 已包含 `organs/` 与 `lib/`；发布物包含器官脚本、同目录参数文件和参数加载库。
 
 ### 脚本通用性与参数归属
 
@@ -136,7 +136,7 @@
 - 模块或参数文件改动后跑一次 `npm test` 即可；`test/parameters.test.mjs` 已经覆盖四份器官参数文件与 `systems/nervous/interoception.parameters.json` 这份 legacy 参数文件的格式一致性，不需要再补一套重复校验。
 - 不要创建仓库根目录的 `body-state.json` 来“测试”；测试用临时目录。`body-state.json`、`body-state.json.tmp`、`docs/reference/pulse-engine/` 都已 gitignore。
 - 提交前扫一眼 `git status`，删掉测试产生的临时文件；不要把 `.tower/`、`.superpowers/`、日志或个人存档加入提交。
-- 如果新增运行时文件，检查 `package.json` 的 `files`；当前只发布 `index.js`、`gateway.js`、`gateway/`、`json-safe.js`、`body-modules.json`、`startup/`、`cordis.patch.yml`，P0 的 Task 8 会把 `organs/` 与 `lib/` 加进去。打包器官脚本时，脚本、同目录参数文件和 `lib/parameters.js` 要一起进 `files`。
+- 如果新增运行时文件，检查 `package.json` 的 `files`；`files` 已包含 `organs/` 与 `lib/`（另有 `index.js`、`gateway.js`、`gateway/`、`json-safe.js`、`body-modules.json`、`startup/`、`cordis.patch.yml`）。打包时脚本、同目录参数文件和 `lib/parameters.js` 要一起发布。
 
 ## 8. 文档与协作
 

@@ -2,7 +2,7 @@
 
 P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）、胃壁机械感受。三个脚本各写一个部位，互不写对方状态；机械感受只读 `stomach.volumeMl`。
 
-实现状态：脚本与参数已在 `organs/human-organs/stomach/`；根清单 `body-modules.json` 的 `scripts` 仍为 `[]`，这些脚本尚未挂进真实身体，启用是后续的单独提交。
+实现状态：脚本与参数已在 `organs/human-organs/stomach/`；根清单已挂载这些脚本；启动 Gateway 即加载。
 
 ## 1. 脚本与部位
 

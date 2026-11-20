@@ -33,7 +33,7 @@
 
 ### 器官目录与共享身体状态
 
-每个器官的 `README.md` 记录要模拟的脚本、字段、调节方式、待查问题和证据入口。论文原文、逐篇摘记和从图表提取的数据放在该器官的 `references/` 下，P0 的笔记在 `organs/human-organs/stomach/references/notes/`；共享登记簿和字段字典在 `organs/human-organs/references/`。P0 的脚本例如 `organs/human-organs/stomach/motility.ts` 和 `organs/human-organs/stomach/ghrelin.ts`，由根目录的 `body-modules.json` 逐条挂载；根清单在 P0 的 Task 8 之后才启用，目前 `scripts` 仍为 `[]`。
+每个器官的 `README.md` 记录要模拟的脚本、字段、调节方式、待查问题和证据入口。论文原文、逐篇摘记和从图表提取的数据放在该器官的 `references/` 下，P0 的笔记在 `organs/human-organs/stomach/references/notes/`；共享登记簿和字段字典在 `organs/human-organs/references/`。P0 的脚本例如 `organs/human-organs/stomach/motility.ts` 和 `organs/human-organs/stomach/ghrelin.ts`，由根目录的 `body-modules.json` 逐条挂载；根清单现在挂载 P0 的四条器官脚本。
 
 运行时的公共池就是同一分钟的身体快照。`snapshot.simulatedSeconds` 给出仿真时刻，`snapshot.parts` 按模块 ID 保存当前值。每个量由一个模块写入，其他模块按需读取。例如胃内容量由 `stomach` 的 `motility.ts` 维护，饥饿素相对浓度由 `stomachGhrelin` 的 `ghrelin.ts` 维护；体感接入后由神经系统读取两者。Gateway 将所有部位一起写入一份 `body-state.json`，重启时也从同一分钟恢复。
 
@@ -142,7 +142,7 @@ M6 接入基础病对身体参数的持续修正。M7 接入当前病况的触�
 
 进食、饮水和主动如厕由 DSH 会话里的模型发起。胃排空、膀胱充盈和尿意由身体脚本随心跳推进。Gateway 在线且身体启用时，即使会话空闲也继续计时；暂停身体或 DSH 退出（含崩溃）时心跳停止，心跳停止期间新增的主动动作为零。
 
-当前插件已接入 Gateway 的启动与关闭，默认清单的 `scripts` 为空。启用时，空清单下新动作都会因为没有模块声明对应类型而返回 `422`；停用时新动作返回 `409`，见「启用、暂停与恢复」。这是有意的 fail-fast，接入模块后按 `actionTypes` 放行。下文的会话工具、食物估算和体感交付是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
+当前插件已接入 Gateway 的启动与关闭，默认清单现在挂载 P0 的四条器官脚本。启用时，自定义空清单下新动作仍会因为没有模块声明对应类型而返回 `422`；停用时新动作返回 `409`，见「启用、暂停与恢复」。这是有意的 fail-fast，接入模块后按 `actionTypes` 放行。下文的会话工具、食物估算和体感交付是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
 
 ### 加载插件
 
@@ -166,7 +166,7 @@ HTTP 边界：请求体上限 64 KiB；非 JSON 的 POST 返回 `415`；`Host` �
 
 ### 脚本清单与启动
 
-Gateway 启动时读取 `body-modules.json`，以清单所在目录为基准解析相对路径。下面是示意条目（当前根清单的 `scripts` 仍为 `[]`）：胃脚本声明要读取轮初的饥饿素相对浓度；P0 的 `motility.ts` 实际不读该字段，这里只示意 `inject` 的写法。体感脚本属于 P1 的“感受与上报”，尚未实现。
+Gateway 启动时读取 `body-modules.json`，以清单所在目录为基准解析相对路径。下面是示意条目（根清单现在挂载 P0 的四条器官脚本；该条目只示意 `inject` 的写法，`motility.ts` 实际不声明 `inject`）：胃脚本声明要读取轮初的饥饿素相对浓度；P0 的 `motility.ts` 实际不读该字段。体感脚本属于 P1 的“感受与上报”，尚未实现。
 
 ```json
 {
