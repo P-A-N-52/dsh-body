@@ -31,6 +31,8 @@ P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）�
 
 `emptiedMl` / `emptiedKcal` 每轮按当轮状态重新计算，不累加；需要累计排出量时由读者按轮求和。`mealQueue` 只用来保留并发摄入的时间分布，不对应任何生理测量。`lastIntakeAt` 的单位是仿真秒，不是现实时间戳。
 
+取舍说明：`mealKind` 目前是元数据，不参与任何方程；`lastIntakeAt` 目前没有消费者（`producer only / not consumed`）；`emptiedMl` / `emptiedKcal` 是观察与重放读数，不是其他器官的输入。详见设计文档 §2.1。
+
 动力方程（一阶指数排空，先排空后入胃）：
 
 - `energyDensity = volumeMl > 0 ? energyKcal / volumeMl : 0`，单位 `kcal/mL`；
@@ -52,7 +54,7 @@ P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）�
 | --- | --- | --- |
 | `relativeConcentration` | `1` | 相对浓度（空腹基线为 1，餐后谷值为 0.5），不是 `pg/mL` 或任何绝对浓度 |
 
-只有含能量的 `eat`（`energyKcal > 0`）会在本轮把相对浓度压到不高于谷值（`min(current, nadir)`），白水不抑制；随后按表观半时向基线指数恢复。`actionTypes = ['eat']` 只是声明，脚本自己再检查能量。
+只有含能量的 `eat`（`energyKcal > 0`）会在本轮把相对浓度压到不高于谷值（`min(current, nadir)`），白水不抑制；随后按表观半时向基线指数恢复。`actionTypes = ['eat']` 只是声明，脚本自己再检查能量。P0 没有饥饿或体感的消费者；这个字段是 `producer only` 信号，等 P1 的感受与上报接入后再消费。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
@@ -68,7 +70,7 @@ P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）�
 
 `mechanical = min(1, volumeMl / referenceVolumeMl) ^ exponent`。
 
-`mechanical` 读的是轮初快照里的 `stomach.volumeMl`，同一轮摄入要到下一轮才反映。
+`mechanical` 读的是轮初快照里的 `stomach.volumeMl`，同一轮摄入要到下一轮才反映。P0 没有消费者；它是 `producer only` 信号，等 P1 的感受与上报接入后再消费。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |

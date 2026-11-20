@@ -18,7 +18,7 @@ P0 的十二指肠只有一个脚本：把胃排出的能量流做成一阶滤�
 | --- | --- | --- |
 | `nutrientExposure` | `kcal/min` | 近期营养到达速率的滤波代理；不是吸收入血速率，不是肠内容量，也不是浓度 |
 
-`fields` 声明为 `absolute` 写入，只有 `duodenum` 脚本写它。
+`fields` 声明为 `absolute` 写入，只有 `duodenum` 脚本写它。P0 没有消费者；它是 `producer only` 信号，等 P1 的肠激素、吸收或体感接入后再消费。
 
 滤波逻辑：
 
