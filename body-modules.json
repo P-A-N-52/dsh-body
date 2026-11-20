@@ -1,6 +1,11 @@
 {
   "startupScripts": ["./startup/reset-parts.js"],
-  "scripts": [],
+  "scripts": [
+    "./organs/human-organs/stomach/motility.ts",
+    "./organs/human-organs/stomach/ghrelin.ts",
+    "./organs/human-organs/stomach/gastric-sensory.ts",
+    "./organs/human-organs/duodenum/nutrient-exposure.ts"
+  ],
   "catchUpMinutes": 720,
   "scriptTimeoutMs": 10000
 }
