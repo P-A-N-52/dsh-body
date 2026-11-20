@@ -71,6 +71,8 @@ const parameters = loadParameters(new URL('./motility.parameters.json', import.m
 const halfTimeMin = requireParameter(parameters, 'stomach.emptying.halfTimeMin');
 ```
 
+示例的 import 深度 `../../../lib/parameters.js` 按脚本位于 `organs/human-organs/<organ>/` 计算；脚本放在其他层级时，需要按实际目录调整相对深度。
+
 边界：参数文件是**证据默认值**，不是某具身体的最终值；年龄、体重、器官倍率等个体差异属于身体预设或运行时覆盖，不写回参数文件。`unset` 参数的值必须是 `null`，缺失值不用 `0` 代替。参数变更不做运行中热切换，改完要重启 Gateway。`package.json` 的 `files` 还不含 `organs/` 与 `lib/`（P0 的 Task 8 补上）；打包生理脚本时，脚本与它读的参数文件要一起进 `files`，否则运行时会找不到。
 
 ### 在清单里声明状态读取函数

@@ -1,6 +1,6 @@
 # 循环系统
 
-> **legacy evidence only, not simulation.** 本目录不再承载仿真；仿真脚本在 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
+> **legacy evidence only, not simulation.** 本目录只保留证据与索引，不承载仿真；仿真脚本在 `organs/human-organs/`。
 
 心率、血压和循环中的物质可被多个组织读取。与其他系统合用指标时，先记清测量部位、单位和对应的仿真状态。
 

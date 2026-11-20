@@ -2,6 +2,8 @@
 
 > **已废弃（2026-11-20）：** 本计划的系统分层与脚本路径不再适用；器官级设计见 [`2026-11-20-organ-model-design.md`](../specs/2026-11-20-organ-model-design.md)，P0 实施见 [`2026-11-20-organ-model-p0.md`](./2026-11-20-organ-model-p0.md)。
 
+> 正文中的链接仍指向已删除的旧目录，仅作历史记录，不再维护。
+
 > **For agentic workers:** Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task by task. 未勾选项均未交付。
 
 **目标：** 给健康成人模型一顿餐型、份量和进食时段已知的餐，预测三件不同的事：饥饿（hunger，旧称 `H`）、饱感（fullness，旧称 `F`）、撑感（discomfortFullness，旧称 `D`，以原题的餐后过度饱满为准）。下文为省篇幅仍用旧稿的单字母简称（`H`/`F`/`D` 见上；`M`＝胃壁牵张（mechanical）、`N`＝营养暴露（nutrientExposure）、`G`＝饥饿素相对浓度（relativeConcentration））；主名称以全名为准，统一叫法见 [M1 范围文档](./2026-11-20-m1-scope.md)。现实神经通路决定模型看哪些信号；同条件下人实际怎么评分，决定模型准不准。胃里剩多少是中间量，不是体感答案。

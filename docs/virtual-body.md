@@ -16,7 +16,7 @@
 4. **脚本故障日志。** 每具身体的脚本故障日志写在自己存档所在目录的 `logs/` 下，每次失败保存脚本、入口、当时的实际输入（含批次和时间）、出错前的调用和错误。日志与整轮提交相互独立：失败不发布暂存的变化或通知，并保留原批次重试。日志按记录产生的现实时间滚动保留最近 24 小时，不影响身体存档、未结算动作或现有动作记录的保留规则。
 5. **普通停机恢复。** 恢复间隔从最后成功提交的身体快照所对应的现实时间算到重启，不从最后报错或上次启动算起。日志过期不影响恢复，也不计入手动暂停或零绑定期间的时段。超过默认 12 小时是直接推算还是先回放再修正、电脑休眠是否使用同一上限，仍待定。
 
-## 1. 身体系统
+## 1. 器官与功能标签
 
 内置预设以成年人体为起点。**仿真单元是器官，不是系统**：一个器官一个目录，可由一个或多个脚本组成；系统名只作为功能标签保留。解剖名词参考 [FIPAT 国际解剖术语](https://ifaa.net/committees/anatomical-terminology-fipat/fipat-ifaa-terminologies/)。
 
@@ -27,7 +27,7 @@
 | P0 | 胃（动力、饥饿素、机械感受）、十二指肠（营养暴露） |
 | 后续清单 | [`2026-11-20-organ-model-design.md`](./superpowers/specs/2026-11-20-organ-model-design.md) §6 |
 
-11 个系统名（运动、消化、呼吸、循环、泌尿、生殖、神经、内分泌、免疫、感觉器、被皮）只保留为功能标签，不再是目录或仿真层级。当前 P0 的器官资料见 [`stomach`](../organs/human-organs/stomach/README.md) 与 [`duodenum`](../organs/human-organs/duodenum/README.md)；其余 `systems/*/` 只保留未迁移的 legacy 证据。
+11 个系统名（运动、消化、呼吸、循环、泌尿、生殖、神经、内分泌、免疫、感觉器、被皮）只保留为功能标签，不再是目录或仿真层级。当前 P0 的器官资料见 [`stomach`](../organs/human-organs/stomach/README.md) 与 [`duodenum`](../organs/human-organs/duodenum/README.md)；其余 `systems/*/` 只保留未迁移的 legacy 证据与参数。
 
 同一器官承担多个功能标签时，各脚本读取该器官的同一份状态。例如胰腺的消化酶分泌与胰岛的激素分泌属于同一器官目录，器官内的平滑肌随所属器官推进。 [NCI 内分泌腺与激素](https://training.seer.cancer.gov/anatomy/endocrine/glands/)
 

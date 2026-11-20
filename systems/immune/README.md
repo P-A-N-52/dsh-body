@@ -1,6 +1,6 @@
 # 免疫系统
 
-> **legacy evidence only, not simulation.** 本目录不再承载仿真；仿真脚本在 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
+> **legacy evidence only, not simulation.** 本目录只保留证据与索引，不承载仿真；仿真脚本在 `organs/human-organs/`。
 
 身体预设可为全身和局部组织设置免疫档位。同一部位在多个系统里沿用同一档位。五级是项目的参数约定。[全身与局部免疫等级](../../docs/virtual-body.md#全身与局部免疫等级)
 

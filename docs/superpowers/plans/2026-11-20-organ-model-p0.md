@@ -588,7 +588,7 @@ git commit -m "docs: 胃与十二指肠证据迁到器官目录并删除旧系�
   | 仿真单元 | `organs/human-organs/<organ>/`，一个器官可由多个脚本组成 |
   | 功能标签 | 消化、内分泌、感觉器等，只用于 README 分类 |
   | P0 | 胃（动力、饥饿素、机械感受）、十二指肠（营养暴露） |
-  | 后续清单 | [`2026-11-20-organ-model-design.md`](../specs/2026-11-20-organ-model-design.md) §6 |
+  | 后续清单 | [`2026-11-20-organ-model-design.md`](./superpowers/specs/2026-11-20-organ-model-design.md) §6 |
   ```
 - 全文把 `systems/digestive/stomach.ts`、`systems/endocrine/ghrelin.ts` 等仿真路径改成 `organs/human-organs/...` 示例。
 - 把旧部位名 `ghrelin`、`gastricSensory` 改成 `stomachGhrelin`、`stomachSensory`。

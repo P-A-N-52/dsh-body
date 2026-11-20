@@ -1,6 +1,6 @@
 # 泌尿系统
 
-> **legacy evidence only, not simulation.** 本目录不再承载仿真；仿真脚本在 `organs/human-organs/`；本目录只保留未迁移的证据与索引。
+> **legacy evidence only, not simulation.** 本目录只保留证据与索引，不承载仿真；仿真脚本在 `organs/human-organs/`。
 
 M3 关注饮水后的肾脏排水、膀胱充盈和尿意。肾与膀胱负责各自的状态，尿意由神经系统整合后通报。
 
