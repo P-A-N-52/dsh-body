@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task by task. 未勾选项均未交付。
 
-**目标：** 给健康成人模型一顿餐型、份量和进食时段已知的餐，预测三件不同的事：`H` 饥饿（hunger）、`F` 普通饱满（fullness）、`D` 撑得不舒服（以原题的餐后过度饱满为准）。现实神经通路决定模型看哪些信号；同条件下人实际怎么评分，决定模型准不准。胃里剩多少是中间量，不是体感答案。
+**目标：** 给健康成人模型一顿餐型、份量和进食时段已知的餐，预测三件不同的事：饥饿（hunger，旧称 `H`）、饱感（fullness，旧称 `F`）、撑感（discomfortFullness，旧称 `D`，以原题的餐后过度饱满为准）。下文为省篇幅仍用旧稿的单字母简称（`H`/`F`/`D` 见上；`M`＝胃壁牵张（mechanical）、`N`＝营养暴露（nutrientExposure）、`G`＝饥饿素相对浓度（relativeConcentration））；主名称以全名为准，统一叫法见 [M1 范围文档](./2026-11-20-m1-scope.md)。现实神经通路决定模型看哪些信号；同条件下人实际怎么评分，决定模型准不准。胃里剩多少是中间量，不是体感答案。
 
 **两个首验不要混：** 第一个**器官测试**仍是喝水后的胃排空与充盈；第一个**体感测试**是重放一顿已知餐，从餐前到餐后，在论文实际询问的时点比较三种感觉。可以很饱却不难受，也可以已经不满、但还不饿。D 若只在餐后询问，餐前记「未问」，不是 0。
 
