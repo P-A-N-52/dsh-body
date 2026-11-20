@@ -746,7 +746,7 @@ test('the root manifest loads all four organ scripts', async (t) => {
 
   const capabilities = await (await fetch(`http://127.0.0.1:${info.port}/capabilities`)).json();
   assert.deepEqual(capabilities.drink, ['stomach']);
-  assert.deepEqual(capabilities.eat, ['stomach']);
+  assert.deepEqual(capabilities.eat, ['stomach', 'stomachGhrelin']);
 
   const response = await fetch(`http://127.0.0.1:${info.port}/actions`, {
     method: 'POST',
