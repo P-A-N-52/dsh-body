@@ -5,7 +5,7 @@ Pulse 是 Kitware 开发的开源 C++ 全人体生理模拟器，作为本项目
 ## 1. 来源与版本
 
 - 官方仓库：<https://gitlab.kitware.com/physiology/engine>
-- 本地路径：`reference/pulse-engine/`（`.gitignore` 已排除 `/reference/`）
+- 本地路径：`docs/reference/pulse-engine/`（相对本文件为 `./pulse-engine/`；`.gitignore` 已排除该目录）
 - 分支：`stable`
 - 版本：4.4.0
 - 提交：`5e29e5b13710a08cec90874be7d36ecb192ebcda`（2026-09-30）
@@ -15,8 +15,8 @@ Pulse 是 Kitware 开发的开源 C++ 全人体生理模拟器，作为本项目
 更新本地参考时重新浅克隆，或执行：
 
 ```sh
-git -C reference/pulse-engine fetch --depth 1 origin stable
-git -C reference/pulse-engine reset --hard origin/stable
+git -C docs/reference/pulse-engine fetch --depth 1 origin stable
+git -C docs/reference/pulse-engine reset --hard origin/stable
 ```
 
 ## 2. 架构要点
@@ -147,7 +147,7 @@ Pulse 内部默认 `0.02 s` 一步，本项目是 `60 s` 一轮：
 
 ## 8. 关键文件索引
 
-本地根目录为 `reference/pulse-engine/`。
+本地根目录为 `docs/reference/pulse-engine/`。
 
 | 内容 | 路径 |
 | --- | --- |
