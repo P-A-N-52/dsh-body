@@ -1,6 +1,6 @@
 # M1 资料台账字段字典与证据卡模板
 
-**状态：** 2026-11-20 建立。Task 1 产物，当前只有摘要级登记，未读全文。
+**状态：** 2026-11-20 建立。Task 1 产物。Mudie/Tougas/Camps/Cummings 仍只有摘要级登记；Leone/Levine/Sebaratnam/Schamberg 已读全文并登记。
 
 **依据：** [M1 计划](../../../docs/superpowers/plans/2026-11-20-tissue-fidelity-m1.md) Task 1–2；[虚拟身体设计草案](../../../docs/virtual-body.md) 第 6–7 节；[Gateway 开发指南](../../../docs/gateway-and-scripts.md)。
 
@@ -167,4 +167,5 @@ SRC-CAMPS-2016,C-CAMPS-2016-15,thick-100,NA,fullness,points,100 分量表；两�
 - Camps 的 ± 是 SD 还是 SEM、t50 的定义、100 分量表端点需读全文；四臂是同一批人，不能拆成独立组。
 - Cummings 的检测对象（总饥饿素或酰化饥饿素）、绝对浓度、餐次钟点、采样间隔需读全文；摘要只能支持方向和 1 h 内到谷的时间窗。
 - 尚无独立固餐数据集、尚无与 Camps 同设计的独立饮品复现。没有就是缺口，不用相近餐型顶替。
+- Levine/Leone/Sebaratnam/Schamberg 已读全文：Levine 给 60 min 的 F 时序，Leone 给同餐 H/F/相对 G 的逐时估计，Sebaratnam 给 D 的题项与量程，Schamberg 只有 D 的全程平均与相关；四篇都不能提供健康人逐时 D。
 - **下一步（Task 2）：** 读三篇胃排空基准的全文与图表，建立 `gastric-emptying.csv` 和 `gastric-baselines.md`；先补 WATER、SOLID、SHAKE 各一张卡，再决定哪些行进入标定集。

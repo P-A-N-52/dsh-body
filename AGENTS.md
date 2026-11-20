@@ -14,7 +14,7 @@
 
 | 状态 | 内容 |
 | --- | --- |
-| 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；身体启停与暂停恢复；`test/` 下的测试。 |
+| 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；`systems/lib/parameters.js` 的只读参数加载；身体启停与暂停恢复；`test/` 下的测试。 |
 | 未实现 | 11 个系统的生理脚本（`systems/**/*.ts` 目前不存在）；`body_act` / `body_state` 会话工具；通知到 DSH 的实际投递；浏览器数据页；多身体、会话绑定、器官间转移、病况。 |
 | M1 进行中 | 组件/参数/动作/读数契约、证据台账和重放场景；组件 JSON 均标 `implementation: "planned"`，对应脚本尚未创建；`body-modules.json` 的 `scripts` 仍为 `[]`。 |
 
@@ -101,7 +101,7 @@
 - **脚本只写通用模型。** 方程、动作解析、状态推进和单位处理放脚本；不写具体餐、具体人或具体场景，也不把可调参数写成魔法数。场景输入留在 `scenarios/` 和 action payload。
 - **可调参数进组件自己的 `*.parameters.json`。** 会随个体、研究或标定变化的量（半衰期、基线、增益、参考量、时间常数等）都放这里，保留 `unit`、`status`、`source`、`range`；脚本不再重复写一份默认值。只有真正全人类一致、不随个体、研究或标定条件变化的常数才允许留在脚本里；拿不准就放参数文件，宁可多一个 `unset`。轮长用 `io.dt`，不要写 `60`。
 - **个体差异是单独一层。** 年龄、身高、体重、器官倍率和个体化参数属于身体预设/运行时覆盖，不写回证据参数文件；参数文件是证据默认值，不是某具身体的最终值。
-- **参数按启动期读取。** 参数变更不做运行中热切换。当前 Gateway 还没有参数加载通道：`*.parameters.json` 只是契约，`body-modules.json` 只声明脚本和 `inject`；接第一个生理脚本前先定参数如何只读传给模块。
+- **参数按启动期读取。** 参数变更不做运行中热切换。只读通道是 `systems/lib/parameters.js`：`loadParameters(parametersUrl)` 读 `*.parameters.json` 并返回 `{ [参数 ID]: 值 }`（`null` 表示 `unset`），校验 `schemaVersion`、`owner` 前缀与 `unset`/`null` 对应；`requireParameter(values, id)` 在值为 `null` 时抛出带参数 ID 的错误。模块在 import 时用 `loadParameters(new URL('./x.parameters.json', import.meta.url))` 读自己的参数。Gateway 不替模块读参数，`body-modules.json` 仍只声明脚本和 `inject`；参数文件是证据默认值，不是某具身体的最终值。
 
 ## 5. 量与单位的通用规则
 
@@ -131,7 +131,7 @@
 - 组件契约改动后跑一次 `npm test` 即可；`test/model.contracts.test.mjs` 已经覆盖组件、参数、动作、读数、场景和清单的一致性，不需要再补一套重复校验。
 - 不要创建仓库根目录的 `body-state.json` 来“测试”；测试用临时目录。`body-state.json`、`body-state.json.tmp`、`docs/reference/pulse-engine/` 都已 gitignore。
 - 提交前扫一眼 `git status`，删掉测试产生的临时文件；不要把 `.tower/`、`.superpowers/`、日志或个人存档加入提交。
-- 如果新增运行时文件，检查 `package.json` 的 `files`；当前只发布 `index.js`、`gateway.js`、`gateway/`、`json-safe.js`、`body-modules.json`、`startup/`、`cordis.patch.yml`。
+- 如果新增运行时文件，检查 `package.json` 的 `files`；当前只发布 `index.js`、`gateway.js`、`gateway/`、`json-safe.js`、`body-modules.json`、`startup/`、`cordis.patch.yml`。`systems/lib/` 与 `systems/**/*.parameters.json` 还不在 `files` 里；打包生理脚本时要一起补上。
 
 ## 8. 文档与协作
 

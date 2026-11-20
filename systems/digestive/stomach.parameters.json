@@ -5,20 +5,29 @@
     {
       "id": "stomach.emptying.halfTimeMin",
       "unit": "min",
-      "value": null,
-      "status": "unset",
+      "value": 13,
+      "status": "design",
       "range": [1, 240],
       "source": "SRC-MUDIE-2014",
-      "note": "仅在 T50 定义、零点与测量对象核对后填写"
+      "note": "白水 T50 的摘要值 13 min；摘要未写 T50 定义（相对饮前基线增量还是峰值总量）与起算点，未读全文，只能作工程假设；不是固餐或液餐半衰期"
     },
     {
       "id": "stomach.emptying.baselineMl",
       "unit": "mL",
-      "value": null,
-      "status": "unset",
+      "value": 0,
+      "status": "design",
       "range": [0, 500],
       "source": "SRC-MUDIE-2014",
-      "note": "仅在 T50 指高于空腹基线的增量减半时使用；不是胃容量下限"
+      "note": "模型不设不可排空残余；Mudie 的 35 mL 空腹胃水是场景初值，不是偏移。有效排空体积为 max(0, V - B)"
+    },
+    {
+      "id": "stomach.emptying.energyDensityGainMinPerKcalPerMl",
+      "unit": "min/(kcal/mL)",
+      "value": 53.75,
+      "status": "fitted_dev",
+      "range": [0, 200],
+      "source": "SRC-CAMPS-2016",
+      "note": "只用 Camps 2016 同一批 15 名男性的 thin-100 与 thin-500 两臂：h 对能量密度的斜率 (69.5-26.5)/(1.0-0.2)=53.75。黏度未建模，其他餐型未验证；不是独立验证，不能称 validated。截距固定为白水 13 min 后两臂预测为 23.75/66.75，观测为 26.5/69.5"
     }
   ]
 }

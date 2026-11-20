@@ -25,7 +25,7 @@
 
 **优先重放有明确输入和输出的一餐。** [Levine 等，方法及表 1](https://pmc.ncbi.nlm.nih.gov/articles/PMC4477989/)：16 名健康成人交叉试验，液餐 237 mL、355 kcal、5 min 饮毕；试餐前 2 h 统一给过苹果汁和白吐司，不能把初态设为整夜空腹。安慰剂条件下，100-mm 量表的胃饱满均值从餐前 **5.7** 到餐毕 **26.7**、60 min **10.5**；腹胀、恶心是另外两题。这是可先跑的 F 场景，不代表 H 或 D。[Camps 奶昔研究摘要卡](../../../systems/digestive/references/notes/camps-2016.md)：15 名健康男性喝相同 500 mL，40 min 时稠的 100 kcal 餐与稀的 500 kcal 餐饱感为 58 对 48 分。这一对同时改了稠度和能量；要区分两者，应在同能量下比稠/稀、同稠度下比能量。不能从半排空时间推回 40 min 的胃容积，也不能把四个餐臂算成四个独立队列。
 
-**“撑”有自己的问法。** [Sebaratnam 等，量表方法 §2.1–2.2](https://pmc.ncbi.nlm.nih.gov/articles/PMC9541247/) 将 *excessive post-prandial fullness* 作为独立的餐后题项：0＝无，10＝可想象的最严重，至少每 15 min 记录一次；腹胀、恶心、疼痛另问，早饱只在餐毕问一次。这篇是患者中的量表验证，不是健康人的正常值。[Schamberg 等，Methods / Symptom correlations / Data availability](https://pmc.ncbi.nlm.nih.gov/articles/PMC10495352/) 的标准餐为 482 kcal，10 min 吃完、观察 4 h，178 人中有 110 名健康对照。正文关联分析用全程平均分，不能当作健康人逐时的撑感曲线；下一步核补表 S1，按作者的数据可用性说明寻求健康对照的餐后分项记录。本次未获得个体数据。反例：[Chial 等](https://pubmed.ncbi.nlm.nih.gov/12061909/) 的最大耐受量是停止饮用时的 mL，30 min 后才分别评饱满、腹胀、恶心和痛；不能拿耐受量、痛或合计分当 D。
+**“撑”有自己的问法。** [Sebaratnam 等，量表方法 §2.1–2.2](https://pmc.ncbi.nlm.nih.gov/articles/PMC9541247/) 将 *excessive post-prandial fullness* 作为独立的餐后题项：0＝无，10＝可想象的最严重，至少每 15 min 记录一次；腹胀、恶心、疼痛另问，早饱只在餐毕问一次。这篇是患者中的量表验证，不是健康人的正常值。[Schamberg 等，Methods / Symptom correlations / Data availability](https://pmc.ncbi.nlm.nih.gov/articles/PMC10495352/) 的标准餐为 482 kcal，10 min 吃完、观察 4 h，178 人中有 110 名健康对照。正文关联分析用全程平均分，不能当作健康人逐时的撑感曲线；下一步按 Figure 5、补充表 S4 与作者的数据可用性说明寻求健康对照的餐后分项记录（正文只给 4 h 全程平均与相关，不给逐时 D）。本次未获得个体数据。反例：[Chial 等](https://pubmed.ncbi.nlm.nih.gov/12061909/) 的最大耐受量是停止饮用时的 mL，30 min 后才分别评饱满、腹胀、恶心和痛；不能拿耐受量、痛或合计分当 D。
 
 ### 已做的试拟合：只看饥饿素，能预测人说的饿和饱吗？
 
@@ -80,6 +80,6 @@
 
 ### 证据台账与旧任务编号
 
-- [来源台账](../../../systems/digestive/references/source-index.csv)和[字段字典](../../../systems/digestive/references/m1-data-dictionary.md)的磁盘状态未改：4 registered（Mudie/Tougas/Camps/[Cummings 2001](../../../systems/endocrine/references/notes/cummings-2001.md)）、4 candidate、1 excluded；4 份摘要卡和 5 行试录。Cummings 的固定餐时观察支持餐前升、餐后 1 h 内回落至谷，不单独提供饥饿自评。Leone 在旧表仍是候选；上文查阅的正文、表格和试算是**本计划的开发证据**，尚未回填 CSV，也均不可再算盲留出。
+- [来源台账](../../../systems/digestive/references/source-index.csv)和[字段字典](../../../systems/digestive/references/m1-data-dictionary.md)现在有 8 registered（Mudie/Tougas/Camps/[Cummings 2001](../../../systems/endocrine/references/notes/cummings-2001.md)/Leone/Levine/Sebaratnam/Schamberg）、3 candidate、1 excluded；5 行试录不变。Leone、Levine、Sebaratnam、Schamberg 已读全文并各有逐篇笔记；Mudie、Tougas、Camps、Cummings 仍是摘要卡。Cummings 的固定餐时观察支持餐前升、餐后 1 h 内回落至谷，不单独提供饥饿自评。Leone 已升为 registered；上文查阅的正文、表格和试算仍是**本计划的开发证据**，不是独立验证，120 min 已看过，不能称盲测。
 - Task 1 仍是台账/字典，Task 2 是胃（`gastric-emptying.csv`、`gastric-baselines.md` 待建）；3a/3b 对应饥饿素来源假设/浓度，4a/4b 对应机械感觉/中枢体感。胃、内分泌、感觉器、神经的依据分放各自 `references/`；一篇研究只留一份摘记，其余引用，不重发未获许可的图表。
 - Task 5（`calibration-split.md`、`m1-replay.md`）记划分和重放；Task 6（`m1-predictions.csv`、`m1-readiness.md`）记冻结预测和独立核对；Task 7（`m1-script-contract.md`）只写有证据的接口范围；Task 8 才是工程/DSH 验收，Task 9 归 M4。上述文件均为后续交付，未来胃脚本为 `systems/digestive/stomach.ts`，本次不创建或挂载。
