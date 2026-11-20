@@ -4,7 +4,7 @@
 
 **工作原则：这是一个信任环境。文档优先，检查从简。** 不要为了防御不可能发生的输入增加大量校验，也不要把测试或检查当成主要交付物；把 `docs/`、`organs/**/README.md`、`systems/**/README.md` 和本文件写准确、写清楚，比堆检查更重要。代码改动跑一次 `npm test` 确认没有破坏现有行为即可；纯文档改动不必跑测试。
 
-**改动分流：纯 Markdown 文档可直接编辑；代码改动走 tower mission。** `AGENTS.md`、`docs/`、`organs/**/README.md`、`systems/**/README.md`、计划与笔记都算文档；`.js`、`.ts`、`test/`、配置和 `*.parameters.json` 算代码。代码改动先建 mission，在 `.tower/worktrees/` 里由 worker 完成，再 review/merge；不要用通用 `Agent` 冒充 tower worker。tower 的 mission 工具不可用时，先说明并停在计划层。
+**改动分流：纯 Markdown 文档可直接编辑；代码改动走 tower mission 或 swarm。** `AGENTS.md`、`docs/`、`organs/**/README.md`、`systems/**/README.md`、计划与笔记都算文档；`.js`、`.ts`、`test/`、配置和 `*.parameters.json` 算代码。代码改动优先建 tower mission，在 `.tower/worktrees/` 里由 worker 完成，再 review/merge；swarm 模式下用 `AgentSwarm` 按可独立验证的分片并行完成，主代理负责合并与验收。不要用单个通用 `Agent` 冒充 tower worker。tower mission 与 swarm 都不可用时，先说明并停在计划层。
 
 ## 0. 一句话与当前阶段
 
@@ -103,6 +103,7 @@
 - 状态必须 JSON-safe：普通对象/数组/有限数字/字符串/布尔/`null`；不要 `undefined`、`NaN`、`Infinity`、`BigInt`、`Map`、`Set`、稀疏数组、循环引用；部位最外层必须是对象。
 - 一个量只有一个写入者；其他部位只读。器官间转移是同一轮的两个写入，必须同时提交或同时作废。
 - `package.json` 的 `files` 已包含 `organs/` 与 `lib/`；发布物包含器官脚本、同目录参数文件和参数加载库。
+- **脚本必须标注来源。** 每个生理脚本头部写清它依赖的 `source_id` / citekey、证据笔记路径、原文定位（摘要 Results、Table、Methods 等），以及该来源支撑的是哪个方程、参数或方向性假设。没有直接来源的工程假设要写 `design` 并说明边界；参数文件里的 `source` 仍然保留，脚本注释负责解释“哪条方程/假设来自哪里、哪些不是”。不要只写论文标题或 DOI 而丢掉限制。
 
 ### 脚本通用性与参数归属
 
@@ -152,10 +153,11 @@
 
 ## 9. 开工前清单
 
-1. 先判断是文档还是代码：纯 Markdown 文档可直接编辑；代码、脚本、测试、配置和 JSON 契约走 tower mission。不同类别的事实来源也不同。
+1. 先判断是文档还是代码：纯 Markdown 文档可直接编辑；代码、脚本、测试、配置和 JSON 契约走 tower mission 或 swarm。不同类别的事实来源也不同。
 2. 对“当前行为”，读代码（必要时对照测试）；对“怎么用”，读 `docs/gateway-and-scripts.md`；对“为什么这样设计”，读 `docs/virtual-body.md`、`docs/superpowers/specs/` 和计划；对“科学口径”，读 `organs/human-organs/references/` 与各器官 README。
 3. 确认要动的东西是否已存在：以 `organs/human-organs/**/*.ts`、`organs/human-organs/**/*.parameters.json` 和器官 README 表为准；`systems/` 只剩 legacy 证据；不要把一个计划中的模块当成可改的实现。
 4. 做最小改动，保持现有命名、单位、JSON 形状和单写者模型。
 5. 代码改动跑一次 `npm test`；纯文档改动不必跑。不要为了小改动新增测试或依赖。
 6. 提交前扫一眼 `git status`，清理临时文件；在最终回复里区分“已实现/已验证”和“仍是计划”。
 7. 加字段、参数或脚本前，先过 §0 的取舍三问；没有消费者的差异不建模，没有证据的参数标 `design`/`unset`，省略的项写进 README 的“未建模”。
+8. 写或改生理脚本时，同步更新脚本头部的来源注释：`source_id`、笔记路径、原文定位、支撑的方程/参数、以及不能推出的内容；没有直接来源的部分明确标 `design`。
