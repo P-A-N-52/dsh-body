@@ -4,7 +4,7 @@
 
 **工作原则：这是一个信任环境。文档优先，检查从简。** 不要为了防御不可能发生的输入增加大量校验，也不要把测试或检查当成主要交付物；把 `docs/`、`systems/**/README.md` 和本文件写准确、写清楚，比堆检查更重要。代码改动跑一次 `npm test` 确认没有破坏现有行为即可；纯文档改动不必跑测试。
 
-**改动分流：纯 Markdown 文档可直接编辑；代码改动走 tower mission。** `AGENTS.md`、`docs/`、`systems/**/README.md`、计划与笔记都算文档；`.js`、`.ts`、`test/`、配置和组件 JSON 契约算代码。代码改动先建 mission，在 `.tower/worktrees/` 里由 worker 完成，再 review/merge；不要用通用 `Agent` 冒充 tower worker。tower 的 mission 工具不可用时，先说明并停在计划层。
+**改动分流：纯 Markdown 文档可直接编辑；代码改动走 tower mission。** `AGENTS.md`、`docs/`、`systems/**/README.md`、计划与笔记都算文档；`.js`、`.ts`、`test/`、配置和 `*.parameters.json` 算代码。代码改动先建 mission，在 `.tower/worktrees/` 里由 worker 完成，再 review/merge；不要用通用 `Agent` 冒充 tower worker。tower 的 mission 工具不可用时，先说明并停在计划层。
 
 ## 0. 一句话与当前阶段
 
@@ -16,9 +16,9 @@
 | --- | --- |
 | 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；`systems/lib/parameters.js` 的只读参数加载；身体启停与暂停恢复；`test/` 下的测试。 |
 | 未实现 | 11 个系统的生理脚本（`systems/**/*.ts` 目前不存在）；`body_act` / `body_state` 会话工具；通知到 DSH 的实际投递；浏览器数据页；多身体、会话绑定、器官间转移、病况。 |
-| M1 进行中 | 组件/参数/动作/读数契约、证据台账和重放场景；组件 JSON 均标 `implementation: "planned"`，对应脚本尚未创建；`body-modules.json` 的 `scripts` 仍为 `[]`。 |
+| M1 进行中 | 器官/功能单元模块、`*.parameters.json`、系统 README 表、证据台账和重放场景；组件/动作/读数 JSON 契约层已删除；`body-modules.json` 的 `scripts` 仍为 `[]`。 |
 
-当前 M1 契约分布在 `systems/digestive/`、`systems/endocrine/`、`systems/sensory/`、`systems/nervous/` 和 `scenarios/`；组件 JSON 均标 `implementation: "planned"`，对应脚本尚未创建。具体文件以目录和 `git status` 为准。
+当前 M1 的部位与信号以 `systems/**/README.md` 的表格为准，参数在 `systems/**/*.parameters.json`，模块导出见 `systems/**/*.ts`；实施计划是 `docs/superpowers/plans/2026-11-20-m1-organ-level-reset.md`。具体文件以目录和 `git status` 为准。
 
 判断“现在到底有什么”的顺序：**代码（必要时对照测试）> `docs/gateway-and-scripts.md` > `docs/virtual-body.md` 的已实现部分 > 计划文档**。计划里的勾选框只代表计划进度，不等于产品功能。
 
@@ -27,7 +27,7 @@
 | # | 常见误解 | 实际 |
 | --- | --- | --- |
 | 1 | 把 `docs/virtual-body.md` 当成已实现功能清单 | 它是设计草案；开头新增的 5 条“已确认的行为契约（设计目标）”明确不是现状。当前实现以 `gateway/`、`test/` 和 `docs/gateway-and-scripts.md` 为准。 |
-| 2 | 以为 11 个系统已有脚本 | `systems/**/*.ts` 一个都没有；`body-modules.json` 的 `scripts` 是 `[]`；组件 JSON 写的是 `implementation: "planned"`。 |
+| 2 | 以为 11 个系统已有脚本 | 只有部分系统有脚本，以 `systems/**/*.ts` 为准；`body-modules.json` 的 `scripts` 是 `[]`。 |
 | 3 | 把 `body-modules.json` 和 `body-state.json` 混为一谈 | 前者是脚本清单（开发者改），后者是一具身体的存档（Gateway 写；用户只在停机时改顶层 `active`）。 |
 | 4 | 运行中改存档 `active` 想热切换 | `active` 只在启动时读一次；必须停 Gateway → 改实际 `statePath` 的顶层 `active` → 再启动。运行中改不会生效，还可能被下次保存覆盖。 |
 | 5 | 把 `activeBatch` 或 `startup.active` 当启停开关 | 都不是。开关只有存档顶层 `active`；`activeBatch` 是在途批次，`startup.active` 是上次启动记录。 |
@@ -50,7 +50,7 @@
 | `docs/superpowers/plans/*.md` | 实施计划 | `- [x]` 才算完成；未勾选=未交付。计划中的“当前进度”可能落后于未提交文件，以磁盘上的文件为准。 |
 | `systems/*/README.md` | 系统范围与研究笔记入口 | 不是实现，也不代表该系统的脚本已存在。 |
 | `systems/**/references/` | 证据台账与逐篇笔记 | 科学口径以 `source-index.csv`、字段字典和笔记为准；README 只做入口。 |
-| `systems/**/*.component.json` 等 | M1 组件契约 | `implementation: "planned"` 表示脚本还不存在；不要把它读成已运行。 |
+| `systems/**/*.parameters.json` | M1 参数证据默认值 | 保留 `unit`、`status`、`source`、`range`；由 `systems/lib/parameters.js` 只读加载，不是某具身体的最终值。 |
 | `docs/reference/pulse-engine.md` | 外部参考实现笔记 | 只借方程、参数、结构；`docs/reference/pulse-engine/` 是本地浅克隆，已被 gitignore，不要提交。 |
 | `.tower/`、`.superpowers/` | 代理工作流产物 | 已 gitignore；`.tower/comms/` 由工具生成，不要手改。 |
 
@@ -111,7 +111,7 @@
 - **参数状态是证据等级。** `unset` = 未定；`design` = 工程假设；`prior` = 文献先验；`fitted_dev` = 开发集拟合；`validated` = 已验证；`rejected` = 弃用。`design` / `fitted_dev` 不是人体测量值；`validated` 必须有来源。
 - **缺失值不用 0 代替。** 未报告、未询问、未测到都写 `NA` 或 `null`，并给原因；0 是一个真实观测。
 - **离线拟合不等于实机验收。** 离线重放通过只说明模型自洽；只有真实 DSH 会话里的动作、通知、重启恢复都核对过，才能说该里程碑验收通过。
-- 具体 M1 的体感口径、量纲边界和证据要求写在 `docs/superpowers/plans/2026-11-20-tissue-fidelity-m1.md`、`systems/**/references/` 和组件 JSON 里；本文件不重复这些细节。
+- 具体 M1 的体感口径、量纲边界和证据要求写在 `docs/superpowers/plans/2026-11-20-m1-organ-level-reset.md`、`systems/**/references/` 和 `systems/**/README.md` 的器官表里；本文件不重复这些细节。
 
 ## 6. 证据与来源（通用）
 
@@ -128,7 +128,7 @@
 - 运行环境：Node ≥ 22.18，ESM，无第三方依赖。不要为了一个功能引入库；先看 `package.json` 和现有 import。
 - **验证按需、从简。** 代码改动跑一次 `npm test`（即 `node --test`）即可，不必为每个改动新增测试；纯文档改动不必跑测试。不要把“补检查”当成主要工作。
 - 需要写测试时，用 `test-support/harness.mjs` 的 `launch(t, { modules, ... })` 起真实 Gateway（端口 0、临时目录、`autoTick: false`），用固定 `now`，不要依赖真实 `Date.now()` 抖动。
-- 组件契约改动后跑一次 `npm test` 即可；`test/model.contracts.test.mjs` 已经覆盖组件、参数、动作、读数、场景和清单的一致性，不需要再补一套重复校验。
+- 模块或参数文件改动后跑一次 `npm test` 即可；`test/parameters.test.mjs` 已经覆盖五份参数文件的格式一致性，不需要再补一套重复校验。
 - 不要创建仓库根目录的 `body-state.json` 来“测试”；测试用临时目录。`body-state.json`、`body-state.json.tmp`、`docs/reference/pulse-engine/` 都已 gitignore。
 - 提交前扫一眼 `git status`，删掉测试产生的临时文件；不要把 `.tower/`、`.superpowers/`、日志或个人存档加入提交。
 - 如果新增运行时文件，检查 `package.json` 的 `files`；当前只发布 `index.js`、`gateway.js`、`gateway/`、`json-safe.js`、`body-modules.json`、`startup/`、`cordis.patch.yml`。`systems/lib/` 与 `systems/**/*.parameters.json` 还不在 `files` 里；打包生理脚本时要一起补上。
@@ -146,7 +146,7 @@
 
 1. 先判断是文档还是代码：纯 Markdown 文档可直接编辑；代码、脚本、测试、配置和 JSON 契约走 tower mission。不同类别的事实来源也不同。
 2. 对“当前行为”，读代码（必要时对照测试）；对“怎么用”，读 `docs/gateway-and-scripts.md`；对“为什么这样设计”，读 `docs/virtual-body.md` 和计划；对“科学口径”，读 `systems/**/references/`。
-3. 确认要动的东西是否已存在：`systems/**/*.ts` 目前没有，组件 JSON 的 `implementation` 是 `planned`；不要把一个计划中的模块当成可改的实现。
+3. 确认要动的东西是否已存在：以 `systems/**/*.ts`、`systems/**/*.parameters.json` 和各系统 README 表为准；不要把一个计划中的模块当成可改的实现。
 4. 做最小改动，保持现有命名、单位、JSON 形状和单写者模型。
 5. 代码改动跑一次 `npm test`；纯文档改动不必跑。不要为了小改动新增测试或依赖。
 6. 提交前扫一眼 `git status`，清理临时文件；在最终回复里区分“已实现/已验证”和“仍是计划”。
