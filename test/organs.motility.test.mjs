@@ -42,6 +42,45 @@ test('water adds volume without creating a meal', () => {
   assert.ok(next.volumeMl > 240);
 });
 
+test('an energy-bearing drink counts volume and energy', () => {
+  const next = round({ ...initialState }, [{ type: 'drink', volumeMl: 330, energyKcal: 140 }]);
+  assert.equal(next.mealQueue.length, 0);
+  assert.equal(next.lastIntakeAt, 60);
+  assert.equal(next.volumeMl, 330);
+  assert.equal(next.energyKcal, 140);
+});
+
+test('a zero-energy drink adds volume but no energy', () => {
+  const withZero = round({ ...initialState }, [{ type: 'drink', volumeMl: 240, energyKcal: 0 }]);
+  assert.equal(withZero.volumeMl, 240);
+  assert.equal(withZero.energyKcal, 0);
+  const withoutEnergy = round({ ...initialState }, [{ type: 'drink', volumeMl: 240 }]);
+  assert.equal(withoutEnergy.volumeMl, 240);
+  assert.equal(withoutEnergy.energyKcal, 0);
+});
+
+test('a drink with negative or non-finite energy is ignored entirely', () => {
+  for (const energyKcal of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const next = round({ ...initialState }, [{ type: 'drink', volumeMl: 330, energyKcal }]);
+    assert.equal(next.volumeMl, 0);
+    assert.equal(next.energyKcal, 0);
+    assert.equal(next.lastIntakeAt, null);
+  }
+});
+
+test('drink volume and energy are conserved over 200 rounds', () => {
+  let state = { ...initialState };
+  let emptiedMl = 0;
+  let emptiedKcal = 0;
+  for (let i = 0; i < 200; i++) {
+    state = round(state, i === 0 ? [{ type: 'drink', volumeMl: 330, energyKcal: 140 }] : []);
+    emptiedMl += state.emptiedMl;
+    emptiedKcal += state.emptiedKcal;
+  }
+  assert.ok(Math.abs(emptiedMl + state.volumeMl - 330) < 0.01);
+  assert.ok(Math.abs(emptiedKcal + state.energyKcal - 140) < 0.01);
+});
+
 test('intake mass is conserved over 200 rounds', () => {
   let state = { ...initialState };
   let emptied = 0;

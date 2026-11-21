@@ -1,6 +1,6 @@
 # P1 实施计划：输入契约与体感闭环
 
-**状态：** 进行中（2026-11-21）。
+**状态：** 已完成（2026-11-21）。验证：`npm test` 109/109；`node tools/replay.mjs scenarios/p1-cola-330.json` 与 `scenarios/m1-water-240.json` 均输出 `actionLagRounds: 1`。
 
 **Spec:** [`2026-11-20-organ-model-design.md`](../specs/2026-11-20-organ-model-design.md) §6、§11。
 
@@ -49,12 +49,12 @@
 
 **Steps:**
 
-- [ ] 在 `motility.ts` 的 `parseIntake` 里解析 `drink.energyKcal`，缺省 0；非法值整条忽略。
-- [ ] 更新 `motility.ts` 头部注释：`drink` 可以是白水或含能饮料；饮料成分不建模。
-- [ ] 在 `ghrelin.ts` 里让 `actionTypes` 包含 `drink`，`hasEnergyIntake` 接受 `eat`/`drink`。
-- [ ] 更新 `ghrelin.ts` 头部注释：饮料方向是从含能餐外推的 `design` 假设。
-- [ ] 测试：`drink` 330 mL / 140 kcal 计入体积与能量；0 kcal 白水不计能量；负能量/非有限能量被忽略；含能饮料抑制 ghrelin；白水不抑制。
-- [ ] 跑 `node --test test/organs.motility.test.mjs test/organs.ghrelin.test.mjs`。
+- [x] 在 `motility.ts` 的 `parseIntake` 里解析 `drink.energyKcal`，缺省 0；非法值整条忽略。
+- [x] 更新 `motility.ts` 头部注释：`drink` 可以是白水或含能饮料；饮料成分不建模。
+- [x] 在 `ghrelin.ts` 里让 `actionTypes` 包含 `drink`，`hasEnergyIntake` 接受 `eat`/`drink`。
+- [x] 更新 `ghrelin.ts` 头部注释：饮料方向是从含能餐外推的 `design` 假设。
+- [x] 测试：`drink` 330 mL / 140 kcal 计入体积与能量；0 kcal 白水不计能量；负能量/非有限能量被忽略；含能饮料抑制 ghrelin；白水不抑制。
+- [x] 跑 `node --test test/organs.motility.test.mjs test/organs.ghrelin.test.mjs`。
 
 ## Task 2: 体感脚本 `brain/interoception.ts`
 
@@ -114,12 +114,12 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 
 **Steps:**
 
-- [ ] 写失败的 `test/organs.interoception.test.mjs`：基线、低饥饿素、机械充盈、营养暴露、钳位、缺失/NaN 输入。
-- [ ] 迁移并裁剪参数文件；`owner` 改为 `interoception`。
-- [ ] 写 `interoception.ts`，头部注释列出来源与边界。
-- [ ] 更新 `test/parameters.test.mjs`：加入 `brain/interoception.parameters.json`，移除 legacy `systems/nervous/interoception.parameters.json`；`requireParameter` 的 unset 测试改用本地对象。
-- [ ] 写 `brain/README.md`：脚本、字段、输入、方程、证据、未建模、`producer-only` 说明。
-- [ ] 跑 `node --test test/organs.interoception.test.mjs test/parameters.test.mjs`。
+- [x] 写失败的 `test/organs.interoception.test.mjs`：基线、低饥饿素、机械充盈、营养暴露、钳位、缺失/NaN 输入。
+- [x] 迁移并裁剪参数文件；`owner` 改为 `interoception`。
+- [x] 写 `interoception.ts`，头部注释列出来源与边界。
+- [x] 更新 `test/parameters.test.mjs`：加入 `brain/interoception.parameters.json`，移除 legacy `systems/nervous/interoception.parameters.json`；`requireParameter` 的 unset 测试改用本地对象。
+- [x] 写 `brain/README.md`：脚本、字段、输入、方程、证据、未建模、`producer-only` 说明。
+- [x] 跑 `node --test test/organs.interoception.test.mjs test/parameters.test.mjs`。
 
 ## Task 3: 接线——清单、重放、Gateway、场景
 
@@ -133,13 +133,13 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 
 **Steps:**
 
-- [ ] `body-modules.json` 加入 `./organs/human-organs/brain/interoception.ts`。
-- [ ] `tools/replay.mjs` 导入 `interoception`，五模块按顺序跑；note 改成“P1 产出体感，体感是 design 读出”。
-- [ ] `test/tools.replay.test.mjs` 加可乐场景：`drink` 330 mL / 140 kcal，断言能量入账、`stomachGhrelin.relativeConcentration` 下降、`interoception.fullness` 上升。
-- [ ] `test/organs.gateway.test.mjs` 改成五个部位；`capabilities.drink` 期望 `['stomach', 'stomachGhrelin']`；发送含能 `drink`，断言 `stomach.energyKcal > 0`、ghrelin 被抑制、interoception 可读。
-- [ ] 新建 `scenarios/p1-cola-330.json`，`source: null`，note 写明“示意输入，不是论文场景”；观察 `stomach.volumeMl`、`stomach.energyKcal`、`stomachGhrelin.relativeConcentration`、`interoception.hunger`、`interoception.fullness`。
-- [ ] 给 `m1-liquid-meal-levine-355.json` 的 note 加一句：`expected` 是论文 VAS 目标，不是当前线性体感模型的输出。
-- [ ] 跑 `node --test test/tools.replay.test.mjs test/organs.gateway.test.mjs`。
+- [x] `body-modules.json` 加入 `./organs/human-organs/brain/interoception.ts`。
+- [x] `tools/replay.mjs` 导入 `interoception`，五模块按顺序跑；note 改成“P1 产出体感，体感是 design 读出”。
+- [x] `test/tools.replay.test.mjs` 加可乐场景：`drink` 330 mL / 140 kcal，断言能量入账、`stomachGhrelin.relativeConcentration` 下降、`interoception.fullness` 上升。
+- [x] `test/organs.gateway.test.mjs` 改成五个部位；`capabilities.drink` 期望 `['stomach', 'stomachGhrelin']`；发送含能 `drink`，断言 `stomach.energyKcal > 0`、ghrelin 被抑制、interoception 可读。
+- [x] 新建 `scenarios/p1-cola-330.json`，`source: null`，note 写明“示意输入，不是论文场景”；观察 `stomach.volumeMl`、`stomach.energyKcal`、`stomachGhrelin.relativeConcentration`、`interoception.hunger`、`interoception.fullness`。
+- [x] 给 `m1-liquid-meal-levine-355.json` 的 note 加一句：`expected` 是论文 VAS 目标，不是当前线性体感模型的输出。
+- [x] 跑 `node --test test/tools.replay.test.mjs test/organs.gateway.test.mjs`。
 
 ## Task 4: 文档与状态
 
@@ -153,18 +153,18 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 
 **Steps:**
 
-- [ ] `AGENTS.md`：当前状态改为 P0 四脚本 + P1 输入契约/体感；根清单五条；体感已实现但通知/会话工具仍未实现；参数测试说明改为五份器官参数。
-- [ ] `docs/virtual-body.md`：动作契约补 `drink.energyKcal`；P1 体感接入说明；M1 里程碑里区分“已实现读出”与“未实现通知/工具”。
-- [ ] `docs/gateway-and-scripts.md`：动作示例补含能饮料；当前清单五条；体感脚本作为只读消费者示例。
-- [ ] 设计文档 §6 把 P1 标成“先做输入契约 + 感受与上报，其余器官顺延”；§11 回答 `brain/` 目录、脚本拆分和 `interoception` 部位名。
-- [ ] `stomach/README.md`：`drink` 可选能量；ghrelin 消费 `drink`；饮料成分未建模。
-- [ ] 扫描 `git grep -n "四.*脚本\|四个部位\|P0 不产出体感"` 等旧文案并修正。
+- [x] `AGENTS.md`：当前状态改为 P0 四脚本 + P1 输入契约/体感；根清单五条；体感已实现但通知/会话工具仍未实现；参数测试说明改为五份器官参数。
+- [x] `docs/virtual-body.md`：动作契约补 `drink.energyKcal`；P1 体感接入说明；M1 里程碑里区分“已实现读出”与“未实现通知/工具”。
+- [x] `docs/gateway-and-scripts.md`：动作示例补含能饮料；当前清单五条；体感脚本作为只读消费者示例。
+- [x] 设计文档 §6 把 P1 标成“先做输入契约 + 感受与上报，其余器官顺延”；§11 回答 `brain/` 目录、脚本拆分和 `interoception` 部位名。
+- [x] `stomach/README.md`：`drink` 可选能量；ghrelin 消费 `drink`；饮料成分未建模。
+- [x] 扫描 `git grep -n "四.*脚本\|四个部位\|P0 不产出体感"` 等旧文案并修正。
 
 ## 交付检查
 
-- [ ] `npm test` 全绿。
-- [ ] `node tools/replay.mjs scenarios/p1-cola-330.json` 输出含能饮料的体积、能量、ghrelin 抑制与体感变化。
-- [ ] `node tools/replay.mjs scenarios/m1-water-240.json` 仍报告 `actionLagRounds: 1`，白水不抑制 ghrelin。
-- [ ] 根清单加载五个部位；`/capabilities.drink` 为 `['stomach','stomachGhrelin']`。
-- [ ] 新脚本头部有来源注释，参数文件 `source`/`status` 与 README 一致。
-- [ ] 不新增 `body_act`、通知投递、多身体或热切换的假实现。
+- [x] `npm test` 全绿。
+- [x] `node tools/replay.mjs scenarios/p1-cola-330.json` 输出含能饮料的体积、能量、ghrelin 抑制与体感变化。
+- [x] `node tools/replay.mjs scenarios/m1-water-240.json` 仍报告 `actionLagRounds: 1`，白水不抑制 ghrelin。
+- [x] 根清单加载五个部位；`/capabilities.drink` 为 `['stomach','stomachGhrelin']`。
+- [x] 新脚本头部有来源注释，参数文件 `source`/`status` 与 README 一致。
+- [x] 不新增 `body_act`、通知投递、多身体或热切换的假实现。

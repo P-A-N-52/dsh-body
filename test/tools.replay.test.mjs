@@ -19,3 +19,25 @@ test('water replay reports the one-round action lag', () => {
   const atFive = result.observations.find((entry) => entry.simMin === 5);
   assert.ok(atFive['stomach.volumeMl'] > 35);
 });
+
+test('cola replay records energy intake and the design interoception readout', () => {
+  const output = execFileSync(process.execPath, ['tools/replay.mjs', 'scenarios/p1-cola-330.json'], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  const result = JSON.parse(output);
+  assert.equal(result.scenario, 'p1-cola-330');
+  assert.equal(result.actionLagRounds, 1);
+
+  const start = result.observations.find((entry) => entry.simMin === 0);
+  assert.equal(start['stomach.volumeMl'], 0);
+  assert.equal(start['interoception.hunger'], 50);
+  assert.equal(start['interoception.fullness'], 0);
+
+  const atFive = result.observations.find((entry) => entry.simMin === 5);
+  assert.ok(atFive['stomach.volumeMl'] > 0);
+  assert.ok(atFive['stomach.energyKcal'] > 0);
+  assert.ok(atFive['stomachGhrelin.relativeConcentration'] < 0.55);
+  assert.ok(atFive['interoception.hunger'] < 50);
+  assert.ok(atFive['interoception.fullness'] > 0);
+});

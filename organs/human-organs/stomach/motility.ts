@@ -23,6 +23,11 @@
  * 半时随能量密度线性增加 h = halfTimeMin + gain × energyDensity、`mealQueue` 的轮切片，都不是
  * 论文原方程。`mealKind` 只记录、不参与计算；baselineMl = 0 是设计选择（不设不可排空残余），
  * 不是 Mudie 的空腹胃水 35 mL。
+ *
+ * P1 输入契约：`drink` 表示液体摄入，`mealKind` 固定为 `liquid`；`energyKcal` 可选，缺省 0，提供时
+ * 必须是有限数且 >= 0，否则整条动作忽略。含能饮料按 `volumeMl` / `energyKcal` 记账，不再被当成
+ * 0 kcal；其能量密度仍走 Camps 2016 的含能液体证据（thin-100 / thin-500 奶昔）。饮料成分、黏度、
+ * 碳酸、甜味剂不建模；Mudie 的白水 T50 仍只作白水截距，不能外推到含能饮料。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
@@ -117,7 +122,14 @@ function parseIntake(action: Action, dt: number): Intake | null {
   const rounds = durationMin > 0 ? Math.ceil((durationMin * 60) / dt) : 1;
 
   if (action.type === 'drink') {
-    return { volumeMl: action.volumeMl, energyKcal: 0, rounds, mealKind: 'liquid' };
+    let energyKcal = 0;
+    if (action.energyKcal !== undefined) {
+      if (typeof action.energyKcal !== 'number' || !Number.isFinite(action.energyKcal) || action.energyKcal < 0) {
+        return null;
+      }
+      energyKcal = action.energyKcal;
+    }
+    return { volumeMl: action.volumeMl, energyKcal, rounds, mealKind: 'liquid' };
   }
   if (typeof action.energyKcal !== 'number' || !Number.isFinite(action.energyKcal) || action.energyKcal < 0) {
     return null;

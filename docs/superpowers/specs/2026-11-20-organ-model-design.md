@@ -126,12 +126,23 @@ lib/
 
 | 器官 | 脚本 | 说明 |
 | --- | --- | --- |
-| `stomach` | motility、ghrelin、gastric-sensory | 胃动力沿用现有方程；ghrelin 是胃内分泌；gastric-sensory 是胃壁机械感受末梢，P0 只产出信号，暂无消费者 |
-| `duodenum` | nutrient-exposure | 沿用现有“读胃流出能量”的一阶滤波；P0 不建肠内容量/吸收模型 |
+| `stomach` | motility、ghrelin、gastric-sensory | 胃动力沿用现有方程；ghrelin 是胃内分泌；gastric-sensory 是胃壁机械感受末梢，P0 只产出信号，P1 由 `interoception` 读取 |
+| `duodenum` | nutrient-exposure | 沿用现有“读胃流出能量”的一阶滤波；P0 不建肠内容量/吸收模型，P1 仍不改 |
 
 **P1（下一圈）**
 
 `esophagus`、`jejunum`、`ileum`、`colon`、`liver`、`pancreas`、`heart`、`lungs`、`kidneys`、`bladder`、`blood`（隔室）、`brain`（感受与上报）。
+
+**P1 当前进度（2026-11-21）**
+
+本轮先做输入契约与感受/上报，其余 P1 器官顺延：
+
+| 项 | 状态 |
+| --- | --- |
+| `drink` 可带 `energyKcal`；`stomachGhrelin` 消费含能 `drink` | 已实现 |
+| `organs/human-organs/brain/interoception.ts`（部位 `interoception`，写 `hunger` / `fullness`） | 已实现 |
+| 通知投递、会话绑定、`body_act` / `body_state` | 未实现 |
+| `esophagus`、小肠吸收、血糖、胰岛素、心、肺、肾、膀胱等 | 计划 |
 
 **P2（只登记，不实现）**
 
@@ -180,7 +191,7 @@ lib/
 
 ## 11. 留给实施计划的开放项
 
-- 十二指肠的一阶滤波在 P1 是否改成“肠内容量 + 吸收”；P0 先不改。
-- `brain`/感受与上报的 P1 设计：是 `brain/` 一个目录，还是 `brain/` 下多个脚本（体感、通知、昼夜节律）。
-- 多调节方式在 P1 具体怎么拆：胃动力是否接迷走/CCK，还是先只做局部。
-- 旧 `systems/` 的剩余 references 何时全部迁完；按 P1 器官逐个迁。
+- 十二指肠的一阶滤波仍未改成“肠内容量 + 吸收”；P1 先保持一阶滤波，吸收链顺延。
+- `brain`/感受与上报：P1 用 `brain/` 一个目录、`interoception.ts` 一个脚本，部位 id 为 `interoception`；通知、提醒历史和会话选择仍开放。
+- 多调节方式在 P1 仍未接入：胃动力保持“摄入 + 自身状态”，不接迷走/CCK/GLP-1。
+- 旧 `systems/` 的剩余 references 何时全部迁完；按后续器官逐个迁。`systems/nervous/` 的 Sebaratnam、Schamberg 笔记仍是 legacy，撑感/不适读出未实现。

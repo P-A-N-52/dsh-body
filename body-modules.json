@@ -4,7 +4,8 @@
     "./organs/human-organs/stomach/motility.ts",
     "./organs/human-organs/stomach/ghrelin.ts",
     "./organs/human-organs/stomach/gastric-sensory.ts",
-    "./organs/human-organs/duodenum/nutrient-exposure.ts"
+    "./organs/human-organs/duodenum/nutrient-exposure.ts",
+    "./organs/human-organs/brain/interoception.ts"
   ],
   "catchUpMinutes": 720,
   "scriptTimeoutMs": 10000

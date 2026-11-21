@@ -1,6 +1,6 @@
 # 十二指肠（duodenum）
 
-P0 的十二指肠只有一个脚本：把胃排出的能量流做成一阶滤波的“近期营养暴露”代理。
+十二指肠只有一个脚本：把胃排出的能量流做成一阶滤波的“近期营养暴露”代理。
 
 实现状态：脚本与参数已在 `organs/human-organs/duodenum/`；根清单已挂载这些脚本；身体启用时，启动 Gateway 即加载。
 
@@ -18,7 +18,7 @@ P0 的十二指肠只有一个脚本：把胃排出的能量流做成一阶滤�
 | --- | --- | --- |
 | `nutrientExposure` | `kcal/min` | 近期营养到达速率的滤波代理；不是吸收入血速率，不是肠内容量，也不是浓度 |
 
-`fields` 声明为 `absolute` 写入，只有 `duodenum` 脚本写它。P0 没有消费者；它是 `producer only` 信号，等 P1 的肠激素、吸收或体感接入后再消费。
+`fields` 声明为 `absolute` 写入，只有 `duodenum` 脚本写它。P1 的 `brain/interoception.ts` 读取这个字段；肠激素、吸收与通知消费者仍未实现。
 
 滤波逻辑：
 
@@ -32,7 +32,7 @@ P0 的十二指肠只有一个脚本：把胃排出的能量流做成一阶滤�
 
 ## 3. 调节方式
 
-P0 只接胃流出能量这一条输入，自身状态只做一阶滤波。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
+当前只接胃流出能量这一条输入，自身状态只做一阶滤波。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
 
 - CCK、GLP-1、促胰液素等肠激素反馈；
 - 胆囊收缩、胰酶与胆汁分泌；
@@ -44,13 +44,13 @@ P0 只接胃流出能量这一条输入，自身状态只做一阶滤波。以�
 - 脚本头部的块注释逐条列出来源、原文定位、支撑的方程/参数与不能推出的边界；本节只做入口摘要。
 - 共享登记簿：[`../references/source-index.csv`](../references/source-index.csv)
 - 字段字典与证据卡模板：[`../references/m1-data-dictionary.md`](../references/m1-data-dictionary.md)
-- 逐篇笔记：[`../stomach/references/notes/`](../stomach/references/notes/)：P0 没有十二指肠专属来源，现有证据是胃排空、饥饿素与饱感/胃饱满的笔记。
+- 逐篇笔记：[`../stomach/references/notes/`](../stomach/references/notes/)：没有十二指肠专属来源，现有证据是胃排空、饥饿素与饱感/胃饱满的笔记。
 - 器官设计：[`docs/superpowers/specs/2026-11-20-organ-model-design.md`](../../../docs/superpowers/specs/2026-11-20-organ-model-design.md)
 
 ## 5. 当前限制
 
-- **不建肠内容量/吸收模型**：P0 没有 `contentMl`、没有吸收或血糖，也没有与肠内容量或吸收相关的部位状态。
-- **不用 `transfer`**：胃→肠只通过 `stomach.emptiedKcal` 的读出与一轮偏移传递；器官间转移留给 P1 有肠内容量时再引入。
+- **不建肠内容量/吸收模型**：当前没有 `contentMl`、没有吸收或血糖，也没有与肠内容量或吸收相关的部位状态。
+- **仍未用 `transfer`**：胃→肠只通过 `stomach.emptiedKcal` 的读出与一轮偏移传递；等有肠内容量模型时再引入器官间转移。
 - **`nutrientExposure` 是代理**：单位 `kcal/min` 只表示滤波后的到达速率，不等于吸收速率、门静脉葡萄糖或激素分泌；时间常数是 `design`，来自工程可运行性，不是人体测量。
 - **没有专属来源**：`source-index.csv` 里没有十二指肠特异的登记行，当前模型参数不能声称有该器官的直接证据。
 - 不建黏膜、刷状缘酶、转运体、渗透压与肠腔 pH。

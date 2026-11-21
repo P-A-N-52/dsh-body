@@ -20,7 +20,8 @@
  * 不能推出：两项来源都没有测十二指肠营养暴露、吸收、门静脉葡萄糖或肠激素，
  * 与本文件的 10 min 时间常数没有推导关系；`kcal/min` 只是滤波后的到达速率
  * 代理，不能当吸收入血速率、血糖或激素水平。胃→十二指肠有一轮偏移：读的是
- * 轮初快照 `stomach.emptiedKcal`。P0 没有消费者（producer-only 信号）。
+ * 轮初快照 `stomach.emptiedKcal`。P0 没有消费者；P1 由 `brain/interoception.ts`
+ * 读取，但仍没有通知或会话消费者。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 

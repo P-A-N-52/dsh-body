@@ -4,8 +4,9 @@ import * as motility from '../organs/human-organs/stomach/motility.ts';
 import * as ghrelin from '../organs/human-organs/stomach/ghrelin.ts';
 import * as gastricSensory from '../organs/human-organs/stomach/gastric-sensory.ts';
 import * as nutrientExposure from '../organs/human-organs/duodenum/nutrient-exposure.ts';
+import * as interoception from '../organs/human-organs/brain/interoception.ts';
 
-const modules = [motility, ghrelin, gastricSensory, nutrientExposure];
+const modules = [motility, ghrelin, gastricSensory, nutrientExposure, interoception];
 const ROUND_SECONDS = 60;
 const defaultScenarioUrl = new URL('../scenarios/m1-water-240.json', import.meta.url);
 
@@ -63,14 +64,10 @@ for (let round = 1; round <= maxRound; round += 1) {
   if (observationMinutes.has(round)) observe(round);
 }
 
-const modulePartIds = new Set(modules.map((module) => module.id));
-const unproduced = scenario.observe.signals.filter((signal) => !modulePartIds.has(signal.split('.')[0]));
 const note = [
   '动作在下一轮生效：第 t 轮投递 atMin = t - 1 的动作（actionLagRounds = 1），atMin = 0 的动作在第 1 轮生效；观察值取轮末已提交状态。',
+  'P1 产出体感：interoception.hunger / fullness 是 design 线性代理读出，不是论文 VAS 拟合。',
 ];
-if (unproduced.length > 0) {
-  note.push(`${unproduced.join('、')} 在 P0 不产出体感；观察值等于场景基线，不是模型输出。`);
-}
 
 const result = {
   scenario: scenario.id,

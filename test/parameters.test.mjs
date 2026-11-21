@@ -8,7 +8,7 @@ const parametersFiles = [
   { label: 'organs/human-organs/duodenum/nutrient-exposure.parameters.json', url: new URL('../organs/human-organs/duodenum/nutrient-exposure.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/stomach/ghrelin.parameters.json', url: new URL('../organs/human-organs/stomach/ghrelin.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/stomach/gastric-sensory.parameters.json', url: new URL('../organs/human-organs/stomach/gastric-sensory.parameters.json', import.meta.url) },
-  { label: 'systems/nervous/interoception.parameters.json', url: new URL('../systems/nervous/interoception.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/brain/interoception.parameters.json', url: new URL('../organs/human-organs/brain/interoception.parameters.json', import.meta.url) },
 ];
 
 const sourcedStatuses = new Set(['prior', 'fitted_dev', 'validated']);
@@ -49,10 +49,8 @@ test('parameter ids are unique across all parameter files', () => {
 });
 
 test('requireParameter rejects missing and unset ids with the id in the message', () => {
-  const values = loadParameters(parametersFiles.at(-1).url);
-  const unsetId = 'interoception.discomfort.threshold';
-  assert.equal(values[unsetId], null);
+  const values = { 'interoception.unset': null };
 
   assert.throws(() => requireParameter(values, 'interoception.missing'), (error) => error.message.includes('interoception.missing'));
-  assert.throws(() => requireParameter(values, unsetId), (error) => error.message.includes(unsetId));
+  assert.throws(() => requireParameter(values, 'interoception.unset'), (error) => error.message.includes('interoception.unset'));
 });

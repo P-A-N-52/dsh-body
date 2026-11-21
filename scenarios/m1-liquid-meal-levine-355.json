@@ -27,5 +27,5 @@
   "expected": {
     "interoception.fullness": [26.7, 23.3, 20.4, 19.1, 17.9, 10.5]
   },
-  "note": "16 名健康成人安慰剂臂均值；SE 见原文表 1；不是个体曲线。"
+  "note": "16 名健康成人安慰剂臂均值；SE 见原文表 1；不是个体曲线。expected 是 Levine 论文的 VAS 目标，不是当前线性 interoception 模型的输出；当前模型是 design，未用这组数据校准。"
 }

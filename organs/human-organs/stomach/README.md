@@ -1,6 +1,6 @@
 # 胃（stomach）
 
-P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）、胃壁机械感受。三个脚本各写一个部位，互不写对方状态；机械感受只读 `stomach.volumeMl`。
+胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）、胃壁机械感受。三个脚本各写一个部位，互不写对方状态；机械感受只读 `stomach.volumeMl`，体感脚本再读机械感受与饥饿素。
 
 实现状态：脚本与参数已在 `organs/human-organs/stomach/`；根清单已挂载这些脚本；身体启用时，启动 Gateway 即加载。
 
@@ -40,7 +40,7 @@ P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）�
 - `emptiedMl = max(0, volumeMl − baselineMl) × (1 − 2^(−dtMin/h))`，`emptiedKcal = emptiedMl × energyDensity`；
 - 摄入切片在本轮排空之后进入 `volumeMl` / `energyKcal`。
 
-摄入动作：`drink` 只带 `volumeMl` 与可选的 `durationMin`，固定按白水处理（0 kcal、`liquid`），不接受能量或餐型；`eat` 需要 `volumeMl`、`energyKcal ≥ 0`、`mealKind`（`liquid` / `solid` / `mixed`）与可选的 `durationMin`。两者都按轮切片进入，避免一次大餐整体落在同一轮。字段缺失、单位或取值非法的动作被忽略。
+摄入动作：`drink` 需要 `volumeMl > 0`，可选 `energyKcal`（有限数、`>= 0`，缺省 0）与 `durationMin`，固定按 `liquid` 处理；白水省略能量或填 0，可乐、果汁、牛奶等含能饮料填实际能量。`eat` 需要 `volumeMl`、`energyKcal ≥ 0`、`mealKind`（`liquid` / `solid` / `mixed`）与可选的 `durationMin`。两者都按轮切片进入，避免一次大餐整体落在同一轮。字段缺失、单位或取值非法的动作被忽略；饮料的成分、黏度、碳酸、甜味剂不进入方程。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
@@ -54,7 +54,7 @@ P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）�
 | --- | --- | --- |
 | `relativeConcentration` | `1` | 相对浓度（空腹基线为 1，餐后谷值为 0.5），不是 `pg/mL` 或任何绝对浓度 |
 
-只有含能量的 `eat`（`energyKcal > 0`）会在本轮把相对浓度压到不高于谷值（`min(current, nadir)`），白水不抑制；随后按表观半时向基线指数恢复。`actionTypes = ['eat']` 只是声明，脚本自己再检查能量。P0 没有饥饿或体感的消费者；这个字段是 `producer only` 信号，等 P1 的感受与上报接入后再消费。
+只有含能量的 `eat` 或 `drink`（`energyKcal > 0`）会在本轮把相对浓度压到不高于谷值（`min(current, nadir)`），白水与 0 kcal 饮料不抑制；随后按表观半时向基线指数恢复。`actionTypes = ['eat', 'drink']` 只是声明，脚本自己再检查能量。P1 的 `brain/interoception.ts` 读取这个字段；通知与会话消费者仍未实现。含能饮料的抑制方向是从含能餐证据外推的 `design` 假设，没有登记饮料专属来源。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
@@ -70,7 +70,7 @@ P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）�
 
 `mechanical = min(1, volumeMl / referenceVolumeMl) ^ exponent`。
 
-`mechanical` 读的是轮初快照里的 `stomach.volumeMl`，同一轮摄入要到下一轮才反映。P0 没有消费者；它是 `producer only` 信号，等 P1 的感受与上报接入后再消费。
+`mechanical` 读的是轮初快照里的 `stomach.volumeMl`，同一轮摄入要到下一轮才反映。P1 的 `brain/interoception.ts` 读取这个字段；通知与会话消费者仍未实现。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
@@ -79,11 +79,11 @@ P0 的胃由三个脚本组成：动力与排空、胃内分泌（饥饿素）�
 
 ### 与其他器官的接口
 
-十二指肠的 `nutrient-exposure.ts` 读本部位的 `emptiedKcal`，滤波成 `nutrientExposure`（单位 `kcal/min` 的代理）。胃不写该字段。
+十二指肠的 `nutrient-exposure.ts` 读本部位的 `emptiedKcal`，滤波成 `nutrientExposure`（单位 `kcal/min` 的代理）；`brain/interoception.ts` 再读 `stomachSensory.mechanical`、`stomachGhrelin.relativeConcentration` 与 `duodenum.nutrientExposure`。胃不写这些字段。
 
 ## 3. 调节方式
 
-P0 只接两类输入：
+当前只接两类输入：
 
 1. **摄入**：`drink` 与 `eat` 动作；体积、能量、餐型和进食时长都来自动作载荷。
 2. **自身状态**：胃内容量与剩余能量按上一轮状态自洽推进；机械感受只读 `volumeMl`。
@@ -105,9 +105,9 @@ P0 只接两类输入：
 
 ## 5. 当前限制
 
-- **饥饿素不建模餐前上升**：没有餐时表，P0 无法触发餐前升；只做“含能量摄入抑制 → 表观半时恢复”。
+- **饥饿素不建模餐前上升**：没有餐时表，当前无法触发餐前升；只做“含能量摄入抑制 → 表观半时恢复”。
 - **机械感受是代理**：`mechanical` 是归一化充盈代理，不是张力或神经放电；参考量与指数都是 `design`，不是人体拟合。
 - **所有餐型共用 13 min 截距**：`stomach.emptying.halfTimeMin` 不区分 `liquid` / `solid` / `mixed`，`mealKind` 只被记录、未进入方程。13 min 来自 Mudie 2014 白水摘要，摘要未写 T50 定义与起算点，只作工程假设；这是已知简化，不是“餐型已被区分”的证据。
 - **能量密度增益是开发集拟合**：53.75 只用 Camps 2016 同一批 15 人的 thin-100 与 thin-500 两臂，标为 `fitted_dev`，不是独立验证。
 - 没有不可排空残余：`baselineMl` 只是可调偏置，模型允许胃排到 0。
-- 不做胃内混合、分层、胃酸、温度和黏膜状态；也不消费 `mechanical` 或 `relativeConcentration`（P0 没有感受与上报脚本）。
+- 不做胃内混合、分层、胃酸、温度和黏膜状态；`mechanical` 与 `relativeConcentration` 由 `brain/interoception.ts` 读取，但通知与会话投递仍未实现。

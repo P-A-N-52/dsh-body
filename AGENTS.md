@@ -14,11 +14,11 @@
 
 | 状态 | 内容 |
 | --- | --- |
-| 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；`lib/parameters.js` 的只读参数加载；身体启停与暂停恢复；P0 四个器官脚本（`organs/human-organs/stomach/` 的 `motility.ts`、`ghrelin.ts`、`gastric-sensory.ts`，`organs/human-organs/duodenum/` 的 `nutrient-exposure.ts`）及同目录四份参数文件；器官 README、共享证据台账和重放场景；`test/` 下的测试；根清单 `body-modules.json` 已列出四条 P0 器官脚本，Gateway 启动即加载。 |
-| 未实现 | 11 个功能标签的完整生理脚本（目前只有 P0 的胃与十二指肠）；`body_act` / `body_state` 会话工具；通知到 DSH 的实际投递；浏览器数据页；多身体、会话绑定、器官间转移、病况。 |
-| M1 进行中 | 器官级 P0：胃（动力、饥饿素、机械感受）与十二指肠（营养暴露）的脚本、参数、README、证据和重放已就位；旧的组件/动作/读数 JSON 契约层已删除；其余 `systems/*/` 只保留 legacy 证据与参数。 |
+| 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；`lib/parameters.js` 的只读参数加载；身体启停与暂停恢复；P0 四个器官脚本（`organs/human-organs/stomach/` 的 `motility.ts`、`ghrelin.ts`、`gastric-sensory.ts`，`organs/human-organs/duodenum/` 的 `nutrient-exposure.ts`）；P1 输入契约（`drink` 可带 `energyKcal`）与体感脚本 `organs/human-organs/brain/interoception.ts`；五个部位、五份同目录参数文件；器官 README、共享证据台账和重放场景；`test/` 下的测试；根清单 `body-modules.json` 已列出五条器官脚本，Gateway 启动即加载。 |
+| 未实现 | 其余器官的生理脚本（食管、小肠吸收、血糖、胰岛素、心、肺、肾、膀胱等）；`body_act` / `body_state` 会话工具；通知到 DSH 的实际投递与提醒历史；浏览器数据页；多身体、会话绑定、器官间转移、病况。 |
+| M1 进行中 | 器官级 P0 + P1：胃（动力、饥饿素、机械感受）、十二指肠（营养暴露）、体感读出（`interoception`）；输入契约、参数、README、证据和重放已就位；旧的组件/动作/读数 JSON 契约层已删除；其余 `systems/*/` 只保留 legacy 证据。 |
 
-当前 P0 的部位与信号以 `organs/human-organs/<organ>/README.md` 的表格为准，参数在 `organs/human-organs/**/*.parameters.json`，模块导出见 `organs/human-organs/**/*.ts`；设计是 `docs/superpowers/specs/2026-11-20-organ-model-design.md`，实施计划是 `docs/superpowers/plans/2026-11-20-organ-model-p0.md`。旧的 M1 计划已标废弃。具体文件以目录和 `git status` 为准。
+当前 P0/P1 的部位与信号以 `organs/human-organs/<organ>/README.md` 的表格为准，参数在 `organs/human-organs/**/*.parameters.json`，模块导出见 `organs/human-organs/**/*.ts`；设计是 `docs/superpowers/specs/2026-11-20-organ-model-design.md`，P0 实施计划是 `docs/superpowers/plans/2026-11-20-organ-model-p0.md`，P1 实施计划是 `docs/superpowers/plans/2026-11-21-p1-input-interoception.md`。旧的 M1 计划已标废弃。具体文件以目录和 `git status` 为准。
 
 判断“现在到底有什么”的顺序：**代码（必要时对照测试）> `docs/gateway-and-scripts.md` > `docs/virtual-body.md` 的已实现部分 > 计划文档**。计划里的勾选框只代表计划进度，不等于产品功能。
 
@@ -29,7 +29,7 @@
 | # | 常见误解 | 实际 |
 | --- | --- | --- |
 | 1 | 把 `docs/virtual-body.md` 当成已实现功能清单 | 它是设计草案；开头新增的 5 条“已确认的行为契约（设计目标）”明确不是现状。当前实现以 `gateway/`、`test/` 和 `docs/gateway-and-scripts.md` 为准。 |
-| 2 | 以为 11 个系统目录就是仿真层级 | 仿真单元是器官目录 `organs/human-organs/<organ>/`；`systems/` 只剩 legacy 证据，脚本以 `organs/**/*.ts` 为准；`body-modules.json` 已列出四条 P0 器官脚本。 |
+| 2 | 以为 11 个系统目录就是仿真层级 | 仿真单元是器官目录 `organs/human-organs/<organ>/`；`systems/` 只剩 legacy 证据，脚本以 `organs/**/*.ts` 为准；`body-modules.json` 已列出五条器官脚本。 |
 | 3 | 把 `body-modules.json` 和 `body-state.json` 混为一谈 | 前者是脚本清单（开发者改），后者是一具身体的存档（Gateway 写；用户只在停机时改顶层 `active`）。 |
 | 4 | 运行中改存档 `active` 想热切换 | `active` 只在启动时读一次；必须停 Gateway → 改实际 `statePath` 的顶层 `active` → 再启动。运行中改不会生效，还可能被下次保存覆盖。 |
 | 5 | 把 `activeBatch` 或 `startup.active` 当启停开关 | 都不是。开关只有存档顶层 `active`；`activeBatch` 是在途批次，`startup.active` 是上次启动记录。 |
@@ -50,12 +50,12 @@
 | `docs/gateway-and-scripts.md` | 当前实现的开发指南 | 接脚本、调 HTTP、排查状态先看它；与代码冲突时以代码为准，必要时对照测试。 |
 | `docs/virtual-body.md` | 设计草案 + 设计目标 | 开头“已确认的行为契约（设计目标）”和 M1–M7 里程碑不是现状；§1 的器官层表描述当前结构。引用时必须写明“设计目标/计划”。 |
 | `docs/superpowers/specs/*.md` | 设计文档（已批准） | 器官级结构的依据；与计划冲突时以设计文档为准。 |
-| `docs/superpowers/plans/*.md` | 实施计划 | `- [x]` 才算完成；未勾选=未交付。旧的 M1 计划顶部已标废弃，当前 P0 计划是 `2026-11-20-organ-model-p0.md`。 |
-| `organs/human-organs/<organ>/README.md` | 当前器官脚本、字段与证据入口 | P0 的部位、字段、单位和代理口径以这里为准。 |
+| `docs/superpowers/plans/*.md` | 实施计划 | `- [x]` 才算完成；未勾选=未交付。旧的 M1 计划顶部已标废弃；当前是 P0 `2026-11-20-organ-model-p0.md` 与 P1 `2026-11-21-p1-input-interoception.md`。 |
+| `organs/human-organs/<organ>/README.md` | 当前器官脚本、字段与证据入口 | P0/P1 的部位、字段、单位和代理口径以这里为准；体感在 `brain/README.md`。 |
 | `systems/*/README.md` | 未迁移的系统资料入口（legacy） | 顶部标 legacy，不是实现，也不代表该系统的脚本已存在。 |
 | `organs/human-organs/references/` | 共享证据台账与字段字典 | 科学口径以 `source-index.csv`、`m1-data-dictionary.md` 为准。 |
 | `systems/**/references/` | 未迁移的旧证据台账与笔记（legacy） | 只作历史资料，随对应器官实现时迁移。 |
-| `organs/human-organs/**/*.parameters.json` | 器官参数证据默认值 | 保留 `unit`、`status`、`source`、`range`；由 `lib/parameters.js` 只读加载，不是某具身体的最终值。`systems/nervous/interoception.parameters.json` 是唯一留在 `systems/` 的参数文件，属 legacy，仍被 `test/parameters.test.mjs` 校验。 |
+| `organs/human-organs/**/*.parameters.json` | 器官参数证据默认值 | 保留 `unit`、`status`、`source`、`range`；由 `lib/parameters.js` 只读加载，不是某具身体的最终值。`systems/` 已不再有参数文件；旧的 `systems/nervous/interoception.parameters.json` 已迁到 `brain/` 并裁剪。 |
 | `docs/reference/pulse-engine.md` | 外部参考实现笔记 | 只借方程、参数、结构；`docs/reference/pulse-engine/` 是本地浅克隆，已被 gitignore，不要提交。 |
 | `.tower/`、`.superpowers/` | 代理工作流产物 | 已 gitignore；`.tower/comms/` 由工具生成，不要手改。 |
 
@@ -137,7 +137,7 @@
 - 运行环境：Node ≥ 22.18，ESM，无第三方依赖。不要为了一个功能引入库；先看 `package.json` 和现有 import。
 - **验证按需、从简。** 代码改动跑一次 `npm test`（即 `node --test`）即可，不必为每个改动新增测试；纯文档改动不必跑测试。不要把“补检查”当成主要工作。
 - 需要写测试时，用 `test-support/harness.mjs` 的 `launch(t, { modules, ... })` 起真实 Gateway（端口 0、临时目录、`autoTick: false`），用固定 `now`，不要依赖真实 `Date.now()` 抖动。
-- 模块或参数文件改动后跑一次 `npm test` 即可；`test/parameters.test.mjs` 已经覆盖四份器官参数文件与 `systems/nervous/interoception.parameters.json` 这份 legacy 参数文件的格式一致性，不需要再补一套重复校验。
+- 模块或参数文件改动后跑一次 `npm test` 即可；`test/parameters.test.mjs` 已经覆盖五份器官参数文件的格式一致性，不需要再补一套重复校验。
 - 不要创建仓库根目录的 `body-state.json` 来“测试”；测试用临时目录。`body-state.json`、`body-state.json.tmp`、`docs/reference/pulse-engine/` 都已 gitignore。
 - 提交前扫一眼 `git status`，删掉测试产生的临时文件；不要把 `.tower/`、`.superpowers/`、日志或个人存档加入提交。
 - 如果新增运行时文件，检查 `package.json` 的 `files`；`files` 已包含 `organs/` 与 `lib/`（另有 `index.js`、`gateway.js`、`gateway/`、`json-safe.js`、`body-modules.json`、`startup/`、`cordis.patch.yml`）。打包时脚本、同目录参数文件和 `lib/parameters.js` 要一起发布。

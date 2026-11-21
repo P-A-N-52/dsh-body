@@ -1,5 +1,6 @@
 /**
- * 部位 `stomachSensory`：胃壁机械感受的归一化代理（P0），只写 `mechanical`，P0 没有消费者。
+ * 部位 `stomachSensory`：胃壁机械感受的归一化代理（P0），只写 `mechanical`。
+ * P0 没有消费者；P1 由 `brain/interoception.ts` 读取，但仍没有通知或会话消费者。
  *
  * 直接证据：无。`source-index.csv` 没有胃壁张力或机械感受末梢的人体测量；
  * `stomachSensory.referenceVolumeMl`（1000 mL）与 `stomachSensory.response.exponent`（1）

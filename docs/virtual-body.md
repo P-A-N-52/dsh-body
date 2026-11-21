@@ -2,7 +2,7 @@
 
 [Gateway 开发指南：JSON 文件、脚本参数与可运行的 TypeScript 示例](./gateway-and-scripts.md) 说明现在已经可以怎么用。本文同时记录后续设计。
 
-**当前实现的仿真单元是器官目录 `organs/human-organs/<organ>/`，不是系统目录。** P0 的器官、脚本与后续清单见[器官级身体模型设计 §6](./superpowers/specs/2026-11-20-organ-model-design.md#6-器官清单)。本文里的 11 个系统名只作为功能标签保留，不再表示目录或仿真层级。
+**当前实现的仿真单元是器官目录 `organs/human-organs/<organ>/`，不是系统目录。** P0/P1 的器官、脚本与后续清单见[器官级身体模型设计 §6](./superpowers/specs/2026-11-20-organ-model-design.md#6-器官清单)。本文里的 11 个系统名只作为功能标签保留，不再表示目录或仿真层级。
 
 身体 Gateway 由 DSH 插件在宿主进程内运行，管理一具身体、同一个仿真时钟和一份存档。身体启用时，Gateway 按脚本清单加载模块，每分钟调度一轮 `heartbeat`。会话工具和浏览器的曲线、病况页面是后续接入计划。
 
@@ -25,17 +25,18 @@
 | 仿真单元 | `organs/human-organs/<organ>/`，一个器官可由多个脚本组成 |
 | 功能标签 | 消化、内分泌、感觉器等，只用于 README 分类 |
 | P0 | 胃（动力、饥饿素、机械感受）、十二指肠（营养暴露） |
+| P1（当前） | 输入契约（`drink` 可带能量）、体感读出（`hunger` / `fullness`）；不新增消化器官 |
 | 后续清单 | [`2026-11-20-organ-model-design.md`](./superpowers/specs/2026-11-20-organ-model-design.md) §6 |
 
-11 个系统名（运动、消化、呼吸、循环、泌尿、生殖、神经、内分泌、免疫、感觉器、被皮）只保留为功能标签，不再是目录或仿真层级。当前 P0 的器官资料见 [`stomach`](../organs/human-organs/stomach/README.md) 与 [`duodenum`](../organs/human-organs/duodenum/README.md)；其余 `systems/*/` 只保留未迁移的 legacy 证据与参数。
+11 个系统名（运动、消化、呼吸、循环、泌尿、生殖、神经、内分泌、免疫、感觉器、被皮）只保留为功能标签，不再是目录或仿真层级。当前 P0/P1 的器官资料见 [`stomach`](../organs/human-organs/stomach/README.md)、[`duodenum`](../organs/human-organs/duodenum/README.md) 与 [`brain`](../organs/human-organs/brain/README.md)；其余 `systems/*/` 只保留未迁移的 legacy 证据。
 
 同一器官承担多个功能标签时，各脚本读取该器官的同一份状态。例如胰腺的消化酶分泌与胰岛的激素分泌属于同一器官目录，器官内的平滑肌随所属器官推进。 [NCI 内分泌腺与激素](https://training.seer.cancer.gov/anatomy/endocrine/glands/)
 
 ### 器官目录与共享身体状态
 
-每个器官的 `README.md` 记录要模拟的脚本、字段、调节方式、待查问题和证据入口。论文原文、逐篇摘记和从图表提取的数据放在该器官的 `references/` 下，P0 的笔记在 `organs/human-organs/stomach/references/notes/`；共享登记簿和字段字典在 `organs/human-organs/references/`。P0 的脚本例如 `organs/human-organs/stomach/motility.ts` 和 `organs/human-organs/stomach/ghrelin.ts`，由根目录的 `body-modules.json` 逐条挂载；根清单现在挂载 P0 的四条器官脚本。
+每个器官的 `README.md` 记录要模拟的脚本、字段、调节方式、待查问题和证据入口。论文原文、逐篇摘记和从图表提取的数据放在该器官的 `references/` 下，P0/P1 的笔记在 `organs/human-organs/stomach/references/notes/`；共享登记簿和字段字典在 `organs/human-organs/references/`。脚本例如 `organs/human-organs/stomach/motility.ts`、`organs/human-organs/stomach/ghrelin.ts` 和 `organs/human-organs/brain/interoception.ts`，由根目录的 `body-modules.json` 逐条挂载；根清单现在挂载五条器官脚本（P0 四条 + `brain/interoception.ts`）。
 
-运行时的公共池就是同一分钟的身体快照。`snapshot.simulatedSeconds` 给出仿真时刻，`snapshot.parts` 按模块 ID 保存当前值。每个量由一个模块写入，其他模块按需读取。例如胃内容量由 `stomach` 的 `motility.ts` 维护，饥饿素相对浓度由 `stomachGhrelin` 的 `ghrelin.ts` 维护；体感接入后由神经系统读取两者。Gateway 将所有部位一起写入一份 `body-state.json`，重启时也从同一分钟恢复。
+运行时的公共池就是同一分钟的身体快照。`snapshot.simulatedSeconds` 给出仿真时刻，`snapshot.parts` 按模块 ID 保存当前值。每个量由一个模块写入，其他模块按需读取。例如胃内容量由 `stomach` 的 `motility.ts` 维护，饥饿素相对浓度由 `stomachGhrelin` 的 `ghrelin.ts` 维护，`brain/interoception.ts` 读取胃充盈、饥饿素与十二指肠营养暴露后写 `interoception.hunger` / `fullness`。Gateway 将所有部位一起写入一份 `body-state.json`，重启时也从同一分钟恢复。
 
 ### 可自定义的身体参数
 
@@ -55,7 +56,7 @@
 | 感觉器 | 触觉、冷热、疼痛和胃充盈的感知阈值，用对应感觉信号的量纲设置 | 眼、耳可单独设置。皮肤和内脏的感受器取所在组织的档位。 |
 | 被皮 | 分区表面温度基线（℃）、湿润度基线（0–1）、出汗响应倍率 | 按第 3 节的皮肤分区设置，可细到左右和前后 |
 
-基础参数随对应模块接入。P0 已接胃排空、胃饥饿素、胃壁机械感受和十二指肠营养暴露时间常数的参数；胃容量上限与充盈感知阈值仍是后续设计。P0 的 `stomachSensory.referenceVolumeMl` 只是归一化机械感受用的工程参考量，不截断胃容量。
+基础参数随对应模块接入。P0/P1 已接胃排空、胃饥饿素、胃壁机械感受、十二指肠营养暴露时间常数和体感线性读出的参数；胃容量上限与充盈感知阈值仍是后续设计。`stomachSensory.referenceVolumeMl` 只是归一化机械感受用的工程参考量，不截断胃容量；`interoception` 的基线、增益与缺失默认值全部是 `design`，不是人体测量。
 
 ### 全身与局部免疫等级
 
@@ -142,7 +143,7 @@ M6 接入基础病对身体参数的持续修正。M7 接入当前病况的触�
 
 进食、饮水和主动如厕由 DSH 会话里的模型发起。胃排空、膀胱充盈和尿意由身体脚本随心跳推进。Gateway 在线且身体启用时，即使会话空闲也继续计时；暂停身体或 DSH 退出（含崩溃）时心跳停止，心跳停止期间新增的主动动作为零。
 
-当前插件已接入 Gateway 的启动与关闭，默认清单现在挂载 P0 的四条器官脚本。启用时，自定义空清单下新动作仍会因为没有模块声明对应类型而返回 `422`；停用时新动作返回 `409`，见「启用、暂停与恢复」。这是有意的 fail-fast，已声明类型按 `actionTypes` 放行；未声明类型仍返回 `422`。下文的会话工具、食物估算和体感交付是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
+当前插件已接入 Gateway 的启动与关闭，默认清单现在挂载五条器官脚本（P0 四脚本 + `brain/interoception.ts`）。启用时，自定义空清单下新动作仍会因为没有模块声明对应类型而返回 `422`；停用时新动作返回 `409`，见「启用、暂停与恢复」。这是有意的 fail-fast，已声明类型按 `actionTypes` 放行；未声明类型仍返回 `422`。体感读出已接入；会话工具、食物估算和通知投递仍是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
 
 ### 加载插件
 
@@ -159,14 +160,14 @@ DSH 加载插件时启动 Gateway，退出或卸载插件时关闭监听、定�
 
 - `GET /state` 返回最近一次提交的 `simulatedSeconds` 和各部位状态 `parts`。
 - `POST /actions` 接收包含 `id` 和 `type` 的 JSON 动作，必须使用 `Content-Type: application/json`。启用时，有处理者的新动作返回 `202` 和 `{ id, type, status: "queued", effectiveAt }`；没有模块声明该类型则返回 `422`，且不写入存档。只要动作记录仍在，同 id、同载荷返回 `200` 和当前回执，同 id、不同载荷返回 `409`。
-- `GET /actions/:id` 返回动作记录和状态；`GET /capabilities` 按动作类型列出处理它的模块 ID，例如 P0 根清单启用后 `{ "drink": ["stomach"] }`（暂停时为空对象）；`GET /health` 返回本次启动实际采用的 `active`、仿真时钟、在途批次、连续失败次数和队列计数。
+- `GET /actions/:id` 返回动作记录和状态；`GET /capabilities` 按动作类型列出处理它的模块 ID，例如当前根清单启用后 `{ "drink": ["stomach", "stomachGhrelin"], "eat": ["stomach", "stomachGhrelin"] }`（暂停时为空对象）；`GET /health` 返回本次启动实际采用的 `active`、仿真时钟、在途批次、连续失败次数和队列计数。
 - `GET /notifications` 返回待确认通知；`POST /notifications/ack` 提交 `{ "id": "…" }`，返回 `{ id, acked }`，未知 id 也返回 200 和 `acked: false`。
 
 HTTP 边界：请求体上限 64 KiB；非 JSON 的 POST 返回 `415`；`Host` 必须是 `127.0.0.1:<port>` 或 `localhost:<port>`，非 GET 的 `Origin` 只允许同源，否则返回 `403`；错误方法返回 `405`。存档默认上限 2 MiB，入队前会预留元数据空间，超过预算返回 `413`，不会把队列写坏；可用 `maxCheckpointBytes` 调整。当前不引入 token；同进程的 `body_act` 应直接调用 Gateway 句柄，HTTP 只服务本地调试和未来的浏览器页。
 
 ### 脚本清单与启动
 
-Gateway 启动时读取 `body-modules.json`，以清单所在目录为基准解析相对路径。下面是示意条目，只示意 `inject` 的写法：示例里的胃脚本声明读取轮初的饥饿素相对浓度；P0 的 `motility.ts` 既不声明 `inject`，也不读 `stomachGhrelin`。体感脚本属于 P1 的“感受与上报”，尚未实现。
+Gateway 启动时读取 `body-modules.json`，以清单所在目录为基准解析相对路径。下面是示意条目，只示意 `inject` 的写法：示例里的胃脚本声明读取轮初的饥饿素相对浓度；P0/P1 的 `motility.ts` 既不声明 `inject`，也不读 `stomachGhrelin`。P1 的 `brain/interoception.ts` 已实现体感读出；通知投递与会话工具尚未实现。
 
 ```json
 {
@@ -275,7 +276,13 @@ Gateway 在线且身体启用时每 60 个现实秒调度一轮，每轮成功�
 
 估算只需分清一口、半块和整块的大致差别。比如“我把蛋糕分了一半给你，自己吃完剩下的一半”，就按本人吃下的半块估算。前文给过大小、重量或包装标注时沿用这些信息，份量不详时按常见切块处理。摄入体积 `volumeMl`（mL）和能量 `energyKcal`（kcal）各给一个约数即可。
 
-Gateway 将动作原文和采用的数值随动作 ID 一起保存，工具重试、心跳和重启补算都复用已入账的估值。M1 的胃模块用采用的体积更新胃内容量。轮末由神经系统结合胃充盈信号和饥饿素作用计算体感。
+当前动作载荷（模块自己检查，Gateway 不校验字段）：
+
+- `drink`：`volumeMl` 必填且 `> 0`；`energyKcal` 可选、有限且 `>= 0`（缺省 0）；`durationMin` 可选。固定按液体处理，`mealKind` 为 `liquid`。白水用 `energyKcal: 0` 或省略；可乐、果汁、牛奶等含能饮料填实际能量。
+- `eat`：`volumeMl`、`energyKcal >= 0`、`mealKind`（`liquid` / `solid` / `mixed`）必填；`durationMin` 可选。
+- 当前只区分体积、能量、液体/固体/混合与进食时长；成分比例、黏度、碳酸、甜味剂、温度不进入方程。动作字段非法时模块按现有规则忽略，不会让整轮失败。
+
+Gateway 将动作原文和采用的数值随动作 ID 一起保存，工具重试、心跳和重启补算都复用已入账的估值。`stomach` 用采用的体积和能量更新胃内容量；`interoception` 在下一轮读取胃充盈、饥饿素与十二指肠营养暴露，计算 `hunger` / `fullness`。
 
 ### 动作、查询与存档
 
@@ -287,9 +294,9 @@ Gateway 将动作原文和采用的数值随动作 ID 一起保存，工具重�
 
 ### 神经系统的体感与通报
 
-**只有神经系统向会话通报身体感受。** 各器官负责更新生理状态，感觉器提供局部感觉信号。神经只作为功能标签保留；P1 计划的“感受与上报”（清单名 `brain`）尚未实现，脚本目录仍开放，见设计文档 §11。它负责整合感受、选择目标会话，并决定何时值得通报。
+**只有神经系统向会话通报身体感受。** 各器官负责更新生理状态，感觉器提供局部感觉信号。神经只作为功能标签保留；P1 的“感受与上报”已在 `brain/interoception.ts` 实现体感读出，但通知投递、会话选择与提醒历史尚未实现，见设计文档 §11。它负责整合感受、选择目标会话，并决定何时值得通报。
 
-M1 计划在一次心跳内按以下顺序处理，以便进食当轮就能反映新的感受。
+体感设计在一次心跳内按以下顺序处理，以便进食后能读到新的感受。
 
 1. 胃和饥饿素等生理脚本读取轮初快照。胃先计算过去一分钟的排空，再把轮末吃下的半块蛋糕计入胃内容量。
 2. Gateway 汇总各部位结果，形成尚待提交的轮末快照。体感脚本用感觉器的规则从新的胃内容量算出充盈信号，再结合本轮饥饿素作用，更新全身共享的饥饿感。
@@ -343,7 +350,7 @@ Gateway 的 `GET /notifications` 返回待确认队列，目前最多保留 200 
 
 每个里程碑在实际 DSH 实例里验收，通过后再接下一项。
 
-P0（当前实现）只覆盖“吃/喝 → 胃排空 → 十二指肠营养暴露”的器官链，不含体感与通报；下表的 M1 体感、M2–M7 全部仍是设计目标。
+P1（当前实现）覆盖“吃/喝 → 胃排空 → 十二指肠营养暴露 → 体感读出”的器官链；体感已有 `interoception.hunger` / `fullness` 两个代理读数，但会话工具、通知投递与提醒历史仍未实现。下表的 M1 实机验收、M2–M7 仍是设计目标。
 
 ### 首期优先完成（M1–M4）
 
@@ -369,13 +376,13 @@ M1–M4 全部通过实机验收后，首期交付完成。首期用会话工具
 | 部位 | 管理项 | 记录及计算方式 |
 | --- | --- | --- |
 | `stomach`（胃动力） | 胃内容量 | 保存胃内容量（mL）。排空速率以 mL／仿真秒计算。 |
-| `stomachGhrelin`（胃内分泌） | 饥饿素 | 每轮记录现有相对浓度；P0 只做含能量摄入抑制与表观半时恢复。 |
-| `stomachSensory`（胃壁机械感受） | 胃充盈信号 | 根据胃内容量估算归一化机械感受代理，供神经系统读取；P0 暂无消费者。 |
-| 神经（功能标签） | 饥饿感 | 设计目标：在轮末整合胃充盈信号和饥饿素作用，更新共享体感，并按会话决定是否通报；P0 未实现。 |
+| `stomachGhrelin`（胃内分泌） | 饥饿素 | 每轮记录现有相对浓度；P0 做含能量摄入抑制与表观半时恢复，P1 起含能 `drink` 也会抑制。 |
+| `stomachSensory`（胃壁机械感受） | 胃充盈信号 | 根据胃内容量估算归一化机械感受代理；P1 由 `interoception` 读取。 |
+| `interoception`（体感读出） | 饥饿 / 饱满 | 每轮读取胃充盈、相对饥饿素与十二指肠营养暴露，按线性 `design` 模型写 0–100 mm VAS 代理；P1 已实现读出，通知与会话工具未实现。 |
 
 M1 的 Gateway 动作记录保存动作标识、类型、原始载荷、载荷指纹、状态、预定/实际生效时刻、批次、尝试次数和错误；`stomach` 在自己的 part 里保存 `mealQueue` 与 `lastIntakeAt`，作为餐食领域记录。两者分工明确：Gateway 负责幂等、调度和审计，模块负责生理语义。
 
-实机验收还要对齐进食生效的轮次与 `body_state` 返回的体感。让一个会话实际收到体感通知，核对其历史文件中的原文和 ID。重启后重复处理同一收件确认，历史中应只有这一条。另一会话按自己的送达记录决定是否提醒。
+实机验收还要对齐进食生效的轮次与 `body_state` 返回的体感。当前 `interoception` 只写 Gateway 部位，`body_state`、通知投递与会话提醒尚未实现；等这些适配器接入后，再验证会话实际收到体感通知、历史文件中的原文与 ID，以及重启后的收件确认与去重。
 
 ### Gateway 待验证的设计想法
 
@@ -404,6 +411,6 @@ M1 的 Gateway 动作记录保存动作标识、类型、原始载荷、载荷�
 | --- | --- |
 | 已知进食体积和能量后，哪些人体实验给出了相近餐型的胃内容量或排空曲线？ | [胃](../organs/human-organs/stomach/README.md) |
 | 餐前、餐后测的是哪种饥饿素？采样时刻、基线和恢复过程能约束模型中的哪些量？ | [胃（ghrelin 节）](../organs/human-organs/stomach/README.md) |
-| 研究怎样测胃充盈、饱胀和主观饥饿？同一批受试者有没有可对齐的测量时刻？ | [胃（机械感受节）](../organs/human-organs/stomach/README.md) · [神经（legacy 证据）](../systems/nervous/README.md) |
+| 研究怎样测胃充盈、饱胀和主观饥饿？同一批受试者有没有可对齐的测量时刻？ | [胃（机械感受节）](../organs/human-organs/stomach/README.md) · [体感读出](../organs/human-organs/brain/README.md) · [神经（legacy 证据）](../systems/nervous/README.md) |
 
 后续按第 6 节的里程碑查餐后血糖、饮水与睡眠、局部活动与恢复。跨器官使用同一篇文献时，在负责该指标的器官目录记原始数据，其他器官从自己的笔记链接过去。

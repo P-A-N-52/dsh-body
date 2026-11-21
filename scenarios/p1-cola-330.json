@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "p1-cola-330",
+  "source": null,
+  "protocol": {
+    "actions": [
+      { "atMin": 0, "type": "drink", "volumeMl": 330, "energyKcal": 140, "durationMin": 5 }
+    ]
+  },
+  "observe": {
+    "atMin": [0, 5, 10, 15, 30, 45, 60, 90],
+    "signals": [
+      "stomach.volumeMl",
+      "stomach.energyKcal",
+      "stomachGhrelin.relativeConcentration",
+      "interoception.hunger",
+      "interoception.fullness"
+    ]
+  },
+  "expected": {},
+  "note": "示意输入：330 mL、140 kcal 含糖饮料，5 min 喝完；不是论文场景。"
+}

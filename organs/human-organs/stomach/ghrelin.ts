@@ -1,7 +1,8 @@
 /*
  * 胃内分泌（饥饿素）P0 脚本：部位 `stomachGhrelin`，字段 `relativeConcentration`（单位 `1`）。
- * 含能量的 `eat` 在本轮把相对浓度压到不高于 `postmeal.nadir`，其余时间按一阶指数向
- * `fasting.baseline` 恢复。P0 无消费者，是 producer only 信号；不写其他部位。
+ * 含能量的 `eat` 或 `drink` 在本轮把相对浓度压到不高于 `postmeal.nadir`，其余时间按一阶指数向
+ * `fasting.baseline` 恢复。P0 没有消费者；P1 由 `brain/interoception.ts` 读取，但仍没有通知或
+ * 会话消费者；不写其他部位。
  *
  * 来源（笔记路径、原文定位、支撑什么）
  * - SRC-CUMMINGS-2001 / cummings-2001：`organs/human-organs/stomach/references/notes/cummings-2001.md`，
@@ -19,11 +20,16 @@
  * - `relativeConcentration` 是相对值，不是 ng/mL；指数恢复（表观半时，不是清除率）与“任意
  *   `energyKcal>0` 都一步压到 nadir”都是工程选择；白水不抑制同样来自设计，两条来源都未报告零能量对照。
  * - P0 不建模餐前上升（没有餐时表），也不建模餐型、能量剂量、性别或昼夜节律。
+ *
+ * P1 输入契约（design，不是 validated）：`actionTypes` 增加 `drink`，含能饮料（`energyKcal > 0`）
+ * 与含能 `eat` 一样在本轮抑制；白水与 0 kcal 饮料不抑制。饮料专属证据尚未登记，这条方向是从
+ * Cummings 2001 与 Leone 2022 的含能餐证据外推的 design 假设，不能称为 validated，也不能推出
+ * 饮料成分、能量剂量与抑制幅度的关系。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
 export const id = 'stomachGhrelin';
-export const actionTypes = ['eat'];
+export const actionTypes = ['eat', 'drink'];
 
 type GhrelinState = {
   relativeConcentration: number;
@@ -55,7 +61,7 @@ export const fields = {
 };
 
 function hasEnergyIntake(actions: readonly Action[]): boolean {
-  return actions.some((action) => action.type === 'eat'
+  return actions.some((action) => (action.type === 'eat' || action.type === 'drink')
     && typeof action.energyKcal === 'number'
     && Number.isFinite(action.energyKcal)
     && action.energyKcal > 0);

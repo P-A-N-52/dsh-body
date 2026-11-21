@@ -33,6 +33,27 @@ test('a zero-energy eat does not suppress', () => {
   assert.equal(next.relativeConcentration, 1);
 });
 
+test('an energy-bearing drink suppresses to nadir', () => {
+  const next = round({ ...initialState }, [{ type: 'drink', volumeMl: 330, energyKcal: 140 }]);
+  assert.equal(next.relativeConcentration, 0.5);
+});
+
+test('a zero-energy drink does not suppress', () => {
+  const next = round({ ...initialState, relativeConcentration: 1 }, [
+    { type: 'drink', volumeMl: 330, energyKcal: 0 },
+  ]);
+  assert.equal(next.relativeConcentration, 1);
+});
+
+test('a drink with negative or non-finite energy does not suppress', () => {
+  for (const energyKcal of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const next = round({ ...initialState, relativeConcentration: 1 }, [
+      { type: 'drink', volumeMl: 330, energyKcal },
+    ]);
+    assert.equal(next.relativeConcentration, 1);
+  }
+});
+
 test('recovery reaches 0.75 exactly after 90 rounds', () => {
   let state = { relativeConcentration: 0.5 };
   for (let i = 0; i < 90; i++) state = round(state);
