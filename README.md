@@ -30,23 +30,7 @@
 
 ## 运行逻辑示意图
 
-```mermaid
-flowchart TD
-    Boot["DSH 启动 Gateway：读取脚本清单和存档"] --> Active{"身体是否启用？"}
-    Active -->|否| Paused["暂停推进；可查状态，新动作返回 409"]
-    Active -->|是| Tick["加载脚本与恢复状态；每轮固定 60 仿真秒"]
-    Input["body_act / POST /actions"] --> Queue["启用时，新动作落盘后返回 202 queued"]
-    Tick --> Batch["锁定到期动作，先保存 activeBatch"]
-    Queue --> Batch
-    Batch --> Run["BodyWorker：用同一份轮初快照计算，只暂存结果"]
-    Run --> Result{"Gateway 结算本轮"}
-    Result -->|成功| Commit["一次提交：快照、时钟、动作回执、待发通知"]
-    Result -->|超时或普通异常| Retry["丢弃暂存结果，保留原快照和批次"]
-    Retry -. 用原批次重试 .-> Run
-    Result -->|操作校验 fatal| Fatal["不推进，停止调度；查看 /health"]
-    Commit --> State["body_state / GET /state 读已提交快照"]
-    Commit --> Notify["通知泵投递到对应会话，成功后 ACK"]
-```
+![Gateway 运行逻辑：动作入队、批次锁定、轮初快照计算与整轮提交；普通错误沿用原批次重试，操作校验失败则停止调度。](docs/assets/gateway-runtime.png)
 
 ## 当前实现范围
 
