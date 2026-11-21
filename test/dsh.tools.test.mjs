@@ -19,10 +19,10 @@ function fakeExec({ sessionId = 'session-a', callId = 'call-1' } = {}) {
   };
 }
 
-async function startBody(t) {
+async function startBody(t, { parts = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-tools-'));
   const statePath = join(dir, 'body-state.json');
-  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
+  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts })));
   t.mock.method(console, 'log', () => {});
   t.mock.method(console, 'error', () => {});
   const gateway = startGateway({
@@ -138,6 +138,100 @@ test('body_state returns all parts or one part', async (t) => {
 
   const missing = await tools.body_state.execute({ part: 'spleen' }, fakeExec({ callId: 'call-4' }));
   assert.deepEqual(missing, { simulatedSeconds: 60, parts: { spleen: null } });
+});
+
+test('solid and liquid meals empty at different rates through the body tools', async (t) => {
+  const readings = {};
+  const meal = { type: 'eat', volumeMl: 300, energyKcal: 200 };
+
+  for (const mealKind of ['solid', 'liquid']) {
+    await t.test(`${mealKind} meal is recorded, then empties for 30 rounds`, async (child) => {
+      const body = await startBody(child);
+      const readStomach = (callId) => body.tools.body_state.execute({ part: 'stomach' }, fakeExec({ callId }));
+
+      const queued = await body.tools.body_act.execute(
+        { ...meal, mealKind },
+        fakeExec({ sessionId: `session-${mealKind}`, callId: `call-${mealKind}` }),
+      );
+      assert.equal(queued.ok, true);
+      assert.equal(queued.statusCode, 202);
+      assert.equal(queued.receipt.type, 'eat');
+      assert.equal(queued.receipt.status, 'queued');
+
+      const before = await readStomach(`read-${mealKind}-queued`);
+      assert.equal(before.simulatedSeconds, 0);
+      assert.equal(before.parts.stomach.volumeMl, 0);
+
+      await body.gateway.tick();
+      assert.equal(body.gateway.getReceipt(queued.receipt.id).status, 'applied');
+      const intake = await readStomach(`read-${mealKind}-intake`);
+      assert.equal(intake.simulatedSeconds, 60);
+      assert.equal(intake.parts.stomach.volumeMl, 300);
+      assert.equal(intake.parts.stomach.energyKcal, 200);
+
+      for (let round = 0; round < 30; round++) await body.gateway.tick();
+      const after = await readStomach(`read-${mealKind}-after`);
+      assert.equal(after.simulatedSeconds, 1860);
+      readings[mealKind] = after.parts.stomach;
+    });
+  }
+
+  assert.ok(
+    readings.solid.volumeMl > readings.liquid.volumeMl,
+    `solid volume ${readings.solid.volumeMl} should exceed liquid ${readings.liquid.volumeMl}`,
+  );
+  assert.ok(
+    readings.solid.energyKcal > readings.liquid.energyKcal,
+    `solid energy ${readings.solid.energyKcal} should exceed liquid ${readings.liquid.energyKcal}`,
+  );
+
+  const liquidRemaining = 2 ** (-30 / (13 + 53.75 * (200 / 300)));
+  assert.ok(
+    Math.abs(readings.liquid.volumeMl - 300 * liquidRemaining) < 1e-9,
+    `liquid volume ${readings.liquid.volumeMl} should follow the original formula`,
+  );
+  assert.ok(
+    Math.abs(readings.liquid.energyKcal - 200 * liquidRemaining) < 1e-9,
+    `liquid energy ${readings.liquid.energyKcal} should follow the original formula`,
+  );
+});
+
+test('a legacy checkpoint keeps its water and delivers a queued solid slice once', async (t) => {
+  const legacyStomach = {
+    volumeMl: 240,
+    energyKcal: 0,
+    emptiedMl: 0,
+    emptiedKcal: 0,
+    lastIntakeAt: null,
+    mealQueue: [{
+      remainingMl: 100,
+      remainingKcal: 50,
+      rateMlPerRound: 100,
+      rateKcalPerRound: 50,
+      remainingRounds: 1,
+      mealKind: 'solid',
+    }],
+  };
+  const { gateway, tools } = await startBody(t, { parts: { stomach: legacyStomach } });
+  const readStomach = (callId) => tools.body_state.execute({ part: 'stomach' }, fakeExec({ callId }));
+
+  const loaded = await readStomach('read-legacy-loaded');
+  assert.equal(loaded.parts.stomach.volumeMl, 240);
+  assert.equal(loaded.parts.stomach.energyKcal, 0);
+  assert.equal(loaded.parts.stomach.solidVolumeMl, 0);
+  assert.equal(loaded.parts.stomach.solidEnergyKcal, 0);
+  assert.equal(loaded.parts.stomach.mealQueue.length, 1);
+
+  await gateway.tick();
+  const after = await readStomach('read-legacy-after');
+  const waterRemainingMl = 240 * 2 ** (-1 / 13);
+  assert.ok(Math.abs(after.parts.stomach.volumeMl - (waterRemainingMl + 100)) < 1e-9);
+  assert.ok(Math.abs(after.parts.stomach.energyKcal - 50) < 1e-9);
+  assert.ok(Math.abs(after.parts.stomach.solidVolumeMl - 100) < 1e-9);
+  assert.ok(Math.abs(after.parts.stomach.solidEnergyKcal - 50) < 1e-9);
+  assert.ok(Math.abs(after.parts.stomach.emptiedMl - (240 - waterRemainingMl)) < 1e-9);
+  assert.equal(after.parts.stomach.emptiedKcal, 0);
+  assert.equal(after.parts.stomach.mealQueue.length, 0);
 });
 
 test('buildActionPayload overrides id and sessionId', () => {

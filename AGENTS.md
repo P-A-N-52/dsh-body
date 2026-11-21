@@ -4,7 +4,11 @@
 
 **工作原则：这是一个信任环境。文档优先，检查从简。** 不要为了防御不可能发生的输入增加大量校验，也不要把测试或检查当成主要交付物；把 `docs/`、`organs/**/README.md`、`systems/**/README.md` 和本文件写准确、写清楚，比堆检查更重要。代码改动跑一次 `npm test` 确认没有破坏现有行为即可；纯文档改动不必跑测试。
 
+**遇到问题，先停下来问用户。** 需求不明确、指令冲突、执行遇到意外或下一步需要用户决定时，停止推进，不自行猜测或擅自继续。完全自动权限模式下，不调用 `AskUserQuestion`；直接在聊天回复中说明遇到的问题和需要确认的事项，结束本轮，等用户回复后再继续。工具自动获批不代表用户已确认相关决定。
+
 **改动分流：纯 Markdown 文档可直接编辑；代码改动走 tower mission 或 swarm。** `AGENTS.md`、`docs/`、`organs/**/README.md`、`systems/**/README.md`、计划与笔记都算文档；`.js`、`.ts`、`test/`、配置和 `*.parameters.json` 算代码。代码改动优先建 tower mission，在 `.tower/worktrees/` 里由 worker 完成，再 review/merge；swarm 模式下用 `AgentSwarm` 按可独立验证的分片并行完成，主代理负责合并与验收。不要用单个通用 `Agent` 冒充 tower worker。tower mission 与 swarm 都不可用时，先说明并停在计划层。
+
+**资料搜集默认交给只读子代理。** 把文献、外部实现或跨模块资料拆成独立问题，交代要查的范围、原文出处和证据边界。子代理回报链接、原文定位、结论和哪些事还不能确定；主代理负责定题、归纳并复核影响设计的关键证据，不与子代理重复搜索。Tower 模式用只读 `survey` mission；非 Tower 模式按当前授权用 Swarm 或只读子代理。派工入口不可用时说明阻塞，不改由主代理继续大范围搜索，也不绕过当前模式。已知路径上的事实核对不必另派。
 
 ## 0. 一句话与当前阶段
 
@@ -14,11 +18,11 @@
 
 | 状态 | 内容 |
 | --- | --- |
-| 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；`lib/parameters.js` 的只读参数加载；身体启停与暂停恢复；P0 四个器官脚本（`organs/human-organs/stomach/` 的 `motility.ts`、`ghrelin.ts`、`gastric-sensory.ts`，`organs/human-organs/duodenum/` 的 `nutrient-exposure.ts`）；P1 输入契约（`drink` 可带 `energyKcal`）、体感读出 `brain/interoception.ts`、提醒策略 `brain/notify.ts`；DSH 工具 `body_act` / `body_state`（`tools.js`）与通知投递泵（`notifications.js`）；六个部位、六份同目录参数文件；器官 README、共享证据台账和重放场景；`test/` 下的测试；根清单 `body-modules.json` 已列出六条器官脚本，Gateway 启动即加载。 |
+| 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；`lib/parameters.js` 的只读参数加载；身体启停与暂停恢复；P0 四个器官脚本（`organs/human-organs/stomach/` 的 `motility.ts`、`ghrelin.ts`、`gastric-sensory.ts`，`organs/human-organs/duodenum/` 的 `nutrient-exposure.ts`）；固／液餐胃排空分支（只有 `eat` 的 `mealKind: "solid"` 进入固餐小计并按 `stomach.emptying.solidHalfTimeMin` 单独排空；`drink` / `liquid` / `mixed` 与旧存档中已经入胃的存量走原算法，旧档 `mealQueue` 里尚未释放的切片仍按各自 `mealKind` 入账；代码与定向测试层面，不代替 M1 实机验收）；P1 输入契约（`drink` 可带 `energyKcal`）、体感读出 `brain/interoception.ts`、提醒策略 `brain/notify.ts`；DSH 工具 `body_act` / `body_state`（`tools.js`）与通知投递泵（`notifications.js`）；六个部位、六份同目录参数文件；器官 README、共享证据台账和重放场景；`test/` 下的测试；根清单 `body-modules.json` 已列出六条器官脚本，Gateway 启动即加载。 |
 | 未实现 | 其余器官的生理脚本（食管、小肠吸收、血糖、胰岛素、心、肺、肾、膀胱等）；通知历史文件、按会话绑定与多身体路由；浏览器数据页；器官间转移、病况。 |
 | M1 进行中 | 器官级 P0 + P1：胃（动力、饥饿素、机械感受）、十二指肠（营养暴露）、体感读出（`interoception`）与体感提醒（`brainNotify`）；输入契约、参数、README、证据、重放、会话工具和通知投递已就位；旧的组件/动作/读数 JSON 契约层已删除；其余 `systems/*/` 只保留 legacy 证据。 |
 
-当前 P0/P1 的部位与信号以 `organs/human-organs/<organ>/README.md` 的表格为准，参数在 `organs/human-organs/**/*.parameters.json`，模块导出见 `organs/human-organs/**/*.ts`；设计是 `docs/superpowers/specs/2026-11-20-organ-model-design.md`，P0 实施计划是 `docs/superpowers/plans/2026-11-20-organ-model-p0.md`，P1 实施计划是 `docs/superpowers/plans/2026-11-21-p1-input-interoception.md`。旧的 M1 计划已标废弃。具体文件以目录和 `git status` 为准。
+当前 P0/P1 的部位与信号以 `organs/human-organs/<organ>/README.md` 的表格为准，参数在 `organs/human-organs/**/*.parameters.json`，模块导出见 `organs/human-organs/**/*.ts`；设计是 `docs/superpowers/specs/2026-11-20-organ-model-design.md`，P0 实施计划是 `docs/superpowers/plans/2026-11-20-organ-model-p0.md`，P1 实施计划是 `docs/superpowers/plans/2026-11-21-p1-input-interoception.md`，固／液餐胃排空小改的设计是 `docs/superpowers/specs/2026-11-21-solid-meal-emptying-design.md`。旧的 M1 计划已标废弃。具体文件以目录和 `git status` 为准。
 
 判断“现在到底有什么”的顺序：**代码（必要时对照测试）> `docs/gateway-and-scripts.md` > `docs/virtual-body.md` 的已实现部分 > 计划文档**。计划里的勾选框只代表计划进度，不等于产品功能。
 
@@ -42,6 +46,9 @@
 | 12 | 把已看过结果的数据称为“独立验证/盲测” | 当前台账来源都是 `results_seen`；只能标 `development` / `exploratory`，没有盲法留出。 |
 | 13 | 把 Pulse 的 50 Hz 共享 `Data` 架构照搬过来 | 本项目是 60 秒一轮、单写者、整轮提交；Pulse 只借方程/参数/结构，参数必须重新标定。 |
 | 14 | 把“检查/测试覆盖”当成主要目标，为不可能发生的输入堆防御代码 | 这是信任环境，主要交付是把文档和代码旁说明写准确；代码改动跑一次 `npm test` 即可，不为纯文档改动补测试，也不新增过度校验。 |
+| 15 | 把 `solidVolumeMl` / `solidEnergyKcal` 当作总量之外另加的一份胃内容物，或把 Vasavid 的标记固相半排空时间中位数当成胃总内容量 mL/kcal、已验证参数 | 两个小计是 `volumeMl` / `energyKcal` 总量内的固餐部分，读总量时不能再加一遍；68.7 min 是标记固相半排空时间的中位数（标记保留曲线拟合，`reported`），用在体积和能量账本上是 `design`，不能换算成 mL 或 kcal，也不是独立验证。 |
+| 16 | 把旧存档的所有内容都按原算法，包括 `mealQueue` 里尚未入胃的切片 | 缺小计按 0 补齐只针对已经入胃的 `volumeMl` / `energyKcal`；`mealQueue` 切片保留原 `mealKind`，释放时 `solid` 进固餐小计，其余进非固餐组。 |
+| 17 | 把 `emptiedMl` 当十二指肠或体感的直接输入，或说分组后 `interoception` 数值不变 | `emptiedMl` 只作观察与重放读数；十二指肠读 `emptiedKcal` 并滤波成 `nutrientExposure`；`interoception` 经胃充盈、饥饿素与十二指肠营养暴露间接取得信号，数值会随固／液分组后的总量与排出量变化。 |
 
 ## 2. 文档性质与事实来源
 
@@ -85,6 +92,8 @@
 | `initialize(snapshot, context)` | 仅启动脚本；同步；返回按部位 ID 分组的字段补丁，不是整部位对象。 |
 
 一个器官目录可以放多个脚本（例如 `stomach/` 有 `motility.ts`、`ghrelin.ts`、`gastric-sensory.ts`）；目录只是分组，不参与 Gateway 寻址。部位 id 由脚本导出，不要求等于目录名，例如 `ghrelin.ts` 导出 `stomachGhrelin`、`gastric-sensory.ts` 导出 `stomachSensory`。器官 README 的脚本表列出目录内每个脚本的部位 id。
+
+**目录归器官，脚本按功能拆，系统是标签。** 同一器官的功能或反应分属不同系统时，若各有独立的状态、调节或信号消费者，可拆成独立脚本。例如下丘脑可把调节 ADH 的神经内分泌脚本与产生口渴驱动的神经脚本分开（设计示例，尚未实现）；两者可读同一个体液信号，但各自只写负责的量。新增脚本时在器官 README 写清功能标签、读入与产出；不恢复 `systems/` 运行目录，也不按标签复制同一份状态或计算。
 
 `io` 的关键语义：
 
@@ -152,6 +161,8 @@
 - 计划里的 `- [x]` 只在有代码、测试或实际验收证据时勾选；未交付就保持 `- [ ]`。不要为了让计划“看起来完整”而勾选。
 - **文档是主要交付物。** 接口、状态、量纲、证据边界写清楚，比补大量检查更有价值；不要为了“更安全”引入复杂的 schema、权限或风控层。
 - 改了本文提到的路径、命令、契约或状态字段，同步更新 `AGENTS.md` 和相关文档；扫一遍旧文案是否还成立。
+- **代理代仓库所有者提交和推送时，使用 `P-A-N-52`。** GitHub 推送账号、Git 作者和提交者都用此用户名；署名邮箱用 `233015466+P-A-N-52@users.noreply.github.com`。不要使用真实姓名、私人邮箱或 Git 自动推断的本机身份。
+- **提交前核对署名。** 用 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT` 检查实际生效的身份；需要调整时只改本仓库的 `git config --local`，不要改全局配置。公开仓库或推送已有提交前，还要检查将发布的提交本身的署名。未经用户明确授权，不改写已发布的历史或强制推送。
 
 ## 9. 开工前清单
 

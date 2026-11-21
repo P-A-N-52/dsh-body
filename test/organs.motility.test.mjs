@@ -92,3 +92,87 @@ test('intake mass is conserved over 200 rounds', () => {
   }
   assert.ok(Math.abs(emptied + state.volumeMl - 300) < 0.01);
 });
+
+test('a solid meal starts its subtotal with the first slice and empties nothing', () => {
+  const next = round({ ...initialState }, [
+    { type: 'eat', volumeMl: 300, energyKcal: 200, mealKind: 'solid', durationMin: 3 },
+  ]);
+  assert.equal(next.solidVolumeMl, 100);
+  assert.equal(next.solidEnergyKcal, 200 / 3);
+  assert.equal(next.volumeMl, 100);
+  assert.equal(next.energyKcal, 200 / 3);
+  assert.equal(next.emptiedMl, 0);
+  assert.equal(next.emptiedKcal, 0);
+  assert.equal(next.mealQueue.length, 1);
+  assert.equal(next.mealQueue[0].mealKind, 'solid');
+});
+
+test('interleaved solid, water and mixed conserve both groups every round', () => {
+  const solidRetained = 2 ** (-1 / 68.7);
+  const nonSolidHalfTime = (volumeMl, energyKcal) =>
+    13 + 53.75 * (volumeMl > 0 ? energyKcal / volumeMl : 0);
+  let emptiedMl = 0;
+  let emptiedKcal = 0;
+  let intakeMl = 0;
+  let intakeKcal = 0;
+
+  function settle(next, roundIntakeMl, roundIntakeKcal) {
+    emptiedMl += next.emptiedMl;
+    emptiedKcal += next.emptiedKcal;
+    intakeMl += roundIntakeMl;
+    intakeKcal += roundIntakeKcal;
+    const pendingMl = next.mealQueue.reduce((sum, meal) => sum + meal.remainingMl, 0);
+    const pendingKcal = next.mealQueue.reduce((sum, meal) => sum + meal.remainingKcal, 0);
+    assert.ok(Math.abs(emptiedMl + next.volumeMl + pendingMl - intakeMl) < 1e-6);
+    assert.ok(Math.abs(emptiedKcal + next.energyKcal + pendingKcal - intakeKcal) < 1e-6);
+    return next;
+  }
+
+  let state = settle(round({ ...initialState }, [
+    { type: 'eat', volumeMl: 300, energyKcal: 200, mealKind: 'solid', durationMin: 3 },
+  ]), 300, 200);
+
+  const firstRoundMl = state.volumeMl;
+  const firstRoundKcal = state.energyKcal;
+  state = settle(round(state, [
+    { type: 'drink', volumeMl: 240, energyKcal: 0 },
+    { type: 'eat', volumeMl: 200, energyKcal: 100, mealKind: 'mixed', durationMin: 1 },
+  ]), 440, 100);
+  assert.ok(Math.abs(state.solidVolumeMl - 100 * (solidRetained + 1)) < 1e-9);
+  assert.ok(Math.abs(state.solidEnergyKcal - (200 / 3) * (solidRetained + 1)) < 1e-9);
+  assert.ok(Math.abs(state.volumeMl + state.emptiedMl - (firstRoundMl + 100 + 240 + 200)) < 1e-6);
+  assert.ok(Math.abs(state.energyKcal + state.emptiedKcal - (firstRoundKcal + 200 / 3 + 100)) < 1e-6);
+
+  const thirdRoundStart = state;
+  state = settle(round(state), 0, 0);
+  assert.ok(Math.abs(state.solidVolumeMl - (thirdRoundStart.solidVolumeMl * solidRetained + 100)) < 1e-9);
+  assert.ok(Math.abs(state.solidEnergyKcal - (thirdRoundStart.solidEnergyKcal * solidRetained + 200 / 3)) < 1e-9);
+  assert.equal(state.mealQueue.length, 0);
+
+  const fourthRoundStart = state;
+  const nonSolidVolumeMl = fourthRoundStart.volumeMl - fourthRoundStart.solidVolumeMl;
+  const nonSolidEnergyKcal = fourthRoundStart.energyKcal - fourthRoundStart.solidEnergyKcal;
+  const nonSolidDensity = nonSolidEnergyKcal / nonSolidVolumeMl;
+  const nonSolidEmptiedMl = nonSolidVolumeMl * (1 - 2 ** (-1 / nonSolidHalfTime(nonSolidVolumeMl, nonSolidEnergyKcal)));
+  state = settle(round(state), 0, 0);
+  assert.equal(state.mealQueue.length, 0);
+  assert.ok(Math.abs(state.solidVolumeMl - fourthRoundStart.solidVolumeMl * solidRetained) < 1e-9);
+  assert.ok(Math.abs(state.solidEnergyKcal - fourthRoundStart.solidEnergyKcal * solidRetained) < 1e-9);
+  assert.ok(Math.abs(state.emptiedMl - (fourthRoundStart.solidVolumeMl * (1 - solidRetained) + nonSolidEmptiedMl)) < 1e-9);
+  assert.ok(Math.abs(state.emptiedKcal - (fourthRoundStart.solidEnergyKcal * (1 - solidRetained) + nonSolidEmptiedMl * nonSolidDensity)) < 1e-9);
+});
+
+test('an old state without solid subtotals follows the original liquid curve', () => {
+  const old = {
+    volumeMl: 240,
+    energyKcal: 0,
+    emptiedMl: 0,
+    emptiedKcal: 0,
+    lastIntakeAt: null,
+    mealQueue: [],
+  };
+  const next = round(old);
+  assert.ok(Math.abs(next.volumeMl - 240 * 2 ** (-1 / 13)) < 1e-9);
+  assert.equal(next.solidVolumeMl, 0);
+  assert.equal(next.solidEnergyKcal, 0);
+});
