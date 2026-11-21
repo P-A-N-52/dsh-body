@@ -34,7 +34,7 @@
 
 ### 器官目录与共享身体状态
 
-每个器官的 `README.md` 记录要模拟的脚本、字段、调节方式、待查问题和证据入口。论文原文、逐篇摘记和从图表提取的数据放在该器官的 `references/` 下，P0/P1 的笔记在 `organs/human-organs/stomach/references/notes/`；共享登记簿和字段字典在 `organs/human-organs/references/`。脚本例如 `organs/human-organs/stomach/motility.ts`、`organs/human-organs/stomach/ghrelin.ts` 和 `organs/human-organs/brain/interoception.ts`，由根目录的 `body-modules.json` 逐条挂载；根清单现在挂载五条器官脚本（P0 四条 + `brain/interoception.ts`）。
+每个器官的 `README.md` 记录要模拟的脚本、字段、调节方式、待查问题和证据入口。论文原文、逐篇摘记和从图表提取的数据放在该器官的 `references/` 下，P0/P1 的笔记在 `organs/human-organs/stomach/references/notes/`；共享登记簿和字段字典在 `organs/human-organs/references/`。脚本例如 `organs/human-organs/stomach/motility.ts`、`organs/human-organs/stomach/ghrelin.ts`、`organs/human-organs/brain/interoception.ts` 和 `organs/human-organs/brain/notify.ts`，由根目录的 `body-modules.json` 逐条挂载；根清单现在挂载六条器官脚本（P0 四条 + `brain/interoception.ts` + `brain/notify.ts`）。
 
 运行时的公共池就是同一分钟的身体快照。`snapshot.simulatedSeconds` 给出仿真时刻，`snapshot.parts` 按模块 ID 保存当前值。每个量由一个模块写入，其他模块按需读取。例如胃内容量由 `stomach` 的 `motility.ts` 维护，饥饿素相对浓度由 `stomachGhrelin` 的 `ghrelin.ts` 维护，`brain/interoception.ts` 读取胃充盈、饥饿素与十二指肠营养暴露后写 `interoception.hunger` / `fullness`。Gateway 将所有部位一起写入一份 `body-state.json`，重启时也从同一分钟恢复。
 
@@ -143,7 +143,7 @@ M6 接入基础病对身体参数的持续修正。M7 接入当前病况的触�
 
 进食、饮水和主动如厕由 DSH 会话里的模型发起。胃排空、膀胱充盈和尿意由身体脚本随心跳推进。Gateway 在线且身体启用时，即使会话空闲也继续计时；暂停身体或 DSH 退出（含崩溃）时心跳停止，心跳停止期间新增的主动动作为零。
 
-当前插件已接入 Gateway 的启动与关闭，默认清单现在挂载五条器官脚本（P0 四脚本 + `brain/interoception.ts`）。启用时，自定义空清单下新动作仍会因为没有模块声明对应类型而返回 `422`；停用时新动作返回 `409`，见「启用、暂停与恢复」。这是有意的 fail-fast，已声明类型按 `actionTypes` 放行；未声明类型仍返回 `422`。体感读出已接入；会话工具、食物估算和通知投递仍是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
+当前插件已接入 Gateway 的启动与关闭，默认清单现在挂载六条器官脚本（P0 四脚本 + `brain/interoception.ts` + `brain/notify.ts`）。启用时，自定义空清单下新动作仍会因为没有模块声明对应类型而返回 `422`；停用时新动作返回 `409`，见「启用、暂停与恢复」。这是有意的 fail-fast，已声明类型按 `actionTypes` 放行；未声明类型仍返回 `422`。体感读出、`body_act` / `body_state` 与通知投递已接入；食物估算仍是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
 
 ### 加载插件
 
@@ -163,11 +163,11 @@ DSH 加载插件时启动 Gateway，退出或卸载插件时关闭监听、定�
 - `GET /actions/:id` 返回动作记录和状态；`GET /capabilities` 按动作类型列出处理它的模块 ID，例如当前根清单启用后 `{ "drink": ["stomach", "stomachGhrelin"], "eat": ["stomach", "stomachGhrelin"] }`（暂停时为空对象）；`GET /health` 返回本次启动实际采用的 `active`、仿真时钟、在途批次、连续失败次数和队列计数。
 - `GET /notifications` 返回待确认通知；`POST /notifications/ack` 提交 `{ "id": "…" }`，返回 `{ id, acked }`，未知 id 也返回 200 和 `acked: false`。
 
-HTTP 边界：请求体上限 64 KiB；非 JSON 的 POST 返回 `415`；`Host` 必须是 `127.0.0.1:<port>` 或 `localhost:<port>`，非 GET 的 `Origin` 只允许同源，否则返回 `403`；错误方法返回 `405`。存档默认上限 2 MiB，入队前会预留元数据空间，超过预算返回 `413`，不会把队列写坏；可用 `maxCheckpointBytes` 调整。当前不引入 token；同进程的 `body_act` 应直接调用 Gateway 句柄，HTTP 只服务本地调试和未来的浏览器页。
+HTTP 边界：请求体上限 64 KiB；非 JSON 的 POST 返回 `415`；`Host` 必须是 `127.0.0.1:<port>` 或 `localhost:<port>`，非 GET 的 `Origin` 只允许同源，否则返回 `403`；错误方法返回 `405`。存档默认上限 2 MiB，入队前会预留元数据空间，超过预算返回 `413`，不会把队列写坏；可用 `maxCheckpointBytes` 调整。当前不引入 token；同进程的 `body_act` 直接调用 Gateway 句柄，HTTP 只服务本地调试和未来的浏览器页。
 
 ### 脚本清单与启动
 
-Gateway 启动时读取 `body-modules.json`，以清单所在目录为基准解析相对路径。下面是示意条目，只示意 `inject` 的写法：示例里的胃脚本声明读取轮初的饥饿素相对浓度；P0/P1 的 `motility.ts` 既不声明 `inject`，也不读 `stomachGhrelin`。P1 的 `brain/interoception.ts` 已实现体感读出；通知投递与会话工具尚未实现。
+Gateway 启动时读取 `body-modules.json`，以清单所在目录为基准解析相对路径。下面是示意条目，只示意 `inject` 的写法：示例里的胃脚本声明读取轮初的饥饿素相对浓度；P0/P1 的 `motility.ts` 既不声明 `inject`，也不读 `stomachGhrelin`。P1 的 `brain/interoception.ts` 与 `brain/notify.ts` 直接读轮初部位，不使用 `inject`。
 
 ```json
 {
@@ -254,7 +254,7 @@ BodyWorker 只持有计算输入和暂存结果。脚本报错、超时或 Worke
 | `io.read(partId?)` | 读取指定部位在轮初的状态。省略 `partId` 时返回整份快照。 |
 | `io.write(nextPart)` | 暂存当前模块负责的部位的完整下一状态。 |
 | `io.functions[alias]()` | 读取脚本在 `inject` 中为该名称声明的轮初状态。部位或字段缺失时返回 `undefined`。 |
-| `io.notify({ mode, sessionId, text })` | 当前向所有心跳脚本提供，暂存发往指定会话的通知。M1 设计将体感通报入口集中到神经系统的轮末脚本。 |
+| `io.notify({ mode, sessionId, text })` | 向所有心跳脚本提供，暂存发往指定会话的通知；在线轮次提交后由 `notifications.js` 投递，启动补算产生的通知直接丢弃。P1 的提醒入口在 `brain/notify.ts`。 |
 | `io.actions` | 本轮开始时确定的只读动作批次，动作在轮末生效。 |
 | `io.dt`、`io.simulatedSeconds`、`io.wallTimeMs` | 固定步长 60 仿真秒、本轮结束的仿真时间、预定轮末的现实时间戳（毫秒）。 |
 
@@ -270,7 +270,7 @@ Gateway 在线且身体启用时每 60 个现实秒调度一轮，每轮成功�
 
 ### 模型如何提交动作和估算食物
 
-讨论过让在线模型把要做的事写进固定目录。首版优先用 DSH 工具 `body_act`，让模型直接提交决定执行的动作并取得回执。模型只需把动作描述清楚，例如“我吃了半块奶油蛋糕”。已知的输入可以直接入账，例如饮水模块接入后的“喝了 200 mL 白水”。
+在线模型通过 DSH 工具 `body_act` 提交动作并取得回执；工具把动作原文对应的结构化字段和当前会话 ID 一起入队。模型只需把动作描述清楚，例如“我吃了半块奶油蛋糕”。已知的输入可以直接入账，例如“喝了 200 mL 白水”；动作在后续轮次生效，202 只表示入队。
 
 食物份量需要估算时，在动作入账前用同一个模型发一次独立请求。可参照 DSH 的会话标题插件 `dsh-session-title-llm`，用 `ctx.llm.prepareCall()` 准备调用，单独提供估算用的 `system` 和 `messages`。DSH 的 fork 子代理会继承父会话的角色预设和已完成的对话。独立请求只带动作原文，以及辨认食物、食用者和实际份量所需的上文，让估算模型从旁观者角度判断。
 
@@ -286,54 +286,39 @@ Gateway 将动作原文和采用的数值随动作 ID 一起保存，工具重�
 
 ### 动作、查询与存档
 
-- **动作入账。** `POST /actions` 将动作排进下一轮并返回回执。一轮开始后收到的动作在后一轮生效。接入 DSH 后，由 `body_act` 用来源会话与工具调用的 `callId` 组成动作标识。同一标识、同一载荷重试时返回原回执；同一标识、不同载荷返回 `409`。没有模块声明该类型时返回 `422`，且不创建回执。 [DSH 工具执行信息](https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/tools) · [LifeBody 动作接口](https://github.com/ShuangziG/maibot-body-emulator/blob/v1.2.4/docs/%E5%8F%AA%E8%AF%BB%E7%8A%B6%E6%80%81API.md)
-- **状态查询。** `body_state`、`GET /state` 和浏览器读取最近一次提交的内存快照；`GET /actions/:id` 查询单条动作，`GET /capabilities` 查询可处理的类型，`GET /health` 查询时钟和心跳健康。一轮执行期间，查询继续返回上一次提交的状态和仿真时间。
+- **动作入账。** `POST /actions` 将动作排进下一轮并返回回执。一轮开始后收到的动作在后一轮生效。DSH 里的 `body_act` 用来源会话与工具调用的 `callId` 组成动作标识，并把 `sessionId` 随动作载荷入队。同一标识、同一载荷重试时返回原回执；同一标识、不同载荷返回 `409`。没有模块声明该类型时返回 `422`，且不创建回执。 [DSH 工具执行信息](https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/tools) · [LifeBody 动作接口](https://github.com/ShuangziG/maibot-body-emulator/blob/v1.2.4/docs/%E5%8F%AA%E8%AF%BB%E7%8A%B6%E6%80%81API.md)
+- **状态查询。** `body_state`、`GET /state` 和浏览器读取最近一次提交的内存快照；`body_state` 可按部位过滤，`GET /actions/:id` 查询单条动作，`GET /capabilities` 查询可处理的类型，`GET /health` 查询时钟和心跳健康。一轮执行期间，查询继续返回上一次提交的状态和仿真时间。
 - **动作记录与存档恢复。** 存档 v2 保存 `schemaVersion`、`active`、`snapshot`、`pendingActionIds`、`actions` 和 `activeBatch`。每条动作记录包含原始载荷、载荷指纹、状态（`queued` / `applied` / `failed`）、预定和实际生效时刻、批次、尝试次数及最后一次错误。`applied` 表示所在批次成功提交，不表示模块一定改变了状态；领域效果以模块自己的 part 记录为准。`queued` 和在途动作永不裁剪，`applied` / `failed` 按条数或时间窗口保留。每轮成功后把新快照、动作状态和批次记录一起写到临时文件，再替换存档。普通停机重启后按停机时长恢复身体，随后恢复定时推进。 [LifeBody 仿真与存档配置](https://github.com/ShuangziG/maibot-body-emulator/blob/v1.2.4/docs/%E9%85%8D%E7%BD%AE%E6%8C%87%E5%8D%97.md)
 
 后续若加入日程联动，调度模块可向 DSH 提供日程事件，由模型决定是否发出相应动作。
 
 ### 神经系统的体感与通报
 
-**只有神经系统向会话通报身体感受。** 各器官负责更新生理状态，感觉器提供局部感觉信号。神经只作为功能标签保留；P1 的“感受与上报”已在 `brain/interoception.ts` 实现体感读出，但通知投递、会话选择与提醒历史尚未实现，见设计文档 §11。它负责整合感受、选择目标会话，并决定何时值得通报。
+**只有神经系统向会话通报身体感受。** 各器官负责更新生理状态，感觉器提供局部感觉信号。神经只作为功能标签保留；P1 已在 `brain/interoception.ts` 实现体感读出、在 `brain/notify.ts` 实现提醒策略，`index.js` 的 `notifications.js` 负责投递。当前提醒发给“最近一次带 `sessionId` 的动作所属会话”；完整的多会话路由与按会话绑定身体仍未实现。
 
-体感设计在一次心跳内按以下顺序处理，以便进食后能读到新的感受。
+体感与提醒在一次心跳内按以下顺序处理：
 
 1. 胃和饥饿素等生理脚本读取轮初快照。胃先计算过去一分钟的排空，再把轮末吃下的半块蛋糕计入胃内容量。
-2. Gateway 汇总各部位结果，形成尚待提交的轮末快照。体感脚本用感觉器的规则从新的胃内容量算出充盈信号，再结合本轮饥饿素作用，更新全身共享的饥饿感。
-3. Gateway 将身体状态、体感和本轮要发送的通知一次提交。任一阶段失败就按原批次重算。提交成功后，通知才交给 DSH 适配器投递。
+2. Gateway 汇总各部位结果，形成尚待提交的轮末快照。`brain/interoception.ts` 用轮初的胃充盈、相对饥饿素与十二指肠营养暴露更新 `hunger` / `fullness`。
+3. `brain/notify.ts` 读上一轮的 `interoception` 和本轮动作里的 `sessionId`，按显著性、滞回、冷却和配额决定是否 `io.notify`。Gateway 将身体状态、体感和本轮通知一次提交；任一阶段失败就按原批次重算。
+4. `notifications.js` 每 1000 ms 轮询待确认通知：`context` 用 `agent.inject`，`wake` 用 `agent.followup`；投递成功后 ACK。
 
-**感受每轮更新，通报间隔由体感脚本决定。** 例如饥饿从轻微升到明显时可以立即提醒，持续在同一档时参考该会话最近的通报决定何时再提醒。相同体感已有同等级通知待送达时，可以合并重复提醒。会话 A、B 读到相同的身体状态，各自保留自己的通报历史。停机补算抑制途中通知，恢复完成后，体感脚本根据启动脚本处理过的最终状态决定本次通报。
+**提醒不是每轮播报。** `brainNotify` 只在饥饿或饱满达到“明显”或“强”档位时提醒；同一档不重复，降回 `resetBelow`（40 mm）以下后才允许下一次上升提醒；同一会话至少间隔 45 仿真分钟，每小时最多 2 次、每天最多 6 次。明显档位用 `context`（不唤醒），强档位用 `wake`（唤醒）。阈值、冷却和次数都是 `policy`，不是人体测量。会话 A/B 的计数分开；当前只有最近一次动作的会话收到提醒。
 
-#### 投递与最近通报文件
+#### 投递与确认
 
-Gateway 的 `GET /notifications` 返回待确认队列，目前最多保留 200 条。每条含 `id`、`mode`、`sessionId`、`text` 和创建时刻。M1 计划在通知上标明来源脚本、体感类型和等级，供适配器把收件结果交回原脚本。DSH 适配器拟使用 `UserMessage` 投递。
+Gateway 的 `GET /notifications` 返回待确认队列，目前最多保留 200 条。每条含 `id`、`mode`、`sessionId`、`text` 和创建时刻。当前通知没有来源脚本、体感类型或等级字段；这些信息在 `brainNotify.sessions` 里。
 
 - `context` 使用 `agent.inject` 将内容放入上下文，供后续模型调用读取，空闲会话继续等待。
 - `wake` 使用 `agent.followup` 为目标会话安排一轮模型调用，空闲会话会被唤醒。 [DSH Agent 接口](https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/core#the-agent-handle)
 
-每个挂载的体感脚本自行管理一份最近通报文件。拟以身体存档所在目录为根，保存在 `notifications/<脚本ID>.json`，默认是 `$DSH_HOME/dsh-body/notifications/<脚本ID>.json`。文件按会话和体感类型各留最近几条，条数由脚本决定。下面是一条已送达记录的格式示例。
-
-```json
-[
-  {
-    "id": "n-42",
-    "sessionId": "A",
-    "kind": "hunger",
-    "level": "明显",
-    "text": "我有些饿了。",
-    "createdAtSimulatedSeconds": 3600,
-    "deliveredAtWallTimeMs": 1795000000000
-  }
-]
-```
-
-适配器拟用 `agent/inbox/inserted` 确认会话已收件。收到确认后，来源脚本按通知 ID 更新独立文件，同一 ID 只记一次。写入完成后适配器再向 `POST /notifications/ack` 提交该 ID，将通知移出待确认队列。这样失败重算的心跳不会留下已送达记录。`claimed` 和 `discarded` 可另外记录会话后续的消费结果。
+投递泵对每个通知构造 `source.kind = "body-notify"` 的 user-role 消息，避免冒充真人输入。会话不在线时通知保留在 Gateway 队列；投递成功后 ACK；ACK 失败时下次只重试 ACK，不重复投递。通知历史文件与 `agent/inbox/inserted` 确认尚未实现：当前 ACK 表示“已交给会话收件箱”，不表示模型已读或已经消费。
 
 ### 会话里的身体
 
-- 接入会话工具时，通过 `ctx.tools.register` 注册 `body_act` 和 `body_state`，共用当前 DSH 进程里的 Gateway。`agent/created` 为新建或恢复的会话挂载身体提示和感知规则。 [DSH 工具注册](https://deepseek-harness.github.io/deepseek-harness/en/reference/cookbook/extension-cookbook) · [DSH 生命周期](https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/core)
-- `body_act` 把结构化的动作交给 Gateway。`body_state` 返回最近一轮的体感，可按消化、困意或具体部位查询。主模型决定何时调用动作工具，复杂的动作安排可交给使用同一套工具的专用子代理。
-- 神经系统的体感脚本为会话筛选开场感受和后续提醒。SFW / NSFW 会话选择控制启用的动作和能呈现的描述，共用预设决定身体内部的器官与激素。
+- `index.js` 通过 `ctx.tools.register` 注册 `body_act` 和 `body_state`，共用当前 DSH 进程里的 Gateway；工具随插件卸载自动注销。 [DSH 工具注册](https://deepseek-harness.github.io/deepseek-harness/en/reference/cookbook/extension-cookbook) · [DSH 生命周期](https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/core)
+- `body_act` 把结构化动作连同 `sessionId` 交给 Gateway；动作 id 由会话 ID 与工具 `callId` 稳定生成，重试复用同一回执。`body_state` 返回最近一轮的 `simulatedSeconds` 和 `parts`，可按部位过滤。202 queued 只表示入队，不表示已生效。
+- `brain/notify.ts` 为会话筛选提醒：明显档位用 `context`，强档位用 `wake`，同一会话有冷却与每小时/每天次数上限。SFW / NSFW 会话选择、按会话绑定不同身体与通知历史尚未实现。
 
 ### 浏览器数据页
 
@@ -350,7 +335,7 @@ Gateway 的 `GET /notifications` 返回待确认队列，目前最多保留 200 
 
 每个里程碑在实际 DSH 实例里验收，通过后再接下一项。
 
-P1（当前实现）覆盖“吃/喝 → 胃排空 → 十二指肠营养暴露 → 体感读出”的器官链；体感已有 `interoception.hunger` / `fullness` 两个代理读数，但会话工具、通知投递与提醒历史仍未实现。下表的 M1 实机验收、M2–M7 仍是设计目标。
+P1（当前实现）覆盖“吃/喝 → 胃排空 → 十二指肠营养暴露 → 体感读出 → 会话提醒”的链：`interoception.hunger` / `fullness` 是代理读数，`brainNotify` 做显著性/滞回/冷却/配额，`body_act` / `body_state` 与通知投递已接入。通知历史文件、按会话绑定不同身体、真实 DSH 会话的端到端验收仍待完成；下表的 M1 实机验收、M2–M7 仍是设计目标。
 
 ### 首期优先完成（M1–M4）
 
@@ -378,11 +363,12 @@ M1–M4 全部通过实机验收后，首期交付完成。首期用会话工具
 | `stomach`（胃动力） | 胃内容量 | 保存胃内容量（mL）。排空速率以 mL／仿真秒计算。 |
 | `stomachGhrelin`（胃内分泌） | 饥饿素 | 每轮记录现有相对浓度；P0 做含能量摄入抑制与表观半时恢复，P1 起含能 `drink` 也会抑制。 |
 | `stomachSensory`（胃壁机械感受） | 胃充盈信号 | 根据胃内容量估算归一化机械感受代理；P1 由 `interoception` 读取。 |
-| `interoception`（体感读出） | 饥饿 / 饱满 | 每轮读取胃充盈、相对饥饿素与十二指肠营养暴露，按线性 `design` 模型写 0–100 mm VAS 代理；P1 已实现读出，通知与会话工具未实现。 |
+| `interoception`（体感读出） | 饥饿 / 饱满 | 每轮读取胃充盈、相对饥饿素与十二指肠营养暴露，按线性 `design` 模型写 0–100 mm VAS 代理；P1 已实现。 |
+| `brainNotify`（体感提醒） | 提醒策略 | 只在明显/强档位提醒；同档不重复、45 min 冷却、每会话每小时 2 次/每天 6 次；明显 `context`、强 `wake`。阈值与次数是 `policy`，不是人体测量。 |
 
 M1 的 Gateway 动作记录保存动作标识、类型、原始载荷、载荷指纹、状态、预定/实际生效时刻、批次、尝试次数和错误；`stomach` 在自己的 part 里保存 `mealQueue` 与 `lastIntakeAt`，作为餐食领域记录。两者分工明确：Gateway 负责幂等、调度和审计，模块负责生理语义。
 
-实机验收还要对齐进食生效的轮次与 `body_state` 返回的体感。当前 `interoception` 只写 Gateway 部位，`body_state`、通知投递与会话提醒尚未实现；等这些适配器接入后，再验证会话实际收到体感通知、历史文件中的原文与 ID，以及重启后的收件确认与去重。
+实机验收还要对齐进食生效的轮次与 `body_state` 返回的体感。`body_act`、`body_state` 与通知投递已在离线测试中覆盖；真实 DSH 会话里还要验证通知确实进入对应会话、`context` 不唤醒而 `wake` 唤醒、离线会话恢复后收到保留的通知，以及重启后的 ACK 与去重。通知历史文件和模型已读确认仍未实现。
 
 ### Gateway 待验证的设计想法
 

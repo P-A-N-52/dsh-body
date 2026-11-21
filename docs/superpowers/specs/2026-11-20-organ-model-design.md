@@ -141,7 +141,10 @@ lib/
 | --- | --- |
 | `drink` 可带 `energyKcal`；`stomachGhrelin` 消费含能 `drink` | 已实现 |
 | `organs/human-organs/brain/interoception.ts`（部位 `interoception`，写 `hunger` / `fullness`） | 已实现 |
-| 通知投递、会话绑定、`body_act` / `body_state` | 未实现 |
+| `organs/human-organs/brain/notify.ts`（部位 `brainNotify`，显著性/滞回/冷却/配额） | 已实现 |
+| `body_act` / `body_state` 会话工具 | 已实现 |
+| 通知投递到对应会话（`context` / `wake`） | 已实现 |
+| 完整多会话路由、通知历史文件、模型已读确认 | 未实现 |
 | `esophagus`、小肠吸收、血糖、胰岛素、心、肺、肾、膀胱等 | 计划 |
 
 **P2（只登记，不实现）**
@@ -192,6 +195,6 @@ lib/
 ## 11. 留给实施计划的开放项
 
 - 十二指肠的一阶滤波仍未改成“肠内容量 + 吸收”；P1 先保持一阶滤波，吸收链顺延。
-- `brain`/感受与上报：P1 用 `brain/` 一个目录、`interoception.ts` 一个脚本，部位 id 为 `interoception`；通知、提醒历史和会话选择仍开放。
+- `brain`/感受与上报：P1 用 `brain/` 一个目录、`interoception.ts` 与 `notify.ts` 两个脚本；部位 id 为 `interoception`、`brainNotify`。`body_act` / `body_state` 与 `context`/`wake` 投递已实现；通知历史文件、`agent/inbox/inserted` 已读确认、完整多会话路由仍开放。
 - 多调节方式在 P1 仍未接入：胃动力保持“摄入 + 自身状态”，不接迷走/CCK/GLP-1。
 - 旧 `systems/` 的剩余 references 何时全部迁完；按后续器官逐个迁。`systems/nervous/` 的 Sebaratnam、Schamberg 笔记仍是 legacy，撑感/不适读出未实现。

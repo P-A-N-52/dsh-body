@@ -9,7 +9,7 @@ import { checkpoint } from '../test-support/harness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the root manifest loads all five organ scripts', async (t) => {
+test('the root manifest loads all six organ scripts', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-'));
   const statePath = join(dir, 'body-state.json');
   writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
@@ -48,6 +48,8 @@ test('the root manifest loads all five organ scripts', async (t) => {
   assert.ok(first.parts.duodenum.nutrientExposure >= 0);
   assert.ok(Number.isFinite(first.parts.interoception.hunger));
   assert.ok(Number.isFinite(first.parts.interoception.fullness));
+  assert.equal(first.parts.brainNotify.lastSessionId, null);
+  assert.deepEqual(first.parts.brainNotify.sessions, {});
 
   await gateway.tick();
 

@@ -19,9 +19,9 @@
 | [`body-modules.json`](../body-modules.json)（`manifestPath`） | 开发者改，Gateway 启动时读 | 声明要加载的脚本、每个脚本读取的状态字段、补算上限和脚本超时。 |
 | `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active` | **一具身体一份存档**：所有部位的值、时钟、动作和通知都在一起。不要为每个器官或每个脚本再建存档。 |
 | [`package.json`](../package.json) | 项目维护者改，由 Node/npm 使用 | 声明 ESM、Node 版本、测试命令和发布文件，不登记心跳脚本，也不存身体数据。[`cordis.patch.yml`](../cordis.patch.yml) 是 DSH 插件装载描述，不是身体 JSON。 |
-| `organs/human-organs/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官组件的证据默认值：参数值、单位、证据状态、范围与来源。不是某具身体的最终值，也不做运行中热切换。五份参数文件都在 `organs/human-organs/`；`systems/` 已不再有参数文件。 |
+| `organs/human-organs/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官组件的证据默认值：参数值、单位、证据状态、范围与来源。不是某具身体的最终值，也不做运行中热切换。六份参数文件都在 `organs/human-organs/`；`systems/` 已不再有参数文件。 |
 
-**清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径，仓库默认列出五条器官脚本（P0 四条 + `brain/interoception.ts`）。`startupScripts` 是有序的启动脚本路径数组，仓库默认挂了 [`startup/reset-parts.js`](../startup/reset-parts.js)。两个数组的路径都相对**清单所在目录**。`catchUpMinutes` 单位分钟，默认 `720`。`scriptTimeoutMs` 用于监督 Worker 响应和每个脚本的执行，单位毫秒，默认 `10000`。
+**清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径，仓库默认列出六条器官脚本（P0 四条 + `brain/interoception.ts` + `brain/notify.ts`）。`startupScripts` 是有序的启动脚本路径数组，仓库默认挂了 [`startup/reset-parts.js`](../startup/reset-parts.js)。两个数组的路径都相对**清单所在目录**。`catchUpMinutes` 单位分钟，默认 `720`。`scriptTimeoutMs` 用于监督 Worker 响应和每个脚本的执行，单位毫秒，默认 `10000`。
 
 清单与存档在启动时解析。状态查询、动作排队和心跳使用主进程内存中的存档对象。BodyWorker 只加载一次模块和它们登记的函数。
 
@@ -174,7 +174,21 @@ try {
 ### 接下来可能用到的接口
 
 - **只在启动时执行：** 模块放进 `startupScripts`，具名导出**同步**的 `initialize(snapshot, context)`，返回按部位 ID 分组的**字段补丁**（与 `io.write` 的整部位对象不同）。`snapshot`、`context` 都是只读；`context.hasSavedState` 表示有无旧档，`context.sinceCheckpointMs` 是距快照的毫秒数（首次无存档为 `null`，从暂停恢复为 `0`）；`context.resumedFromPause` 标明此次恢复。内置 [reset-parts.js](../startup/reset-parts.js) 展示了如何用 `context.initialParts` 重置模块 `resetOnStart` 列出的字段。如果启动后仍有在途批次，本次跳过初始化，先保留旧快照给重试。
-- **发通知：** `io.notify({ mode: 'context', sessionId, text })`（也支持 `'wake'`）暂存通知，只有在线轮次成功才入队；启动补算产生的通知直接丢弃，不会稍后补发。`GET /notifications` 可查，`POST /notifications/ack` 用 `{ "id": "通知ID" }` 确认。当前实现到待确认队列为止，`sessionId` 指定的是通知的目标，不会自动投递到 DSH，也不是会话与身体的绑定。
+- **发通知：** `io.notify({ mode: 'context', sessionId, text })`（也支持 `'wake'`）暂存通知，只有在线轮次成功才入队；启动补算产生的通知直接丢弃，不会稍后补发。`GET /notifications` 可查，`POST /notifications/ack` 用 `{ "id": "通知ID" }` 确认。`sessionId` 指定通知目标；`index.js` 的 `notifications.js` 会把 `context` 用 `agent.inject`、`wake` 用 `agent.followup` 投递到对应会话，投递成功后 ACK。会话不在线时通知保留；通知历史文件和模型已读确认尚未实现。
 - **读旧脚本。** 旧版字符串路径继续支持调用模块导出的 `functions` 和 `io.call(partId, name, ...args)`。旧的 `step(snapshot, dt, actions)` 可以返回本部位完整状态。同一模块有两个轮次入口时使用 `heartbeat`。
+
+### DSH 工具与通知泵
+
+`index.js` 在 Gateway ready 后通过 `ctx.tools.register` 注册两个工具：
+
+- `body_act`：把 `drink` / `eat` 动作连同当前 `sessionId` 交给 Gateway；action id 由会话 ID 与工具 `callId` 稳定生成。202 只表示入队，回执要用 `body_state` 或 `GET /state` 再看。
+- `body_state`：读最近提交的 `simulatedSeconds` 和 `parts`，可用 `part` 过滤，例如 `stomach`、`interoception`。
+
+`notifications.js` 每 1000 ms 轮询 `gateway.getNotifications()`：
+
+- `context` → `agent.inject`（不唤醒空闲会话，下一次模型调用读取）；`wake` → `agent.followup`（唤醒会话）。
+- 消息来源是 `body-notify`，不冒充真人 `user` 源。
+- 投递成功后 ACK；ACK 失败时下次只重试 ACK，不重复投递；会话不在线时保留。
+- `brain/notify.ts` 决定何时通知：明显/强档位、同档不重复、45 min 冷却、每会话每小时 2 次/每天 6 次；阈值与次数是 `policy`，不是人体测量。
 
 **排查顺序：** `/capabilities` 没有动作名，先用 `/health` 确认身体已启用，再核对清单里的脚本路径和模块导出的 `actionTypes`。启用时无处理者的新动作是 `422`，暂停时是 `409`；同一 `id` 换了载荷也是 `409`。动作已经 `queued` 但状态没变，先看 `effectiveAt` 和 `/state` 的仿真时刻，再看 `/health` 的心跳错误。如果已经 `applied`，但数值没变，查脚本对类型、字段和单位的判断：`applied` 表示批次提交成功，不保证某个模块实际改了值。

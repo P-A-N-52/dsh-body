@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "owner": "brainNotify",
+  "parameters": [
+    {
+      "id": "brainNotify.hunger.marked",
+      "unit": "mm",
+      "value": 65,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "提醒策略：饥饿达到明显档位的 0–100 mm 代理阈值；policy/design，不是人体测量"
+    },
+    {
+      "id": "brainNotify.hunger.strong",
+      "unit": "mm",
+      "value": 85,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "提醒策略：饥饿达到强档位的 0–100 mm 代理阈值；policy/design，不是人体测量"
+    },
+    {
+      "id": "brainNotify.fullness.marked",
+      "unit": "mm",
+      "value": 65,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "提醒策略：饱满达到明显档位的 0–100 mm 代理阈值；policy/design，不是人体测量"
+    },
+    {
+      "id": "brainNotify.fullness.strong",
+      "unit": "mm",
+      "value": 85,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "提醒策略：饱满达到强档位的 0–100 mm 代理阈值；policy/design，不是人体测量"
+    },
+    {
+      "id": "brainNotify.resetBelow",
+      "unit": "mm",
+      "value": 40,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "提醒策略：滞回复位阈值，低于它才把档位降回 0；policy/design，不是人体测量"
+    },
+    {
+      "id": "brainNotify.minIntervalMin",
+      "unit": "min",
+      "value": 45,
+      "status": "design",
+      "range": [0, 1440],
+      "source": null,
+      "note": "提醒策略：同一会话两次提醒的最短间隔；policy/design，不是生理不应期"
+    },
+    {
+      "id": "brainNotify.maxPerHour",
+      "unit": "1",
+      "value": 2,
+      "status": "design",
+      "range": [0, 60],
+      "source": null,
+      "note": "提醒策略：同一会话每小时提醒上限；policy/design，不是人体测量"
+    },
+    {
+      "id": "brainNotify.maxPerDay",
+      "unit": "1",
+      "value": 6,
+      "status": "design",
+      "range": [0, 240],
+      "source": null,
+      "note": "提醒策略：同一会话每天提醒上限；policy/design，不是人体测量"
+    },
+    {
+      "id": "brainNotify.wakeAtLevel",
+      "unit": "1",
+      "value": 3,
+      "status": "design",
+      "range": [2, 4],
+      "source": null,
+      "note": "提醒策略：达到该档位才用 wake，4 表示从不唤醒；policy/design"
+    },
+    {
+      "id": "brainNotify.maxTrackedSessions",
+      "unit": "1",
+      "value": 32,
+      "status": "design",
+      "range": [1, 1024],
+      "source": null,
+      "note": "提醒策略：sessions 最多保留的会话数，按 lastSeenAt 取最近；policy/design"
+    }
+  ]
+}

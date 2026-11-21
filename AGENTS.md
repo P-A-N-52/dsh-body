@@ -14,9 +14,9 @@
 
 | 状态 | 内容 |
 | --- | --- |
-| 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；`lib/parameters.js` 的只读参数加载；身体启停与暂停恢复；P0 四个器官脚本（`organs/human-organs/stomach/` 的 `motility.ts`、`ghrelin.ts`、`gastric-sensory.ts`，`organs/human-organs/duodenum/` 的 `nutrient-exposure.ts`）；P1 输入契约（`drink` 可带 `energyKcal`）与体感脚本 `organs/human-organs/brain/interoception.ts`；五个部位、五份同目录参数文件；器官 README、共享证据台账和重放场景；`test/` 下的测试；根清单 `body-modules.json` 已列出五条器官脚本，Gateway 启动即加载。 |
-| 未实现 | 其余器官的生理脚本（食管、小肠吸收、血糖、胰岛素、心、肺、肾、膀胱等）；`body_act` / `body_state` 会话工具；通知到 DSH 的实际投递与提醒历史；浏览器数据页；多身体、会话绑定、器官间转移、病况。 |
-| M1 进行中 | 器官级 P0 + P1：胃（动力、饥饿素、机械感受）、十二指肠（营养暴露）、体感读出（`interoception`）；输入契约、参数、README、证据和重放已就位；旧的组件/动作/读数 JSON 契约层已删除；其余 `systems/*/` 只保留 legacy 证据。 |
+| 已实现 | `gateway.js` + `gateway/` 的 HTTP、动作队列、存档、启动补算、常驻 BodyWorker；`index.js` 插件入口；`startup/reset-parts.js`；`lib/parameters.js` 的只读参数加载；身体启停与暂停恢复；P0 四个器官脚本（`organs/human-organs/stomach/` 的 `motility.ts`、`ghrelin.ts`、`gastric-sensory.ts`，`organs/human-organs/duodenum/` 的 `nutrient-exposure.ts`）；P1 输入契约（`drink` 可带 `energyKcal`）、体感读出 `brain/interoception.ts`、提醒策略 `brain/notify.ts`；DSH 工具 `body_act` / `body_state`（`tools.js`）与通知投递泵（`notifications.js`）；六个部位、六份同目录参数文件；器官 README、共享证据台账和重放场景；`test/` 下的测试；根清单 `body-modules.json` 已列出六条器官脚本，Gateway 启动即加载。 |
+| 未实现 | 其余器官的生理脚本（食管、小肠吸收、血糖、胰岛素、心、肺、肾、膀胱等）；通知历史文件、按会话绑定与多身体路由；浏览器数据页；器官间转移、病况。 |
+| M1 进行中 | 器官级 P0 + P1：胃（动力、饥饿素、机械感受）、十二指肠（营养暴露）、体感读出（`interoception`）与体感提醒（`brainNotify`）；输入契约、参数、README、证据、重放、会话工具和通知投递已就位；旧的组件/动作/读数 JSON 契约层已删除；其余 `systems/*/` 只保留 legacy 证据。 |
 
 当前 P0/P1 的部位与信号以 `organs/human-organs/<organ>/README.md` 的表格为准，参数在 `organs/human-organs/**/*.parameters.json`，模块导出见 `organs/human-organs/**/*.ts`；设计是 `docs/superpowers/specs/2026-11-20-organ-model-design.md`，P0 实施计划是 `docs/superpowers/plans/2026-11-20-organ-model-p0.md`，P1 实施计划是 `docs/superpowers/plans/2026-11-21-p1-input-interoception.md`。旧的 M1 计划已标废弃。具体文件以目录和 `git status` 为准。
 
@@ -29,7 +29,7 @@
 | # | 常见误解 | 实际 |
 | --- | --- | --- |
 | 1 | 把 `docs/virtual-body.md` 当成已实现功能清单 | 它是设计草案；开头新增的 5 条“已确认的行为契约（设计目标）”明确不是现状。当前实现以 `gateway/`、`test/` 和 `docs/gateway-and-scripts.md` 为准。 |
-| 2 | 以为 11 个系统目录就是仿真层级 | 仿真单元是器官目录 `organs/human-organs/<organ>/`；`systems/` 只剩 legacy 证据，脚本以 `organs/**/*.ts` 为准；`body-modules.json` 已列出五条器官脚本。 |
+| 2 | 以为 11 个系统目录就是仿真层级 | 仿真单元是器官目录 `organs/human-organs/<organ>/`；`systems/` 只剩 legacy 证据，脚本以 `organs/**/*.ts` 为准；`body-modules.json` 已列出六条器官脚本。 |
 | 3 | 把 `body-modules.json` 和 `body-state.json` 混为一谈 | 前者是脚本清单（开发者改），后者是一具身体的存档（Gateway 写；用户只在停机时改顶层 `active`）。 |
 | 4 | 运行中改存档 `active` 想热切换 | `active` 只在启动时读一次；必须停 Gateway → 改实际 `statePath` 的顶层 `active` → 再启动。运行中改不会生效，还可能被下次保存覆盖。 |
 | 5 | 把 `activeBatch` 或 `startup.active` 当启停开关 | 都不是。开关只有存档顶层 `active`；`activeBatch` 是在途批次，`startup.active` 是上次启动记录。 |
@@ -68,7 +68,8 @@
 - **动作是异步结算的。** `POST /actions` 的 `202 queued` 只表示入队；动作在轮末生效。同 `id` 同载荷重试返回原回执（可能已是 `applied`）；同 `id` 不同载荷 `409`；启用时无处理者 `422`；暂停时新动作 `409`。`applied` 只表示所在批次提交成功，不保证领域值变化。
 - **整轮全有或全无。** 所有模块读同一份轮初快照；任一脚本报错/超时，整轮暂存的状态和通知丢弃，保留已提交快照和 `activeBatch`，下次用同一批次重试。执行中收到的新动作进入后续轮次。
 - **当前 HTTP 面。** `GET /state` 只返回 `{ simulatedSeconds, parts }`；`GET /actions/:id` 查动作；`GET /capabilities` 查动作类型→模块；`GET /health` 查实际 `active`、时钟和失败；`GET /notifications` / `POST /notifications/ack` 查/确认通知。默认 `127.0.0.1:3210`，无 token，只服务本地。请求体上限 64 KiB，存档默认上限 2 MiB，非 GET 会校验 `Host` / `Origin`。
-- **没有的东西不要假装有。** 当前没有热切换、多身体路由、按会话绑定、`body_act` / `body_state` 工具、通知自动投递到 DSH、浏览器页、器官间转移、病况。这些在 `docs/virtual-body.md` 里是设计或里程碑。
+- **DSH 工具与通知。** `index.js` 通过 `ctx.tools.register` 注册 `body_act` / `body_state`：前者把动作连同 `sessionId` 入队，后者读最近提交的快照。`notifications.js` 每 1000 ms 轮询 Gateway 待确认通知：`context` 用 `agent.inject`、`wake` 用 `agent.followup`，投递成功后 ACK；会话不在线时保留。`brain/notify.ts` 负责显著性、滞回、45 min 冷却和每会话每小时 2 次/每天 6 次的上限，阈值与次数都是 `policy`，不是人体测量。
+- **没有的东西不要假装有。** 当前没有热切换、多身体路由、按会话绑定不同身体、通知历史文件、浏览器页、器官间转移、病况。这些在 `docs/virtual-body.md` 里是设计或里程碑。
 
 ## 4. 写模块时的契约
 
@@ -93,7 +94,7 @@
 | `io.write(nextPart)` | 暂存本部位的完整下一状态，不是补丁。只改一项也要 `{ ...prev, 字段: 新值 }`。 |
 | `io.functions[alias]()` | 读清单 `inject` 声明的轮初状态；缺失返回 `undefined`。 |
 | `io.actions` | 本轮全部原始动作，不按 `actionTypes` 过滤；自己检查 `type`、字段和单位。 |
-| `io.notify({ mode, sessionId, text })` | 暂存通知；当前只到待确认队列，启动补算产生的通知直接丢弃。 |
+| `io.notify({ mode, sessionId, text })` | 暂存通知；在线轮次提交后由 `notifications.js` 投递到对应会话；启动补算产生的通知仍然直接丢弃。 |
 | `io.dt` / `io.simulatedSeconds` / `io.wallTimeMs` | 60 秒 / 轮末仿真时刻 / 预定轮末现实时间戳。不要用 `Date.now()` 猜时间。 |
 
 代码约束：
@@ -131,13 +132,14 @@
 - 一批受试者只算一个队列：交叉设计的多个臂、重复发表、同一批人的不同时点不能拆到标定和验证两边。
 - 已看过结果的数据只能标 `development` / `exploratory`，不能称独立验证或盲测；当前台账来源均为 `results_seen`。
 - `parameters.json` 中 `prior` / `fitted_dev` / `validated` 必须有 `source`，且是已登记 ID 或 `pending:<citekey>`；`unset` 的值必须为 `null`。
+- 通知的显著性阈值、冷却时间、每小时/每天次数上限是 `policy`，不是人体测量；有定性灵感也要在脚本和 README 写明“不是论文参数”，不能写成生理常数。
 
 ## 7. 工程与测试
 
 - 运行环境：Node ≥ 22.18，ESM，无第三方依赖。不要为了一个功能引入库；先看 `package.json` 和现有 import。
 - **验证按需、从简。** 代码改动跑一次 `npm test`（即 `node --test`）即可，不必为每个改动新增测试；纯文档改动不必跑测试。不要把“补检查”当成主要工作。
 - 需要写测试时，用 `test-support/harness.mjs` 的 `launch(t, { modules, ... })` 起真实 Gateway（端口 0、临时目录、`autoTick: false`），用固定 `now`，不要依赖真实 `Date.now()` 抖动。
-- 模块或参数文件改动后跑一次 `npm test` 即可；`test/parameters.test.mjs` 已经覆盖五份器官参数文件的格式一致性，不需要再补一套重复校验。
+- 模块或参数文件改动后跑一次 `npm test` 即可；`test/parameters.test.mjs` 已经覆盖六份器官参数文件的格式一致性，不需要再补一套重复校验。
 - 不要创建仓库根目录的 `body-state.json` 来“测试”；测试用临时目录。`body-state.json`、`body-state.json.tmp`、`docs/reference/pulse-engine/` 都已 gitignore。
 - 提交前扫一眼 `git status`，删掉测试产生的临时文件；不要把 `.tower/`、`.superpowers/`、日志或个人存档加入提交。
 - 如果新增运行时文件，检查 `package.json` 的 `files`；`files` 已包含 `organs/` 与 `lib/`（另有 `index.js`、`gateway.js`、`gateway/`、`json-safe.js`、`body-modules.json`、`startup/`、`cordis.patch.yml`）。打包时脚本、同目录参数文件和 `lib/parameters.js` 要一起发布。

@@ -54,7 +54,7 @@
 | --- | --- | --- |
 | `relativeConcentration` | `1` | 相对浓度（空腹基线为 1，餐后谷值为 0.5），不是 `pg/mL` 或任何绝对浓度 |
 
-只有含能量的 `eat` 或 `drink`（`energyKcal > 0`）会在本轮把相对浓度压到不高于谷值（`min(current, nadir)`），白水与 0 kcal 饮料不抑制；随后按表观半时向基线指数恢复。`actionTypes = ['eat', 'drink']` 只是声明，脚本自己再检查能量。P1 的 `brain/interoception.ts` 读取这个字段；通知与会话消费者仍未实现。含能饮料的抑制方向是从含能餐证据外推的 `design` 假设，没有登记饮料专属来源。
+只有含能量的 `eat` 或 `drink`（`energyKcal > 0`）会在本轮把相对浓度压到不高于谷值（`min(current, nadir)`），白水与 0 kcal 饮料不抑制；随后按表观半时向基线指数恢复。`actionTypes = ['eat', 'drink']` 只是声明，脚本自己再检查能量。P1 的 `brain/interoception.ts` 读取这个字段，`brainNotify` 再决定是否提醒；通知历史与模型已读确认仍未实现。含能饮料的抑制方向是从含能餐证据外推的 `design` 假设，没有登记饮料专属来源。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
@@ -70,7 +70,7 @@
 
 `mechanical = min(1, volumeMl / referenceVolumeMl) ^ exponent`。
 
-`mechanical` 读的是轮初快照里的 `stomach.volumeMl`，同一轮摄入要到下一轮才反映。P1 的 `brain/interoception.ts` 读取这个字段；通知与会话消费者仍未实现。
+`mechanical` 读的是轮初快照里的 `stomach.volumeMl`，同一轮摄入要到下一轮才反映。P1 的 `brain/interoception.ts` 读取这个字段，`brainNotify` 再决定是否提醒；通知历史与模型已读确认仍未实现。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
@@ -110,4 +110,4 @@
 - **所有餐型共用 13 min 截距**：`stomach.emptying.halfTimeMin` 不区分 `liquid` / `solid` / `mixed`，`mealKind` 只被记录、未进入方程。13 min 来自 Mudie 2014 白水摘要，摘要未写 T50 定义与起算点，只作工程假设；这是已知简化，不是“餐型已被区分”的证据。
 - **能量密度增益是开发集拟合**：53.75 只用 Camps 2016 同一批 15 人的 thin-100 与 thin-500 两臂，标为 `fitted_dev`，不是独立验证。
 - 没有不可排空残余：`baselineMl` 只是可调偏置，模型允许胃排到 0。
-- 不做胃内混合、分层、胃酸、温度和黏膜状态；`mechanical` 与 `relativeConcentration` 由 `brain/interoception.ts` 读取，但通知与会话投递仍未实现。
+- 不做胃内混合、分层、胃酸、温度和黏膜状态；`mechanical` 与 `relativeConcentration` 由 `brain/interoception.ts` 读取，`brainNotify` 决定提醒，但通知历史与模型已读确认仍未实现。
