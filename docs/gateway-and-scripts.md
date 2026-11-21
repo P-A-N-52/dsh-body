@@ -108,6 +108,7 @@ printf '%s\n' "$DEMO_DIR"
 export const id = 'waterIntake';
 export const actionTypes = ['drink'];
 export const initialState = { totalMl: 0 };
+export const fields = {};
 
 type State = typeof initialState;
 type IO = {
@@ -181,7 +182,7 @@ try {
 
 `index.js` 在 Gateway ready 后通过 `ctx.tools.register` 注册两个工具：
 
-- `body_act`：把 `drink` / `eat` 动作连同当前 `sessionId` 交给 Gateway；action id 由会话 ID 与工具 `callId` 稳定生成。202 只表示入队，回执要用 `body_state` 或 `GET /state` 再看。
+- `body_act`：把 `drink` / `eat` 动作连同当前 `sessionId` 交给 Gateway；action id 由会话 ID 与工具 `callId` 稳定生成。202 只表示入队；用 `GET /actions/:id` 查动作回执，用 `body_state` 或 `GET /state` 看已提交的快照。
 - `body_state`：读最近提交的 `simulatedSeconds` 和 `parts`，可用 `part` 过滤，例如 `stomach`、`interoception`。
 
 `notifications.js` 每 1000 ms 轮询 `gateway.getNotifications()`：
