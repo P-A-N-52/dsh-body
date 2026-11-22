@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "owner": "kidney",
+  "parameters": [
+    {
+      "id": "kidney.diNephrogenic.urineRateMlPerMin",
+      "unit": "mL/min",
+      "value": 4,
+      "status": "design",
+      "range": [1, 10],
+      "source": null,
+      "note": "肾性 DI 样代理：与 ADH 无关的固定产尿请求；4 mL/min ≈ 5.76 L/day，只借综述 >3 L/day 的量级，不是实测尿流、GFR 或拟合值"
+    }
+  ]
+}

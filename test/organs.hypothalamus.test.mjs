@@ -14,6 +14,13 @@ import {
   id as thirstId,
   initialState as thirstInitialState,
 } from '../organs/human-organs/brain/hypothalamus-thirst.ts';
+import {
+  actionTypes as centralActionTypes,
+  fields as centralFields,
+  heartbeat as centralHeartbeat,
+  id as centralId,
+  initialState as centralInitialState,
+} from '../organs/human-organs/brain/hypothalamus-adh-di-central.ts';
 
 const APPROACH = 1 - Math.exp(-0.1);
 
@@ -172,4 +179,36 @@ test('the two scripts only write their own part and never act or notify', () => 
   });
   assert.deepEqual(Object.keys(thirstWritten), ['thirst']);
   assert.deepEqual(notifications, []);
+});
+
+function centralRound(previous, reading) {
+  let written;
+  centralHeartbeat({
+    read: (partId) => {
+      throw new Error(`central DI ADH must not read ${partId}`);
+    },
+    actions: [],
+    dt: 60,
+    simulatedSeconds: 60,
+    write: (next) => { written = next; },
+    notify: () => { throw new Error('central DI ADH must not notify'); },
+  });
+  return written;
+}
+
+test('central DI ADH keeps the same part contract and fixes the relative level at zero', () => {
+  assert.equal(centralId, 'hypothalamusAdh');
+  assert.deepEqual(centralActionTypes, []);
+  assert.deepEqual(centralFields, {
+    relativeConcentration: { unit: '1', mode: 'absolute' },
+  });
+  assert.deepEqual(centralInitialState, { relativeConcentration: 0 });
+});
+
+test('central DI ADH writes zero for any water deficit and any previous value', () => {
+  for (const reading of [undefined, {}, { waterDeficit: -1 }, { waterDeficit: 0 }, { waterDeficit: 1 }, { waterDeficit: Number.NaN }]) {
+    for (const previous of [centralInitialState, { relativeConcentration: 2.5 }]) {
+      assert.deepEqual(centralRound(previous, reading), { relativeConcentration: 0 });
+    }
+  }
 });
