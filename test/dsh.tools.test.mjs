@@ -128,7 +128,20 @@ test('body_state returns all parts or one part', async (t) => {
 
   const all = await tools.body_state.execute({}, fakeExec({ callId: 'call-2' }));
   assert.equal(all.simulatedSeconds, 60);
-  for (const part of ['stomach', 'stomachGhrelin', 'stomachSensory', 'duodenum', 'interoception']) {
+  for (const part of [
+    'stomach',
+    'stomachGhrelin',
+    'stomachSensory',
+    'duodenum',
+    'smallIntestine',
+    'bodyFluid',
+    'hypothalamusAdh',
+    'hypothalamusThirst',
+    'kidney',
+    'bladder',
+    'interoception',
+    'brainNotify',
+  ]) {
     assert.ok(Object.hasOwn(all.parts, part), `missing part ${part}`);
   }
   assert.ok(all.parts.stomach.volumeMl > 0);
@@ -259,6 +272,8 @@ test('tool definitions expose JSON Schema and register through ctx.effect', () =
   assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_state']);
 
   assert.deepEqual(tools.body_act.parameters.required, ['type']);
+  assert.deepEqual(tools.body_act.parameters.properties.type.enum, ['drink', 'eat', 'urinate']);
+  assert.match(tools.body_act.description, /urinate/);
   assert.equal(tools.body_act.parameters.additionalProperties, true);
   assert.deepEqual(tools.body_act.output.schema.required, ['ok', 'statusCode', 'receipt']);
   assert.equal(tools.body_act.output.schema.additionalProperties, false);

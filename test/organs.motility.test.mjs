@@ -1,6 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { heartbeat, initialState } from '../organs/human-organs/stomach/motility.ts';
+import { fields, heartbeat, initialState } from '../organs/human-organs/stomach/motility.ts';
+import {
+  heartbeat as hydrationHeartbeat,
+  initialState as hydrationInitialState,
+} from '../organs/human-organs/stomach/hydration.ts';
+
+function hydrationRound(state, actions = []) {
+  let written;
+  const transfers = [];
+  hydrationHeartbeat({
+    read: () => state,
+    actions,
+    dt: 60,
+    simulatedSeconds: 60,
+    write: (next) => { written = next; },
+    transfer: (...args) => { transfers.push(args); },
+  });
+  return { state: written, transfers };
+}
+
+function withoutWaterMetadata(state) {
+  return {
+    ...state,
+    mealQueue: state.mealQueue.map(({ remainingWaterMl, rateWaterMl, ...meal }) => meal),
+  };
+}
+
+function assertNoWaterMetadata(state) {
+  for (const meal of state.mealQueue) {
+    assert.equal(Object.hasOwn(meal, 'remainingWaterMl'), false);
+    assert.equal(Object.hasOwn(meal, 'rateWaterMl'), false);
+  }
+}
 
 function round(state, actions = []) {
   let written;
@@ -175,4 +207,67 @@ test('an old state without solid subtotals follows the original liquid curve', (
   assert.ok(Math.abs(next.volumeMl - 240 * 2 ** (-1 / 13)) < 1e-9);
   assert.equal(next.solidVolumeMl, 0);
   assert.equal(next.solidEnergyKcal, 0);
+});
+
+test('the legacy entry keeps the pre-water state shape and declares no transfers', () => {
+  assert.equal(Object.hasOwn(initialState, 'waterVolumeMl'), false);
+  assert.equal(Object.hasOwn(initialState, 'emptiedWaterMl'), false);
+  for (const declaration of Object.values(fields)) {
+    assert.equal(Object.hasOwn(declaration, 'transferOut'), false);
+    assert.equal(Object.hasOwn(declaration, 'transferIn'), false);
+  }
+});
+
+test('the legacy entry does not add water metadata to queued drinks', () => {
+  const next = round({ ...initialState }, [{ type: 'drink', volumeMl: 240, durationMin: 3 }]);
+  assert.equal(next.volumeMl, 80);
+  assert.equal(next.mealQueue.length, 1);
+  assert.equal(next.mealQueue[0].remainingRounds, 2);
+  assert.equal(Object.hasOwn(next.mealQueue[0], 'remainingWaterMl'), false);
+  assert.equal(Object.hasOwn(next.mealQueue[0], 'rateWaterMl'), false);
+});
+
+test('the legacy entry strips water metadata from a hydration queue as it advances', () => {
+  const hydrated = hydrationRound(hydrationInitialState, [
+    { type: 'drink', volumeMl: 240, durationMin: 3 },
+  ]).state;
+  assert.equal(hydrated.mealQueue.length, 1);
+  assert.equal(hydrated.mealQueue[0].remainingWaterMl, 160);
+  assert.equal(hydrated.mealQueue[0].rateWaterMl, 80);
+
+  const control = round(withoutWaterMetadata(hydrated));
+  const next = round(hydrated);
+
+  assertNoWaterMetadata(next);
+  assert.deepEqual(next, control);
+  assert.equal(next.volumeMl, control.volumeMl);
+  assert.equal(next.energyKcal, control.energyKcal);
+  assert.equal(next.emptiedMl, control.emptiedMl);
+  assert.equal(next.emptiedKcal, control.emptiedKcal);
+  assert.equal(next.mealQueue.length, 1);
+  assert.equal(next.mealQueue[0].remainingMl, 80);
+  assert.equal(next.mealQueue[0].remainingRounds, 1);
+});
+
+test('the legacy entry strips queue water metadata while accepting new drinks', () => {
+  const hydrated = hydrationRound(hydrationInitialState, [
+    { type: 'drink', volumeMl: 240, durationMin: 3 },
+  ]).state;
+  const actions = [{ type: 'drink', volumeMl: 120, durationMin: 2 }];
+
+  const control = round(withoutWaterMetadata(hydrated), actions);
+  const next = round(hydrated, actions);
+
+  assertNoWaterMetadata(next);
+  assert.deepEqual(next, control);
+  assert.equal(next.volumeMl, control.volumeMl);
+  assert.equal(next.energyKcal, control.energyKcal);
+  assert.equal(next.mealQueue.length, 2);
+
+  let drained = next;
+  for (let i = 0; i < 2; i++) {
+    drained = round(drained);
+    assertNoWaterMetadata(drained);
+  }
+  assert.equal(drained.mealQueue.length, 0);
 });

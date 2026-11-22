@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "owner": "hypothalamusThirst",
+  "parameters": [
+    {
+      "id": "hypothalamusThirst.baselineMm",
+      "unit": "mm",
+      "value": 50,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "零亏缺时的口渴基线；设计值，不是人体 VAS 测量"
+    },
+    {
+      "id": "hypothalamusThirst.deficitGainMm",
+      "unit": "mm/1",
+      "value": 50,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "waterDeficit 每变化 1 个单位的口渴斜率；设计值"
+    }
+  ]
+}

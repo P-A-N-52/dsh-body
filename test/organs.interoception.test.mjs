@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   actionTypes,
   fields,
@@ -7,12 +8,20 @@ import {
   id,
   initialState,
 } from '../organs/human-organs/brain/interoception.ts';
+import { loadParameters } from '../lib/parameters.js';
+
+const BASELINE = { hunger: 50, fullness: 0, thirst: 50, urinaryUrgency: 0 };
+const parametersUrl = new URL('../organs/human-organs/brain/interoception.parameters.json', import.meta.url);
+const parameterValues = loadParameters(parametersUrl);
+const parameterFile = JSON.parse(readFileSync(parametersUrl, 'utf8'));
 
 function round(inputs = {}) {
   const parts = {
     stomachSensory: inputs.sensory,
     stomachGhrelin: inputs.ghrelin,
     duodenum: inputs.duodenum,
+    hypothalamusThirst: inputs.thirst,
+    bladder: inputs.bladder,
   };
   let written;
   heartbeat({
@@ -31,32 +40,71 @@ test('interoception exports the organ module contract', () => {
   assert.deepEqual(fields, {
     hunger: { unit: 'mm', mode: 'absolute' },
     fullness: { unit: 'mm', mode: 'absolute' },
+    thirst: { unit: 'mm', mode: 'absolute' },
+    urinaryUrgency: { unit: 'mm', mode: 'absolute' },
   });
-  assert.deepEqual(initialState, { hunger: 50, fullness: 0 });
+  assert.deepEqual(initialState, BASELINE);
 });
 
-test('no inputs give the fasting baseline', () => {
-  assert.deepEqual(round(), { hunger: 50, fullness: 0 });
+test('no inputs give the fasting baseline and no thirst or bladder drive', () => {
+  assert.deepEqual(round(), BASELINE);
+});
+
+test('the thirst fallback is a design parameter and drives the fallback output', () => {
+  const fallback = parameterValues['interoception.thirst.fallbackMm'];
+  const entry = parameterFile.parameters.find(
+    (parameter) => parameter.id === 'interoception.thirst.fallbackMm',
+  );
+  assert.equal(fallback, 50);
+  assert.equal(entry?.status, 'design');
+  assert.equal(entry?.source, null);
+  assert.equal(initialState.thirst, fallback);
+  assert.equal(round().thirst, fallback);
+  assert.equal(round({ thirst: { thirst: Number.NaN } }).thirst, fallback);
 });
 
 test('ghrelin at half the fasting baseline lowers hunger and raises fullness', () => {
   assert.deepEqual(
     round({ ghrelin: { relativeConcentration: 0.5 } }),
-    { hunger: 25, fullness: 25 },
+    { hunger: 25, fullness: 25, thirst: 50, urinaryUrgency: 0 },
   );
 });
 
 test('full mechanical input raises fullness and lowers hunger', () => {
   assert.deepEqual(
     round({ sensory: { mechanical: 1 } }),
-    { hunger: 30, fullness: 100 },
+    { hunger: 30, fullness: 100, thirst: 50, urinaryUrgency: 0 },
   );
 });
 
 test('nutrient exposure at 10 kcal/min saturates fullness and clamps hunger at zero', () => {
   assert.deepEqual(
     round({ duodenum: { nutrientExposure: 10 } }),
-    { hunger: 0, fullness: 100 },
+    { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0 },
+  );
+});
+
+test('thirst passes through from the hypothalamic drive and clamps to 0-100 mm', () => {
+  assert.deepEqual(
+    round({ thirst: { thirst: 20 } }),
+    { hunger: 50, fullness: 0, thirst: 20, urinaryUrgency: 0 },
+  );
+  assert.equal(round({ thirst: { thirst: -5 } }).thirst, 0);
+  assert.equal(round({ thirst: { thirst: 250 } }).thirst, 100);
+});
+
+test('urinary urgency scales bladder volume against the 410 mL design anchor', () => {
+  assert.equal(round({ bladder: { volumeMl: 0 } }).urinaryUrgency, 0);
+  assert.equal(round({ bladder: { volumeMl: 205 } }).urinaryUrgency, 50);
+  assert.equal(round({ bladder: { volumeMl: 410 } }).urinaryUrgency, 100);
+  assert.equal(round({ bladder: { volumeMl: 820 } }).urinaryUrgency, 100);
+  assert.equal(round({ bladder: { volumeMl: -30 } }).urinaryUrgency, 0);
+});
+
+test('thirst and bladder readings leave hunger and fullness untouched', () => {
+  assert.deepEqual(
+    round({ thirst: { thirst: 0 }, bladder: { volumeMl: 410 } }),
+    { hunger: 50, fullness: 0, thirst: 0, urinaryUrgency: 100 },
   );
 });
 
@@ -69,7 +117,7 @@ test('does not read its own previous state', () => {
     simulatedSeconds: 60,
     write: (next) => { written = next; },
   });
-  assert.deepEqual(written, { hunger: 50, fullness: 0 });
+  assert.deepEqual(written, BASELINE);
 });
 
 test('negative inputs clamp to zero before the gains', () => {
@@ -79,7 +127,7 @@ test('negative inputs clamp to zero before the gains', () => {
       ghrelin: { relativeConcentration: -2 },
       duodenum: { nutrientExposure: -3 },
     }),
-    { hunger: 0, fullness: 50 },
+    { hunger: 0, fullness: 50, thirst: 50, urinaryUrgency: 0 },
   );
 });
 
@@ -94,13 +142,15 @@ test('oversized inputs clamp outputs to the 0-100 band and stay finite', () => {
     round({ duodenum: { nutrientExposure: 1e9 } }),
   ];
   const overflow = round({ duodenum: { nutrientExposure: Number.MAX_VALUE } });
-  assert.deepEqual(cases[0], { hunger: 0, fullness: 100 });
-  assert.deepEqual(cases[1], { hunger: 100, fullness: 0 });
-  assert.deepEqual(cases[2], { hunger: 0, fullness: 100 });
-  assert.deepEqual(overflow, { hunger: 0, fullness: 100 });
+  assert.deepEqual(cases[0], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0 });
+  assert.deepEqual(cases[1], { hunger: 100, fullness: 0, thirst: 50, urinaryUrgency: 0 });
+  assert.deepEqual(cases[2], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0 });
+  assert.deepEqual(overflow, { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0 });
   for (const next of [...cases, overflow]) {
     assert.ok(Number.isFinite(next.hunger));
     assert.ok(Number.isFinite(next.fullness));
+    assert.ok(Number.isFinite(next.thirst));
+    assert.ok(Number.isFinite(next.urinaryUrgency));
   }
 });
 
@@ -109,19 +159,24 @@ test('simultaneous overflow inputs fall back instead of writing NaN', () => {
     ghrelin: { relativeConcentration: Number.MAX_VALUE },
     duodenum: { nutrientExposure: Number.MAX_VALUE },
   });
-  assert.deepEqual(next, { hunger: 50, fullness: 0 });
+  assert.deepEqual(next, BASELINE);
 });
 
-test('NaN and missing readings fall back to 0/1/0 without producing NaN', () => {
+test('NaN and missing readings fall back without producing NaN', () => {
   assert.deepEqual(
     round({
       sensory: { mechanical: Number.NaN },
       ghrelin: { relativeConcentration: Number.NaN },
       duodenum: { nutrientExposure: Number.NaN },
+      thirst: { thirst: Number.NaN },
+      bladder: { volumeMl: Number.NaN },
     }),
-    { hunger: 50, fullness: 0 },
+    BASELINE,
   );
-  for (const next of [round({ sensory: {}, ghrelin: {}, duodenum: {} }), round()]) {
-    assert.deepEqual(next, { hunger: 50, fullness: 0 });
+  for (const next of [
+    round({ sensory: {}, ghrelin: {}, duodenum: {}, thirst: {}, bladder: {} }),
+    round(),
+  ]) {
+    assert.deepEqual(next, BASELINE);
   }
 });

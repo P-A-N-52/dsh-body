@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "owner": "hypothalamusAdh",
+  "parameters": [
+    {
+      "id": "hypothalamusAdh.timeConstantMin",
+      "unit": "min",
+      "value": 10,
+      "status": "design",
+      "range": [1, 120],
+      "source": null,
+      "note": "一阶滞后时间常数；工程假设，不是 Ota 或 Andersen 的拟合值"
+    },
+    {
+      "id": "hypothalamusAdh.deficitGain",
+      "unit": "1/1",
+      "value": 1,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "waterDeficit 每变化 1 个单位的目标相对水平斜率；设计值"
+    },
+    {
+      "id": "hypothalamusAdh.relativeMinimum",
+      "unit": "1",
+      "value": 0,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "目标相对水平下限；设计值，不是人体测量"
+    },
+    {
+      "id": "hypothalamusAdh.relativeMaximum",
+      "unit": "1",
+      "value": 3,
+      "status": "design",
+      "range": [1, 10],
+      "source": null,
+      "note": "目标相对水平上限；设计值，不是人体测量"
+    }
+  ]
+}

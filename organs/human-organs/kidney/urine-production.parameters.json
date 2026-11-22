@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "owner": "kidney",
+  "parameters": [
+    {
+      "id": "kidney.urine.baselineRateMlPerMin",
+      "unit": "mL/min",
+      "value": 1,
+      "status": "design",
+      "range": [0.1, 5],
+      "source": null,
+      "note": "ADH 相对水平为 1 时的基线产尿速率；工程假设，不是实测尿流率或 GFR。range 是工程调参范围"
+    },
+    {
+      "id": "kidney.urine.adhGain",
+      "unit": "1",
+      "value": 1,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "ADH 相对水平每偏离基线 1 对相对产尿速率的线性增益；只固定 ADH 高则尿请求低的方向，不是 Ota 或 Andersen 的拟合斜率"
+    },
+    {
+      "id": "kidney.urine.minRelativeRate",
+      "unit": "1",
+      "value": 0.25,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "相对产尿速率下钳；工程下限，不是最大浓缩能力或尿渗透压测量"
+    },
+    {
+      "id": "kidney.urine.maxRelativeRate",
+      "unit": "1",
+      "value": 2,
+      "status": "design",
+      "range": [1, 10],
+      "source": null,
+      "note": "相对产尿速率上钳；工程上限，不是水利尿峰值或自由水清除率"
+    }
+  ]
+}

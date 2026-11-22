@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "owner": "bladder",
+  "parameters": [
+    {
+      "id": "bladder.voiding.postVoidResidualMl",
+      "unit": "mL",
+      "value": 0,
+      "status": "design",
+      "range": [0, 200],
+      "source": null,
+      "note": "排尿后余量；0 mL 是工程假设，不是 ICS 给出的正常残余量，也不是人体测量。一次排尿按 max(0, 轮初体积 - 该值) 计入 voidedMl；range 是工程调参范围"
+    }
+  ]
+}

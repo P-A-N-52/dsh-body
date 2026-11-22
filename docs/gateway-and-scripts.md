@@ -1,6 +1,6 @@
 # 身体 Gateway 开发指南：文件、时钟和第一个 TS 脚本
 
-**接一个新部位，只需写一个 TS 模块，再把路径加进脚本清单；不用造一份新的身体 JSON。** Gateway 管时钟、动作队列和存档，脚本只回答一个问题：给定轮初状态和这一轮的动作，我的部位在轮末是什么状态？本文说的是当前实现；器官层设计与 P0/P1 清单见[虚拟身体设计草案](./virtual-body.md)和[器官级身体模型设计](./superpowers/specs/2026-11-20-organ-model-design.md)。
+**接一个新部位，只需写一个 TS 模块，再把路径加进脚本清单；不用造一份新的身体 JSON。** Gateway 管时钟、动作队列和存档，脚本只回答一个问题：给定轮初状态和这一轮的动作，我的部位在轮末是什么状态？本文说的是当前实现；器官层设计与 P0/P1 清单见[虚拟身体设计草案](./virtual-body.md)和[器官级身体模型设计](./superpowers/specs/2026-11-20-organ-model-design.md)，M3 水链见[水链设计](./superpowers/specs/2026-11-22-water-balance-design.md)。
 
 ## 1. Gateway 做什么，一轮怎么走？
 
@@ -19,9 +19,9 @@
 | [`body-modules.json`](../body-modules.json)（`manifestPath`） | 开发者改，Gateway 启动时读 | 声明要加载的脚本、每个脚本读取的状态字段、补算上限和脚本超时。 |
 | `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active` | **一具身体一份存档**：所有部位的值、时钟、动作和通知都在一起。不要为每个器官或每个脚本再建存档。 |
 | [`package.json`](../package.json) | 项目维护者改，由 Node/npm 使用 | 声明 ESM、Node 版本、测试命令和发布文件，不登记心跳脚本，也不存身体数据。[`cordis.patch.yml`](../cordis.patch.yml) 是 DSH 插件装载描述，不是身体 JSON。 |
-| `organs/human-organs/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官组件的证据默认值：参数值、单位、证据状态、范围与来源。不是某具身体的最终值，也不做运行中热切换。六份参数文件都在 `organs/human-organs/`；`systems/` 已不再有参数文件。 |
+| `organs/human-organs/**/*.parameters.json`、`organs/human-compartments/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官/隔室组件的证据默认值：参数值、单位、证据状态、范围与来源。不是某具身体的最终值，也不做运行中热切换。当前共 12 份参数文件：原六份都在 `organs/human-organs/`，M3 水链新增六份，其中体液隔室在 `organs/human-compartments/body-water/`。`systems/` 已不再有参数文件。 |
 
-**清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径，仓库默认列出六条器官脚本（P0 四条 + `brain/interoception.ts` + `brain/notify.ts`）。`startupScripts` 是有序的启动脚本路径数组，仓库默认挂了 [`startup/reset-parts.js`](../startup/reset-parts.js)。两个数组的路径都相对**清单所在目录**。`catchUpMinutes` 单位分钟，默认 `720`。`scriptTimeoutMs` 用于监督 Worker 响应和每个脚本的执行，单位毫秒，默认 `10000`。
+**清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径。仓库默认列出 12 条部位脚本：P0/P1 的六个部位（胃入口用 `hydration.ts`，不再加载旧 `motility.ts`；另有 `ghrelin.ts`、`gastric-sensory.ts`、`nutrient-exposure.ts`、`interoception.ts`、`notify.ts`），加上小肠、体液、两个下丘脑、肾和膀胱。`startupScripts` 是有序的启动脚本路径数组，仓库默认挂了 [`startup/reset-parts.js`](../startup/reset-parts.js)。两个数组的路径都相对**清单所在目录**。`catchUpMinutes` 单位分钟，默认 `720`。`scriptTimeoutMs` 用于监督 Worker 响应和每个脚本的执行，单位毫秒，默认 `10000`。
 
 清单与存档在启动时解析。状态查询、动作排队和心跳使用主进程内存中的存档对象。BodyWorker 只加载一次模块和它们登记的函数。
 
@@ -73,7 +73,7 @@ const parameters = loadParameters(new URL('./motility.parameters.json', import.m
 const halfTimeMin = requireParameter(parameters, 'stomach.emptying.halfTimeMin');
 ```
 
-示例的 import 深度 `../../../lib/parameters.js` 按脚本位于 `organs/human-organs/<organ>/` 计算；脚本放在其他层级时，需要按实际目录调整相对深度。
+示例的 import 深度 `../../../lib/parameters.js` 按脚本位于 `organs/human-organs/<organ>/` 计算；体液隔室 `organs/human-compartments/body-water/` 也在同样的第三层，深度相同。脚本放在其他层级时，需要按实际目录调整相对深度。
 
 边界：参数文件是**证据默认值**，不是某具身体的最终值；年龄、体重、器官倍率等个体差异属于身体预设或运行时覆盖，不写回参数文件。`unset` 参数的值必须是 `null`，缺失值不用 `0` 代替。参数变更不做运行中热切换，改完要重启 Gateway。`package.json` 的 `files` 已包含 `organs/` 与 `lib/`；打包生理脚本时，脚本、同目录参数文件和 `lib/parameters.js` 要一起纳入 `files`，否则运行时会找不到。
 
@@ -90,7 +90,24 @@ const halfTimeMin = requireParameter(parameters, 'stomach.emptying.halfTimeMin')
 }
 ```
 
-胃脚本调用 `io.functions.stomachGhrelinLevel()`，得到当轮开始时的饥饿素相对浓度。只有部位 ID 的路径（如 `["stomachGhrelin"]`）会返回该部位的完整只读状态。字段或部位缺失时返回 `undefined`。多个脚本读到的值都来自同一轮初快照。上面的条目是示意；P0/P1 的 `motility.ts` 实际直接读自己的轮初状态，不声明 `inject`，`brain/interoception.ts` 也直接 `io.read('stomachSensory')` 等部位，不需要 `inject`。
+胃脚本调用 `io.functions.stomachGhrelinLevel()`，得到当轮开始时的饥饿素相对浓度。只有部位 ID 的路径（如 `["stomachGhrelin"]`）会返回该部位的完整只读状态。字段或部位缺失时返回 `undefined`。多个脚本读到的值都来自同一轮初快照。上面的条目是示意；P0/P1 的 `motility.ts` 实际直接读自己的轮初状态，不声明 `inject`，`brain/interoception.ts` 也直接 `io.read('stomachSensory')` 等部位，不需要 `inject`。M3 水链的脚本同样直接 `io.read(...)`；它们之间的搬水靠 `fields` 里的 `transferOut` / `transferIn` 配对，不靠 `inject`。
+
+### 水链的 transfer 配对（当前模块）
+
+M3 水链用三个 `io.transfer` 配对搬水，两端都声明 `mL` / `absolute`：
+
+```text
+stomach.waterVolumeMl        → smallIntestine.waterVolumeMl
+smallIntestine.waterVolumeMl → bodyFluid.waterVolumeMl
+bodyFluid.waterVolumeMl      → bladder.volumeMl
+```
+
+- 只有源字段的所有者发起 transfer：`stomach/hydration.ts`、`small-intestine/water-absorption.ts`、`human-compartments/body-water/water.ts`。
+- 源部位先 `io.write` 本轮转出前基准，Gateway 再按 write → add → transfer 结算。胃写 `W + D`（`D` 为本轮入胃水），小肠写轮初肠水，体液写轮初体液水；同轮新流入不能支付本轮下游需求。
+- `urinate` 不触发 transfer：水进入膀胱时已经离开体液，排尿再扣一次会双扣。
+- 加载约束：`hydration.ts` 必须与 `smallIntestine`、`bodyFluid`、`bladder` 同时加载，否则 `transferOut` / `transferIn` 配对校验拒绝启动；旧 `motility.ts` 不声明 transfer，可单独加载且不需要下游部位。两个 `stomach` 入口不能同时加载。
+- 旧 `motility.ts` 以 `trackWater: false` 运行，推进既有 `mealQueue` 时会剥离切片的 `remainingWaterMl` / `rateWaterMl`；不要用“水链清单 → 旧清单 → 水链清单”保存待释放水，切回时按 0 计。正常旧档升级到水链只补 0，不受影响。
+- 这些脚本已加入根清单（12 个部位），Task 10 真实 DSH 会话验收已完成（30 轮 A/B 与排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，仓库外未入库）；参数与证据边界见各器官 README。
 
 ## 4. 跑通第一个模块：记录一杯水
 
@@ -182,8 +199,8 @@ try {
 
 `index.js` 在 Gateway ready 后通过 `ctx.tools.register` 注册两个工具：
 
-- `body_act`：把 `drink` / `eat` 动作连同当前 `sessionId` 交给 Gateway；action id 由会话 ID 与工具 `callId` 稳定生成。202 只表示入队；用 `GET /actions/:id` 查动作回执，用 `body_state` 或 `GET /state` 看已提交的快照。
-- `body_state`：读最近提交的 `simulatedSeconds` 和 `parts`，可用 `part` 过滤，例如 `stomach`、`interoception`。
+- `body_act`：把 `drink` / `eat` / `urinate` 动作连同当前 `sessionId` 交给 Gateway；`urinate` 不需要体积、能量、餐型或时长。action id 由会话 ID 与工具 `callId` 稳定生成。202 只表示入队；用 `GET /actions/:id` 查动作回执，用 `body_state` 或 `GET /state` 看已提交的快照。根清单已加载 `bladder`，启用后 `urinate` 有处理者；Task 10 真实 DSH 会话已核对 queued → applied、同 callId 重试返回原 applied ID、同 callId 异载荷 409，以及当轮新尿留下。
+- `body_state`：读最近提交的 `simulatedSeconds` 和 `parts`，可用 `part` 过滤，例如 `stomach`、`interoception`；根清单已接入水链，`interoception` 会返回 `thirst` / `urinaryUrgency`。
 
 `notifications.js` 每 1000 ms 轮询 `gateway.getNotifications()`：
 

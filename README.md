@@ -34,7 +34,11 @@
 
 ## 当前实现范围
 
-当前已接入胃动力、相对饥饿素、胃壁机械感受代理、十二指肠营养暴露代理，以及饥饿／饱满读出和提醒策略。`body_act` 接收结构化 `drink` / `eat`，不负责从菜名推算容量或热量；饥饿／饱满值是模型代理量，不是人体实测。现在不是全身生理模拟器，也不支持按会话选择不同身体。`systems/` 中的系统目录是历史资料，不代表已有对应模拟。
+当前根清单已接入胃动力、相对饥饿素、胃壁机械感受代理、十二指肠营养暴露代理、水链六部位，以及饥饿／饱满／口渴／尿意读出和提醒策略。`body_act` 接收结构化 `drink` / `eat` / `urinate`，不负责从菜名推算容量或热量；饥饿／饱满／口渴／尿意都是模型代理量，不是人体实测。M1 的真实 DSH 会话验收已完成；M3 水链的 Task 10 真实 DSH 会话验收也已完成（2026-11-22，30 轮 A/B 与排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，仓库外未入库）。
+
+M3 水链首段的脚本、参数与证据笔记已实现：胃水子集入口 `hydration.ts`、小肠水吸收、体液隔室、肾产尿请求、下丘脑 ADH 与口渴双脚本、膀胱储尿与 `urinate` 动作；`interoception` 新增 `thirst` / `urinaryUrgency`。根清单已加载 12 个部位脚本；Task 10 真实 DSH 会话验收已完成（30 轮 A/B、同 sim 1800、方向符合 spec §6.2、账本误差 ≤`1e-6 mL`；排尿 queued→applied、250 mL 排出 + 同轮 1 mL 新尿留下、同 callId 重试 200 原 applied ID、异载荷 409）。这次实机只覆盖 30 轮与水链/排尿链；120 轮长时程、通知投递、重启补算、大负荷利尿和口咽解渴仍未在该实机会话内验证。
+
+现在不是全身生理模拟器，也不支持按会话选择不同身体。`systems/` 中的系统目录是历史资料，不代表已有对应模拟。
 
 ## 快速开始
 
@@ -65,7 +69,7 @@ dsh web
 | 入口 | 内容 |
 | --- | --- |
 | [`index.js`](index.js)、[`gateway/`](gateway/) | DSH 插件入口；本地 HTTP、动作队列、轮次结算和存档。 |
-| [`body-modules.json`](body-modules.json)、[`organs/human-organs/`](organs/human-organs/) | 脚本清单；[胃](organs/human-organs/stomach/README.md)、[十二指肠](organs/human-organs/duodenum/README.md)、[体感和提醒](organs/human-organs/brain/README.md)的模块、参数与证据。 |
+| [`body-modules.json`](body-modules.json)、[`organs/human-organs/`](organs/human-organs/) | 脚本清单；[胃](organs/human-organs/stomach/README.md)、[十二指肠](organs/human-organs/duodenum/README.md)、[小肠](organs/human-organs/small-intestine/README.md)、[肾](organs/human-organs/kidney/README.md)、[膀胱](organs/human-organs/bladder/README.md)、[体感和提醒](organs/human-organs/brain/README.md)的模块、参数与证据；[体液隔室](organs/human-compartments/body-water/README.md)是隔室而不是器官。 |
 | [`docs/gateway-and-scripts.md`](docs/gateway-and-scripts.md)、[`docs/gateway-operations.md`](docs/gateway-operations.md) | 当前接口、脚本接入，以及 `write` / `add` / `transfer` 的边界。 |
 | [`docs/virtual-body.md`](docs/virtual-body.md) | 设计草案与路线图，设计目标不等于已实现功能。 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 开发与协作约定：脚本、参数、证据与提交。 |

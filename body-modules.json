@@ -1,10 +1,16 @@
 {
   "startupScripts": ["./startup/reset-parts.js"],
   "scripts": [
-    "./organs/human-organs/stomach/motility.ts",
+    "./organs/human-organs/stomach/hydration.ts",
     "./organs/human-organs/stomach/ghrelin.ts",
     "./organs/human-organs/stomach/gastric-sensory.ts",
     "./organs/human-organs/duodenum/nutrient-exposure.ts",
+    "./organs/human-organs/small-intestine/water-absorption.ts",
+    "./organs/human-compartments/body-water/water.ts",
+    "./organs/human-organs/brain/hypothalamus-adh.ts",
+    "./organs/human-organs/brain/hypothalamus-thirst.ts",
+    "./organs/human-organs/kidney/urine-production.ts",
+    "./organs/human-organs/bladder/storage.ts",
     "./organs/human-organs/brain/interoception.ts",
     "./organs/human-organs/brain/notify.ts"
   ],

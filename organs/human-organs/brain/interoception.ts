@@ -1,7 +1,8 @@
 /*
  * 部位 `interoception`：把胃壁机械感受、胃饥饿素和十二指肠营养暴露汇成
- * 0–100 mm VAS 代理的饥饿（hunger）与饱满（fullness）。P1 只产出体感，
- * 不发送通知，也不读自己的上一轮状态。
+ * 0–100 mm VAS 代理的饥饿（hunger）与饱满（fullness），并转出下丘脑口渴驱动
+ * （thirst）与膀胱充盈的尿意代理（urinaryUrgency）。本脚本只产出体感，不发送通知，
+ * 也不读自己的上一轮状态。
  *
  * 来源（笔记路径、原文定位、支撑什么、不能推出什么）
  * - SRC-CUMMINGS-2001 / cummings-2001：`organs/human-organs/stomach/references/notes/cummings-2001.md`，
@@ -25,15 +26,29 @@
  *   58、thin-500 48，而胃排空 t50 分别为 41 与 69.5 min；支撑“饱感排序不必与排空速率一致”，
  *   即 fullness 不能只由 nutrientExposure 或 mechanical 解释。摘要未注明统计量类型、量表锚点与
  *   时间原点；只有两个组级点值，不能用于幅度标定。
+ * - SRC-DEWACHTER-2003 / de-wachter-2003：`organs/human-organs/bladder/references/notes/de-wachter-2003.md`，
+ *   摘要只确认 15 名健康女学生，是否未产摘要未说明；190/268/410 mL 是设计文档/主会话全文交接的
+ *   FSF/FDV/SDV 量级，摘要未报告，原文表/图与误差类型待核。只借 410 mL 作为尿意归一化的量级
+ *   锚点；它不是摘要已报告值，不是自然排尿阈值，也不是个体尿意标定，不能从膀胱体积换算压力。
  *
  * design（不是人体测量或拟合）
- * - 线性叠加、两个基线、八个增益、输入钳位与缺失默认值（mechanical 0、相对饥饿素 1、
+ * - 线性叠加、两个基线、六个增益（hunger / fullness 各对相对饥饿素、mechanical 与
+ *   nutrientExposure 一条）、输入钳位与缺失默认值（mechanical 0、相对饥饿素 1、
  *   nutrientExposure 0）全部是工程假设。没有来源把机械感受、营养暴露或相对饥饿素校准到
  *   0–100 mm VAS；上述研究只支撑方向、时间窗或定性排序。
+ * - `thirst` 不是本脚本计算的感觉强度，而是把 `hypothalamusThirst.thirst` 原样钳到
+ *   0–100 mm；缺失或非有限输入回落 `interoception.thirst.fallbackMm`（`design`，默认 50 mm），
+ *   与口渴脚本的 `design` 基线一致。不建模血浆渗透压、口咽暂缓解渴或饮水动机；`thirst` 不
+ *   自动产生喝水动作。
+ * - `urinaryUrgency = clamp(100 mm × 轮初 bladder.volumeMl / 410 mL, 0, 100)`。410 mL 只是
+ *   De Wachter 队列 SDV 的交接量级锚点（`design`，原文表/图待核），不是摘要已报告值，
+ *   不是自然排尿阈值，也不是膀胱压力；它读取轮初膀胱量，所以排尿后的低尿意和当轮新转入的
+ *   尿都在下一轮读出。
  * - 输出钳到 [0, 100]；三路输入的线性叠加不是论文方程，也没有交互项、阈值或饱和。
- *   极端输入相乘后若出现非有限中间值，回落到对应基线，不写出 NaN。
+ *   非有限读数先在输入侧回落到缺失默认值；合成结果只对 NaN 回落对应基线，±Infinity 由
+ *   [0, 100] 钳位截到边界，状态不写出 NaN 或 Infinity。
  * - 只读轮初快照，同一轮摄入下一轮才反映；不建模恶心、腹胀、疼痛、过度饱满、餐食成分
- *   与个体差异；P1 不调用 io.notify。
+ *   与个体差异；不调用 io.notify。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
@@ -43,6 +58,8 @@ export const actionTypes: string[] = [];
 type InteroceptionState = {
   hunger: number;
   fullness: number;
+  thirst: number;
+  urinaryUrgency: number;
 };
 
 type SensoryReading = {
@@ -57,10 +74,20 @@ type DuodenumReading = {
   nutrientExposure?: number;
 };
 
+type ThirstReading = {
+  thirst?: number;
+};
+
+type BladderReading = {
+  volumeMl?: number;
+};
+
 type IO = {
   read(id: 'stomachSensory'): Readonly<SensoryReading> | undefined;
   read(id: 'stomachGhrelin'): Readonly<GhrelinReading> | undefined;
   read(id: 'duodenum'): Readonly<DuodenumReading> | undefined;
+  read(id: 'hypothalamusThirst'): Readonly<ThirstReading> | undefined;
+  read(id: 'bladder'): Readonly<BladderReading> | undefined;
   write(next: InteroceptionState): void;
 };
 
@@ -73,15 +100,24 @@ const hungerMechanicalGain = requireParameter(parameters, 'interoception.hunger.
 const fullnessMechanicalGain = requireParameter(parameters, 'interoception.fullness.mechanicalGain');
 const hungerNutrientGain = requireParameter(parameters, 'interoception.hunger.nutrientGain');
 const fullnessNutrientGain = requireParameter(parameters, 'interoception.fullness.nutrientGain');
+const thirstFallbackMm = requireParameter(parameters, 'interoception.thirst.fallbackMm');
+const urinaryUrgencyReferenceVolumeMl = requireParameter(
+  parameters,
+  'interoception.urinaryUrgency.referenceVolumeMl',
+);
 
 export const initialState: InteroceptionState = {
   hunger: hungerBaseline,
   fullness: fullnessBaseline,
+  thirst: thirstFallbackMm,
+  urinaryUrgency: 0,
 };
 
 export const fields = {
   hunger: { unit: 'mm', mode: 'absolute' },
   fullness: { unit: 'mm', mode: 'absolute' },
+  thirst: { unit: 'mm', mode: 'absolute' },
+  urinaryUrgency: { unit: 'mm', mode: 'absolute' },
 };
 
 function finiteOr(value: number | undefined, fallback: number): number {
@@ -114,6 +150,15 @@ export function heartbeat(io: IO): void {
       + fullnessNutrientGain * nutrient,
     fullnessBaseline,
   );
+  const thirst = clampOrFallback(
+    finiteOr(io.read('hypothalamusThirst')?.thirst, thirstFallbackMm),
+    thirstFallbackMm,
+  );
+  const bladderVolume = Math.max(0, finiteOr(io.read('bladder')?.volumeMl, 0));
+  const urinaryUrgency = clampOrFallback(
+    (100 * bladderVolume) / urinaryUrgencyReferenceVolumeMl,
+    0,
+  );
 
-  io.write({ hunger, fullness });
+  io.write({ hunger, fullness, thirst, urinaryUrgency });
 }

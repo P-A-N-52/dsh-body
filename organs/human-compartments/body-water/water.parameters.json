@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "owner": "bodyFluid",
+  "parameters": [
+    {
+      "id": "bodyFluid.referenceVolumeMl",
+      "unit": "mL",
+      "value": 30000,
+      "status": "design",
+      "range": [10000, 60000],
+      "source": null,
+      "note": "工程体液水参考量，初值等于此值；不是实测总体水、血浆容量或体重比例。range 是工程调参范围，不是人体百分位，不能据此推断个体差异"
+    },
+    {
+      "id": "bodyFluid.deficitScaleMl",
+      "unit": "mL",
+      "value": 500,
+      "status": "design",
+      "range": [50, 5000],
+      "source": null,
+      "note": "把偏离参考量的水量换算成 -1…1 亏缺代理的尺度；不是血浆渗透压、口渴阈值或尿意阈值。range 是工程调参范围"
+    }
+  ]
+}

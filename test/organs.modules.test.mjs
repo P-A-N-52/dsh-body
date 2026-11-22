@@ -1,13 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 const organModules = [
-  ['stomach', '../organs/human-organs/stomach/motility.ts'],
-  ['duodenum', '../organs/human-organs/duodenum/nutrient-exposure.ts'],
+  ['legacy stomach motility', 'stomach', '../organs/human-organs/stomach/motility.ts'],
+  ['stomach hydration', 'stomach', '../organs/human-organs/stomach/hydration.ts'],
+  ['stomach ghrelin', 'stomachGhrelin', '../organs/human-organs/stomach/ghrelin.ts'],
+  ['gastric sensory', 'stomachSensory', '../organs/human-organs/stomach/gastric-sensory.ts'],
+  ['duodenum', 'duodenum', '../organs/human-organs/duodenum/nutrient-exposure.ts'],
+  ['small intestine', 'smallIntestine', '../organs/human-organs/small-intestine/water-absorption.ts'],
+  ['body fluid', 'bodyFluid', '../organs/human-compartments/body-water/water.ts'],
+  ['hypothalamus ADH', 'hypothalamusAdh', '../organs/human-organs/brain/hypothalamus-adh.ts'],
+  ['hypothalamus thirst', 'hypothalamusThirst', '../organs/human-organs/brain/hypothalamus-thirst.ts'],
+  ['kidney', 'kidney', '../organs/human-organs/kidney/urine-production.ts'],
+  ['bladder', 'bladder', '../organs/human-organs/bladder/storage.ts'],
+  ['interoception', 'interoception', '../organs/human-organs/brain/interoception.ts'],
+  ['brain notify', 'brainNotify', '../organs/human-organs/brain/notify.ts'],
 ];
 
-for (const [expectedId, modulePath] of organModules) {
-  test(`${expectedId} exports the organ module contract`, async () => {
+for (const [label, expectedId, modulePath] of organModules) {
+  test(`${label} exports the organ module contract`, async () => {
     const module = await import(modulePath);
     assert.equal(module.id, expectedId);
     assert.equal(typeof module.heartbeat, 'function');
@@ -16,6 +28,13 @@ for (const [expectedId, modulePath] of organModules) {
     assert.ok(Array.isArray(module.actionTypes));
   });
 }
+
+test('the root manifest lists twelve scripts with hydration instead of legacy motility', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../body-modules.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.scripts.length, 12);
+  assert.ok(manifest.scripts.includes('./organs/human-organs/stomach/hydration.ts'));
+  assert.equal(manifest.scripts.includes('./organs/human-organs/stomach/motility.ts'), false);
+});
 
 test('duodenum treats a missing or invalid stomach reading as zero exposure', async () => {
   const { heartbeat } = await import('../organs/human-organs/duodenum/nutrient-exposure.ts');

@@ -1,15 +1,17 @@
 # 脑：体感与上报（brain）
 
-P1 的 `brain/` 有两个脚本：`interoception.ts` 把胃壁机械感受、胃饥饿素和十二指肠营养暴露汇成 0–100 mm 的饥饿与饱满代理；`notify.ts` 在明显/强档位按会话决定是否提醒。两者只写自己的部位，不写其他器官。
+`brain/` 目前有四个脚本：`interoception.ts` 把胃壁机械感受、胃饥饿素、十二指肠营养暴露、下丘脑口渴驱动和膀胱充盈汇成 0–100 mm 的饥饿、饱满、口渴与尿意代理；`notify.ts` 在明显/强档位按会话决定是否提醒；`hypothalamus-adh.ts` 把体液亏缺映射成相对 ADH 水平；`hypothalamus-thirst.ts` 把同一亏缺映射成口渴驱动。四个脚本只写自己的部位，不写其他器官。
 
-实现状态：脚本与参数已在 `organs/human-organs/brain/`；根清单已挂载两个脚本；`body_act` / `body_state` 与通知投递在 `index.js` / `tools.js` / `notifications.js`。`interoception` 是 `producer only` 的体感读出；`brainNotify` 是提醒策略，负责频率和次数。
+实现状态：脚本与参数已在 `organs/human-organs/brain/`，四个脚本都已加入根清单；`body_act` / `body_state` 与通知投递在 `index.js` / `tools.js` / `notifications.js`。`interoception` 是 `producer only` 的体感读出，会读取下丘脑口渴与膀胱体积；`brainNotify` 是提醒策略，负责频率和次数，仍只读饥饿/饱满。
 
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `interoception.ts` | `interoception` | `hunger`、`fullness` | `stomachSensory.mechanical`、`stomachGhrelin.relativeConcentration`、`duodenum.nutrientExposure` | `interoception.parameters.json` |
+| `interoception.ts` | `interoception` | `hunger`、`fullness`、`thirst`、`urinaryUrgency` | `stomachSensory.mechanical`、`stomachGhrelin.relativeConcentration`、`duodenum.nutrientExposure`、`hypothalamusThirst.thirst`、`bladder.volumeMl` | `interoception.parameters.json` |
 | `notify.ts` | `brainNotify` | `lastSessionId`、`sessions`（内部状态） | `interoception.hunger/fullness`；本轮动作里的 `sessionId` | `notify.parameters.json` |
+| `hypothalamus-adh.ts` | `hypothalamusAdh` | `relativeConcentration` | `bodyFluid.waterDeficit` | `hypothalamus-adh.parameters.json` |
+| `hypothalamus-thirst.ts` | `hypothalamusThirst` | `thirst` | `bodyFluid.waterDeficit` | `hypothalamus-thirst.parameters.json` |
 
 参数文件与脚本同目录，模块在 import 时经 `lib/parameters.js` 只读加载；参数是证据默认值，不做运行中热切换。
 
@@ -19,10 +21,46 @@ P1 的 `brain/` 有两个脚本：`interoception.ts` 把胃壁机械感受、胃
 | --- | --- | --- |
 | `hunger` | `mm` | 饥饿的 0–100 mm VAS 代理 |
 | `fullness` | `mm` | 饱满的 0–100 mm VAS 代理 |
+| `thirst` | `mm` | 口渴的 0–100 mm 代理；把 `hypothalamusThirst.thirst` 原样钳位后读出 |
+| `urinaryUrgency` | `mm` | 尿意的 0–100 mm 代理；由轮初 `bladder.volumeMl` 归一化 |
 
-`hunger` / `fullness` **不是物理长度、神经放电或激素浓度**，也不是胃容积或胃壁张力。`mm` 只沿用 100-mm 视觉模拟量表的刻度；把它们与胃内容量、血浆饥饿素或迷走传入放电互换没有方法学依据。
+`hunger` / `fullness` / `thirst` / `urinaryUrgency` **不是物理长度、神经放电、激素浓度、膀胱压力或逼尿肌张力**，也不是胃容积或残余尿诊断值。`mm` 只沿用 100-mm 视觉模拟量表的刻度；把它们与胃内容量、血浆饥饿素、AVP pmol/L、膀胱 mL 或压力互换没有方法学依据。
 
-`initialState` 为 `{ hunger: 50, fullness: 0 }`，取自两个 `design` 基线参数。脚本每轮从上游输入重算，输出钳到 `[0, 100]`，不读自己的上一轮状态。
+`thirst` 与 `urinaryUrgency` 的方程：
+
+```text
+thirst         = clamp(hypothalamusThirst.thirst, 0, 100)   // 缺失或非有限回落 50 mm
+urinaryUrgency = clamp(100 mm × bladder.volumeMl / 410 mL, 0, 100)
+```
+
+尿意读取轮初膀胱量，所以排尿后的低尿意和当轮新转入的尿都在下一轮读出。410 mL 的参考量是 `design`，只借 De Wachter 队列 SDV 的测压量级作归一化锚点，不是自然排尿阈值，也不是个体尿意标定。`thirst` 与 `urinaryUrgency` 目前只由 `body_state` / `GET /state` 读取；`brainNotify` 不读，也没有口渴或尿意提醒。
+
+`initialState` 为 `{ hunger: 50, fullness: 0, thirst: 50, urinaryUrgency: 0 }`；`hunger` / `fullness` 来自两个 `design` 基线参数，`thirst` 的 50 mm 是缺失回落，`urinaryUrgency` 初值 0。脚本每轮从上游输入重算，输出钳到 `[0, 100]`，不读自己的上一轮状态。
+
+### `hypothalamusAdh`
+
+| 字段 | 单位 | 含义 |
+| --- | --- | --- |
+| `relativeConcentration` | `1` | 相对 ADH 水平，初值 1；不是血浆 AVP 浓度（`pmol/L`）、分泌速率或渗透压 |
+
+```text
+target = clamp(1 + deficitGain × waterDeficit, relativeMinimum, relativeMaximum)
+next   = current + (1 − exp(−dtMin / timeConstantMin)) × (target − current)
+```
+
+一阶滞后只提供工程反应延迟；`timeConstantMin` 是 `design`，不是 Andersen 的拟合值。只读轮初 `bodyFluid.waterDeficit`，缺失或非有限按 0。
+
+### `hypothalamusThirst`
+
+| 字段 | 单位 | 含义 |
+| --- | --- | --- |
+| `thirst` | `mm` | 口渴驱动，0–100 mm 代理，初值 50 mm；不是实测 VAS、渗透压或饮水动机 |
+
+```text
+thirst = clamp(baselineMm + deficitGainMm × waterDeficit, 0, 100)
+```
+
+无自身动态；饮水只能经胃→小肠→体液改变 `waterDeficit` 后降低口渴。首段不建 Figaro & Mack 所述吸收前口咽缓解。
 
 `brainNotify` 的字段：
 
@@ -35,15 +73,17 @@ P1 的 `brain/` 有两个脚本：`interoception.ts` 把胃壁机械感受、胃
 
 ## 3. 输入与方程
 
-三个输入都取自同一轮的轮初快照；缺失或非有限时按默认值处理：
+五类输入都取自同一轮的轮初快照；缺失或非有限时按默认值处理：
 
 | 输入 | 含义 | 缺失 / 非有限默认值 |
 | --- | --- | --- |
 | `stomachSensory.mechanical` | 胃壁机械感受代理，0–1；不是张力或神经放电 | 0 |
 | `stomachGhrelin.relativeConcentration` | 相对饥饿素浓度，空腹基线 1、餐后谷值 0.5；不是 `ng/mL` | 1 |
 | `duodenum.nutrientExposure` | 十二指肠近期营养暴露代理，`kcal/min`；不是吸收速率或血糖 | 0 |
+| `hypothalamusThirst.thirst` | 下丘脑口渴驱动，0–100 mm 代理 | 50 |
+| `bladder.volumeMl` | 轮初膀胱体积，mL；不是压力 | 0 |
 
-先钳输入：`M = clamp(mechanical, 0, 1)`、`G = max(0, relativeConcentration)`、`N = max(0, nutrientExposure)`。然后：
+先钳输入：`M = clamp(mechanical, 0, 1)`、`G = max(0, relativeConcentration)`、`N = max(0, nutrientExposure)`；`thirst` 与 `urinaryUrgency` 见 §2。然后：
 
 ```text
 hunger   = clamp(hungerBaseline   + hungerGhrelinGain   × (G − 1)
@@ -54,7 +94,7 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
                                   + fullnessNutrientGain   × N, 0, 100)
 ```
 
-输入到输出有**一轮偏移**：同一轮的摄入先由胃脚本记账，下一轮的轮初快照里才出现新的 `mechanical`、`relativeConcentration` 与 `nutrientExposure`。
+四个输出互不串写：`thirst` 不参与饥饿/饱满方程，`urinaryUrgency` 也不参与。输入到输出有**一轮偏移**：同一轮的摄入先由胃脚本记账，下一轮的轮初快照里才出现新的 `mechanical`、`relativeConcentration` 与 `nutrientExposure`；`bodyFluid` 的变化也要下一轮才改变两个下丘脑脚本的输出。
 
 ## 4. 参数
 
@@ -68,8 +108,27 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 | `interoception.fullness.mechanicalGain` | 100 | `mm/1` | `design` | — |
 | `interoception.hunger.nutrientGain` | -5 | `mm/(kcal/min)` | `design` | — |
 | `interoception.fullness.nutrientGain` | 10 | `mm/(kcal/min)` | `design` | — |
+| `interoception.urinaryUrgency.referenceVolumeMl` | 410 | `mL` | `design` | `SRC-DEWACHTER-2003` |
 
-八个参数全部 `status: "design"`、`source: null`：它们是工程假设，不是人体测量，也不是开发集拟合或独立验证结果。
+前八个参数 `status: "design"`、`source: null`；尿意参考量也标 `design`，只挂测压队列量级的登记，不是人体测量、自然阈值或独立验证。九项全是工程假设。
+
+### `hypothalamus-adh.parameters.json`
+
+| 参数 ID | 值 | 单位 | 状态 | 来源 |
+| --- | --- | --- | --- | --- |
+| `hypothalamusAdh.timeConstantMin` | 10 | `min` | `design` | — |
+| `hypothalamusAdh.deficitGain` | 1 | `1/1` | `design` | — |
+| `hypothalamusAdh.relativeMinimum` | 0 | `1` | `design` | — |
+| `hypothalamusAdh.relativeMaximum` | 3 | `1` | `design` | — |
+
+### `hypothalamus-thirst.parameters.json`
+
+| 参数 ID | 值 | 单位 | 状态 | 来源 |
+| --- | --- | --- | --- | --- |
+| `hypothalamusThirst.baselineMm` | 50 | `mm` | `design` | — |
+| `hypothalamusThirst.deficitGainMm` | 50 | `mm/1` | `design` | — |
+
+两个下丘脑参数文件全部 `design`、`source: null`；`relativeConcentration` 以 1 为无量纲参考，`thirst` 的 `mm` 只沿用 VAS 刻度。
 
 ### `notify.parameters.json`（提醒策略）
 
@@ -97,13 +156,16 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 
 ## 5. 调节方式
 
-P1 只接三类只读输入：胃机械感受、相对饥饿素、十二指肠营养暴露；三者进入同一条线性叠加。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
+`interoception` 接五类只读输入：胃机械感受、相对饥饿素、十二指肠营养暴露、下丘脑口渴驱动与膀胱体积；前三类进入同一条线性叠加，后两类分别直通 `thirst` 与 `urinaryUrgency`。两个下丘脑脚本只读 `bodyFluid.waterDeficit`，彼此不读对方部位，也不产生动作。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
 
 - 恶心、腹胀、疼痛、过度饱满（撑感）等独立症状；
 - 餐食成分（脂肪 / 蛋白 / 碳水比例）、黏度、能量密度、温度、碳酸与甜味剂；
 - 餐时表、昼夜节律、睡眠、运动与疾病；
-- 个体差异：年龄、性别、BMI、胃排空与激素水平的个体化参数；
+- 个体差异：年龄、性别、BMI、胃排空、激素水平与膀胱容量的个体化参数；
 - CCK、GLP-1 等肠激素，以及迷走与中枢反馈；
+- 血浆/尿渗透压、电解质、血容量、血压与 RAAS；
+- 吸收前口咽解渴、习惯化、饮水动机与自动喝水；
+- 尿意阈值、排尿反射、失禁、夜尿与逼尿肌压力；
 - 通知历史文件、模型已读确认与按会话绑定不同身体（当前只有最近动作的会话收到提醒）。
 
 ## 6. 证据入口
@@ -115,18 +177,28 @@ P1 只接三类只读输入：胃机械感受、相对饥饿素、十二指肠�
   - `leone-2022.md`（`SRC-LEONE-2022`，Table 2、Table 4 与 Results）：混合餐后相对饥饿素与饥饿 / 饱满评分的同批变化方向。
   - `levine-2015.md`（`SRC-LEVINE-2015`，Table 1 与 Methods 第 3 节）：237 mL、355 kcal 高脂液餐后 0–60 min 的胃饱满 VAS 时序与量表口径。
   - `camps-2016.md`（`SRC-CAMPS-2016`，摘要 Results）：饱感排序可以与胃排空 t50 排序不一致。
+- 水链逐篇笔记：
+  - `references/notes/figaro-1997.md`（`SRC-FIGARO-1997`，摘要 Results）：热运动脱水 n=6、cm VAS；只支撑口咽解渴与持续补液可分开，首段不建该支路。
+  - [`../kidney/references/notes/ota-1994.md`](../kidney/references/notes/ota-1994.md)（`SRC-OTA-1994`，Methods p.100、Figs. 1/3/4）：主队列 5 名甲减患者 + 5 名正常对照；只支撑水负荷后 AVP 降、尿变稀的方向。
+  - [`../kidney/references/notes/andersen-1990.md`](../kidney/references/notes/andersen-1990.md)（`SRC-ANDERSEN-1990`，摘要 Results）：AVP 输注后肾反应可延迟；剂量轴不是血浓度。
+  - [`../bladder/references/notes/de-wachter-2003.md`](../bladder/references/notes/de-wachter-2003.md)（`SRC-DEWACHTER-2003`，摘要）：健康女学生 n=15；190/268/410 mL 是交接数值、原文表/图待核，410 只作尿意归一化锚点。
+  - [`../bladder/references/notes/abrams-2002.md`](../bladder/references/notes/abrams-2002.md)（`SRC-ABRAMS-2002`，§3.2.4）：排前量 = 排出量 + 残余量的记账恒等式。
 - 器官设计：[`docs/superpowers/specs/2026-11-20-organ-model-design.md`](../../../docs/superpowers/specs/2026-11-20-organ-model-design.md)
+- 水链设计：[`docs/superpowers/specs/2026-11-22-water-balance-design.md`](../../../docs/superpowers/specs/2026-11-22-water-balance-design.md)
 
-**证据边界：** 这些来源只支撑方向——餐后饥饿素下降、饥饿下降与饱满上升，胃充盈与营养到达参与饱感，饱感不只看排空。它们**没有**把机械感受、营养暴露或相对饥饿素校准到 0–100 mm VAS；线性叠加、基线、八个增益与缺失默认值全是 `design`。方程不是论文原方程，也没有独立验证或盲法留出。`brainNotify` 的阈值、冷却和次数上限没有登记人体来源，是 `policy`，不能当成生理常数。
+**证据边界：** 这些来源只支撑方向——餐后饥饿素下降、饥饿下降与饱满上升，胃充盈与营养到达参与饱感，饱感不只看排空；水负荷后 AVP 下降、尿量增加且尿变稀；吸收前口咽刺激可短暂抑制口渴。它们**没有**把机械感受、营养暴露、相对饥饿素、体液亏缺或膀胱体积校准到 0–100 mm VAS，也没有把 `relativeConcentration` 校准到 pmol/L。线性叠加、一阶滞后、基线、增益、参考量与缺失默认值全是 `design`；方程不是论文原方程，也没有独立验证或盲法留出。`brainNotify` 的阈值、冷却和次数上限没有登记人体来源，是 `policy`，不能当成生理常数。
 
 ## 7. 当前限制
 
 - **体感已接入提醒**：`interoception` 仍是 `producer only` 的读出；`brainNotify` 会调用 `io.notify`，`notifications.js` 再投递到对应会话。通知历史文件、模型已读确认与多会话路由尚未实现。
-- **不是生理测量**：`hunger` / `fullness` 是主观评分的代理，不能当作物理长度、神经放电、激素浓度或胃容积。
-- **线性叠加是设计**：没有交互项、阈值、饱和或餐型差异；三路输入各自独立相加。
+- **不是生理测量**：四个输出都是主观评分或驱动代理，不能当作物理长度、神经放电、激素浓度、胃容积、膀胱压力或残余尿诊断。
+- **口渴不产生动作**：`hypothalamusThirst.thirst` 与 `interoception.thirst` 只作读出，不自动喝水；首段不建口咽解渴。
+- **尿意不是阈值**：`urinaryUrgency` 只按膀胱体积归一化，没有尿意阈值、排尿反射、失禁或夜尿；`urinate` 是会话主动动作。
+- **线性叠加是设计**：没有交互项、阈值、饱和或餐型差异；三路输入各自独立相加，口渴与尿意单独直通。
 - **未建模过度饱满**：`fullness` 封顶 100，但疼痛、恶心、腹胀与“撑得难受”没有独立读出。
 - **没有餐时表**：不能产生餐前饥饿上升；饥饿素只由胃脚本的餐后抑制与恢复驱动。
-- **没有个体化**：年龄、性别、BMI、胃排空与激素差异都不进入方程；八个参数是证据默认值，不是某具身体的最终值。
+- **没有渗透压与血容量**：两个下丘脑脚本只读水量亏缺代理，不读血浆/尿渗透压、电解质、血压或 RAAS。
+- **没有个体化**：年龄、性别、BMI、胃排空、激素与膀胱容量差异都不进入方程；参数是证据默认值，不是某具身体的最终值。
 
 ## 8. 体感提醒（`brainNotify`）
 

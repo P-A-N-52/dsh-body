@@ -1,8 +1,8 @@
 # 十二指肠（duodenum）
 
-十二指肠只有一个脚本：把胃排出的能量流做成一阶滤波的“近期营养暴露”代理。
+十二指肠只有一个脚本：把胃排出的能量流做成一阶滤波的“近期营养暴露”代理。它不负责水吸收；水链的小肠吸收在 `small-intestine/water-absorption.ts`，两者不是同一个部位。
 
-实现状态：脚本与参数已在 `organs/human-organs/duodenum/`；根清单已挂载这些脚本；身体启用时，启动 Gateway 即加载。
+实现状态：脚本与参数已在 `organs/human-organs/duodenum/`；根清单已挂载这个脚本；身体启用时，启动 Gateway 即加载。
 
 ## 1. 脚本与部位
 
@@ -25,6 +25,8 @@
 - 本轮的到达速率 `arrivalRate = stomach.emptiedKcal / dtMin`，单位 `kcal/min`；
 - `nutrientExposure` 以时间常数 `duodenum.exposure.timeConstantMin` 一阶跟随：`next = exposure + (1 − e^(−dtMin/τ)) × (arrivalRate − exposure)`，结果截到非负；
 - 读的是轮初快照里的 `stomach.emptiedKcal`，即胃上一轮结算后的排出量，所以胃→十二指肠在时间上有**一轮偏移**；`stomach` 缺失、非有限或负数时按 0 流入处理。
+
+这条链只处理能量，不处理水。胃水经 `hydration.ts` 的 `emptiedWaterMl` 直接转给 `smallIntestine`，不经过 `duodenum`；`stomach.emptiedMl` 也不当水量使用。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
@@ -49,8 +51,8 @@
 
 ## 5. 当前限制
 
-- **不建肠内容量/吸收模型**：当前没有 `contentMl`、没有吸收或血糖，也没有与肠内容量或吸收相关的部位状态。
-- **仍未用 `transfer`**：胃→肠只通过 `stomach.emptiedKcal` 的读出与一轮偏移传递；等有肠内容量模型时再引入器官间转移。
+- **十二指肠不建肠内容量/吸收模型**：本部位没有 `contentMl`、没有营养吸收或血糖，也没有与肠内容量或吸收相关的状态；水吸收与肠腔水量在小肠脚本里，不在这里。
+- **十二指肠自身仍未用 `transfer`**：它的输入仍是 `stomach.emptiedKcal` 的读出与一轮偏移；胃→小肠的水转移由 `stomach/hydration.ts` 负责，与本脚本无关。
 - **`nutrientExposure` 是代理**：单位 `kcal/min` 只表示滤波后的到达速率，不等于吸收速率、门静脉葡萄糖或激素分泌；时间常数是 `design`，来自工程可运行性，不是人体测量。
 - **没有专属来源**：`source-index.csv` 里没有十二指肠特异的登记行，当前模型参数不能声称有该器官的直接证据。
 - 不建黏膜、刷状缘酶、转运体、渗透压与肠腔 pH。

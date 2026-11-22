@@ -25,7 +25,8 @@
 | 仿真单元 | `organs/human-organs/<organ>/`，一个器官可由多个脚本组成 |
 | 功能标签 | 消化、内分泌、感觉器等，只用于 README 分类 |
 | P0 | 胃（动力、饥饿素、机械感受）、十二指肠（营养暴露） |
-| P1（当前） | 输入契约（`drink` 可带能量）、体感读出（`hunger` / `fullness`）；不新增消化器官 |
+| P1（已完成） | 输入契约（`drink` 可带能量）、体感读出（`hunger` / `fullness` 与提醒）；不新增消化器官 |
+| M3 水链（已接入根清单） | 胃水子集、小肠水吸收、体液隔室、肾产尿请求、下丘脑 ADH / 口渴、膀胱储尿与主动排尿；根清单已加载 12 个部位，多轮水账本补测与 12 部位性能基线已完成（Task 11），论文可比数据对照已记录（Task 12，大负荷利尿仍不匹配），Task 10 真实会话验收已完成（30 轮 A/B + 排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`）；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴未在该实机会话内验证 |
 | 后续清单 | [`2026-11-20-organ-model-design.md`](./superpowers/specs/2026-11-20-organ-model-design.md) §6 |
 
 11 个系统名（运动、消化、呼吸、循环、泌尿、生殖、神经、内分泌、免疫、感觉器、被皮）只保留为功能标签，不再是目录或仿真层级。当前 P0/P1 的器官资料见 [`stomach`](../organs/human-organs/stomach/README.md)、[`duodenum`](../organs/human-organs/duodenum/README.md) 与 [`brain`](../organs/human-organs/brain/README.md)；其余 `systems/*/` 只保留未迁移的 legacy 证据。
@@ -34,9 +35,9 @@
 
 ### 器官目录与共享身体状态
 
-每个器官的 `README.md` 记录要模拟的脚本、字段、调节方式、待查问题和证据入口。论文原文、逐篇摘记和从图表提取的数据放在该器官的 `references/` 下，P0/P1 的笔记在 `organs/human-organs/stomach/references/notes/`；共享登记簿和字段字典在 `organs/human-organs/references/`。脚本例如 `organs/human-organs/stomach/motility.ts`、`organs/human-organs/stomach/ghrelin.ts`、`organs/human-organs/brain/interoception.ts` 和 `organs/human-organs/brain/notify.ts`，由根目录的 `body-modules.json` 逐条挂载；根清单现在挂载六条器官脚本（P0 四条 + `brain/interoception.ts` + `brain/notify.ts`）。
+每个器官的 `README.md` 记录要模拟的脚本、字段、调节方式、待查问题和证据入口。论文原文、逐篇摘记和从图表提取的数据放在该器官的 `references/` 下，P0/P1 的笔记在 `organs/human-organs/stomach/references/notes/`；共享登记簿和字段字典在 `organs/human-organs/references/`。脚本例如 `organs/human-organs/stomach/hydration.ts`、`organs/human-organs/stomach/ghrelin.ts`、`organs/human-organs/brain/interoception.ts` 和 `organs/human-organs/brain/notify.ts`，由根目录的 `body-modules.json` 逐条挂载；根清单现在挂载 12 条部位脚本（原 P0/P1 六条，胃入口换成 `hydration.ts`，加小肠、体液、两个下丘脑、肾和膀胱）。
 
-运行时的公共池就是同一分钟的身体快照。`snapshot.simulatedSeconds` 给出仿真时刻，`snapshot.parts` 按模块 ID 保存当前值。每个量由一个模块写入，其他模块按需读取。例如胃内容量由 `stomach` 的 `motility.ts` 维护，饥饿素相对浓度由 `stomachGhrelin` 的 `ghrelin.ts` 维护，`brain/interoception.ts` 读取胃充盈、饥饿素与十二指肠营养暴露后写 `interoception.hunger` / `fullness`。Gateway 将所有部位一起写入一份 `body-state.json`，重启时也从同一分钟恢复。
+运行时的公共池就是同一分钟的身体快照。`snapshot.simulatedSeconds` 给出仿真时刻，`snapshot.parts` 按模块 ID 保存当前值。每个量由一个模块写入，其他模块按需读取。例如胃内容量由 `stomach` 的 `hydration.ts` 维护，饥饿素相对浓度由 `stomachGhrelin` 的 `ghrelin.ts` 维护，`brain/interoception.ts` 读取胃充盈、饥饿素、十二指肠营养暴露、下丘脑口渴与膀胱体积后写 `interoception.hunger` / `fullness` / `thirst` / `urinaryUrgency`。Gateway 将所有部位一起写入一份 `body-state.json`，重启时也从同一分钟恢复。
 
 ### 可自定义的身体参数
 
@@ -141,9 +142,9 @@ M6 接入基础病对身体参数的持续修正。M7 接入当前病况的触�
 
 ## 5. 身体 Gateway 与 DSH 接入
 
-目前 DSH 会话可发起进食和饮水，胃排空随心跳推进；主动排尿、膀胱充盈和尿意尚未实现，候选拆法见第 6 节。Gateway 在线且身体启用时，即使会话空闲也继续计时；暂停身体或 DSH 退出（含崩溃）时心跳停止，心跳停止期间新增的主动动作为零。
+目前 DSH 会话可发起进食和饮水，胃排空随心跳推进。M3 水链的主动排尿、膀胱充盈、口渴与尿意脚本已实现并接入根清单，Task 10 真实会话验收已完成（30 轮 A/B + 排尿重试/409）；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴未在该实机会话内验证。状态与模块清单见第 6 节。Gateway 在线且身体启用时，即使会话空闲也继续计时；暂停身体或 DSH 退出（含崩溃）时心跳停止，心跳停止期间新增的主动动作为零。
 
-当前插件已接入 Gateway 的启动与关闭，默认清单现在挂载六条器官脚本（P0 四脚本 + `brain/interoception.ts` + `brain/notify.ts`）。启用时，自定义空清单下新动作仍会因为没有模块声明对应类型而返回 `422`；停用时新动作返回 `409`，见「启用、暂停与恢复」。这是有意的 fail-fast，已声明类型按 `actionTypes` 放行；未声明类型仍返回 `422`。体感读出、`body_act` / `body_state` 与通知投递已接入；食物估算仍是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
+当前插件已接入 Gateway 的启动与关闭，默认清单现在挂载 12 条部位脚本（原 P0/P1 六条，胃入口换成 `hydration.ts`，加小肠、体液、两个下丘脑、肾与膀胱）。启用时，自定义空清单下新动作仍会因为没有模块声明对应类型而返回 `422`；停用时新动作返回 `409`，见「启用、暂停与恢复」。这是有意的 fail-fast，已声明类型按 `actionTypes` 放行；未声明类型仍返回 `422`。M1 的真实 DSH 会话验收已完成；通知历史文件与模型已读确认仍未实现；食物估算仍是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
 
 ### 加载插件
 
@@ -160,7 +161,7 @@ DSH 加载插件时启动 Gateway，退出或卸载插件时关闭监听、定�
 
 - `GET /state` 返回最近一次提交的 `simulatedSeconds` 和各部位状态 `parts`。
 - `POST /actions` 接收包含 `id` 和 `type` 的 JSON 动作，必须使用 `Content-Type: application/json`。启用时，有处理者的新动作返回 `202` 和 `{ id, type, status: "queued", effectiveAt }`；没有模块声明该类型则返回 `422`，且不写入存档。只要动作记录仍在，同 id、同载荷返回 `200` 和当前回执，同 id、不同载荷返回 `409`。
-- `GET /actions/:id` 返回动作记录和状态；`GET /capabilities` 按动作类型列出处理它的模块 ID，例如当前根清单启用后 `{ "drink": ["stomach", "stomachGhrelin"], "eat": ["stomach", "stomachGhrelin"] }`（暂停时为空对象）；`GET /health` 返回本次启动实际采用的 `active`、仿真时钟、在途批次、连续失败次数和队列计数。
+- `GET /actions/:id` 返回动作记录和状态；`GET /capabilities` 按动作类型列出处理它的模块 ID，例如当前根清单启用后 `{ "drink": ["stomach", "stomachGhrelin"], "eat": ["stomach", "stomachGhrelin"], "urinate": ["bladder"] }`（暂停时为空对象）；`GET /health` 返回本次启动实际采用的 `active`、仿真时钟、在途批次、连续失败次数和队列计数。
 - `GET /notifications` 返回待确认通知；`POST /notifications/ack` 提交 `{ "id": "…" }`，返回 `{ id, acked }`，未知 id 也返回 200 和 `acked: false`。
 
 HTTP 边界：请求体上限 64 KiB；非 JSON 的 POST 返回 `415`；`Host` 必须是 `127.0.0.1:<port>` 或 `localhost:<port>`，非 GET 的 `Origin` 只允许同源，否则返回 `403`；错误方法返回 `405`。存档默认上限 2 MiB，入队前会预留元数据空间，超过预算返回 `413`，不会把队列写坏；可用 `maxCheckpointBytes` 调整。当前不引入 token；同进程的 `body_act` 直接调用 Gateway 句柄，HTTP 只服务本地调试和未来的浏览器页。
@@ -335,43 +336,41 @@ Gateway 的 `GET /notifications` 返回待确认队列，目前最多保留 200 
 
 每个里程碑在实际 DSH 实例里验收，通过后再接下一项。
 
-P1（当前实现）覆盖“吃/喝 → 胃排空 → 十二指肠营养暴露 → 体感读出 → 会话提醒”的链：`interoception.hunger` / `fullness` 是代理读数，`brainNotify` 做显著性/滞回/冷却/配额，`body_act` / `body_state` 与通知投递已接入。胃动力在 `volumeMl` / `energyKcal` 总量内保存固餐小计 `solidVolumeMl` / `solidEnergyKcal`：只有 `eat` 的 `mealKind: "solid"` 按单独的固餐参考半时（68.7 min，标记固相半排空时间中位数）排空，`drink`、`liquid`、`mixed` 与旧存档中已经入胃的存量仍走原算法，旧档 `mealQueue` 里尚未释放的切片继续按各自 `mealKind` 入账，`body_act` / `body_state` 参数不变。体感仍经胃充盈、相对饥饿素与十二指肠营养暴露间接反映这些总量与通量：体感字段不变，数值会随分组后的总量与排出量变化；只有查询原始 `stomach` 部位或整身状态时才会看到两个固餐小计。通知历史文件、按会话绑定不同身体、真实 DSH 会话的端到端验收仍待完成；下表的 M1 实机验收、M2–M7 仍是设计目标。
+P1（已完成）覆盖“吃/喝 → 胃排空 → 十二指肠营养暴露 → 体感读出 → 会话提醒”的链：`interoception.hunger` / `fullness` 是代理读数，`brainNotify` 做显著性/滞回/冷却/配额，`body_act` / `body_state` 与通知投递已接入。胃动力在 `volumeMl` / `energyKcal` 总量内保存固餐小计 `solidVolumeMl` / `solidEnergyKcal`：只有 `eat` 的 `mealKind: "solid"` 按单独的固餐参考半时（68.7 min，标记固相半排空时间中位数）排空，`drink`、`liquid`、`mixed` 与旧存档中已经入胃的存量仍走原算法，旧档 `mealQueue` 里尚未释放的切片继续按各自 `mealKind` 入账，`body_act` / `body_state` 参数不变。体感仍经胃充盈、相对饥饿素与十二指肠营养暴露间接反映这些总量与通量：体感字段不变，数值会随分组后的总量与排出量变化；只有查询原始 `stomach` 部位或整身状态时才会看到两个固餐小计。M1 的真实 DSH 会话验收已完成；通知历史文件、模型已读确认与按会话绑定不同身体仍未实现。M3 水链首段已实现脚本、参数、定向测试与现状文档并接入根清单（Tasks 1–9）；多轮水账本补测与当前 12 部位逐轮性能基线已完成（Task 11，spec §8），论文可比数据对照已记录（Task 12，spec §7），但大负荷利尿仍不匹配、口咽解渴支路未建，不能写成整体符合论文；Task 10 真实 DSH 会话验收已完成（30 轮 A/B + 排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`）；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴未在该实机会话内验证；下表的 M2、M4–M7 仍是设计目标。
 
 ### 首期优先完成（M1–M4）
 
-M1–M4 全部通过实机验收后，首期交付完成。首期用会话工具观察体感，从 Gateway 的开发日志核对仿真数值。
+M1 已完成；M1–M4 全部通过实机验收后，首期交付完成。首期用会话工具观察体感，从 Gateway 的开发日志核对仿真数值。
 
 | 里程碑 | 交付范围 | DSH 实机验收 |
 | --- | --- | --- |
 | M1 · 基础身体与进食 | Gateway 加载身体预设、免疫档位和脚本清单。胃动力、胃饥饿素与胃壁机械感受脚本从轮初快照计算进食、排空和信号变化。神经系统读取轮末结果，体感与身体状态一次提交。 | 核对自定义参数和部位档位。在会话 A 提交“吃了半块奶油蛋糕”并重试，从会话 B 观察共享体感，在存档中确认同一动作只入账一次且沿用原估值。核对生理脚本按清单顺序读取同一份轮初快照，执行期间提交的动作在下一轮生效。让一个脚本超时，核对整轮状态和通知作废，待处理动作保留，成功重试后推进 60 秒。观察会话空闲时的胃排空，停机两小时后再核对这次进食的消化进度和恢复时的饱腹感。 |
 | M2 · 餐后血糖 | 接上肠道吸收、肝糖输出、组织摄糖、胰岛素和胰高血糖素。先打通餐后反馈，再接皮质醇对胰岛素作用的调节。 [Dalla Man 等，图 2 和式 (1)、(13)、(18)](https://isbgroup.eu/files/Dalla%20Man%202007.pdf) | 选两种碳水量相同的餐型，分别从相同的身体状态开始，比较葡萄糖入血、胰岛素的三个状态和血糖曲线。再对照持续应激前后的胰岛素作用。 |
-| M3 · 饮水与睡眠 | 先接饮水吸收、ADH 和肾脏保水，再接睡眠压力与褪黑素节律。 [HumMod 水分调节](https://pmc.ncbi.nlm.nih.gov/articles/PMC5358000/) · [睡眠双过程模型](https://pubmed.ncbi.nlm.nih.gov/6696142/) | 饮水后观察 ADH 和肾脏保水的变化。睡眠单独验收，观察入夜时及睡眠前后的困意。 |
+| M3 · 饮水与睡眠 | 水链首段（饮水吸收、ADH、肾请求、膀胱与主动排尿）的脚本、参数、定向测试与文档已实现并接入根清单（Tasks 1–9）；多轮水账本补测与 12 部位性能基线已完成（Task 11），论文对照已记录（Task 12，大负荷利尿仍不匹配）；Task 10 真实 DSH 实机验收已完成（30 轮 A/B + 排尿重试/409）；120 轮长时程、通知/重启、大负荷利尿与口咽解渴未在该实机会话内验证；睡眠压力与褪黑素节律未开始。 | 水链的 Task 10 实机验收已完成：从同一起点比较饮水与不饮水，核对吸收、口渴、ADH、产尿与尿意，并验证 `urinate` 与同调用重试；本次只覆盖 30 轮与排尿链，120 轮长时程与睡眠仍待后续实机验收。 |
 | M4 · 活动与身体分区 | 以左右小腿为第一组分区，接入肌群负荷、疲劳、延迟酸痛和同一区域的皮肤状态。 | 在单侧离心活动中对照两侧小腿的负荷、疲劳和后续酸痛。从同一部位查询皮肤状态。 |
 
-### M3 饮水与排尿：候选拆法
+### M3 饮水与排尿：首段实现状态
 
-**待调研、未实现。** 当前 `drink` 只把摄入记入胃；十二指肠脚本只计算营养暴露，没有水吸收。准备本节不改变原有验收顺序，M1 的真实 DSH 会话验收仍未完成。
+**脚本已实现并接入根清单（Tasks 1–9）；多轮水账本补测与 12 部位性能基线已完成（Task 11），论文对照已记录（Task 12）；Task 10 真实 DSH 验收已完成（30 轮 A/B + 排尿重试/409；120 轮长时程、通知/重启、大负荷利尿与口咽解渴未在该实机会话内验证）。** 胃水链入口 `hydration.ts` 把 `drink` 的全部体积记为水，小肠 `water-absorption.ts` 吸收轮初肠水，`bodyFluid` 维护体液水与亏缺代理，`kidney` 只算下一轮产尿请求，下丘脑 `hypothalamus-adh.ts` / `hypothalamus-thirst.ts` 分开算 ADH 与口渴，`bladder` 储尿并结算主动 `urinate`。十二指肠脚本仍只计算营养暴露，不负责水吸收。
 
-首段建议做一条可核对水量的链：**喝水 → 胃排空 → 小肠吸收 → 体液反馈 → ADH 调节肾脏产尿 → 膀胱充盈 → 主动排尿**。口渴和尿意是两条独立的感觉信号。不用「喝完定时加尿量」代替肾脏反馈，也不要求第一段就覆盖完整的水盐与血压调节。
+首段打通一条可核对水量的链：**喝水 → 胃排空 → 小肠吸收 → 体液反馈 → ADH 调节肾脏产尿 → 膀胱充盈 → 主动排尿**。口渴和尿意是两条独立的感觉信号。不用「喝完定时加尿量」代替肾脏反馈，也不要求第一段就覆盖完整的水盐与血压调节。
 
-| 功能标签 | 脚本责任（候选） | 读写边界 |
+| 功能标签 | 当前脚本 | 读写边界 |
 | --- | --- | --- |
-| 消化 | 胃动力、小肠水吸收各管一段 | 胃只转出已排空的饮水水量；小肠把轮初已在肠内的水转入体液账本。胃总内容量、`emptiedMl` 和 `emptiedKcal` 均不能充当饮水水量。 |
-| 体液隔室 | 维护已吸收、尚未离开体液的水量 | 接收吸收的水，按肾脏需求将水转给储尿端；已进入膀胱的水不再算体液。首段用水量偏离基线的代理，不把它叫作实测血浆渗透压。 |
-| 神经内分泌（下丘脑） | 单独的 ADH 脚本 | 用体液信号调节 ADH 的入血速率和相对水平。ADH 由下丘脑合成、由垂体后叶释放；肾脏是靶点，不是其来源。 |
-| 神经（下丘脑） | 单独的口渴驱动脚本 | 可读同一份体液信号，但不写 ADH，不自动替会话喝水。饮水后、尚未吸收时的短暂解渴与持续水合分开处理，是否随首段交付待证据核对。 |
-| 泌尿 | 肾脏产尿、膀胱储尿与排尿各自有写者 | 肾脏根据 ADH 算保水和产尿信号，ADH 升高时保水增强、尿量趋减；由体液字段的所有者按轮初产尿请求结算转移。膀胱只储存已转入的尿量，尿意来自充盈，不另设一个负责储尿的激素。 |
-| 神经（体感） | 复用 `brain/interoception.ts` | 分别展示口渴和尿意。下丘脑负责口渴驱动，不接管膀胱排尿反射或主动控制。 |
+| 消化 | `stomach/hydration.ts`、`small-intestine/water-absorption.ts` | 胃只转出非固餐排出中的水 `emptiedWaterMl`；小肠只吸收轮初肠水。胃总内容量、`emptiedMl` 和 `emptiedKcal` 均不能充当饮水水量。 |
+| 体液隔室 | `human-compartments/body-water/water.ts` | 接收吸收水，按 `kidney.urineProductionRequestMl` 向膀胱转水；已进入膀胱的水不再算体液。只输出 `waterDeficit` 代理，不叫实测血浆渗透压。 |
+| 神经内分泌（下丘脑） | `brain/hypothalamus-adh.ts` | 用 `bodyFluid.waterDeficit` 调相对 ADH 水平；`relativeConcentration` 不是 pmol/L。ADH 由下丘脑合成、由垂体后叶释放；肾脏是靶点，不是其来源。 |
+| 神经（下丘脑） | `brain/hypothalamus-thirst.ts` | 读同一亏缺，写 0–100 mm 口渴驱动；不写 ADH，不自动替会话喝水，首段不建吸收前口咽缓解。 |
+| 泌尿 | `kidney/urine-production.ts`、`bladder/storage.ts` | 肾只写下一轮请求，不转移水；体液所有者按轮初请求结算转移；膀胱只储存已转入的尿量，`urinate` 结算轮初体积，不扣体液，也不另设储尿激素。 |
+| 神经（体感） | `brain/interoception.ts` | 读出 `thirst` 与 `urinaryUrgency`；`brainNotify` 仍只读饥饿/饱满，不读口渴或尿意，也不接管排尿反射。 |
 
-目录仍归器官；下丘脑的两种功能放在脑的同一区域下，分成两个脚本，系统名只做标签。睡眠节律另拆，不把 `active: false` 当生理睡眠。本段也不建排便（结肠、直肠、便意另做），或肾素–血管紧张素–醛固酮系统（待接水盐、循环时再做）。
+目录仍归器官；体液是隔室，放在 `organs/human-compartments/body-water/`；下丘脑的两种功能放在脑的同一区域下，分成两个脚本，系统名只做标签。睡眠节律另拆，不把 `active: false` 当生理睡眠。本段也不建排便（结肠、直肠、便意另做），或肾素–血管紧张素–醛固酮系统（待接水盐、循环时再做）。
 
-**接入与验收。** 沿用两个会话工具：`body_act` 继续处理 `drink`，拟加无份量参数的 `urinate` 动作；排出量由膀胱轮初存量决定。`body_state` 按部位读取体感，不新增每轮上下文注入、主动提醒或自动排尿。用已有 `io.transfer` 配对提交水量，不跨量纲扣账；进膀胱时已扣除体液，排尿时不能再扣一次。旧档不猜历史饮水，不重置胃值；旧自定义清单仍可只加载原胃脚本。实机从同一起点比较饮水与不饮水，核对吸收、口渴、ADH、产尿及尿意的变化；再观察一次排尿及同调用重试，核对只计一次排出。
+**接入与验收。** 沿用两个会话工具：`body_act` 已接受 `drink` 与无份量参数的 `urinate`，排出量由膀胱轮初存量决定；根清单已加载 `bladder`。`body_state` 按部位读取体感，不新增每轮上下文注入、主动提醒或自动排尿。水量用 `io.transfer` 配对提交，不跨量纲扣账；进膀胱时已扣除体液，排尿时不能再扣一次。旧档不猜历史饮水，不重置胃值；旧自定义清单仍可只加载原胃脚本 `motility.ts`。实机从同一起点比较饮水与不饮水，核对吸收、口渴、ADH、产尿及尿意的变化；再观察一次排尿及同调用重试，核对只计一次排出。多轮队列水恒等式已补测（Task 11），离线测试与真实 Gateway 测试已覆盖模块守恒与根清单集成；Task 10 已用真实 DSH 会话完成 30 轮 A/B 与排尿重试/409；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴未在该实机会话内验证。
 
-**待派出的只读调查**（参数和阈值尚未确定）：
+**证据与参数状态。** 所有新参数都是 `design`，论文只支撑方向与时间尺度：Péronnet 2012 只给 D₂O 吸收的探索时间尺度，20 min 半时不是论文值；Ota 1994 主队列是 5 名甲减患者加 5 名正常对照，只支撑水负荷后 AVP 降、尿变稀的方向；Andersen 1990 只支撑肾反应可延迟；Figaro & Mack 1997 只支撑口咽解渴与持续补液可分开，首段不建该支路；De Wachter & Wyndaele 2003 目前只核对到摘要（15 名健康女学生，190/268/410 mL 是交接数值、原文表图待核），410 mL 只作尿意归一化锚点；ICS 术语只给“排前量 = 排出量 + 残余量”的记账关系，不规定正常残余量。逐篇边界见各器官 README 与 [`references/`](../organs/human-organs/references/)。
 
-1. 饮水与口渴：查人体定量饮水实验，区分胃排空、肠吸收、口渴和 ADH 的采样时刻，以及早于吸收的短暂缓解。
-2. 肾脏保水：查 ADH 与分段尿量的人体资料，区分尿量、尿浓度和重吸收；只报告原文支持的方向和量级。
-3. 膀胱与尿意：查充盈、感觉等级、排尿前后体积或残余量的测量，区分正常尿意与病理性尿急，不把群体均值当固定阈值。
+**未建：** 睡眠、排便、血浆/尿渗透压、电解质、血容量/血压、RAAS、汗液与不感蒸发、口咽解渴、自动饮水或自动排尿。
 
 ### 后续里程碑（M5–M7）
 
@@ -393,7 +392,7 @@ M1–M4 全部通过实机验收后，首期交付完成。首期用会话工具
 
 M1 的 Gateway 动作记录保存动作标识、类型、原始载荷、载荷指纹、状态、预定/实际生效时刻、批次、尝试次数和错误；`stomach` 在自己的 part 里保存 `mealQueue` 与 `lastIntakeAt`，作为餐食领域记录。两者分工明确：Gateway 负责幂等、调度和审计，模块负责生理语义。
 
-实机验收还要对齐进食生效的轮次与 `body_state` 返回的体感。`body_act`、`body_state` 与通知投递已在离线测试中覆盖；真实 DSH 会话里还要验证通知确实进入对应会话、`context` 不唤醒而 `wake` 唤醒、离线会话恢复后收到保留的通知，以及重启后的 ACK 与去重。通知历史文件和模型已读确认仍未实现。
+M1 的真实 DSH 会话验收已完成；通知历史文件、模型已读确认与按会话绑定不同身体仍未实现。M3 水链的 Task 10 已用真实会话核对：`urinate` 的 queued → applied、同 callId 重试只排一次、当轮新尿留下，以及饮水/不饮水对照中的口渴、ADH、肾请求与尿意方向；30 轮 A/B 与排尿链均通过。离线守恒测试仍不能代替 120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴的验收。
 
 ### Gateway 待验证的设计想法
 

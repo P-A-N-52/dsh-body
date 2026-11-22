@@ -73,6 +73,24 @@
       "range": [0, 50],
       "source": null,
       "note": "营养暴露对饱满的线性斜率；设计值"
+    },
+    {
+      "id": "interoception.thirst.fallbackMm",
+      "unit": "mm",
+      "value": 50,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "缺失或非有限 hypothalamusThirst.thirst 时的回落值；与口渴脚本 baselineMm 的 design 基线一致，不是人体 VAS 测量"
+    },
+    {
+      "id": "interoception.urinaryUrgency.referenceVolumeMl",
+      "unit": "mL",
+      "value": 410,
+      "status": "design",
+      "range": [205, 820],
+      "source": "SRC-DEWACHTER-2003",
+      "note": "尿意归一化锚点；410 mL 来自设计文档/主会话全文交接（摘要只确认 15 名健康女学生，是否未产与具体数值待全文核对），不是自然排尿阈值，也不是个体尿意标定"
     }
   ]
 }
