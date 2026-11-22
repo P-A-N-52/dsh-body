@@ -69,6 +69,66 @@ test('body_act enqueues a valid drink and returns a receipt', async (t) => {
   assert.equal(gateway.getReceipt(result.receipt.id).status, 'applied');
 });
 
+test('body_act queues carbohydrateG unchanged and does not add it when omitted', async (t) => {
+  const { gateway, statePath, tools } = await startBody(t);
+
+  const drink = await tools.body_act.execute(
+    { type: 'drink', volumeMl: 330, energyKcal: 140, carbohydrateG: 42.5 },
+    fakeExec({ sessionId: 'session-carb', callId: 'drink' }),
+  );
+  assert.equal(drink.ok, true);
+  assert.equal(drink.statusCode, 202);
+
+  const eat = await tools.body_act.execute(
+    { type: 'eat', volumeMl: 250, energyKcal: 500, mealKind: 'solid', carbohydrateG: 35 },
+    fakeExec({ sessionId: 'session-carb', callId: 'eat' }),
+  );
+  assert.equal(eat.ok, true);
+  assert.equal(eat.statusCode, 202);
+
+  const withoutCarbohydrate = await tools.body_act.execute(
+    { type: 'drink', volumeMl: 200, energyKcal: 80 },
+    fakeExec({ sessionId: 'session-carb', callId: 'omitted' }),
+  );
+  assert.equal(withoutCarbohydrate.statusCode, 202);
+
+  const urinate = await tools.body_act.execute(
+    { type: 'urinate' },
+    fakeExec({ sessionId: 'session-carb', callId: 'urinate' }),
+  );
+  assert.equal(urinate.statusCode, 202);
+
+  const queued = JSON.parse(readFileSync(statePath, 'utf8'));
+  assert.equal(queued.actions[drink.receipt.id].action.carbohydrateG, 42.5);
+  assert.equal(queued.actions[eat.receipt.id].action.carbohydrateG, 35);
+  assert.equal(
+    Object.hasOwn(queued.actions[withoutCarbohydrate.receipt.id].action, 'carbohydrateG'),
+    false,
+  );
+  assert.ok(queued.pendingActionIds.includes(urinate.receipt.id));
+});
+
+test('body_act rejects invalid carbohydrateG without enqueuing', async (t) => {
+  const { gateway, statePath, tools } = await startBody(t);
+  const invalid = [
+    [{ type: 'drink', volumeMl: 100, carbohydrateG: -1 }, 'negative drink'],
+    [{ type: 'drink', volumeMl: 100, carbohydrateG: Number.NaN }, 'NaN drink'],
+    [{ type: 'drink', volumeMl: 100, carbohydrateG: Number.POSITIVE_INFINITY }, 'Infinity drink'],
+    [{ type: 'drink', volumeMl: 100, carbohydrateG: '30' }, 'string drink'],
+    [{ type: 'eat', volumeMl: 100, energyKcal: 300, mealKind: 'solid', carbohydrateG: -1 }, 'negative eat'],
+  ];
+
+  for (const [args, label] of invalid) {
+    const result = await tools.body_act.execute(args, fakeExec({ sessionId: 'session-invalid-carb', callId: label }));
+    assert.equal(result.ok, false, label);
+    assert.equal(result.statusCode, 400, label);
+    assert.match(result.receipt.error, /carbohydrateG/, label);
+  }
+
+  assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).pendingActionIds, []);
+  assert.equal(gateway.getState().parts.stomach.volumeMl, 0);
+});
+
 test('body_act rejects invalid fields and missing sessions before enqueue', async (t) => {
   const { gateway, statePath, tools } = await startBody(t);
   const invalid = [
@@ -103,6 +163,59 @@ test('body_act rejects invalid fields and missing sessions before enqueue', asyn
   assert.equal(gateway.getState().parts.stomach.volumeMl, 0);
 });
 
+test('body_act enqueues a valid exercise and exposes physicalActivity capability', async (t) => {
+  const { gateway, statePath, tools } = await startBody(t);
+  const exec = fakeExec({ sessionId: 'session-exercise', callId: 'exercise-1' });
+
+  const result = await tools.body_act.execute({ type: 'exercise', intensity: 1, durationMin: 30 }, exec);
+  assert.equal(result.ok, true);
+  assert.equal(result.statusCode, 202);
+  assert.equal(result.receipt.id, actionId('session-exercise', 'exercise-1'));
+  assert.equal(result.receipt.type, 'exercise');
+  assert.equal(result.receipt.status, 'queued');
+
+  const queued = JSON.parse(readFileSync(statePath, 'utf8'));
+  assert.deepEqual(queued.pendingActionIds, [result.receipt.id]);
+  assert.deepEqual(queued.actions[result.receipt.id].action, {
+    type: 'exercise',
+    intensity: 1,
+    durationMin: 30,
+    id: result.receipt.id,
+    sessionId: 'session-exercise',
+  });
+  assert.deepEqual(gateway.getCapabilities().exercise, ['physicalActivity']);
+});
+
+test('body_act rejects invalid exercise intensity and duration without enqueuing', async (t) => {
+  const { statePath, tools } = await startBody(t);
+  const invalid = [
+    [{ type: 'exercise', durationMin: 30 }, /intensity/, 'missing intensity'],
+    [{ type: 'exercise', intensity: 0, durationMin: 30 }, /intensity/, 'zero intensity'],
+    [{ type: 'exercise', intensity: -0.5, durationMin: 30 }, /intensity/, 'negative intensity'],
+    [{ type: 'exercise', intensity: 1.1, durationMin: 30 }, /intensity/, 'intensity above one'],
+    [{ type: 'exercise', intensity: Number.NaN, durationMin: 30 }, /intensity/, 'NaN intensity'],
+    [{ type: 'exercise', intensity: '1', durationMin: 30 }, /intensity/, 'string intensity'],
+    [{ type: 'exercise', intensity: 1 }, /durationMin/, 'missing duration'],
+    [{ type: 'exercise', intensity: 1, durationMin: 0 }, /durationMin/, 'zero duration'],
+    [{ type: 'exercise', intensity: 1, durationMin: -1 }, /durationMin/, 'negative duration'],
+    [{ type: 'exercise', intensity: 1, durationMin: Number.NaN }, /durationMin/, 'NaN duration'],
+    [{ type: 'exercise', intensity: 1, durationMin: Number.POSITIVE_INFINITY }, /durationMin/, 'infinite duration'],
+    [{ type: 'exercise', intensity: 1, durationMin: '30' }, /durationMin/, 'string duration'],
+  ];
+
+  for (const [args, pattern, label] of invalid) {
+    const result = await tools.body_act.execute(
+      args,
+      fakeExec({ sessionId: 'session-invalid-exercise', callId: label }),
+    );
+    assert.equal(result.ok, false, label);
+    assert.equal(result.statusCode, 400, label);
+    assert.match(result.receipt.error, pattern, label);
+  }
+
+  assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).pendingActionIds, []);
+});
+
 test('body_act is idempotent for the same session and callId', async (t) => {
   const { gateway, statePath, tools } = await startBody(t);
   const exec = fakeExec();
@@ -128,12 +241,16 @@ test('body_state returns all parts or one part', async (t) => {
 
   const all = await tools.body_state.execute({}, fakeExec({ callId: 'call-2' }));
   assert.equal(all.simulatedSeconds, 60);
+  assert.equal(Object.keys(all.parts).length, 17);
   for (const part of [
     'stomach',
     'stomachGhrelin',
     'stomachSensory',
     'duodenum',
     'smallIntestine',
+    'glucose',
+    'pancreasEndocrine',
+    'kidneyGlucose',
     'bodyFluid',
     'hypothalamusAdh',
     'hypothalamusThirst',
@@ -141,9 +258,20 @@ test('body_state returns all parts or one part', async (t) => {
     'bladder',
     'interoception',
     'brainNotify',
+    'physicalActivity',
+    'skin',
   ]) {
     assert.ok(Object.hasOwn(all.parts, part), `missing part ${part}`);
   }
+  assert.deepEqual(all.parts.physicalActivity, { remainingExerciseMin: 0, intensity: 0 });
+  assert.deepEqual(all.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
+  assert.deepEqual(all.parts.glucose, {
+    glucoseMassG: 12.69,
+    concentrationMgDl: 90,
+    disposedGlucoseG: 0,
+  });
+  assert.deepEqual(all.parts.pancreasEndocrine, { insulinRelative: 1 });
+  assert.deepEqual(all.parts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
   assert.ok(all.parts.stomach.volumeMl > 0);
 
   const one = await tools.body_state.execute({ part: 'stomach' }, fakeExec({ callId: 'call-3' }));
@@ -272,7 +400,16 @@ test('tool definitions expose JSON Schema and register through ctx.effect', () =
   assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_state']);
 
   assert.deepEqual(tools.body_act.parameters.required, ['type']);
-  assert.deepEqual(tools.body_act.parameters.properties.type.enum, ['drink', 'eat', 'urinate']);
+  assert.deepEqual(tools.body_act.parameters.properties.type.enum, ['drink', 'eat', 'urinate', 'exercise']);
+  assert.equal(tools.body_act.parameters.properties.intensity.type, 'number');
+  assert.equal(tools.body_act.parameters.properties.durationMin.type, 'number');
+  assert.match(tools.body_act.description, /exercise/);
+  const carbohydrateG = tools.body_act.parameters.properties.carbohydrateG;
+  assert.ok(carbohydrateG, 'body_act schema must expose carbohydrateG');
+  assert.equal(carbohydrateG.type, 'number');
+  assert.match(carbohydrateG.description, /gram|克/i);
+  assert.match(carbohydrateG.description, /digestible|可消化/i);
+  assert.match(carbohydrateG.description, /glucose|葡萄糖/i);
   assert.match(tools.body_act.description, /urinate/);
   assert.equal(tools.body_act.parameters.additionalProperties, true);
   assert.deepEqual(tools.body_act.output.schema.required, ['ok', 'statusCode', 'receipt']);

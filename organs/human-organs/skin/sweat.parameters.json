@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "owner": "skin",
+  "parameters": [
+    {
+      "id": "skin.sweat.ambientTemperatureC",
+      "unit": "°C",
+      "value": 25,
+      "status": "design",
+      "range": [-50, 60],
+      "source": null,
+      "note": "默认环境温度的工程假设，不是实测环境温度；未来由环境状态替换。25°C 同时作为出汗温度因子的参考温度。range 是工程调参范围，不是人体耐受范围"
+    },
+    {
+      "id": "skin.sweat.referenceRateMlPerMin",
+      "unit": "mL/min",
+      "value": 0.6,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "25°C、intensity=1 时的工程参考出汗率，不是实测人体出汗率、METs、热量或最大出汗能力；未来由活动/体温模型替换"
+    },
+    {
+      "id": "skin.sweat.ambientGainPerC",
+      "unit": "1/°C",
+      "value": 0.04,
+      "status": "design",
+      "range": [0, 0.2],
+      "source": null,
+      "note": "环境温度每偏离 25°C 1°C 的工程线性斜率，不是体温调节或环境—出汗证据；温度因子在 0 处截断"
+    },
+    {
+      "id": "skin.sweat.maxRateMlPerMin",
+      "unit": "mL/min",
+      "value": 2,
+      "status": "design",
+      "range": [0.6, 10],
+      "source": null,
+      "note": "工程出汗率上限，不是人体最大出汗率或任何实测上限；上限只作用于速率，请求量仍按 dt 缩放"
+    }
+  ]
+}

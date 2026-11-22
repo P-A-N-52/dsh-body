@@ -12,6 +12,33 @@
       "note": "相对浓度基线，不是绝对浓度"
     },
     {
+      "id": "stomachGhrelin.fasting.peak",
+      "unit": "1",
+      "value": 1.8,
+      "status": "design",
+      "range": [1, 5],
+      "source": null,
+      "note": "空腹相对浓度饱和上限；工程曲线，不是人体测量"
+    },
+    {
+      "id": "stomachGhrelin.fasting.rise.onsetMin",
+      "unit": "min",
+      "value": 180,
+      "status": "design",
+      "range": [0, 1440],
+      "source": null,
+      "note": "含能摄入后开始空腹上升的延迟；设计值，不是论文曲线"
+    },
+    {
+      "id": "stomachGhrelin.fasting.rise.apparentHalfTimeMin",
+      "unit": "min",
+      "value": 120,
+      "status": "design",
+      "range": [10, 720],
+      "source": null,
+      "note": "空腹上升目标的表观半时；设计值，不是人体拟合"
+    },
+    {
       "id": "stomachGhrelin.postmeal.nadir",
       "unit": "1",
       "value": 0.5,

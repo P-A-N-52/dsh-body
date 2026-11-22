@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "owner": "pancreasEndocrine",
+  "parameters": [
+    {
+      "id": "pancreasEndocrine.referenceGlucoseMgDl",
+      "unit": "mg/dL",
+      "value": 90,
+      "status": "design",
+      "range": [60, 120],
+      "source": null,
+      "note": "相对胰岛素信号的工程参考血糖；测试固定其与 glucose.baselineConcentrationMgDl 相等。不是个体空腹测量或人群正常值，未来由共享身体预设/个体空腹基线替换"
+    },
+    {
+      "id": "pancreasEndocrine.insulin.glucoseGainPerMgDl",
+      "unit": "1/(mg/dL)",
+      "value": 0.02,
+      "status": "design",
+      "range": [0, 0.1],
+      "source": null,
+      "note": "血糖每偏离参考值 1 mg/dL 对相对信号目标的线性增益；纯工程假设，不是 Dalla Man 2007 的分泌方程、参数或拟合结果。未来由标准化餐后胰岛素剂量—反应替换"
+    },
+    {
+      "id": "pancreasEndocrine.insulin.responseHalfTimeMin",
+      "unit": "min",
+      "value": 10,
+      "status": "design",
+      "range": [1, 60],
+      "source": null,
+      "note": "相对信号一阶趋近目标的时间尺度；工程假设，不是 C-peptide/胰岛素分泌或清除的实测半时。未来由分泌与清除证据替换"
+    },
+    {
+      "id": "pancreasEndocrine.insulin.maxRelative",
+      "unit": "1",
+      "value": 5,
+      "status": "design",
+      "range": [1, 20],
+      "source": null,
+      "note": "相对信号目标的工程上限，防止无界响应；不是 β 细胞饱和测量或临床界值。未来由饱和 β 细胞响应替换"
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 # 膀胱过度充盈非自主排尿与脑内不适感小改设计
 
+> **历史提示：** 本设计形成时 `brainNotify` 只读饥饿/饱满；尿意提醒的当前实现见 [`2026-11-22-urinary-notification-design.md`](./2026-11-22-urinary-notification-design.md)。本文件的设计正文与验收记录保持当时口径。
+
 **状态：** 已实现（2026-11-22，代码与定向测试已合并），并完成 M19 真实 DSH 会话验收（2026-11-22，33/33 verdicts，证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）。范围来自“内容物过多的时候的不自觉排尿”与“不适就这么做吧，反正感觉都归属于 brain”。`bladder/storage.ts` 已按本设计结算非自主排空，`brain/interoception.ts` 已输出 `discomfort`，两者都在默认根清单中。没有新增工具、动作、通知或上下文注入，也不做尿崩、医学诊断或新提醒；600 mL 与 70 mm 仍是 `design`，M19 只覆盖 3 轮非自主排空短会话，不是临床容量、疼痛评分或失禁验证。
 
 ## 1. 取舍

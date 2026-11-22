@@ -22,10 +22,15 @@ const partIds = [
   'bodyFluid',
   'brainNotify',
   'duodenum',
+  'glucose',
   'hypothalamusAdh',
   'hypothalamusThirst',
   'interoception',
   'kidney',
+  'kidneyGlucose',
+  'pancreasEndocrine',
+  'physicalActivity',
+  'skin',
   'smallIntestine',
   'stomach',
   'stomachGhrelin',
@@ -131,7 +136,7 @@ function snapshot(parts) {
 
 test('the root manifest keeps the normal water chain with no DI variant loaded', () => {
   const manifest = JSON.parse(readFileSync(rootManifestPath, 'utf8'));
-  assert.equal(manifest.scripts.length, 12);
+  assert.equal(manifest.scripts.length, 17);
   assert.ok(manifest.scripts.includes(normalAdhPath));
   assert.ok(manifest.scripts.includes(normalKidneyPath));
   for (const entry of manifest.scripts) {
@@ -177,6 +182,9 @@ test('the default root manifest still produces the same ten rounds point by poin
       assert.ok(Math.abs(actual - expected) < 1e-12, `round ${index + 1}: ${actual} != ${expected}`);
     }
   }
+  const finalParts = gateway.getState().parts;
+  assert.deepEqual(finalParts.pancreasEndocrine, { insulinRelative: 1 });
+  assert.deepEqual(finalParts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
 });
 
 test('a central DI manifest zeroes ADH and produces four mL per minute of urine', async (t) => {
@@ -188,6 +196,7 @@ test('a central DI manifest zeroes ADH and produces four mL per minute of urine'
     drink: ['stomach', 'stomachGhrelin'],
     eat: ['stomach', 'stomachGhrelin'],
     urinate: ['bladder'],
+    exercise: ['physicalActivity'],
   });
 
   for (let round = 1; round <= 5; round++) {
@@ -304,7 +313,7 @@ test('body_act and body_state keep their shapes under a DI manifest', async (t) 
     swaps: { [normalAdhPath]: centralAdhPath, [normalKidneyPath]: centralKidneyPath },
   });
   assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_state']);
-  assert.deepEqual(tools.body_act.parameters.properties.type.enum, ['drink', 'eat', 'urinate']);
+  assert.deepEqual(tools.body_act.parameters.properties.type.enum, ['drink', 'eat', 'urinate', 'exercise']);
   assert.deepEqual(tools.body_act.output.schema.required, ['ok', 'statusCode', 'receipt']);
   assert.deepEqual(tools.body_state.output.schema.required, ['simulatedSeconds', 'parts']);
 

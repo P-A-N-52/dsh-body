@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startGateway } from '../gateway.js';
 import { checkpoint } from '../test-support/harness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the root manifest loads all twelve body parts', async (t) => {
+test('the root manifest loads all seventeen body parts', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-'));
   const statePath = join(dir, 'body-state.json');
   writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
@@ -32,7 +32,8 @@ test('the root manifest loads all twelve body parts', async (t) => {
   assert.deepEqual(capabilities.drink, ['stomach', 'stomachGhrelin']);
   assert.deepEqual(capabilities.eat, ['stomach', 'stomachGhrelin']);
   assert.deepEqual(capabilities.urinate, ['bladder']);
-  assert.deepEqual(Object.keys(capabilities).sort(), ['drink', 'eat', 'urinate']);
+  assert.deepEqual(capabilities.exercise, ['physicalActivity']);
+  assert.deepEqual(Object.keys(capabilities).sort(), ['drink', 'eat', 'exercise', 'urinate']);
 
   const response = await fetch(`http://127.0.0.1:${info.port}/actions`, {
     method: 'POST',
@@ -48,10 +49,15 @@ test('the root manifest loads all twelve body parts', async (t) => {
     'bodyFluid',
     'brainNotify',
     'duodenum',
+    'glucose',
     'hypothalamusAdh',
     'hypothalamusThirst',
     'interoception',
     'kidney',
+    'kidneyGlucose',
+    'pancreasEndocrine',
+    'physicalActivity',
+    'skin',
     'smallIntestine',
     'stomach',
     'stomachGhrelin',
@@ -74,7 +80,11 @@ test('the root manifest loads all twelve body parts', async (t) => {
   assert.equal(first.parts.hypothalamusAdh.relativeConcentration, 1);
   assert.equal(first.parts.hypothalamusThirst.thirst, 50);
   assert.equal(first.parts.kidney.urineProductionRequestMl, 1);
+  assert.deepEqual(first.parts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
+  assert.deepEqual(first.parts.pancreasEndocrine, { insulinRelative: 1 });
   assert.equal(first.parts.bladder.volumeMl, 0);
+  assert.deepEqual(first.parts.physicalActivity, { remainingExerciseMin: 0, intensity: 0 });
+  assert.deepEqual(first.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
   assert.equal(first.parts.brainNotify.lastSessionId, null);
   assert.deepEqual(first.parts.brainNotify.sessions, {});
 
@@ -89,4 +99,39 @@ test('the root manifest loads all twelve body parts', async (t) => {
   assert.equal(second.parts.hypothalamusThirst.thirst, 50);
   assert.ok(second.parts.interoception.fullness > 0);
   assert.ok(second.parts.interoception.hunger < 50);
+  assert.deepEqual(second.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
+});
+
+test('the root manifest fails to start when the skin transfer target is missing', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-no-skin-'));
+  const statePath = join(dir, 'body-state.json');
+  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
+  const rootManifest = JSON.parse(readFileSync(join(root, 'body-modules.json'), 'utf8'));
+  const manifestPath = join(dir, 'body-modules.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    ...rootManifest,
+    startupScripts: rootManifest.startupScripts.map((path) => relative(dir, join(root, path))),
+    scripts: rootManifest.scripts
+      .filter((path) => !path.includes('/skin/'))
+      .map((path) => relative(dir, join(root, path))),
+  }));
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  const gateway = startGateway({
+    manifestPath,
+    statePath,
+    port: 0,
+    autoTick: false,
+    now: () => 0,
+  });
+  t.after(async () => {
+    await gateway.stop();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  await assert.rejects(
+    gateway.ready,
+    /transferOut target "skin\.sweatVolumeMl" is not declared/,
+  );
 });

@@ -16,16 +16,30 @@ export function buildActionPayload(args, { sessionId, callId }) {
   return { ...args, id: `body-${digest.slice(0, 32)}`, sessionId };
 }
 
+function validateExercise(args) {
+  if (!isFiniteNumber(args.intensity) || args.intensity <= 0 || args.intensity > 1) {
+    return 'intensity must be a finite number greater than 0 and at most 1';
+  }
+  if (!isFiniteNumber(args.durationMin) || args.durationMin <= 0) {
+    return 'durationMin must be a finite number greater than 0';
+  }
+  return null;
+}
+
 function validateAction(args) {
   if (args.type === 'urinate') return null;
+  if (args.type === 'exercise') return validateExercise(args);
   if (args.type !== 'drink' && args.type !== 'eat') {
-    return 'type must be drink, eat, or urinate';
+    return 'type must be drink, eat, urinate, or exercise';
   }
   if (!isFiniteNumber(args.volumeMl) || args.volumeMl <= 0) {
     return 'volumeMl must be a finite number greater than 0';
   }
   if (args.durationMin !== undefined && (!isFiniteNumber(args.durationMin) || args.durationMin < 0)) {
     return 'durationMin must be a finite number greater than or equal to 0';
+  }
+  if (args.carbohydrateG !== undefined && (!isFiniteNumber(args.carbohydrateG) || args.carbohydrateG < 0)) {
+    return 'carbohydrateG must be a finite number greater than or equal to 0';
   }
   if (args.type === 'drink') {
     if (args.energyKcal !== undefined && (!isFiniteNumber(args.energyKcal) || args.energyKcal < 0)) {
@@ -50,17 +64,28 @@ export function createBodyTools(gateway) {
   return {
     body_act: {
       name: 'body_act',
-      description: 'Submit a structured body action (drink, eat, or urinate) to the Gateway. '
+      description: 'Submit a structured body action (drink, eat, urinate, or exercise) to the Gateway. '
         + 'A 202 queued receipt only means the action is queued; it takes effect in a later heartbeat, '
         + 'so read body_state afterwards. Retrying the same session and tool call reuses the same action id.',
       parameters: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['drink', 'eat', 'urinate'] },
+          type: { type: 'string', enum: ['drink', 'eat', 'urinate', 'exercise'] },
           volumeMl: { type: 'number', description: 'Intake volume in milliliters.' },
           energyKcal: { type: 'number', description: 'Intake energy in kilocalories.' },
+          carbohydrateG: {
+            type: 'number',
+            description: 'Digestible carbohydrate intake in grams, as glucose equivalents; omit when unknown.',
+          },
           mealKind: { type: 'string', enum: mealKinds },
-          durationMin: { type: 'number', description: 'Intake duration in minutes; omit for a single round.' },
+          durationMin: {
+            type: 'number',
+            description: 'Exercise duration in minutes when type is exercise; intake duration otherwise.',
+          },
+          intensity: {
+            type: 'number',
+            description: 'Relative exercise intensity, greater than 0 and at most 1.',
+          },
         },
         required: ['type'],
         additionalProperties: true,

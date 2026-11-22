@@ -1,0 +1,122 @@
+/*
+ * 皮肤出汗脚本（skin）：只计算出汗请求；部位 `skin` 的唯一写者，不持有体液水，也不调用
+ * transfer。消费者是 `bodyFluid`：其水账读取上一轮 `skin.sweatRequestMl` 作为向皮肤的转出
+ * 上限，Gateway 在 transfer 阶段再把实际汗液加入 `skin.sweatVolumeMl`。本脚本每轮 write 先把
+ * `sweatVolumeMl` 归 0，实际汗液只由 transferIn 增加。
+ *
+ * 设计来源：docs/superpowers/specs/2026-11-23-activity-sweat-design.md §4。无直接人体证据，
+ * 也没有实测代谢、体温调节或最大出汗率模型。同目录 `sweat.parameters.json` 的参数全部为
+ * `design`、`source: null`：25°C、intensity=1 的 0.6 mL/min 是工程参考，0.04/°C 是工程温度
+ * 斜率，2 mL/min 是工程上限，25°C 是默认环境参数。它们不是 METs、热量、心率、核心/皮肤温度
+ * 或人体最大出汗率，不能称 validated。
+ *
+ * 请求公式（R > 0；R = 0 或活动缺失时请求 0）：
+ *   temperatureFactor = max(0, 1 + ambientGainPerC × (T − 25))
+ *   rate = min(maxRateMlPerMin, referenceRateMlPerMin × I × temperatureFactor)
+ *   sweatRequestMl = rate × dtMin
+ * 只读取轮初 `physicalActivity`；本轮新入队的活动下一轮才影响请求。活动部位存在但字段缺失、
+ * 非有限、为负，或 intensity > 1 时抛错，不写状态。不建皮肤分区、温度、湿润度或蒸发残余。
+ */
+import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+
+export const id = 'skin';
+export const actionTypes: string[] = [];
+
+type SkinState = {
+  sweatRequestMl: number;
+  sweatVolumeMl: number;
+};
+
+type ActivityReading = {
+  remainingExerciseMin?: unknown;
+  intensity?: unknown;
+};
+
+export const initialState: SkinState = {
+  sweatRequestMl: 0,
+  sweatVolumeMl: 0,
+};
+
+export const fields = {
+  sweatRequestMl: { unit: 'mL', mode: 'absolute' },
+  sweatVolumeMl: {
+    unit: 'mL',
+    mode: 'absolute',
+    transferIn: ['bodyFluid.waterVolumeMl'],
+  },
+};
+
+type IO = {
+  read(partId: 'skin'): Readonly<SkinState> | undefined;
+  read(partId: 'physicalActivity'): Readonly<ActivityReading> | undefined;
+  readonly dt: number;
+  write(next: SkinState): void;
+};
+
+const parameters = loadParameters(new URL('./sweat.parameters.json', import.meta.url));
+const referenceRateMlPerMin = requireParameter(parameters, 'skin.sweat.referenceRateMlPerMin');
+const ambientGainPerC = requireParameter(parameters, 'skin.sweat.ambientGainPerC');
+const maxRateMlPerMin = requireParameter(parameters, 'skin.sweat.maxRateMlPerMin');
+const ambientTemperatureC = requireParameter(parameters, 'skin.sweat.ambientTemperatureC');
+
+const referenceTemperatureC = 25;
+
+type SweatRequestInput = {
+  remainingExerciseMin: number;
+  intensity: number;
+  dtMin: number;
+  ambientTemperatureC: number;
+};
+
+export function sweatRequestMl({
+  remainingExerciseMin,
+  intensity,
+  dtMin,
+  ambientTemperatureC: temperatureC,
+}: SweatRequestInput): number {
+  if (!(remainingExerciseMin > 0)) return 0;
+  const temperatureFactor = Math.max(0, 1 + ambientGainPerC * (temperatureC - referenceTemperatureC));
+  const rateMlPerMin = Math.min(
+    maxRateMlPerMin,
+    referenceRateMlPerMin * intensity * temperatureFactor,
+  );
+  return rateMlPerMin * dtMin;
+}
+
+function requireFinite(value: unknown, name: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`physicalActivity.${name} must be a finite number`);
+  }
+  return value;
+}
+
+function readActivity(io: IO): { remainingExerciseMin: number; intensity: number } | undefined {
+  const activity = io.read('physicalActivity') as ActivityReading | null | undefined;
+  if (activity === undefined || activity === null) return undefined;
+  if (typeof activity !== 'object') {
+    throw new Error('physicalActivity must be an object');
+  }
+  const remainingExerciseMin = requireFinite(activity.remainingExerciseMin, 'remainingExerciseMin');
+  const intensity = requireFinite(activity.intensity, 'intensity');
+  if (remainingExerciseMin < 0) {
+    throw new Error('physicalActivity.remainingExerciseMin must not be negative');
+  }
+  if (intensity < 0 || intensity > 1) {
+    throw new Error('physicalActivity.intensity must be between 0 and 1');
+  }
+  return { remainingExerciseMin, intensity };
+}
+
+export function heartbeat(io: IO): void {
+  const activity = readActivity(io);
+  const requestMl = activity
+    ? sweatRequestMl({
+        remainingExerciseMin: activity.remainingExerciseMin,
+        intensity: activity.intensity,
+        dtMin: io.dt / 60,
+        ambientTemperatureC,
+      })
+    : 0;
+
+  io.write({ sweatRequestMl: requestMl, sweatVolumeMl: 0 });
+}

@@ -16,10 +16,15 @@ const partIds = [
   'bodyFluid',
   'brainNotify',
   'duodenum',
+  'glucose',
   'hypothalamusAdh',
   'hypothalamusThirst',
   'interoception',
   'kidney',
+  'kidneyGlucose',
+  'pancreasEndocrine',
+  'physicalActivity',
+  'skin',
   'smallIntestine',
   'stomach',
   'stomachGhrelin',
@@ -63,24 +68,26 @@ async function startBody(t, { parts = {} } = {}) {
   return { gateway, statePath, dir, tools: createBodyTools(gateway) };
 }
 
-function waterTotal(parts, initialMl = initialBodyWaterMl) {
+function waterTotal(parts, initialMl = initialBodyWaterMl, cumulativeSweatMl = 0) {
   return parts.stomach.waterVolumeMl
     + parts.smallIntestine.waterVolumeMl
     + (parts.bodyFluid.waterVolumeMl - initialMl)
-    + parts.bladder.volumeMl;
+    + parts.bladder.volumeMl
+    + cumulativeSweatMl;
 }
 
 function queuedWaterMl(stomach) {
   return stomach.mealQueue.reduce((sum, meal) => sum + (meal.remainingWaterMl ?? 0), 0);
 }
 
-function waterLedgerMl(parts, cumulativeVoidedMl, initialMl = initialBodyWaterMl) {
+function waterLedgerMl(parts, cumulativeVoidedMl, initialMl = initialBodyWaterMl, cumulativeSweatMl = 0) {
   return parts.stomach.waterVolumeMl
     + queuedWaterMl(parts.stomach)
     + parts.smallIntestine.waterVolumeMl
     + (parts.bodyFluid.waterVolumeMl - initialMl)
     + parts.bladder.volumeMl
-    + cumulativeVoidedMl;
+    + cumulativeVoidedMl
+    + cumulativeSweatMl;
 }
 
 test('the legacy motility entry still starts alone without water targets', async (t) => {
@@ -158,23 +165,52 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
   assert.deepEqual(loaded.stomach.mealQueue, legacyStomach.mealQueue);
   assert.equal(loaded.stomach.waterVolumeMl, 0);
   assert.equal(loaded.stomach.emptiedWaterMl, 0);
-  assert.deepEqual(loaded.smallIntestine, { waterVolumeMl: 0, absorbedWaterMl: 0 });
+  assert.equal(loaded.stomach.carbohydrateG, 0);
+  assert.equal(loaded.stomach.solidCarbohydrateG, 0);
+  assert.equal(loaded.stomach.emptiedCarbohydrateG, 0);
+  assert.deepEqual(loaded.smallIntestine, {
+    waterVolumeMl: 0,
+    absorbedWaterMl: 0,
+    carbohydrateG: 0,
+    absorbedCarbohydrateG: 0,
+  });
+  assert.deepEqual(loaded.glucose, {
+    glucoseMassG: 12.69,
+    concentrationMgDl: 90,
+    disposedGlucoseG: 0,
+  });
   assert.deepEqual(loaded.bodyFluid, { waterVolumeMl: 30000, waterDeficit: 0 });
   assert.deepEqual(loaded.hypothalamusAdh, { relativeConcentration: 1 });
   assert.deepEqual(loaded.hypothalamusThirst, { thirst: 50 });
   assert.deepEqual(loaded.kidney, { urineProductionRequestMl: 0 });
+  assert.deepEqual(loaded.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
+  assert.deepEqual(loaded.pancreasEndocrine, { insulinRelative: 1 });
   assert.deepEqual(loaded.bladder, {
     volumeMl: 0,
     voidedMl: 0,
     voluntaryVoidedMl: 0,
     involuntaryVoidedMl: 0,
   });
+  assert.deepEqual(loaded.physicalActivity, { remainingExerciseMin: 0, intensity: 0 });
+  assert.deepEqual(loaded.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
 
   await gateway.tick();
   const after = gateway.getState().parts;
   assert.equal(after.stomach.waterVolumeMl, 0);
   assert.equal(after.stomach.emptiedWaterMl, 0);
   assert.equal(after.smallIntestine.waterVolumeMl, 0);
+  assert.equal(after.stomach.carbohydrateG, 0);
+  assert.equal(after.stomach.solidCarbohydrateG, 0);
+  assert.equal(after.stomach.emptiedCarbohydrateG, 0);
+  assert.equal(after.smallIntestine.carbohydrateG, 0);
+  assert.equal(after.smallIntestine.absorbedCarbohydrateG, 0);
+  assert.deepEqual(after.glucose, {
+    glucoseMassG: 12.69,
+    concentrationMgDl: 90,
+    disposedGlucoseG: 0,
+  });
+  assert.deepEqual(after.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
+  assert.deepEqual(after.pancreasEndocrine, { insulinRelative: 1 });
   assert.equal(after.stomach.mealQueue.length, 1);
   assert.equal(after.stomach.mealQueue[0].remainingRounds, 1);
 
@@ -188,6 +224,8 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
   );
   assert.equal(after.bladder.volumeMl, 0);
   assert.equal(after.bodyFluid.waterVolumeMl, 30000);
+  assert.deepEqual(after.physicalActivity, { remainingExerciseMin: 0, intensity: 0 });
+  assert.deepEqual(after.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
 });
 
 test('240 mL drink over 120 rounds conserves water and moves every signal', async (t) => {
@@ -201,6 +239,8 @@ test('240 mL drink over 120 rounds conserves water and moves every signal', asyn
 
   let controlVoidedMl = 0;
   let drinkVoidedMl = 0;
+  let controlSweatMl = 0;
+  let drinkSweatMl = 0;
   let maxErrorMl = 0;
   let controlParts;
   let drinkParts;
@@ -213,12 +253,22 @@ test('240 mL drink over 120 rounds conserves water and moves every signal', asyn
 
     controlVoidedMl += controlParts.bladder.voidedMl;
     drinkVoidedMl += drinkParts.bladder.voidedMl;
+    assert.ok(controlParts.skin, `control round ${round}: skin part is missing`);
+    assert.ok(drinkParts.skin, `drink round ${round}: skin part is missing`);
+    assert.ok(drinkParts.physicalActivity, `drink round ${round}: physicalActivity part is missing`);
+    controlSweatMl += controlParts.skin.sweatVolumeMl;
+    drinkSweatMl += drinkParts.skin.sweatVolumeMl;
 
-    const controlTotal = waterTotal(controlParts);
+    const controlTotal = waterTotal(controlParts, initialBodyWaterMl, controlSweatMl);
     assert.ok(Math.abs(controlTotal) <= 1e-6, `control round ${round}: ${controlTotal}`);
-    const drinkTotal = waterTotal(drinkParts);
+    const drinkTotal = waterTotal(drinkParts, initialBodyWaterMl, drinkSweatMl);
     maxErrorMl = Math.max(maxErrorMl, Math.abs(drinkTotal - 240));
     assert.ok(Math.abs(drinkTotal - 240) <= 1e-6, `drink round ${round}: ${drinkTotal}`);
+    assert.equal(controlParts.skin.sweatRequestMl, 0, `control round ${round}: sweat request`);
+    assert.equal(controlParts.skin.sweatVolumeMl, 0, `control round ${round}: sweat volume`);
+    assert.equal(drinkParts.skin.sweatRequestMl, 0, `drink round ${round}: sweat request`);
+    assert.equal(drinkParts.skin.sweatVolumeMl, 0, `drink round ${round}: sweat volume`);
+    assert.equal(drinkParts.physicalActivity.remainingExerciseMin, 0, `drink round ${round}: activity`);
   }
 
   assert.ok(maxErrorMl <= 1e-6, `largest drink identity error ${maxErrorMl}`);
@@ -443,6 +493,7 @@ test('a non-zero urinate keeps the drink ledger and leaves the same-round urine'
   assert.equal(drink.statusCode, 202);
 
   let cumulativeVoidedMl = 0;
+  let cumulativeSweatMl = 0;
   let maxQueuedWaterMl = 0;
   let voidBefore = null;
   let voidReceipt = null;
@@ -472,7 +523,9 @@ test('a non-zero urinate keeps the drink ledger and leaves the same-round urine'
 
     await gateway.tick();
     const parts = gateway.getState().parts;
+    assert.ok(parts.skin, `round ${round}: skin part is missing`);
     cumulativeVoidedMl += parts.bladder.voidedMl;
+    cumulativeSweatMl += parts.skin.sweatVolumeMl;
     maxQueuedWaterMl = Math.max(maxQueuedWaterMl, queuedWaterMl(parts.stomach));
 
     if (round === 1) {
@@ -526,7 +579,7 @@ test('a non-zero urinate keeps the drink ledger and leaves the same-round urine'
       assert.equal(cumulativeVoidedMl, voidBefore.bladder.volumeMl);
     }
 
-    const ledgerMl = waterLedgerMl(parts, cumulativeVoidedMl);
+    const ledgerMl = waterLedgerMl(parts, cumulativeVoidedMl, initialBodyWaterMl, cumulativeSweatMl);
     assert.ok(
       Math.abs(ledgerMl - intakeMl) <= 1e-6,
       `round ${round}: water ledger ${ledgerMl} with cumulative voided ${cumulativeVoidedMl}`,
@@ -538,7 +591,9 @@ test('a non-zero urinate keeps the drink ledger and leaves the same-round urine'
   assert.ok(cumulativeVoidedMl > 1);
   assert.equal(cumulativeVoidedMl, voidBefore.bladder.volumeMl);
   assert.equal(final.stomach.mealQueue.length, 0);
-  assert.ok(Math.abs(waterLedgerMl(final, cumulativeVoidedMl) - intakeMl) <= 1e-6);
+  assert.ok(Math.abs(
+    waterLedgerMl(final, cumulativeVoidedMl, initialBodyWaterMl, cumulativeSweatMl) - intakeMl,
+  ) <= 1e-6);
 });
 
 test('an overflow bladder voids involuntarily and keeps the water ledger', async (t) => {

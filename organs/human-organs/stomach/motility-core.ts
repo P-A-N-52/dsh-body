@@ -54,6 +54,24 @@
  * `remainingWaterMl` / `rateWaterMl`，避免体积已释放而水余量仍停在旧值的陈旧读数。因此不支持
  * “水链清单 → legacy 清单 → 水链清单”借道保存待释放水：legacy 轮次会丢弃切片的水身份，再切回
  * 水链时队列水按 0 计，不猜历史。
+ *
+ * 碳水记账（design，见 docs/superpowers/specs/2026-11-22-carbohydrate-glucose-design.md §5.1）：
+ * `parseIntake` 始终校验 `drink` / `eat` 的可选 `carbohydrateG`（g，可消化碳水按葡萄糖当量，缺省 0，
+ * 非法值使整条摄入无效）；`trackCarbohydrate` 只控制记账、队列元数据与 transfer：false 时合法值被
+ * 忽略，非法值仍使整条动作无效。开启时核心给新队列切片写 `remainingCarbohydrateG` /
+ * `rateCarbohydrateGPerRound`；碳水按既有轮数均分，最后一轮释放全部余量，队列结束条件也看碳水。
+ * 轮初总碳水 C 拆成固餐小计 Cs 与其余碳水 Cn = C − Cs：Ecn = N > 0 ? E_nonSolid × Cn / N : 0，
+ * Ecs = Cs × f_solid，Ec = Ecn + Ecs。核心只交回 transfer 前的值：总量 C + D、固体小计
+ * Cs − Ecs + Ds 与本轮 Ec；Gateway 在 transfer 阶段对总量只扣一次 Ec，所以 `carbohydrateG` 最终是
+ * 轮末胃内碳水，而 `solidCarbohydrateG` 由脚本预扣 Ecs，不随 transfer 再变。非固餐碳水按非固餐体积
+ * 同比例排空、固餐碳水按固餐排出比例排空、`mixed` 全部归入非固餐组，都是 design 比例假设：糖组成、
+ * 消化速度、纤维、研磨与选择性排空不建模，也不从体积、能量或 4 kcal/g 反推碳水。没有非固餐体积时
+ * 不虚构碳水排空（Ecn = 0），但零体积而仍有碳水余量的队列末轮仍会释放。`trackCarbohydrate: false`
+ * 时（旧 `motility.ts`）不写碳水元数据，输出状态形状与历史一致；推进既有队列时剥离切片上残留的
+ * `remainingCarbohydrateG` / `rateCarbohydrateGPerRound`。因此同样不支持“碳水链清单 → legacy 清单
+ * → 碳水链清单”借道保存待释放碳水：legacy 轮次丢弃切片的碳水身份，再切回时按 0 计，不猜历史。
+ * 旧存档缺碳水字段按 0；`Ecn` 的按体积比例拆分、`Ecs` 直接复用固餐体积排出比例，都不是实测碳水
+ * 排空曲线。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
@@ -68,6 +86,8 @@ export type StomachMeal = {
   mealKind: MealKind;
   remainingWaterMl?: number;
   rateWaterMl?: number;
+  remainingCarbohydrateG?: number;
+  rateCarbohydrateGPerRound?: number;
 };
 
 export type StomachState = {
@@ -88,6 +108,8 @@ export type StomachStateInput = {
   readonly solidEnergyKcal?: unknown;
   readonly lastIntakeAt?: number | null;
   readonly waterVolumeMl?: unknown;
+  readonly carbohydrateG?: unknown;
+  readonly solidCarbohydrateG?: unknown;
   readonly mealQueue: readonly StomachMeal[];
 };
 
@@ -95,6 +117,11 @@ export type StomachAdvance = {
   state: StomachState;
   emptiedNonSolidMl: number;
   deliveredWaterMl: number;
+  carbohydrate: {
+    carbohydrateG: number;
+    solidCarbohydrateG: number;
+    emptiedCarbohydrateG: number;
+  };
 };
 
 export const stomachActionTypes = ['drink', 'eat'];
@@ -127,6 +154,7 @@ type Action = {
   readonly energyKcal?: unknown;
   readonly mealKind?: unknown;
   readonly durationMin?: unknown;
+  readonly carbohydrateG?: unknown;
 };
 
 const parameters = loadParameters(new URL('./motility.parameters.json', import.meta.url));
@@ -150,6 +178,8 @@ export function readStomachBase(prev: StomachStateInput) {
   const solidVolumeMl = Math.min(volumeMl, Math.max(0, finiteOrZero(prev.solidVolumeMl)));
   const solidEnergyKcal = Math.min(energyKcal, Math.max(0, finiteOrZero(prev.solidEnergyKcal)));
   const nonSolidVolumeMl = volumeMl - solidVolumeMl;
+  const carbohydrateG = Math.max(0, finiteOrZero(prev.carbohydrateG));
+  const solidCarbohydrateG = Math.min(carbohydrateG, Math.max(0, finiteOrZero(prev.solidCarbohydrateG)));
   return {
     volumeMl,
     energyKcal,
@@ -157,6 +187,9 @@ export function readStomachBase(prev: StomachStateInput) {
     solidEnergyKcal,
     nonSolidVolumeMl,
     nonSolidEnergyKcal: energyKcal - solidEnergyKcal,
+    carbohydrateG,
+    solidCarbohydrateG,
+    nonSolidCarbohydrateG: carbohydrateG - solidCarbohydrateG,
     waterVolumeMl: Math.min(nonSolidVolumeMl, Math.max(0, finiteOrZero(prev.waterVolumeMl))),
   };
 }
@@ -164,6 +197,7 @@ export function readStomachBase(prev: StomachStateInput) {
 type Intake = {
   volumeMl: number;
   energyKcal: number;
+  carbohydrateG: number;
   rounds: number;
   mealKind: MealKind;
   isDrink: boolean;
@@ -182,6 +216,14 @@ function parseIntake(action: Action, dt: number): Intake | null {
   }
   const rounds = durationMin > 0 ? Math.ceil((durationMin * 60) / dt) : 1;
 
+  let carbohydrateG = 0;
+  if (action.carbohydrateG !== undefined) {
+    if (typeof action.carbohydrateG !== 'number' || !Number.isFinite(action.carbohydrateG) || action.carbohydrateG < 0) {
+      return null;
+    }
+    carbohydrateG = action.carbohydrateG;
+  }
+
   if (action.type === 'drink') {
     let energyKcal = 0;
     if (action.energyKcal !== undefined) {
@@ -190,7 +232,7 @@ function parseIntake(action: Action, dt: number): Intake | null {
       }
       energyKcal = action.energyKcal;
     }
-    return { volumeMl: action.volumeMl, energyKcal, rounds, mealKind: 'liquid', isDrink: true };
+    return { volumeMl: action.volumeMl, energyKcal, carbohydrateG, rounds, mealKind: 'liquid', isDrink: true };
   }
   if (typeof action.energyKcal !== 'number' || !Number.isFinite(action.energyKcal) || action.energyKcal < 0) {
     return null;
@@ -199,30 +241,41 @@ function parseIntake(action: Action, dt: number): Intake | null {
   return {
     volumeMl: action.volumeMl,
     energyKcal: action.energyKcal,
+    carbohydrateG,
     rounds,
     mealKind: action.mealKind,
     isDrink: false,
   };
 }
 
-type Slice = { ml: number; kcal: number; waterMl: number };
+type Slice = { ml: number; kcal: number; waterMl: number; carbohydrateG: number };
 
-function takeSlice(meal: StomachMeal, trackWater: boolean): Slice {
+function takeSlice(meal: StomachMeal, trackWater: boolean, trackCarbohydrate: boolean): Slice {
   const lastRound = meal.remainingRounds <= 1;
   const remainingWaterMl = trackWater ? (meal.remainingWaterMl ?? 0) : 0;
   const rateWaterMl = trackWater ? (meal.rateWaterMl ?? 0) : 0;
+  const remainingCarbohydrateG = trackCarbohydrate ? (meal.remainingCarbohydrateG ?? 0) : 0;
+  const rateCarbohydrateG = trackCarbohydrate ? (meal.rateCarbohydrateGPerRound ?? 0) : 0;
   return {
     ml: lastRound ? meal.remainingMl : Math.min(meal.rateMlPerRound, meal.remainingMl),
     kcal: lastRound ? meal.remainingKcal : Math.min(meal.rateKcalPerRound, meal.remainingKcal),
     waterMl: lastRound ? remainingWaterMl : Math.min(rateWaterMl, remainingWaterMl),
+    carbohydrateG: lastRound ? remainingCarbohydrateG : Math.min(rateCarbohydrateG, remainingCarbohydrateG),
   };
 }
 
-function advanceMeal(meal: StomachMeal, slice: Slice, trackWater: boolean): StomachMeal | null {
+function advanceMeal(
+  meal: StomachMeal,
+  slice: Slice,
+  trackWater: boolean,
+  trackCarbohydrate: boolean,
+): StomachMeal | null {
   const remainingMl = meal.remainingMl - slice.ml;
   const remainingKcal = meal.remainingKcal - slice.kcal;
+  const remainingCarbohydrateG = (meal.remainingCarbohydrateG ?? 0) - slice.carbohydrateG;
   const remainingRounds = meal.remainingRounds - 1;
-  if (remainingRounds <= 0 || (remainingMl <= 0 && remainingKcal <= 0)) return null;
+  const carbohydrateEmpty = !trackCarbohydrate || remainingCarbohydrateG <= 0;
+  if (remainingRounds <= 0 || (remainingMl <= 0 && remainingKcal <= 0 && carbohydrateEmpty)) return null;
   const advanced: StomachMeal = {
     remainingMl,
     remainingKcal,
@@ -235,13 +288,22 @@ function advanceMeal(meal: StomachMeal, slice: Slice, trackWater: boolean): Stom
     advanced.remainingWaterMl = (meal.remainingWaterMl ?? 0) - slice.waterMl;
     advanced.rateWaterMl = meal.rateWaterMl ?? 0;
   }
+  if (trackCarbohydrate) {
+    advanced.remainingCarbohydrateG = remainingCarbohydrateG;
+    advanced.rateCarbohydrateGPerRound = meal.rateCarbohydrateGPerRound ?? 0;
+  }
   return advanced;
 }
 
-function startIntake(intake: Intake, trackWater: boolean): { slice: Slice; meal: StomachMeal | null } {
+function startIntake(
+  intake: Intake,
+  trackWater: boolean,
+  trackCarbohydrate: boolean,
+): { slice: Slice; meal: StomachMeal | null } {
   const ml = intake.volumeMl / intake.rounds;
   const kcal = intake.energyKcal / intake.rounds;
-  const slice = { ml, kcal, waterMl: trackWater && intake.isDrink ? ml : 0 };
+  const carbohydrateG = trackCarbohydrate ? intake.carbohydrateG / intake.rounds : 0;
+  const slice = { ml, kcal, waterMl: trackWater && intake.isDrink ? ml : 0, carbohydrateG };
   if (intake.rounds <= 1) return { slice, meal: null };
   const meal: StomachMeal = {
     remainingMl: intake.volumeMl - ml,
@@ -255,6 +317,10 @@ function startIntake(intake: Intake, trackWater: boolean): { slice: Slice; meal:
     meal.remainingWaterMl = (intake.isDrink ? intake.volumeMl : 0) - slice.waterMl;
     meal.rateWaterMl = slice.waterMl;
   }
+  if (trackCarbohydrate) {
+    meal.remainingCarbohydrateG = intake.carbohydrateG - carbohydrateG;
+    meal.rateCarbohydrateGPerRound = carbohydrateG;
+  }
   return { slice, meal };
 }
 
@@ -263,7 +329,10 @@ export function advanceStomach(
   actions: readonly Action[],
   dt: number,
   simulatedSeconds: number,
-  { trackWater = false }: { trackWater?: boolean } = {},
+  { trackWater = false, trackCarbohydrate = false }: {
+    trackWater?: boolean;
+    trackCarbohydrate?: boolean;
+  } = {},
 ): StomachAdvance {
   const base = readStomachBase(prev);
   const dtMin = dt / 60;
@@ -280,6 +349,12 @@ export function advanceStomach(
   const emptiedSolidMl = base.solidVolumeMl * solidFraction;
   const emptiedSolidKcal = base.solidEnergyKcal * solidFraction;
 
+  const emptiedNonSolidCarbohydrateG = base.nonSolidVolumeMl > 0
+    ? emptiedNonSolidMl * base.nonSolidCarbohydrateG / base.nonSolidVolumeMl
+    : 0;
+  const emptiedSolidCarbohydrateG = base.solidCarbohydrateG * solidFraction;
+  const emptiedCarbohydrateG = emptiedNonSolidCarbohydrateG + emptiedSolidCarbohydrateG;
+
   const emptiedMl = emptiedNonSolidMl + emptiedSolidMl;
   const emptiedKcal = emptiedNonSolidKcal + emptiedSolidKcal;
 
@@ -289,15 +364,19 @@ export function advanceStomach(
   let nextSolidEnergyKcal = Math.max(0, base.solidEnergyKcal - emptiedSolidKcal);
   let lastIntakeAt = prev.lastIntakeAt ?? null;
   let deliveredWaterMl = 0;
+  let deliveredNonSolidCarbohydrateG = 0;
+  let deliveredSolidCarbohydrateG = 0;
 
   function deliver(slice: Slice, mealKind: MealKind): void {
-    if (slice.ml <= 0 && slice.kcal <= 0) return;
+    if (slice.ml <= 0 && slice.kcal <= 0 && slice.carbohydrateG <= 0) return;
     if (mealKind === 'solid') {
       nextSolidVolumeMl += slice.ml;
       nextSolidEnergyKcal += slice.kcal;
+      deliveredSolidCarbohydrateG += slice.carbohydrateG;
     } else {
       nextNonSolidVolumeMl += slice.ml;
       nextNonSolidEnergyKcal += slice.kcal;
+      deliveredNonSolidCarbohydrateG += slice.carbohydrateG;
     }
     lastIntakeAt = simulatedSeconds;
     deliveredWaterMl += slice.waterMl;
@@ -305,16 +384,16 @@ export function advanceStomach(
 
   const mealQueue: StomachMeal[] = [];
   for (const meal of prev.mealQueue.map((entry) => ({ ...entry }))) {
-    const slice = takeSlice(meal, trackWater);
+    const slice = takeSlice(meal, trackWater, trackCarbohydrate);
     deliver(slice, meal.mealKind);
-    const advanced = advanceMeal(meal, slice, trackWater);
+    const advanced = advanceMeal(meal, slice, trackWater, trackCarbohydrate);
     if (advanced) mealQueue.push(advanced);
   }
 
   for (const action of actions) {
     const intake = parseIntake(action, dt);
     if (intake === null) continue;
-    const started = startIntake(intake, trackWater);
+    const started = startIntake(intake, trackWater, trackCarbohydrate);
     deliver(started.slice, intake.mealKind);
     if (started.meal) mealQueue.push(started.meal);
   }
@@ -329,5 +408,14 @@ export function advanceStomach(
     lastIntakeAt,
     mealQueue,
   };
-  return { state, emptiedNonSolidMl, deliveredWaterMl };
+  return {
+    state,
+    emptiedNonSolidMl,
+    deliveredWaterMl,
+    carbohydrate: {
+      carbohydrateG: base.carbohydrateG + deliveredNonSolidCarbohydrateG + deliveredSolidCarbohydrateG,
+      solidCarbohydrateG: base.solidCarbohydrateG - emptiedSolidCarbohydrateG + deliveredSolidCarbohydrateG,
+      emptiedCarbohydrateG,
+    },
+  };
 }

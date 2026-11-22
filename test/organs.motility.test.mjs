@@ -34,6 +34,32 @@ function assertNoWaterMetadata(state) {
   }
 }
 
+function withoutQueueMetadata(state) {
+  return {
+    ...state,
+    mealQueue: state.mealQueue.map(({
+      remainingWaterMl,
+      rateWaterMl,
+      remainingCarbohydrateG,
+      rateCarbohydrateGPerRound,
+      ...meal
+    }) => meal),
+  };
+}
+
+function assertNoCarbohydrateMetadata(state) {
+  for (const meal of state.mealQueue) {
+    assert.equal(Object.hasOwn(meal, 'remainingCarbohydrateG'), false);
+    assert.equal(Object.hasOwn(meal, 'rateCarbohydrateGPerRound'), false);
+  }
+}
+
+function assertNoCarbohydrateFields(state) {
+  for (const field of ['carbohydrateG', 'solidCarbohydrateG', 'emptiedCarbohydrateG']) {
+    assert.equal(Object.hasOwn(state, field), false, field);
+  }
+}
+
 function round(state, actions = []) {
   let written;
   heartbeat({
@@ -270,4 +296,42 @@ test('the legacy entry strips queue water metadata while accepting new drinks', 
     assertNoWaterMetadata(drained);
   }
   assert.equal(drained.mealQueue.length, 0);
+});
+
+test('the legacy entry keeps the pre-carbohydrate state shape and strips queue metadata', () => {
+  assert.equal(Object.hasOwn(initialState, 'carbohydrateG'), false);
+  assert.equal(Object.hasOwn(initialState, 'solidCarbohydrateG'), false);
+  assert.equal(Object.hasOwn(initialState, 'emptiedCarbohydrateG'), false);
+  for (const field of ['carbohydrateG', 'solidCarbohydrateG', 'emptiedCarbohydrateG']) {
+    assert.equal(Object.hasOwn(fields, field), false);
+  }
+
+  const hydrated = hydrationRound(hydrationInitialState, [
+    { type: 'eat', volumeMl: 300, energyKcal: 200, mealKind: 'solid', durationMin: 3, carbohydrateG: 90 },
+  ]).state;
+  assert.equal(hydrated.mealQueue[0].remainingCarbohydrateG, 60);
+  assert.equal(hydrated.mealQueue[0].rateCarbohydrateGPerRound, 30);
+
+  const control = round(withoutQueueMetadata(hydrated));
+  const next = round(hydrated);
+  assertNoCarbohydrateFields(next);
+  assertNoCarbohydrateMetadata(next);
+  assert.deepEqual(next, control);
+  assert.equal(next.mealQueue[0].remainingMl, 100);
+  assert.equal(next.mealQueue[0].remainingRounds, 1);
+
+  const transfers = [];
+  let written;
+  heartbeat({
+    read: () => ({ ...initialState }),
+    actions: [{ type: 'drink', volumeMl: 240, durationMin: 3, carbohydrateG: 90 }],
+    dt: 60,
+    simulatedSeconds: 60,
+    write: (state) => { written = state; },
+    transfer: (...args) => transfers.push(args),
+  });
+  assert.equal(transfers.length, 0);
+  assertNoCarbohydrateFields(written);
+  assert.equal(written.mealQueue.length, 1);
+  assertNoCarbohydrateMetadata(written);
 });

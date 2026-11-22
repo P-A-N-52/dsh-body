@@ -10,6 +10,15 @@
       "range": [1, 120],
       "source": "SRC-PERONNET-2012",
       "note": "一阶水吸收时间尺度的工程假设，不是论文报告值。Péronnet 2012（PMC3351614）只提供 300 mL 低矿化度水加 D₂O 示踪在 5 min 可检出、完整吸收与分布跨数十分钟的探索时间尺度；原文 75–120 min 是表观完全吸收与分布时间，不是小肠半时。20 min 不能称 validated，也没有对原文曲线拟合"
+    },
+    {
+      "id": "smallIntestine.carbohydrateAbsorption.halfTimeMin",
+      "unit": "min",
+      "value": 20,
+      "status": "design",
+      "range": [1, 120],
+      "source": null,
+      "note": "一阶碳水吸收时间尺度的工程假设，无直接人体证据，不是论文报告值；也不借 Dalla Man 2007 的 k_abs（fixed following [17]，约 12.2 min 只是速率常数换算）。未来若有肠腔碳水消失或餐后葡萄糖出现的人体测量，替换此参数。range 是工程调参范围，不是人体百分位"
     }
   ]
 }

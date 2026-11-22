@@ -2,8 +2,10 @@
  * 胃（stomach）动力与排空脚本的旧独立入口；部位 `stomach` 的写者。
  *
  * 方程、固／液分组、来源注释和证据边界都在 `motility-core.ts`；这里只保留模块契约，并以
- * `trackWater: false` 调用核心。因此状态形状、体积／能量／固餐轨迹与历史清单一致：不声明
- * transfer，`mealQueue` 切片没有水元数据，也不需要小肠或膀胱同时加载。
+ * `trackWater: false, trackCarbohydrate: false` 调用核心。因此状态形状、体积／能量／固餐轨迹与
+ * 历史清单一致：不声明 transfer，`mealQueue` 切片没有水或碳水元数据，推进既有队列时剥离
+ * `remainingWaterMl` / `rateWaterMl` 与 `remainingCarbohydrateG` / `rateCarbohydrateGPerRound`，
+ * 也不需要小肠或膀胱同时加载。
  *
  * 来源入口（详细边界与原文定位见 `motility-core.ts` 头部；登记见
  * organs/human-organs/references/source-index.csv）：

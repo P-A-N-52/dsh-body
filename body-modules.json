@@ -7,12 +7,17 @@
     "./organs/human-organs/duodenum/nutrient-exposure.ts",
     "./organs/human-organs/small-intestine/water-absorption.ts",
     "./organs/human-compartments/body-water/water.ts",
+    "./organs/human-compartments/glucose/glucose.ts",
+    "./organs/human-organs/pancreas/insulin.ts",
+    "./organs/human-organs/kidney/glucose-excretion.ts",
     "./organs/human-organs/brain/hypothalamus-adh.ts",
     "./organs/human-organs/brain/hypothalamus-thirst.ts",
     "./organs/human-organs/kidney/urine-production.ts",
     "./organs/human-organs/bladder/storage.ts",
     "./organs/human-organs/brain/interoception.ts",
-    "./organs/human-organs/brain/notify.ts"
+    "./organs/human-organs/brain/notify.ts",
+    "./organs/human-organs/skeletal-muscle/activity.ts",
+    "./organs/human-organs/skin/sweat.ts"
   ],
   "catchUpMinutes": 720,
   "scriptTimeoutMs": 10000

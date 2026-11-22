@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "owner": "glucose",
+  "parameters": [
+    {
+      "id": "glucose.referenceBodyMassKg",
+      "unit": "kg",
+      "value": 75,
+      "status": "design",
+      "range": [30, 200],
+      "source": null,
+      "note": "工程参考体重；未建个体体重，未来由身体预设/个体输入替换。不是 Dalla Man 2007 的 78 ± 1 kg，也不是人群百分位"
+    },
+    {
+      "id": "glucose.distributionVolumeDlPerKg",
+      "unit": "dL/kg",
+      "value": 1.88,
+      "status": "design",
+      "range": [0.5, 3],
+      "source": "SRC-DALLAMAN-2007",
+      "note": "血浆+快速平衡组织可及池按体重计的表观分布体积（Dalla Man 2007 p.1743 Table I 正常组平均模型常数）。不是 204 人直接实测均值，原文未报告 ± 类型或个体间离散度；仅作定义与量级锚点，未来由更完整分布模型替换。range 是工程调参范围"
+    },
+    {
+      "id": "glucose.baselineConcentrationMgDl",
+      "unit": "mg/dL",
+      "value": 90,
+      "status": "design",
+      "range": [60, 120],
+      "source": null,
+      "note": "工程空腹血糖基线，不是个体空腹测量或人群正常值；对应可及池基础质量 B = 90 × (75 × 1.88) / 1000 = 12.69 g，是初始量与清除下限。未来由个体测量/基础血糖模型替换"
+    },
+    {
+      "id": "glucose.apparentDisposalHalfTimeMin",
+      "unit": "min",
+      "value": 60,
+      "status": "design",
+      "range": [10, 300],
+      "source": null,
+      "note": "高于基线质量部分在胰腺相对信号 I=1 时的表观清除半时；耦合后按 I 缩放清除指数，仍不区分组织摄取、肝糖输出与胰岛素浓度。不是 Dalla Man 2007 报告值，未来由胰岛素—葡萄糖效能与组织利用模型替换。range 是工程调参范围"
+    }
+  ]
+}

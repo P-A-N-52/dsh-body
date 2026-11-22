@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "owner": "kidneyGlucose",
+  "parameters": [
+    {
+      "id": "kidneyGlucose.filtrationRatePerMin",
+      "unit": "min^-1",
+      "value": 0.0005,
+      "status": "prior",
+      "range": [0.0001, 0.002],
+      "source": "SRC-DALLAMAN-2007",
+      "note": "Dalla Man 2007 p.1745 §III.C.5 式 (27) 与 p.1743 Table I 正常组平均模型常数 k_e1（原文称 glomerular filtration rate）。单位是 min^-1，不是 mL/min 的实测 GFR；原文未报告单独精度、± 类型或个体间离散度。prior 只表示已发表平均模型锚点，不是本项目拟合或验证；未来由个体肾糖滤过—重吸收模型替换。range 是本项目工程调参范围，不是原文精度区间"
+    },
+    {
+      "id": "kidneyGlucose.renalThresholdMgKg",
+      "unit": "mg/kg",
+      "value": 339,
+      "status": "prior",
+      "range": [250, 400],
+      "source": "SRC-DALLAMAN-2007",
+      "note": "Dalla Man 2007 p.1743 Table I 正常组平均模型常数 k_e2（肾糖阈），对应约 339 / 1.88 = 180.32 mg/dL；换算只是单位一致化，不是临床诊断界值。原文未报告精度、± 类型或个体间离散度；prior 不是本项目拟合或验证，未来由个体肾阈替换。range 是本项目工程调参范围，不是原文精度区间"
+    },
+    {
+      "id": "kidneyGlucose.distributionVolumeDlPerKg",
+      "unit": "dL/kg",
+      "value": 1.88,
+      "status": "design",
+      "range": [0.5, 3],
+      "source": "SRC-DALLAMAN-2007",
+      "note": "血浆+快速平衡组织可及池按体重计的表观分布体积，与 glucose.distributionVolumeDlPerKg 重复配置并测试固定相等（Dalla Man 2007 p.1743 Table I 正常组平均模型常数）；只作可及池定义与量级锚点，不是 204 人直接实测均值。status 为 design，未来由共享身体预设替换。range 是本项目工程调参范围"
+    },
+    {
+      "id": "kidneyGlucose.referenceBodyMassKg",
+      "unit": "kg",
+      "value": 75,
+      "status": "design",
+      "range": [30, 200],
+      "source": null,
+      "note": "工程参考体重，与 glucose.referenceBodyMassKg 重复配置并测试固定相等；未建个体体重，不是 Dalla Man 2007 的 78 ± 1 kg，也不是人群百分位。未来由身体预设/个体输入替换。range 是本项目工程调参范围"
+    }
+  ]
+}
