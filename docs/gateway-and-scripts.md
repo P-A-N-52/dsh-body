@@ -108,14 +108,16 @@ bodyFluid.waterVolumeMl      → bladder.volumeMl
 - 非自主排空也不触发 transfer：轮初膀胱体积**严格大于** 600 mL 且本轮无 `urinate` 时，膀胱把轮初体积排到 `postVoidResidualMl`，记入 `involuntaryVoidedMl`；主动 `urinate` 优先，同轮只结算一次。`voidedMl = voluntaryVoidedMl + involuntaryVoidedMl`，水账只累计 `voidedMl` 一次，两个分项不能再加一遍。600 mL 是 `design` 工程阈值，不模拟逼尿肌/括约肌、持续漏尿或临床失禁。
 - 加载约束：`hydration.ts` 必须与 `smallIntestine`、`bodyFluid`、`bladder` 同时加载，否则 `transferOut` / `transferIn` 配对校验拒绝启动；旧 `motility.ts` 不声明 transfer，可单独加载且不需要下游部位。两个 `stomach` 入口不能同时加载。
 - 旧 `motility.ts` 以 `trackWater: false` 运行，推进既有 `mealQueue` 时会剥离切片的 `remainingWaterMl` / `rateWaterMl`；不要用“水链清单 → 旧清单 → 水链清单”保存待释放水，切回时按 0 计。正常旧档升级到水链只补 0，不受影响。
-- 这些脚本已加入根清单（12 个部位），Task 10 真实 DSH 会话验收已完成（30 轮 A/B 与排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，仓库外未入库）；参数与证据边界见各器官 README。Task 10 早于非自主排尿、`discomfort` 与 DI 变体合并，只覆盖主动排尿路径。非自主排尿与不适的定向测试在 `test/organs.bladder.test.mjs`、`test/organs.interoception.test.mjs` 与 `test/organs.water-gateway.test.mjs`；DI 变体在 `test/organs.di.test.mjs`。这些测试都没有真实 DSH 会话验收。
+- 这些脚本已加入根清单（12 个部位），Task 10 真实 DSH 会话验收已完成（30 轮 A/B 与排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，仓库外未入库）；参数与证据边界见各器官 README。Task 10 早于非自主排尿、`discomfort` 与 DI 变体合并，只覆盖主动排尿路径。非自主排尿与不适的定向测试在 `test/organs.bladder.test.mjs`、`test/organs.interoception.test.mjs` 与 `test/organs.water-gateway.test.mjs`；DI 变体在 `test/organs.di.test.mjs`。M19 已补做这些新增行为的真实 DSH 会话验收（33/33 核对通过，证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）；它只覆盖短会话，不重写 Task 10 历史，也不代表当前 HEAD 性能已重测。
 
 ## 4. 跑通第一个模块：记录一杯水
 
 这个模块只累计已登记的饮水量，**不模拟吸收或排泄**。下面都从仓库根目录操作，无需安装 DSH，也不用修改仓库自带的清单或真实存档。先在同一终端创建一个空目录，用输出的路径保存下面三个文件：
 
 ```sh
-DEMO_DIR=$(mktemp -d "$PWD/.body-demo.XXXXXX")
+REPO_ROOT=$PWD
+mkdir -p /tmp/dsh-body
+DEMO_DIR=$(mktemp -d /tmp/dsh-body/body-demo.XXXXXX)
 mkdir -p "$DEMO_DIR/organs/human-organs/stomach"
 printf '%s\n' "$DEMO_DIR"
 ```
@@ -162,8 +164,9 @@ export function heartbeat(io: IO): void {
 **③ `$DEMO_DIR/check.mjs`** — 只用于自测，不要加进 `scripts`。它启动真实 Gateway，用一个空闲端口发 HTTP 请求，然后手动推进一轮，省去等一分钟。正式运行由 DSH 启动 Gateway 并自动计时。
 
 ```js
-import { startGateway } from '../gateway.js';
+import { pathToFileURL } from 'node:url';
 
+const { startGateway } = await import(pathToFileURL(`${process.env.REPO_ROOT}/gateway.js`).href);
 const gateway = startGateway({
   manifestPath: `${import.meta.dirname}/body-modules.json`,
   statePath: `${import.meta.dirname}/body-state.json`,
@@ -188,7 +191,7 @@ try {
 }
 ```
 
-运行 `node "$DEMO_DIR/check.mjs"`。**在新目录第一次运行**，应依次看到：`drink` 对应 `['waterIntake']` → `202 queued` → `simulatedSeconds: 60` 且 `parts.waterIntake.totalMl: 200` → `applied`。再用同一目录运行，`cup-1` 是重试，累计值仍为 200，而不是 400。要在 DSH 中使用，按[加载插件](./virtual-body.md#加载插件)接入，把 TS 路径追加到实际清单的 `scripts`，保留其他条目，再重启 Gateway。`check.mjs` 不需要部署，自测目录可以删除。
+运行 `REPO_ROOT="$REPO_ROOT" node "$DEMO_DIR/check.mjs"`。**在新目录第一次运行**，应依次看到：`drink` 对应 `['waterIntake']` → `202 queued` → `simulatedSeconds: 60` 且 `parts.waterIntake.totalMl: 200` → `applied`。再用同一目录运行，`cup-1` 是重试，累计值仍为 200，而不是 400。要在 DSH 中使用，按[加载插件](./virtual-body.md#加载插件)接入，把 TS 路径追加到实际清单的 `scripts`，保留其他条目，再重启 Gateway。`check.mjs` 不需要部署，自测目录可以删除。
 
 ### 接下来可能用到的接口
 
