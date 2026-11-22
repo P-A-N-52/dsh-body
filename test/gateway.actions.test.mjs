@@ -53,6 +53,7 @@ test('a declared action type is queued and queryable', async (t) => {
 test('the same id and payload is idempotent, a different payload conflicts', async (t) => {
   const app = await launch(t, {
     modules: { 'counter.mjs': counterSource() },
+    heartbeatIntervalMs: 60_000,
   });
 
   const first = await app.post('/actions', { id: 'a1', type: 'eat', volumeMl: 120 });
@@ -95,6 +96,7 @@ test('an action submitted while a heartbeat is running lands in the next batch',
     modules: {
       'blocking.mjs': blockingSource({ startedPath, releasePath }),
     },
+    heartbeatIntervalMs: 60_000,
   });
 
   await app.post('/actions', { id: 'a1', type: 'eat' });
@@ -133,6 +135,7 @@ test('a failed retry keeps the original batch and does not let a later action ov
     modules: {
       'flaky.mjs': flakySource({ startedPath, releasePath, countPath }),
     },
+    heartbeatIntervalMs: 60_000,
   });
 
   await app.post('/actions', { id: 'a1', type: 'eat' });
@@ -182,18 +185,25 @@ test('a failed batch survives restart and is applied exactly once', async (t) =>
   const modules = {
     'flaky.mjs': flakySource({ startedPath, releasePath, countPath }),
   };
+  const interval = 25;
+  let currentNow = Date.now();
+  const gatewayOptions = { now: () => currentNow };
 
   const first = await launch(t, {
     dir: root,
     modules,
+    heartbeatIntervalMs: interval,
     expectReadyReject: false,
+    gatewayOptions,
   });
-  await first.post('/actions', { id: 'a1', type: 'eat' });
+  const accepted = await first.post('/actions', { id: 'a1', type: 'eat' });
+  assert.equal(accepted.status, 202);
   const attempt = first.tick();
   await until(() => first.exists(startedPath));
   await import('node:fs').then(({ writeFileSync }) => writeFileSync(releasePath, ''));
   await attempt;
   await first.gateway.stop();
+  currentNow += interval;
 
   const saved = first.state();
   assert.equal(saved.activeBatch.targetSimulatedSeconds, 60);
@@ -203,7 +213,9 @@ test('a failed batch survives restart and is applied exactly once', async (t) =>
   const second = await launch(t, {
     dir: root,
     modules,
+    heartbeatIntervalMs: interval,
     expectReadyReject: false,
+    gatewayOptions,
   });
   let state = second.state();
   assert.equal(state.snapshot.simulatedSeconds, 60);

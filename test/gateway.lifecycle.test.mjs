@@ -40,6 +40,7 @@ test('a hanging module aborts the round without committing', async (t) => {
   const app = await launch(t, {
     modules: { 'hang.mjs': hangSource() },
     scriptTimeoutMs: 100,
+    heartbeatIntervalMs: 60_000,
   });
 
   const response = await app.post('/actions', { id: 'a1', type: 'eat' });
