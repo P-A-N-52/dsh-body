@@ -10,6 +10,15 @@
       "range": [0, 200],
       "source": null,
       "note": "排尿后余量；0 mL 是工程假设，不是 ICS 给出的正常残余量，也不是人体测量。一次排尿按 max(0, 轮初体积 - 该值) 计入 voidedMl；range 是工程调参范围"
+    },
+    {
+      "id": "bladder.voiding.involuntaryThresholdMl",
+      "unit": "mL",
+      "value": 600,
+      "status": "design",
+      "range": [300, 1000],
+      "source": null,
+      "note": "过度充盈非自主排空的工程触发阈值；600 mL 只高于 410 mL 尿意归一化锚点的设计量级，不是正常膀胱容量、临床诊断界值或论文测量。轮初体积严格大于该值才触发，排空到 postVoidResidualMl，不是持续漏尿或漏尿速率；range 是工程调参范围"
     }
   ]
 }
