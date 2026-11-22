@@ -163,7 +163,12 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
   assert.deepEqual(loaded.hypothalamusAdh, { relativeConcentration: 1 });
   assert.deepEqual(loaded.hypothalamusThirst, { thirst: 50 });
   assert.deepEqual(loaded.kidney, { urineProductionRequestMl: 0 });
-  assert.deepEqual(loaded.bladder, { volumeMl: 0, voidedMl: 0 });
+  assert.deepEqual(loaded.bladder, {
+    volumeMl: 0,
+    voidedMl: 0,
+    voluntaryVoidedMl: 0,
+    involuntaryVoidedMl: 0,
+  });
 
   await gateway.tick();
   const after = gateway.getState().parts;
@@ -346,7 +351,12 @@ test('urinate voids the round-start bladder once and same-round urine stays', as
   const readExec = (callId) => fakeExec({ sessionId: 'session-read', callId });
 
   const before = await tools.body_state.execute({ part: 'bladder' }, readExec('read-before'));
-  assert.deepEqual(before.parts.bladder, { volumeMl: 250, voidedMl: 0 });
+  assert.deepEqual(before.parts.bladder, {
+    volumeMl: 250,
+    voidedMl: 0,
+    voluntaryVoidedMl: 0,
+    involuntaryVoidedMl: 0,
+  });
   const urgeBefore = await tools.body_state.execute({ part: 'interoception' }, readExec('read-urge-before'));
   assert.equal(urgeBefore.parts.interoception.urinaryUrgency, 0);
 
@@ -359,7 +369,12 @@ test('urinate voids the round-start bladder once and same-round urine stays', as
   assert.equal(gateway.getReceipt(queued.receipt.id).status, 'applied');
 
   const afterVoid = await tools.body_state.execute({ part: 'bladder' }, readExec('read-after-void'));
-  assert.deepEqual(afterVoid.parts.bladder, { volumeMl: 40, voidedMl: 250 });
+  assert.deepEqual(afterVoid.parts.bladder, {
+    volumeMl: 40,
+    voidedMl: 250,
+    voluntaryVoidedMl: 250,
+    involuntaryVoidedMl: 0,
+  });
   const urgeAfterVoid = await tools.body_state.execute({ part: 'interoception' }, readExec('read-urge-after-void'));
   assert.ok(Math.abs(urgeAfterVoid.parts.interoception.urinaryUrgency - (100 * 250) / 410) < 1e-9);
 
@@ -524,4 +539,190 @@ test('a non-zero urinate keeps the drink ledger and leaves the same-round urine'
   assert.equal(cumulativeVoidedMl, voidBefore.bladder.volumeMl);
   assert.equal(final.stomach.mealQueue.length, 0);
   assert.ok(Math.abs(waterLedgerMl(final, cumulativeVoidedMl) - intakeMl) <= 1e-6);
+});
+
+test('an overflow bladder voids involuntarily and keeps the water ledger', async (t) => {
+  silence(t);
+  const overflowMl = 650;
+  const { gateway, tools } = await startBody(t, {
+    parts: {
+      bladder: {
+        volumeMl: overflowMl,
+        voidedMl: 0,
+        voluntaryVoidedMl: 0,
+        involuntaryVoidedMl: 0,
+      },
+      bodyFluid: { waterVolumeMl: initialBodyWaterMl - overflowMl, waterDeficit: 0 },
+      kidney: { urineProductionRequestMl: 40 },
+    },
+  });
+  const readExec = (callId) => fakeExec({ sessionId: 'session-overflow', callId });
+
+  let cumulativeVoidedMl = 0;
+  for (let round = 1; round <= 5; round += 1) {
+    const before = gateway.getState().parts;
+    await gateway.tick();
+    const parts = gateway.getState().parts;
+    cumulativeVoidedMl += parts.bladder.voidedMl;
+    assert.equal(
+      parts.bladder.voluntaryVoidedMl + parts.bladder.involuntaryVoidedMl,
+      parts.bladder.voidedMl,
+      `round ${round}: subtotals must add up to voided`,
+    );
+
+    if (round === 1) {
+      const newUrineMl = Math.min(
+        before.kidney.urineProductionRequestMl,
+        before.bodyFluid.waterVolumeMl,
+      );
+      assert.equal(newUrineMl, 40);
+      assert.equal(parts.bladder.involuntaryVoidedMl, overflowMl);
+      assert.equal(parts.bladder.voluntaryVoidedMl, 0);
+      assert.equal(parts.bladder.voidedMl, overflowMl);
+      assert.equal(parts.bladder.volumeMl, newUrineMl);
+      assert.ok(
+        Math.abs(parts.bodyFluid.waterVolumeMl - (before.bodyFluid.waterVolumeMl - newUrineMl)) <= 1e-9,
+        `round ${round}: body fluid only lost the kidney request`,
+      );
+    } else {
+      assert.equal(parts.bladder.voidedMl, 0, `round ${round}: unexpected void`);
+      assert.equal(parts.bladder.involuntaryVoidedMl, 0, `round ${round}: unexpected involuntary void`);
+      assert.equal(parts.bladder.voluntaryVoidedMl, 0, `round ${round}: unexpected voluntary void`);
+    }
+
+    const ledgerMl = waterLedgerMl(parts, cumulativeVoidedMl);
+    assert.ok(Math.abs(ledgerMl) <= 1e-6, `round ${round}: water ledger ${ledgerMl}`);
+  }
+
+  assert.equal(cumulativeVoidedMl, overflowMl);
+  const bladder = await tools.body_state.execute({ part: 'bladder' }, readExec('read-overflow'));
+  assert.ok(bladder.parts.bladder.volumeMl > 0);
+  assert.equal(bladder.parts.bladder.involuntaryVoidedMl, 0);
+});
+
+test('a 600 mL round-start bladder does not void until the next overflow round', async (t) => {
+  silence(t);
+  const { gateway } = await startBody(t, {
+    parts: {
+      bladder: {
+        volumeMl: 600,
+        voidedMl: 0,
+        voluntaryVoidedMl: 0,
+        involuntaryVoidedMl: 0,
+      },
+      bodyFluid: { waterVolumeMl: initialBodyWaterMl - 600, waterDeficit: 0 },
+      kidney: { urineProductionRequestMl: 40 },
+    },
+  });
+
+  let cumulativeVoidedMl = 0;
+  const before = gateway.getState().parts;
+  await gateway.tick();
+  const first = gateway.getState().parts;
+  cumulativeVoidedMl += first.bladder.voidedMl;
+  assert.equal(first.bladder.voidedMl, 0, '600 mL exactly must not trigger');
+  assert.equal(first.bladder.involuntaryVoidedMl, 0);
+  assert.equal(first.bladder.volumeMl, 600 + 40);
+  assert.ok(Math.abs(waterLedgerMl(first, cumulativeVoidedMl)) <= 1e-6);
+
+  const beforeSecond = gateway.getState().parts;
+  await gateway.tick();
+  const second = gateway.getState().parts;
+  cumulativeVoidedMl += second.bladder.voidedMl;
+  const newUrineMl = Math.min(
+    beforeSecond.kidney.urineProductionRequestMl,
+    beforeSecond.bodyFluid.waterVolumeMl,
+  );
+  assert.equal(second.bladder.involuntaryVoidedMl, beforeSecond.bladder.volumeMl);
+  assert.equal(second.bladder.voluntaryVoidedMl, 0);
+  assert.equal(second.bladder.volumeMl, newUrineMl);
+  assert.ok(
+    Math.abs(second.bodyFluid.waterVolumeMl - (beforeSecond.bodyFluid.waterVolumeMl - newUrineMl)) <= 1e-9,
+  );
+  assert.ok(Math.abs(waterLedgerMl(second, cumulativeVoidedMl)) <= 1e-6);
+  assert.ok(before.bladder.volumeMl === 600);
+});
+
+test('urinate takes priority over overflow voiding and its retry does not void again', async (t) => {
+  silence(t);
+  const overflowMl = 650;
+  const { gateway, statePath, tools } = await startBody(t, {
+    parts: {
+      bladder: {
+        volumeMl: overflowMl,
+        voidedMl: 0,
+        voluntaryVoidedMl: 0,
+        involuntaryVoidedMl: 0,
+      },
+      bodyFluid: { waterVolumeMl: initialBodyWaterMl - overflowMl, waterDeficit: 0 },
+      kidney: { urineProductionRequestMl: 40 },
+    },
+  });
+  const voidExec = fakeExec({ sessionId: 'session-overflow-void', callId: 'void-1' });
+
+  const queued = await tools.body_act.execute({ type: 'urinate' }, voidExec);
+  assert.equal(queued.statusCode, 202);
+  assert.equal(queued.receipt.status, 'queued');
+
+  let cumulativeVoidedMl = 0;
+  const before = gateway.getState().parts;
+  await gateway.tick();
+  const first = gateway.getState().parts;
+  cumulativeVoidedMl += first.bladder.voidedMl;
+  const newUrineMl = Math.min(before.kidney.urineProductionRequestMl, before.bodyFluid.waterVolumeMl);
+  assert.equal(gateway.getReceipt(queued.receipt.id).status, 'applied');
+  assert.equal(first.bladder.voluntaryVoidedMl, overflowMl);
+  assert.equal(first.bladder.involuntaryVoidedMl, 0);
+  assert.equal(first.bladder.voidedMl, overflowMl);
+  assert.equal(first.bladder.volumeMl, newUrineMl);
+  assert.ok(Math.abs(waterLedgerMl(first, cumulativeVoidedMl)) <= 1e-6);
+
+  const retryBefore = gateway.getState().parts;
+  const replay = await tools.body_act.execute({ type: 'urinate' }, voidExec);
+  assert.equal(replay.statusCode, 200);
+  assert.equal(replay.receipt.id, queued.receipt.id);
+  assert.equal(replay.receipt.status, 'applied');
+  assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).pendingActionIds, []);
+
+  await gateway.tick();
+  const second = gateway.getState().parts;
+  cumulativeVoidedMl += second.bladder.voidedMl;
+  const retryNewUrineMl = Math.min(
+    retryBefore.kidney.urineProductionRequestMl,
+    retryBefore.bodyFluid.waterVolumeMl,
+  );
+  assert.equal(second.bladder.voidedMl, 0);
+  assert.equal(second.bladder.voluntaryVoidedMl, 0);
+  assert.equal(second.bladder.involuntaryVoidedMl, 0);
+  assert.equal(second.bladder.volumeMl, retryBefore.bladder.volumeMl + retryNewUrineMl);
+  assert.ok(Math.abs(waterLedgerMl(second, cumulativeVoidedMl)) <= 1e-6);
+});
+
+test('an old bladder checkpoint without subtotals loads with design zeros and can still void', async (t) => {
+  silence(t);
+  const { gateway, tools } = await startBody(t, {
+    parts: {
+      bladder: { volumeMl: 250, voidedMl: 7 },
+      bodyFluid: { waterVolumeMl: initialBodyWaterMl - 250, waterDeficit: 0 },
+    },
+  });
+  const readExec = (callId) => fakeExec({ sessionId: 'session-legacy-bladder', callId });
+  const voidExec = fakeExec({ sessionId: 'session-legacy-bladder', callId: 'void-1' });
+
+  const loaded = await tools.body_state.execute({ part: 'bladder' }, readExec('read-loaded'));
+  assert.deepEqual(loaded.parts.bladder, {
+    volumeMl: 250,
+    voidedMl: 7,
+    voluntaryVoidedMl: 0,
+    involuntaryVoidedMl: 0,
+  });
+
+  assert.equal((await tools.body_act.execute({ type: 'urinate' }, voidExec)).statusCode, 202);
+  await gateway.tick();
+  const parts = gateway.getState().parts;
+  assert.equal(parts.bladder.voluntaryVoidedMl, 250);
+  assert.equal(parts.bladder.involuntaryVoidedMl, 0);
+  assert.equal(parts.bladder.voidedMl, 250);
+  assert.equal(parts.bladder.volumeMl, 0);
+  assert.ok(Math.abs(waterLedgerMl(parts, 250)) <= 1e-6);
 });
