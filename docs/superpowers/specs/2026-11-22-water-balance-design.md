@@ -1,6 +1,6 @@
 # M3 首段：饮水吸收、体液、肾脏与主动排尿设计
 
-**状态：** 设计已确认。Tasks 1–9 的脚本、参数、证据笔记、定向测试、根清单接入与现状文档已落地；Task 10 的真实 DSH 会话验收已完成（2026-11-22，见 §9）；Task 11 的多轮水账本补测与当前 12 部位逐轮性能基线已完成（2026-11-22，见 §8）；Task 12 的论文可比数据对照已记录（见 §7，2026-11-22），但只支持探索性判断，所有新参数仍为 `design`，没有拟合或独立验证，且大负荷利尿仍不匹配、口咽解渴支路未建，不能写成整体符合论文。实施计划见 [`2026-11-22-water-balance.md`](../plans/2026-11-22-water-balance.md)。本设计只覆盖饮水到主动排尿，不覆盖 M3 的睡眠部分。
+**状态：** 设计已确认。Tasks 1–9 的脚本、参数、证据笔记、定向测试、根清单接入与现状文档已落地；Task 10 的真实 DSH 会话验收已完成（2026-11-22，见 §9）；Task 11 的多轮水账本补测与当时 12 部位的逐轮性能基线已完成（2026-11-22，见 §8）；Task 12 的论文可比数据对照已记录（见 §7，2026-11-22），但只支持探索性判断，所有新参数仍为 `design`，没有拟合或独立验证，且大负荷利尿仍不匹配、口咽解渴支路未建，不能写成整体符合论文。实施计划见 [`2026-11-22-water-balance.md`](../plans/2026-11-22-water-balance.md)。本设计最初只覆盖饮水到主动排尿；2026-11-22 后续合并了膀胱过度充盈非自主排空与 `interoception.discomfort`（默认根清单，见 [`2026-11-22-overflow-discomfort-design.md`](./2026-11-22-overflow-discomfort-design.md)），以及可选的 DI 样多尿变体（独立清单/存档，默认身体不变，见 [`2026-11-22-di-insipidus-proxy-design.md`](./2026-11-22-di-insipidus-proxy-design.md)）。§3.5 已按非自主排空扩写；§8 的 Task 11 性能与 §9 的 Task 10 会话都是这些功能加入前的历史记录，不代表当前 HEAD。本设计不覆盖 M3 的睡眠部分（该部分调研后暂缓，未实现）。
 
 ## 1. 目标与取舍
 
@@ -19,7 +19,7 @@ drink → 胃内水 → 小肠水 → 体液水 → 膀胱尿 → 主动 urinate
 - 器官目录只按解剖器官或明确隔室组织，系统名仅是 README 标签。下丘脑 ADH 与口渴是 `brain/` 下两个独立脚本；膀胱不产出激素。
 - 体液是隔室而不是器官，放在 `organs/human-compartments/body-water/`；其余脚本仍在 `organs/human-organs/<organ>/`。不恢复 `systems/` 运行层。
 - 首段不建血浆/尿渗透压、电解质、血容量/血压、RAAS、汗液与不感蒸发、口咽短暂解渴、排便、睡眠或疾病。尤其不把水量 mL 换算成渗透压。
-- 脚本按每轮热路径设计，面向两位数以上模块逐轮运行：参数在 import 时加载，`heartbeat` 内不做全量重解析、无界历史复制或跨模块全表扫描。当前根清单 12 个部位的逐轮基线已由 Task 11 实测（2026-11-22，空载与 240 mL 饮水各 A/B 两进程，单轮 p50 0.447–0.471 ms、p95 0.537–0.584 ms，详见 §8）；没有实测的更多规模不能声称性能。
+- 脚本按每轮热路径设计，面向两位数以上模块逐轮运行：参数在 import 时加载，`heartbeat` 内不做全量重解析、无界历史复制或跨模块全表扫描。Task 11 曾实测当时 12 个部位的逐轮基线（2026-11-22，空载与 240 mL 饮水各 A/B 两进程，单轮 p50 0.447–0.471 ms、p95 0.537–0.584 ms，详见 §8）；那是在非自主排尿、`discomfort` 与 DI 样变体合并前的历史基线，当前 HEAD 尚未重测，不能把它写成当前版本性能。没有实测的更多规模也不能声称性能。
 
 ## 2. 模块、字段与读写方
 
@@ -33,10 +33,10 @@ drink → 胃内水 → 小肠水 → 体液水 → 膀胱尿 → 主动 urinate
 | `hypothalamusAdh` / `brain/hypothalamus-adh.ts` | `relativeConcentration` (1) | `bodyFluid.waterDeficit` | 肾脏读取；相对水平，不是 pmol/L |
 | `hypothalamusThirst` / `brain/hypothalamus-thirst.ts` | `thirst` (mm) | `bodyFluid.waterDeficit` | `interoception`；0–100 mm VAS 代理，不自动喝水 |
 | `kidney` / `kidney/urine-production.ts` | `urineProductionRequestMl` (mL/下一轮) | `hypothalamusAdh.relativeConcentration`、`io.dt` | 仅体液所有者读取；不是已完成的尿转移 |
-| `bladder` / `bladder/storage.ts` | `volumeMl` (mL)、`voidedMl` (mL/轮) | 自己、本轮 `urinate` | 接收体液水；体积供尿意读出 |
-| `interoception` / `brain/interoception.ts` | 原 `hunger`、`fullness`，加 `thirst`、`urinaryUrgency` (均 mm) | 原三路输入、`hypothalamusThirst.thirst`、`bladder.volumeMl` | `body_state`；`brainNotify` 仍只读饥饿/饱满 |
+| `bladder` / `bladder/storage.ts` | `volumeMl` (mL)、`voidedMl` (mL/轮)、`voluntaryVoidedMl` (mL/轮)、`involuntaryVoidedMl` (mL/轮) | 自己、本轮 `urinate` | 接收体液水；体积供尿意读出与过度充盈判断；`voidedMl = voluntaryVoidedMl + involuntaryVoidedMl` |
+| `interoception` / `brain/interoception.ts` | 原 `hunger`、`fullness`，加 `thirst`、`urinaryUrgency`、`discomfort` (均 mm) | 原三路输入、`hypothalamusThirst.thirst`、`bladder.volumeMl` | `body_state`；`brainNotify` 仍只读饥饿/饱满，不读口渴、尿意或不适 |
 
-`waterVolumeMl` 都是状态，`emptiedWaterMl` / `absorbedWaterMl` / `voidedMl` 是每轮通量，`waterDeficit`、ADH 相对水平、口渴和尿意都是代理。`bodyFluid.waterVolumeMl` 是工程体液水隔室，不是血浆容量；`kidney.urineProductionRequestMl` 是下一轮需求，不是瞬时速率或已排尿量。
+`waterVolumeMl` 都是状态，`emptiedWaterMl` / `absorbedWaterMl` / `voidedMl` / `voluntaryVoidedMl` / `involuntaryVoidedMl` 是每轮通量，`waterDeficit`、ADH 相对水平、口渴、尿意和不适都是代理。`bodyFluid.waterVolumeMl` 是工程体液水隔室，不是血浆容量；`kidney.urineProductionRequestMl` 是下一轮需求，不是瞬时速率或已排尿量。
 
 ### transfer 配对
 
@@ -121,27 +121,44 @@ thirst = clamp(50 mm + 50 mm × waterDeficit, 0, 100)
 
 两个 50 都是 `design`。饮水只能在吸收改变体液后持续降低口渴；首段不建 Figaro & Mack 所述吸收前口咽缓解。
 
-### 3.5 膀胱、尿意与主动排尿
+### 3.5 膀胱、尿意、排尿与不适代理
 
-`postVoidResidualMl = 0 mL` 是 `design`，不是 ICS 给出的正常残余量。只要本轮至少一个 `urinate`：
+`postVoidResidualMl = 0 mL` 与 `involuntaryThresholdMl = 600 mL` 都是 `design`；0 mL 不是 ICS 给出的正常残余量，600 mL 也不是正常膀胱容量、临床诊断界值或失禁建模。每轮先读轮初体积 `V`，结算顺序如下：
 
 ```text
-voidedMl = max(0, bladderVolumeStart - postVoidResidualMl)
-write.volumeMl = bladderVolumeStart - voidedMl
+available = max(0, V - postVoidResidualMl)
+若本轮至少一个 urinate：
+  voluntaryVoidedMl = available
+  involuntaryVoidedMl = 0
+否则若 V > involuntaryThresholdMl：
+  voluntaryVoidedMl = 0
+  involuntaryVoidedMl = available
+否则：
+  voluntaryVoidedMl = involuntaryVoidedMl = 0
+
+voidedMl = voluntaryVoidedMl + involuntaryVoidedMl
+write.volumeMl = V - voidedMl
 ```
 
-多个不同 `urinate` 同轮也只结算一次；无动作时 `voidedMl = 0`。当轮体液新转入的尿在 write 后加入膀胱，不在本轮排出。`interoception` 计算：
+- 主动 `urinate` 优先；无论主动还是非自主，同轮只结算一次。多个不同 `urinate` 同轮也只排一次。
+- 非自主排空只在**轮初体积严格大于** 600 mL 时触发，排到既有 `postVoidResidualMl`；600 mL 恰好不触发，低于或等于阈值且无 `urinate` 时 `voidedMl = 0`。它不是持续漏尿、不是夹紧到阈值，也不模拟逼尿肌/括约肌、正常排尿反射或临床尿失禁。
+- 当轮体液新转入的尿在 write 后加入膀胱，不在本轮排出；下一轮才按新轮初量判断。主动排尿与非自主排空都不触发 `transfer`。
+- 水账只累计 `voidedMl` 一次，不能把 `voluntaryVoidedMl` 与 `involuntaryVoidedMl` 再加一遍；两个分项只是本轮总排出量的拆分。
+
+`interoception` 计算：
 
 ```text
 urinaryUrgency = clamp(100 mm × bladder.volumeMl / 410 mL, 0, 100)
 thirst = clamp(hypothalamusThirst.thirst, 0, 100)
+excess(x) = clamp(100 × (x - 70) / (100 - 70), 0, 100)
+discomfort = max(excess(hunger), excess(fullness), excess(thirst), excess(urinaryUrgency))
 ```
 
-410 mL 参数为 `design`，只借 De Wachter & Wyndaele 交接的 SDV 测压量级作归一化参考；该数值是设计文档/主会话交接值，摘要未给出，原文表/图未复核，不能写成摘要已报告值。它不是自然排尿阈值，也不是人群正常值或个体标定。尿意读取轮初膀胱量，所以排尿后的低尿意和当轮新尿都在下一轮读出。
+410 mL 参数为 `design`，只借 De Wachter & Wyndaele 交接的 SDV 测压量级作归一化参考；该数值是设计文档/主会话交接值，摘要未给出，原文表/图未复核，不能写成摘要已报告值。它不是自然排尿阈值，也不是人群正常值或个体标定。尿意读取轮初膀胱量，所以排尿后的低尿意和当轮新尿都在下一轮读出。70 mm 起始值同样是 `design`、`source: null`：感受 70 mm 仍为 0，85 mm 为 50，100 mm 为 100；`discomfort` 是“当前最强的不适感受”代理，不是疼痛评分、情绪、疾病严重度或四感受总分，也不触发通知。非自主排空与不适的完整设计与测试证据见 [`2026-11-22-overflow-discomfort-design.md`](./2026-11-22-overflow-discomfort-design.md)。
 
 ## 4. 存档、清单与幂等
 
-- 根清单已加载 12 个部位脚本：原六个部位保留，但胃入口换成 `hydration.ts`；新增 `smallIntestine`、`bodyFluid`、`hypothalamusAdh`、`hypothalamusThirst`、`kidney`、`bladder`。
+- 根清单已加载 12 个部位脚本：原六个部位保留，但胃入口换成 `hydration.ts`；新增 `smallIntestine`、`bodyFluid`、`hypothalamusAdh`、`hypothalamusThirst`、`kidney`、`bladder`。三个 DI 样变体入口不在根清单，只通过复制清单并替换同 id 路径、配合独立 `statePath` 显式加载；默认清单与正常参数文件保持零变化。
 - 旧存档由原初值合并补字段：旧胃水和旧队列水均为 0，不重置原胃总量/能量/固餐小计；新体液从参考量、新膀胱从 0 开始。已有 pending `drink` 按新动作语义入账，但不反推其入队前历史。
 - 只加载旧 `stomach/motility.ts` 的自定义清单不需要小肠或膀胱，启动不应因 transfer 目标缺失而失败；其原体积、能量与固餐轨迹不变。该清单可独立运行，但不能作为水链存档的往返过渡：legacy 推进会剥离队列水身份，切回水链按 0 计（§3.1）。
 - `body_act` 对 `urinate` 只要求 `type`，不要求体积、能量、餐型或时长。动作 ID 仍由 `sessionId + callId` 稳定生成；在动作记录仍被保留期间，同 callId 同载荷重试返回原回执，不产生第二个动作，同 callId 不同载荷返回 `409`。这份幂等只覆盖动作记录的保留期：Gateway 默认最多保留最近 2000 条已结束记录（`maxActionRecords`）且不超过 30 天（`actionRetentionMs`），排队与在途动作不裁剪；记录被裁剪后，同一 ID 会被当作新动作，不保留永久墓碑。Gateway 的整轮原子提交同时覆盖 write 与 transfer。
@@ -173,11 +190,11 @@ thirst = clamp(hypothalamusThirst.thirst, 0, 100)
    ```
 
    `Σ stomach.mealQueue[i].remainingWaterMl` 是尚未释放入胃的饮水切片（旧切片缺字段按 0，`eat` 切片为 0），必须计入；否则多轮 `durationMin` 饮水会把“已提交但未入胃”的水误判为丢失。`累计排尿` 是逐轮 `bladder.voidedMl` 之和，`膀胱尿` 是当前 `bladder.volumeMl`，其余为轮末快照值。允许浮点误差 `1e-6 mL`。`test/organs.water-gateway.test.mjs` 已覆盖单次 240 mL 与多轮 `durationMin: 3` 的队列余量（Task 11 Step 1，8/8 通过）。
-2. **对照：** 从相同存档分别运行饮水 240 mL 与不饮水 120 轮；饮水组体液水更高、ADH 和口渴更低、肾请求更高，最终膀胱充盈与尿意更高。两组均无自动排尿。
-3. **排尿：** 预置膀胱 250 mL，下一轮另有尿转入时提交 `urinate`；`voidedMl` 只含轮初 250 mL，当轮新尿留下。多个不同动作同轮也只排一次。下一仿真轮 `urinaryUrgency` 下降。
+2. **对照：** 从相同存档分别运行饮水 240 mL 与不饮水 120 轮；饮水组体液水更高、ADH 和口渴更低、肾请求更高，最终膀胱充盈与尿意更高。两组膀胱体积都远低于 600 mL 非自主阈值，因此该对照里没有自动排空；模型现在存在过度充盈非自主排空路径，见 §3.5。
+3. **排尿：** 预置膀胱 250 mL，下一轮另有尿转入时提交 `urinate`；`voidedMl` 只含轮初 250 mL，当轮新尿留下。多个不同动作同轮也只排一次。下一仿真轮 `urinaryUrgency` 下降。非自主排空（轮初 >600 mL、无 `urinate`）与 `discomfort` 不在本项，由 overflow-discomfort spec §4 的测试覆盖。
 4. **兼容：** 原 `motility.ts` 独立清单启动且原回归不变；旧根存档不猜历史水、不重置固餐；原白水/可乐体积能量轨迹不变。
-5. **工具与实机：** `body_act` 接收 `urinate`（根清单已加载 `bladder`），`body_state` 可读口渴和尿意。用独立临时 `DSH_HOME` 的真实 DSH 会话执行结构化饮水和排尿，不能用 HTTP 冒烟替代。排尿生效且有同轮新尿后，在动作记录仍被保留时，重试同一 callId 应返回原 `applied` 回执，后续无第二次排出；体液只按正常肾转移变化。
-6. **逐轮性能（实测）：** 用真实根清单当前 12 个部位（`stomach`、`stomachGhrelin`、`stomachSensory`、`duodenum`、`smallIntestine`、`bodyFluid`、`hypothalamusAdh`、`hypothalamusThirst`、`kidney`、`bladder`、`interoception`、`brainNotify`），在临时存档、固定 `now`、`autoTick:false` 下连续逐轮运行。记录轮数、总耗时、单轮 p50/p95（预热单列）、`parts` 与完整存档的 JSON 字节数在起点/中点/终点的值及增长来源；空载与饮水负载分列。尺寸稳定就写稳定值与观察窗口，不要编造增长趋势。优化前必须有基线，优化后同环境同轮数复测。不得用 12 个部位的结果声称几十个模块的性能；两位数以上模块是设计目标，要写更多规模就另建清单实测。Task 11 已按上述口径实测（2026-11-22），基线与证据见 §8。
+5. **工具与实机：** `body_act` 接收 `urinate`（根清单已加载 `bladder`），`body_state` 可读 `interoception.thirst` / `urinaryUrgency` / `discomfort` 与膀胱的 `volumeMl` / `voidedMl` / `voluntaryVoidedMl` / `involuntaryVoidedMl`。用独立临时 `DSH_HOME` 的真实 DSH 会话执行结构化饮水和排尿，不能用 HTTP 冒烟替代。排尿生效且有同轮新尿后，在动作记录仍被保留时，重试同一 callId 应返回原 `applied` 回执，后续无第二次排出；体液只按正常肾转移变化。Task 10 已按本项完成主动排尿路径；该验收早于非自主排空与 `discomfort` 合并，非自主排空没有动作或回执，不在 Task 10 内。
+6. **逐轮性能（实测）：** 用真实根清单当前 12 个部位（`stomach`、`stomachGhrelin`、`stomachSensory`、`duodenum`、`smallIntestine`、`bodyFluid`、`hypothalamusAdh`、`hypothalamusThirst`、`kidney`、`bladder`、`interoception`、`brainNotify`），在临时存档、固定 `now`、`autoTick:false` 下连续逐轮运行。记录轮数、总耗时、单轮 p50/p95（预热单列）、`parts` 与完整存档的 JSON 字节数在起点/中点/终点的值及增长来源；空载与饮水负载分列。尺寸稳定就写稳定值与观察窗口，不要编造增长趋势。优化前必须有基线，优化后同环境同轮数复测。不得用 12 个部位的结果声称几十个模块的性能；两位数以上模块是设计目标，要写更多规模就另建清单实测。Task 11 曾在非自主排尿、`discomfort` 与 DI 变体合并前按上述口径实测（2026-11-22），这些数字是历史基线，当前 HEAD 尚未重测；基线与证据见 §8。
 7. **论文对照（先对照后调参）：** 每个有论文来源的参数或方程先列可比性表：来源、人群/n、刺激、测量、单位、时间原点、统计量、原文定位、模型对应量。只有同口径数据才能对照；模型输出与论文值的方向、量级、差异要记录，不能只挑一致项。`design` 保持 `design`；没有拟合记录不得写 `fitted_dev`，没有独立验证不得写 `validated`；`results_seen` 不得称独立验证。本轮对照记录见 §7；当前没有新参数完成拟合或独立验证，所有新参数仍是 `design`，拟合或独立验证若需要另开任务。
 8. 最终运行一次 `npm test`，并核对 `git status` 无测试临时文件。离线自洽不等于临床验证；真实会话验收完成前，文档只写“代码/离线验收已实现”。
 
@@ -221,11 +238,13 @@ thirst = clamp(hypothalamusThirst.thirst, 0, 100)
 - **Ota 与 Andersen：** 大负荷（20 mL/kg，约 1400 mL）和 AVP 输注下的尿流明显不匹配，当前模型不能用于这些场景。只调肾增益或上限会掩盖渗透压、电解质、尿渗和输注剂量轴的缺失，因此本轮不拟合；未来确有这些场景需求时，应先补相应体液状态与证据，再设计肾模型。
 - **Figaro & Mack：** 吸收前口咽解渴是明确非目标，不列入后续实现。它只有短暂体感消费者，现有摘要证据不足以给出通用增益和衰减；新增状态与参数会增加复杂度，却不改善首段水量守恒、吸收后口渴或主动排尿。
 - **De Wachter 与 ICS：** 410 mL 只是交接的 `design` 归一化锚点，摘要未报告 190/268/410，原文表/图未复核；0 mL 残余是 `design`，ICS 只给恒等式，没有规定正常残余。当前只作代理，不继续追逐个体阈值拟合。
-- **参数状态：** 所有新参数仍是 `design`；本节没有把任何参数升级为 `fitted_dev` 或 `validated`。三组对照都是 `results_seen`，只能标 `development` / `exploratory`；不能写成“整体符合论文”，也不能替代 Task 10 的真实 DSH 会话验收。逐轮性能基线已由 Task 11 单独完成（见 §8），与本节的论文对照无关。
+- **参数状态：** 所有新参数仍是 `design`；本节没有把任何参数升级为 `fitted_dev` 或 `validated`。三组对照都是 `results_seen`，只能标 `development` / `exploratory`；不能写成“整体符合论文”，也不能替代 Task 10 的真实 DSH 会话验收。Task 11 曾单独完成当时的 12 部位性能基线（见 §8；那是历史基线，早于非自主排尿/不适/DI），与本节的论文对照无关。
 
-## 8. 逐轮性能基线（Task 11）
+## 8. 逐轮性能历史基线（Task 11，早于非自主排尿、不适与 DI 变体）
 
-**结论。** 当前根清单 12 个部位在 Apple M1 / Node v26.9.0 上单轮 p50 为 0.447–0.471 ms、p95 为 0.537–0.584 ms，只占 60 秒轮预算的约 0.0008%（约 13 万分之一）。空载与 240 mL 饮水两种负载的差异在 A/B 噪声范围内，没有随轮数增长的可复现变慢；预热后状态尺寸没有随轮数净增长，饮水组的固定增量来自 1 条保留的已应用动作记录和 1 个通知会话。没有可复现瓶颈，按计划 Task 11 Step 5 不提出优化、不改代码。这只是 12 个部位的实测，不能外推到几十个模块。
+**这是历史基线，不是当前版本性能。** Task 11 测量时的仓库 HEAD 是 `dd1f66b`，早于膀胱过度充盈非自主排空、`interoception.discomfort` 与 DI 样变体的合并；下面所有数字只描述那次测量，当前 HEAD 尚未按同一口径重测。写入当前实现状态、README 或 AGENTS 时必须保留这个时间边界，不能把这些数字冒充当前版本性能。
+
+**结论。** 当时根清单 12 个部位在 Apple M1 / Node v26.9.0 上单轮 p50 为 0.447–0.471 ms、p95 为 0.537–0.584 ms，只占 60 秒轮预算的约 0.0008%（约 13 万分之一）。空载与 240 mL 饮水两种负载的差异在 A/B 噪声范围内，没有随轮数增长的可复现变慢；预热后状态尺寸没有随轮数净增长，饮水组的固定增量来自 1 条保留的已应用动作记录和 1 个通知会话。没有可复现瓶颈，按计划 Task 11 Step 5 不提出优化、不改代码。这只是当时 12 个部位的实测，不能外推到几十个模块，也不能外推到当前 HEAD。
 
 **证据路径。** `/tmp/dsh-body/task11-perf.XUzopi/`（仓库外，未入库）：`baseline.md` 为人读基线表；`summary.json` 为四个运行的完整聚合；`runs/{idle-a,drink-a,idle-b,drink-b}/result.json` 为单次原始结果，同名目录下的 `body-state.json` 为该运行终点提交存档；`bench.mjs`、`summarize.mjs` 为基准与汇总脚本；`water-gateway-test.log` 为 Task 11 Step 1 的测试输出；`repo-status-after.txt` 为当轮结束时 `git status --short`（41 条，与开始一致）。临时证据目录可能被清理，长期引用时以本节的数字为准。
 
@@ -235,7 +254,7 @@ thirst = clamp(hypothalamusThirst.thirst, 0, 100)
 | --- | --- |
 | 机器 | Apple M1，8 逻辑 CPU，8 GiB 内存 |
 | 系统 / Node | darwin 24.6.0 / arm64；Node v26.9.0，V8 14.6.202.34-node.32 |
-| 仓库 | HEAD `dd1f66b`，41 条未提交条目（测量轮未改动仓库） |
+| 仓库 | HEAD `dd1f66b`，41 条未提交条目（测量轮未改动仓库）；该 HEAD 早于非自主排尿、`discomfort` 与 DI 变体合并 |
 | 根清单 | `body-modules.json`，12 条部位脚本 + 1 个启动脚本，sha256 `3497d3e7e40c3a8629be7fcf2855d562befd1c87006facf90382589010feb1d3` |
 | 启动 | 真实 `startGateway()`；`port: 0`；`autoTick: false`；`now: () => 0`；`heartbeatIntervalMs: 60000` |
 | 存档 | 每个运行独立临时 `statePath`，初始为 `emptyCheckpoint(0)` |
@@ -284,7 +303,7 @@ A/B 合并（只对 mean 做加权平均；p50/p95 给区间，不伪造合并�
 ### 8.4 水账本与负载完整性
 
 - 空载两进程：相对测量起点的账本中点与终点均为 0.000000000 mL（误差 1.71e-11），期望 0 mL。
-- 饮水两进程：相对测量起点的账本中点 240.000000000 mL（误差 1.38e-11）、终点 240.000000000 mL（误差 6.34e-11），期望 240 mL；终点 `voidedMl = 0`（未提交 urinate）。
+- 饮水两进程：相对测量起点的账本中点 240.000000000 mL（误差 1.38e-11）、终点 240.000000000 mL（误差 6.34e-11），期望 240 mL；终点 `voidedMl = 0`（未提交 urinate）。该次运行早于非自主排空合并；240 mL 远低于 600 mL 阈值，所以“无自动排尿”在当时和现在都应成立，但新代码未在该运行中执行，不能据此声称当前 HEAD 的水账已实测。
 - 饮水回执 `body-aac9e4478f49c8da0ed77d2ebd1c5ede` 在 `appliedAtSimulatedSeconds = 7260` 变为 `applied`，证明测量窗口内确实执行了饮水负载，而不是只提交了动作。
 - Task 11 Step 1 的多轮队列补测：`node --test test/organs.water-gateway.test.mjs` → 8 pass / 0 fail（两次单跑 789 ms / 774 ms）。其中 `a 3-round drink keeps its pending queue water in the ledger every round` 用 240 mL / `durationMin: 3` 验证前 3 轮队列水 `[160, 80, 0]`、120 轮逐轮账本误差 ≤ 1e-6 mL；旧队列缺水字段按 0，混合餐水与非水分账，`urinate` 单轮一次与同轮新尿留下均通过。
 
@@ -299,7 +318,7 @@ A/B 合并（只对 mean 做加权平均；p50/p95 给区间，不伪造合并�
 
 ## 9. Task 10 真实 DSH 会话验收记录（2026-11-22）
 
-**范围。** 用独立临时 `HOME`、`DSH_HOME`、cwd 与复制清单，在本地 OpenAI 兼容 SSE 测试模型上建立真实 DSH 会话；所有动作只经真实 `body_act`，HTTP 仅用于 GET 取证。A/B 由同一 seed 字节复制，各 30 轮（1800 仿真秒）；U 组用同一 seed 预置膀胱 250 mL（测试设定，不是模型输出）。证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`（仓库外，未入库），完整清单与逐步结果见计划 Task 10 结果记录。
+**范围。** 用独立临时 `HOME`、`DSH_HOME`、cwd 与复制清单，在本地 OpenAI 兼容 SSE 测试模型上建立真实 DSH 会话；所有动作只经真实 `body_act`，HTTP 仅用于 GET 取证。A/B 由同一 seed 字节复制，各 30 轮（1800 仿真秒）；U 组用同一 seed 预置膀胱 250 mL（测试设定，不是模型输出）。证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`（仓库外，未入库），完整清单与逐步结果见计划 Task 10 结果记录。**这次验收早于非自主排尿、`discomfort` 与 DI 变体合并**：它只覆盖主动 `urinate` 路径；无动作且 >600 mL 的非自主排空、膀胱分项字段、`discomfort` 与任何 DI 清单都不在内。
 
 | 项 | 结果 |
 | --- | --- |
@@ -314,4 +333,4 @@ A/B 合并（只对 mean 做加权平均；p50/p95 给区间，不伪造合并�
 | 排尿残差 | 逐轮 `(体液增量)+(膀胱增量)+voided` 最大 `0`（sim 0→300） |
 | 收尾 | mock、watcher、三个 DSH 进程已停止；任务端口 65181–65184 无监听 |
 
-**边界。** 这次真实会话只覆盖 30 轮 A/B 与水链/排尿链；120 轮长时程仍由 `test/organs.water-gateway.test.mjs` 的离线/真实 Gateway 测试覆盖，未在真实 DSH 会话中重跑。通知投递、重启补算、睡眠、大负荷利尿（Ota/Andersen 仍不匹配）和口咽解渴（Figaro 未建）不在本次验收内，不能写成已验证。`logs/aborted-ab/` 与 `logs/aborted-u1/` 是流空闲超时和测试设定修正前的非验收尝试，未计入上表。所有新参数仍为 `design`；本记录不改变 §7 的论文对照边界，也不构成临床验证。
+**边界。** 这次真实会话只覆盖 30 轮 A/B 与水链/排尿链，并且发生在非自主排尿、`discomfort` 与 DI 变体合并之前；它不能验证这些后加功能。120 轮长时程仍由 `test/organs.water-gateway.test.mjs` 的离线/真实 Gateway 测试覆盖，未在真实 DSH 会话中重跑。通知投递、重启补算、睡眠、大负荷利尿（Ota/Andersen 仍不匹配）和口咽解渴（Figaro 未建）不在本次验收内，不能写成已验证。`logs/aborted-ab/` 与 `logs/aborted-u1/` 是流空闲超时和测试设定修正前的非验收尝试，未计入上表。所有新参数仍为 `design`；本记录不改变 §7 的论文对照边界，也不构成临床验证。

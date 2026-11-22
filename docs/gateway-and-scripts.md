@@ -19,9 +19,9 @@
 | [`body-modules.json`](../body-modules.json)（`manifestPath`） | 开发者改，Gateway 启动时读 | 声明要加载的脚本、每个脚本读取的状态字段、补算上限和脚本超时。 |
 | `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active` | **一具身体一份存档**：所有部位的值、时钟、动作和通知都在一起。不要为每个器官或每个脚本再建存档。 |
 | [`package.json`](../package.json) | 项目维护者改，由 Node/npm 使用 | 声明 ESM、Node 版本、测试命令和发布文件，不登记心跳脚本，也不存身体数据。[`cordis.patch.yml`](../cordis.patch.yml) 是 DSH 插件装载描述，不是身体 JSON。 |
-| `organs/human-organs/**/*.parameters.json`、`organs/human-compartments/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官/隔室组件的证据默认值：参数值、单位、证据状态、范围与来源。不是某具身体的最终值，也不做运行中热切换。当前共 12 份参数文件：原六份都在 `organs/human-organs/`，M3 水链新增六份，其中体液隔室在 `organs/human-compartments/body-water/`。`systems/` 已不再有参数文件。 |
+| `organs/human-organs/**/*.parameters.json`、`organs/human-compartments/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官/隔室组件的证据默认值：参数值、单位、证据状态、范围与来源。不是某具身体的最终值，也不做运行中热切换。当前共 15 份参数文件：原六份都在 `organs/human-organs/`，M3 水链新增六份（其中体液隔室在 `organs/human-compartments/body-water/`），DI 样变体另有 3 份独立 `design` 参数文件（`hypothalamus-adh-di-central`、`urine-production-di-central`、`urine-production-di-nephrogenic`），只随变体清单加载。`systems/` 已不再有参数文件。 |
 
-**清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径。仓库默认列出 12 条部位脚本：P0/P1 的六个部位（胃入口用 `hydration.ts`，不再加载旧 `motility.ts`；另有 `ghrelin.ts`、`gastric-sensory.ts`、`nutrient-exposure.ts`、`interoception.ts`、`notify.ts`），加上小肠、体液、两个下丘脑、肾和膀胱。`startupScripts` 是有序的启动脚本路径数组，仓库默认挂了 [`startup/reset-parts.js`](../startup/reset-parts.js)。两个数组的路径都相对**清单所在目录**。`catchUpMinutes` 单位分钟，默认 `720`。`scriptTimeoutMs` 用于监督 Worker 响应和每个脚本的执行，单位毫秒，默认 `10000`。
+**清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径。仓库默认列出 12 条部位脚本：P0/P1 的六个部位（胃入口用 `hydration.ts`，不再加载旧 `motility.ts`；另有 `ghrelin.ts`、`gastric-sensory.ts`、`nutrient-exposure.ts`、`interoception.ts`、`notify.ts`），加上小肠、体液、两个下丘脑、肾和膀胱。另有三份可选的 DI 样变体入口：`brain/hypothalamus-adh-di-central.ts`、`kidney/urine-production-di-central.ts`、`kidney/urine-production-di-nephrogenic.ts`。它们与正常入口导出相同 `id` / `fields`，不在根清单；选择方式是复制清单、把对应路径替换为变体，并使用独立 `statePath`，同一清单不能同时加载正常入口与同 id 变体。`startupScripts` 是有序的启动脚本路径数组，仓库默认挂了 [`startup/reset-parts.js`](../startup/reset-parts.js)。两个数组的路径都相对**清单所在目录**。`catchUpMinutes` 单位分钟，默认 `720`。`scriptTimeoutMs` 用于监督 Worker 响应和每个脚本的执行，单位毫秒，默认 `10000`。
 
 清单与存档在启动时解析。状态查询、动作排队和心跳使用主进程内存中的存档对象。BodyWorker 只加载一次模块和它们登记的函数。
 
@@ -105,9 +105,10 @@ bodyFluid.waterVolumeMl      → bladder.volumeMl
 - 只有源字段的所有者发起 transfer：`stomach/hydration.ts`、`small-intestine/water-absorption.ts`、`human-compartments/body-water/water.ts`。
 - 源部位先 `io.write` 本轮转出前基准，Gateway 再按 write → add → transfer 结算。胃写 `W + D`（`D` 为本轮入胃水），小肠写轮初肠水，体液写轮初体液水；同轮新流入不能支付本轮下游需求。
 - `urinate` 不触发 transfer：水进入膀胱时已经离开体液，排尿再扣一次会双扣。
+- 非自主排空也不触发 transfer：轮初膀胱体积**严格大于** 600 mL 且本轮无 `urinate` 时，膀胱把轮初体积排到 `postVoidResidualMl`，记入 `involuntaryVoidedMl`；主动 `urinate` 优先，同轮只结算一次。`voidedMl = voluntaryVoidedMl + involuntaryVoidedMl`，水账只累计 `voidedMl` 一次，两个分项不能再加一遍。600 mL 是 `design` 工程阈值，不模拟逼尿肌/括约肌、持续漏尿或临床失禁。
 - 加载约束：`hydration.ts` 必须与 `smallIntestine`、`bodyFluid`、`bladder` 同时加载，否则 `transferOut` / `transferIn` 配对校验拒绝启动；旧 `motility.ts` 不声明 transfer，可单独加载且不需要下游部位。两个 `stomach` 入口不能同时加载。
 - 旧 `motility.ts` 以 `trackWater: false` 运行，推进既有 `mealQueue` 时会剥离切片的 `remainingWaterMl` / `rateWaterMl`；不要用“水链清单 → 旧清单 → 水链清单”保存待释放水，切回时按 0 计。正常旧档升级到水链只补 0，不受影响。
-- 这些脚本已加入根清单（12 个部位），Task 10 真实 DSH 会话验收已完成（30 轮 A/B 与排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，仓库外未入库）；参数与证据边界见各器官 README。
+- 这些脚本已加入根清单（12 个部位），Task 10 真实 DSH 会话验收已完成（30 轮 A/B 与排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，仓库外未入库）；参数与证据边界见各器官 README。Task 10 早于非自主排尿、`discomfort` 与 DI 变体合并，只覆盖主动排尿路径。非自主排尿与不适的定向测试在 `test/organs.bladder.test.mjs`、`test/organs.interoception.test.mjs` 与 `test/organs.water-gateway.test.mjs`；DI 变体在 `test/organs.di.test.mjs`。这些测试都没有真实 DSH 会话验收。
 
 ## 4. 跑通第一个模块：记录一杯水
 
@@ -199,8 +200,9 @@ try {
 
 `index.js` 在 Gateway ready 后通过 `ctx.tools.register` 注册两个工具：
 
-- `body_act`：把 `drink` / `eat` / `urinate` 动作连同当前 `sessionId` 交给 Gateway；`urinate` 不需要体积、能量、餐型或时长。action id 由会话 ID 与工具 `callId` 稳定生成。202 只表示入队；用 `GET /actions/:id` 查动作回执，用 `body_state` 或 `GET /state` 看已提交的快照。根清单已加载 `bladder`，启用后 `urinate` 有处理者；Task 10 真实 DSH 会话已核对 queued → applied、同 callId 重试返回原 applied ID、同 callId 异载荷 409，以及当轮新尿留下。
-- `body_state`：读最近提交的 `simulatedSeconds` 和 `parts`，可用 `part` 过滤，例如 `stomach`、`interoception`；根清单已接入水链，`interoception` 会返回 `thirst` / `urinaryUrgency`。
+- `body_act`：把 `drink` / `eat` / `urinate` 动作连同当前 `sessionId` 交给 Gateway；`urinate` 不需要体积、能量、餐型或时长。action id 由会话 ID 与工具 `callId` 稳定生成。202 只表示入队；用 `GET /actions/:id` 查动作回执，用 `body_state` 或 `GET /state` 看已提交的快照。根清单已加载 `bladder`，启用后 `urinate` 有处理者；Task 10 真实 DSH 会话已核对 queued → applied、同 callId 重试返回原 applied ID、同 callId 异载荷 409，以及当轮新尿留下。非自主排空不产生动作、回执或工具调用，只改变膀胱状态字段；不要用 `body_act` 触发它。
+- `body_state`：读最近提交的 `simulatedSeconds` 和 `parts`，可用 `part` 过滤，例如 `stomach`、`interoception`、`bladder`；根清单已接入水链，`interoception` 会返回 `thirst` / `urinaryUrgency` / `discomfort`，`bladder` 会返回 `volumeMl` / `voidedMl` / `voluntaryVoidedMl` / `involuntaryVoidedMl`。这些读数仍是代理：`discomfort` 不是疼痛评分或疾病严重度，膀胱体积与排出量不是临床容量、残余尿诊断或失禁结论。
+- **DI 样变体不改变工具形状。** `body_act` / `body_state` 的名称、参数枚举与输出 schema 与根清单一致（`test/organs.di.test.mjs` 的形状用例覆盖）；工具不会按会话或清单切换身体。DI 身体必须使用自己的清单与独立 `statePath`，默认根清单不加载变体。
 
 `notifications.js` 每 1000 ms 轮询 `gateway.getNotifications()`：
 
