@@ -1,6 +1,6 @@
 # 可选尿崩样多尿代理设计（DI-like polyuria proxy）
 
-**状态：** 已实现（2026-11-22）：代码、独立参数、定向测试与最小文档均已落地。**默认身体与正常参数零变化**：根清单 `body-modules.json` 仍只加载正常 12 部位，正常 ADH/肾参数文件未改。DI 样代理只通过独立清单与独立存档显式选择，不是临床诊断、默认病理状态或治疗依据；只有离线模块测试与临时清单/临时存档的真实 Gateway 测试，**没有真实 DSH 会话验收**。测试证据见 §6。
+**状态：** 已实现（2026-11-22）：代码、独立参数、定向测试与最小文档均已落地，并完成 M19 真实 DSH 会话验收（2026-11-22，33/33 verdicts，证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）。**默认身体与正常参数零变化**：根清单 `body-modules.json` 仍只加载正常 12 部位，正常 ADH/肾参数文件未改。DI 样代理只通过独立清单与独立存档显式选择，不是临床诊断、默认病理状态或治疗依据；M19 只覆盖 2–5 轮短会话的机制对照，不是临床验证。测试证据见 §6。
 
 ## 1. 目标与取舍
 
@@ -109,7 +109,7 @@ urineProductionRequestMl = baselineRateMlPerMin × dtMin × relativeRate
 
 ## 6. 验收与测试证据（已实现）
 
-全部测试用临时目录、临时清单与独立存档，`autoTick: false`、固定 `now: () => 0`；仓库不提交 DI 清单或存档。测试文件是 `test/organs.di.test.mjs`（9 个用例），变体契约另由 `test/organs.hypothalamus.test.mjs`、`test/organs.kidney.test.mjs`、`test/organs.modules.test.mjs` 与 `test/parameters.test.mjs` 覆盖。这些都不是真实 DSH 会话验收。
+全部测试用临时目录、临时清单与独立存档，`autoTick: false`、固定 `now: () => 0`；仓库不提交 DI 清单或存档。测试文件是 `test/organs.di.test.mjs`（9 个用例），变体契约另由 `test/organs.hypothalamus.test.mjs`、`test/organs.kidney.test.mjs`、`test/organs.modules.test.mjs` 与 `test/parameters.test.mjs` 覆盖。这些是离线/临时清单 Gateway 证据；真实 DSH 会话验收见本节末的 M19 记录。
 
 1. **正常不变：** 根清单仍 12 个脚本，不含任何 `-di-` 入口；正常 ADH/肾参数文件数值逐项保持；从空存档运行正常根清单 10 轮，ADH、肾请求、体液水、缺水代理、口渴、膀胱体积与重构前的 10 轮 golden 逐点一致（`1e-12`）。
 2. **中枢性：** 临时清单换入中枢 ADH + 中枢肾后，ADH 恒 0、每轮请求 4 mL、膀胱逐轮 +4 mL；121 轮含 240 mL 饮水的水账本误差 ≤`1e-6 mL`，膀胱 480 mL（低于 600 mL 非自主阈值，因此没有自动排尿）。
@@ -118,7 +118,20 @@ urineProductionRequestMl = baselineRateMlPerMin × dtMin × relativeRate
 5. **工具形状：** DI 清单下 `body_act` / `body_state` 的名称、参数枚举、输出 schema 与根清单一致；`body_act` 仍只接受 drink/eat/urinate，DI 不新增动作。
 6. **模块/参数：** 三个变体导出同 id、同 fields、`actionTypes: []`；三份新参数文件通过 `test/parameters.test.mjs` 的 schema、唯一 ID 与 loader 校验。
 
-2026-11-22 定向运行 `node --test test/organs.bladder.test.mjs test/organs.interoception.test.mjs test/organs.di.test.mjs test/organs.water-gateway.test.mjs`：55 tests / 55 pass / 0 fail（该命令同时覆盖本文件、非自主排尿与不适代理）。没有真实 DSH 会话验收，也没有把 DI 变体加入根清单；默认身体的正常水链数值保持逐点不变。
+**M19 真实 DSH 会话补充（2026-11-22）。** 三组独立清单与独立 `statePath` 在真实 DSH 会话中运行：正常、中枢性（中枢 ADH 变体 + 中枢肾变体）、肾性（只换肾变体）；代码 base `ab74389`，当时 main `27e03f5` 与其仅文档差异；`npm test` 264/264。sim 300 的同起点对照：
+
+| 量 | 正常 | 中枢性 | 肾性 |
+| --- | ---: | ---: | ---: |
+| `relativeConcentration` | 1.0006 | 0 | 1.0022（仍随缺水上升） |
+| `urineProductionRequestMl` | 0.9998 | 4 | 4 |
+| `bodyFluid.waterVolumeMl` | 29996 | 29987 | 29984 |
+| `bladder.volumeMl` | 4 | 13 | 16 |
+| `urinaryUrgency` | 0.732 | 2.195 | 2.927 |
+| `voidedMl` / `discomfort` / 通知 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 |
+
+另用 ADH 初值 0 的中枢存档从 sim 0 起跑，sim 300 仍为 ADH 0、请求 4 mL、膀胱 16 mL；高 ADH（3）肾性预置在 sim 120 仍请求 4 mL。中枢清单的 `GET /capabilities` 与默认清单一致，默认清单仍 12 个脚本、0 个 DI 入口。`logs/analysis.json` 的 33 条 verdict 全为 true。证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`（`EVIDENCE.md`、`logs/analysis.json`；仓库外，未入库）。覆盖只有各 2–5 轮短会话，不覆盖通知投递、120 轮长时程、重启补算或大负荷利尿；所有参数仍是 `design`，不是诊断或治疗依据。
+
+2026-11-22 定向运行 `node --test test/organs.bladder.test.mjs test/organs.interoception.test.mjs test/organs.di.test.mjs test/organs.water-gateway.test.mjs`：55 tests / 55 pass / 0 fail（该命令同时覆盖本文件、非自主排尿与不适代理）。M19 已在真实 DSH 会话中补验三组 DI 清单（见上），但仍未把 DI 变体加入根清单；默认身体的正常水链数值保持逐点不变。
 
 ## 7. 未建模与明确不做
 
@@ -127,7 +140,7 @@ urineProductionRequestMl = baselineRateMlPerMin × dtMin × relativeRate
 - 不建 AQP2/V2 受体、集合管水通道、自由水清除率或尿浓缩机制；4 mL/min 只是体积请求。
 - 不做治疗、去氨加压素、补水建议、自动饮水、提醒或任何临床告警；`brainNotify` 仍只读饥饿/饱满。
 - 不做预设目录、`condition` 字段、热切换、按会话绑定病况或多身体路由；DI 身体与默认身体是两份独立清单/存档。
-- 没有真实 DSH 会话验收；本 mission 只完成代码、离线/临时清单 Gateway 测试与文档。真实会话若需要，另开验收任务。
+- 真实 DSH 验收只覆盖 M19 的 2–5 轮短会话与机制对照；120 轮长时程、通知投递、重启补算、大负荷利尿与口咽解渴未验。本设计不因此变成临床诊断或治疗依据。
 
 ## 8. 范围决策
 
