@@ -2,7 +2,7 @@
 
 `brain/` 目前有四个脚本：`interoception.ts` 把胃壁机械感受、胃饥饿素、十二指肠营养暴露、下丘脑口渴驱动和膀胱充盈汇成 0–100 mm 的饥饿、饱满、口渴与尿意代理，再由这四者超出舒适区的强度取最大值得到不适代理；`notify.ts` 在明显/强档位按会话决定是否提醒；`hypothalamus-adh.ts` 把体液亏缺映射成相对 ADH 水平；`hypothalamus-thirst.ts` 把同一亏缺映射成口渴驱动。四个脚本只写自己的部位，不写其他器官。
 
-实现状态：脚本与参数已在 `organs/human-organs/brain/`，四个脚本都已加入根清单；`body_act` / `body_state` 与通知投递在 `index.js` / `tools.js` / `notifications.js`。`interoception` 是 `producer only` 的体感读出，会读取下丘脑口渴与膀胱体积；`brainNotify` 是提醒策略，负责频率和次数，仍只读饥饿/饱满。
+实现状态：脚本与参数已在 `organs/human-organs/brain/`，四个脚本都已加入根清单；`body_act` / `body_state` 与通知投递在 `index.js` / `tools.js` / `notifications.js`。`interoception` 是 `producer only` 的体感读出，会读取下丘脑口渴与膀胱体积；`brainNotify` 是提醒策略，负责频率和次数，仍只读饥饿/饱满。M19 真实 DSH 会话已读出 `thirst`、`urinaryUrgency` 与 `discomfort` 的方向和一轮偏移（见 §2）。
 
 ## 1. 脚本与部位
 
@@ -36,7 +36,7 @@ excess(x)      = clamp(100 × (x − 70) / (100 − 70), 0, 100)
 discomfort     = max(excess(hunger), excess(fullness), excess(thirst), excess(urinaryUrgency))
 ```
 
-尿意读取轮初膀胱量，所以排尿后的低尿意和当轮新转入的尿都在下一轮读出；尿意在 410 mL 处已饱和到 100 mm，再多的膀胱体积不会让 `urinaryUrgency` 或由它贡献的 `discomfort` 继续升高。410 mL 的参考量是 `design`，只借 De Wachter 队列 SDV 的测压量级作归一化锚点，不是自然排尿阈值，也不是个体尿意标定。`discomfort` 的起始值 70 mm 同样是 `design`、`source: null`：感受 70 mm 仍为 0，85 mm 为 50，100 mm 为 100；它取最大值而不是相加，避免把多个感受叠成没有依据的总分。`thirst`、`urinaryUrgency` 与 `discomfort` 目前由 `body_state` / `GET /state` 读取；`brainNotify` 不读，也没有口渴、尿意或不适提醒。
+尿意读取轮初膀胱量，所以排尿后的低尿意和当轮新转入的尿都在下一轮读出；尿意在 410 mL 处已饱和到 100 mm，再多的膀胱体积不会让 `urinaryUrgency` 或由它贡献的 `discomfort` 继续升高。410 mL 的参考量是 `design`，只借 De Wachter 队列 SDV 的测压量级作归一化锚点，不是自然排尿阈值，也不是个体尿意标定。`discomfort` 的起始值 70 mm 同样是 `design`、`source: null`：感受 70 mm 仍为 0，85 mm 为 50，100 mm 为 100；它取最大值而不是相加，避免把多个感受叠成没有依据的总分。`discomfort` 已在 M19 真实 DSH 会话中读出（2026-11-22，33/33 verdicts）：预置 650 mL 膀胱的轮次在 sim 60 因轮初体积读出 `urinaryUrgency = 100`、`discomfort = 100`，下一轮随膀胱降到 1 mL 回落到 0.244 / 0；高 ADH 预置则因 `thirst = 100` 读出 `discomfort = 100`。证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`（仓库外，未入库）。`thirst`、`urinaryUrgency` 与 `discomfort` 目前由 `body_state` / `GET /state` 读取；`brainNotify` 不读，也没有口渴、尿意或不适提醒。
 
 `initialState` 为 `{ hunger: 50, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 0 }`；`hunger` / `fullness` 来自两个 `design` 基线参数，`thirst` 的 50 mm 是缺失回落，`urinaryUrgency` 与 `discomfort` 初值 0。脚本每轮从上游输入重算，输出钳到 `[0, 100]`，不读自己的上一轮状态。
 
