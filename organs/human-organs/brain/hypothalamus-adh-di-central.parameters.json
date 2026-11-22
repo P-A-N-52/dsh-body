@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "owner": "hypothalamusAdh",
+  "parameters": [
+    {
+      "id": "hypothalamusAdh.central.fixedRelativeConcentration",
+      "unit": "1",
+      "value": 0,
+      "status": "design",
+      "range": [0, 0],
+      "source": null,
+      "note": "中枢 DI 样代理：ADH 分泌缺失用相对水平恒 0 表示；合成代理，不是血浆 AVP 测量或诊断阈值"
+    }
+  ]
+}

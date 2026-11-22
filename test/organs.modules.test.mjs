@@ -16,6 +16,9 @@ const organModules = [
   ['bladder', 'bladder', '../organs/human-organs/bladder/storage.ts'],
   ['interoception', 'interoception', '../organs/human-organs/brain/interoception.ts'],
   ['brain notify', 'brainNotify', '../organs/human-organs/brain/notify.ts'],
+  ['hypothalamus ADH central DI', 'hypothalamusAdh', '../organs/human-organs/brain/hypothalamus-adh-di-central.ts'],
+  ['kidney central DI', 'kidney', '../organs/human-organs/kidney/urine-production-di-central.ts'],
+  ['kidney nephrogenic DI', 'kidney', '../organs/human-organs/kidney/urine-production-di-nephrogenic.ts'],
 ];
 
 for (const [label, expectedId, modulePath] of organModules) {

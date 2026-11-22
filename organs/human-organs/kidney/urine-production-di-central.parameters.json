@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "owner": "kidney",
+  "parameters": [
+    {
+      "id": "kidney.diCentral.baselineRateMlPerMin",
+      "unit": "mL/min",
+      "value": 1,
+      "status": "design",
+      "range": [0.1, 5],
+      "source": null,
+      "note": "中枢 DI 肾变体在 ADH 相对水平 1 时的基线；与正常肾同值，仅文件与参数名区分；工程假设，不是实测尿流率或 GFR"
+    },
+    {
+      "id": "kidney.diCentral.adhGain",
+      "unit": "1",
+      "value": 3,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "把低 ADH 端拉宽：A=0 时 1 − 3×(0−1) = 4 倍基线；只作 DI 样代理，不是 Ota 或 Andersen 的拟合斜率"
+    },
+    {
+      "id": "kidney.diCentral.minRelativeRate",
+      "unit": "1",
+      "value": 0.25,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "相对产尿速率下钳；工程下限，不是最大浓缩能力或尿渗透压测量"
+    },
+    {
+      "id": "kidney.diCentral.maxRelativeRate",
+      "unit": "1",
+      "value": 4,
+      "status": "design",
+      "range": [1, 10],
+      "source": null,
+      "note": "低 ADH 端量程：A=0 时 4 倍基线 ≈ 4 mL/min（5.76 L/day），只作 DI 样代理；不是任何综述的实测值、均值或拟合"
+    }
+  ]
+}

@@ -70,3 +70,59 @@ test('the kidney writes only its own request and never transfers water', () => {
   assert.deepEqual(Object.keys(written), ['urineProductionRequestMl']);
   assert.deepEqual(transfers, []);
 });
+
+async function variantContract(modulePath) {
+  const module = await import(modulePath);
+  assert.equal(module.id, 'kidney');
+  assert.deepEqual(module.actionTypes, []);
+  assert.deepEqual(module.fields, {
+    urineProductionRequestMl: { unit: 'mL', mode: 'absolute' },
+  });
+  assert.deepEqual(module.initialState, { urineProductionRequestMl: 0 });
+  return module;
+}
+
+function runVariant(heartbeat, { adh, dt = 60, reads = true } = {}) {
+  const transfers = [];
+  let written;
+  heartbeat({
+    read: (partId) => {
+      if (!reads) throw new Error(`unexpected read: ${partId}`);
+      return partId === 'hypothalamusAdh' ? adh : undefined;
+    },
+    actions: [],
+    dt,
+    simulatedSeconds: 60,
+    write: (next) => { written = next; },
+    transfer: (...args) => transfers.push(args),
+  });
+  return { written, transfers };
+}
+
+test('central DI kidney keeps the kidney contract and widens only the low-ADH range', async () => {
+  const central = await variantContract('../organs/human-organs/kidney/urine-production-di-central.ts');
+
+  assert.equal(runVariant(central.heartbeat, { adh: { relativeConcentration: 0 } }).written.urineProductionRequestMl, 4);
+  assert.equal(runVariant(central.heartbeat, { adh: { relativeConcentration: 1 } }).written.urineProductionRequestMl, 1);
+  assert.equal(runVariant(central.heartbeat, { adh: { relativeConcentration: 3 } }).written.urineProductionRequestMl, 0.25);
+  assert.equal(runVariant(central.heartbeat, { adh: { relativeConcentration: 10 } }).written.urineProductionRequestMl, 0.25);
+  assert.equal(runVariant(central.heartbeat, { adh: { relativeConcentration: 0 }, dt: 30 }).written.urineProductionRequestMl, 2);
+  assert.equal(runVariant(central.heartbeat, { adh: undefined }).written.urineProductionRequestMl, 1);
+  assert.equal(runVariant(central.heartbeat, { adh: { relativeConcentration: -1 } }).written.urineProductionRequestMl, 4);
+
+  const { written, transfers } = runVariant(central.heartbeat, { adh: { relativeConcentration: 0 } });
+  assert.deepEqual(Object.keys(written), ['urineProductionRequestMl']);
+  assert.deepEqual(transfers, []);
+});
+
+test('nephrogenic DI kidney keeps the kidney contract and ignores ADH entirely', async () => {
+  const nephrogenic = await variantContract('../organs/human-organs/kidney/urine-production-di-nephrogenic.ts');
+
+  for (const adh of [undefined, {}, { relativeConcentration: 0 }, { relativeConcentration: 1 }, { relativeConcentration: 10 }]) {
+    const { written, transfers } = runVariant(nephrogenic.heartbeat, { adh, reads: false });
+    assert.deepEqual(written, { urineProductionRequestMl: 4 });
+    assert.deepEqual(transfers, []);
+  }
+  assert.equal(runVariant(nephrogenic.heartbeat, { adh: undefined, dt: 30, reads: false }).written.urineProductionRequestMl, 2);
+  assert.ok(4 * 1440 > 3000, 'four mL/min is a DI-like daily output above 3 L/day');
+});
