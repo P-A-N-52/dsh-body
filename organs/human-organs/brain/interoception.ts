@@ -1,8 +1,8 @@
 /*
  * 部位 `interoception`：把胃壁机械感受、胃饥饿素和十二指肠营养暴露汇成
  * 0–100 mm VAS 代理的饥饿（hunger）与饱满（fullness），并转出下丘脑口渴驱动
- * （thirst）与膀胱充盈的尿意代理（urinaryUrgency）。本脚本只产出体感，不发送通知，
- * 也不读自己的上一轮状态。
+ * （thirst）与膀胱充盈的尿意代理（urinaryUrgency），再由四者超出舒适区的强度取最大值
+ * 得到不适代理（discomfort）。本脚本只产出体感，不发送通知，也不读自己的上一轮状态。
  *
  * 来源（笔记路径、原文定位、支撑什么、不能推出什么）
  * - SRC-CUMMINGS-2001 / cummings-2001：`organs/human-organs/stomach/references/notes/cummings-2001.md`，
@@ -47,6 +47,13 @@
  * - 输出钳到 [0, 100]；三路输入的线性叠加不是论文方程，也没有交互项、阈值或饱和。
  *   非有限读数先在输入侧回落到缺失默认值；合成结果只对 NaN 回落对应基线，±Infinity 由
  *   [0, 100] 钳位截到边界，状态不写出 NaN 或 Infinity。
+ * - `discomfort` 是本轮四个已有感受超过 `interoception.discomfort.onsetMm`（`design`，默认
+ *   70 mm）后的超出强度取最大值：
+ *   `excess(x) = clamp(100 × (x − onsetMm) / (100 − onsetMm), 0, 100)`，
+ *   `discomfort = max(excess(hunger), excess(fullness), excess(thirst), excess(urinaryUrgency))`。
+ *   它是“当前最强的不适感受”代理，不是疼痛评分、情绪、疾病严重度或四感受总分；没有来源把
+ *   70 mm 或该斜率标定到主观不适，取最大值也只是为了避免没有依据的相加。不读自身历史，
+ *   不产生动作或通知，也没有新增历史状态。
  * - 只读轮初快照，同一轮摄入下一轮才反映；不建模恶心、腹胀、疼痛、过度饱满、餐食成分
  *   与个体差异；不调用 io.notify。
  */
@@ -60,6 +67,7 @@ type InteroceptionState = {
   fullness: number;
   thirst: number;
   urinaryUrgency: number;
+  discomfort: number;
 };
 
 type SensoryReading = {
@@ -105,12 +113,14 @@ const urinaryUrgencyReferenceVolumeMl = requireParameter(
   parameters,
   'interoception.urinaryUrgency.referenceVolumeMl',
 );
+const discomfortOnsetMm = requireParameter(parameters, 'interoception.discomfort.onsetMm');
 
 export const initialState: InteroceptionState = {
   hunger: hungerBaseline,
   fullness: fullnessBaseline,
   thirst: thirstFallbackMm,
   urinaryUrgency: 0,
+  discomfort: 0,
 };
 
 export const fields = {
@@ -118,6 +128,7 @@ export const fields = {
   fullness: { unit: 'mm', mode: 'absolute' },
   thirst: { unit: 'mm', mode: 'absolute' },
   urinaryUrgency: { unit: 'mm', mode: 'absolute' },
+  discomfort: { unit: 'mm', mode: 'absolute' },
 };
 
 function finiteOr(value: number | undefined, fallback: number): number {
@@ -130,6 +141,10 @@ function clamp(value: number, min: number, max: number): number {
 
 function clampOrFallback(value: number, fallback: number): number {
   return Number.isNaN(value) ? fallback : clamp(value, 0, 100);
+}
+
+function excessOverOnset(value: number, onsetMm: number): number {
+  return clamp((100 * (value - onsetMm)) / (100 - onsetMm), 0, 100);
 }
 
 export function heartbeat(io: IO): void {
@@ -159,6 +174,12 @@ export function heartbeat(io: IO): void {
     (100 * bladderVolume) / urinaryUrgencyReferenceVolumeMl,
     0,
   );
+  const discomfort = Math.max(
+    excessOverOnset(hunger, discomfortOnsetMm),
+    excessOverOnset(fullness, discomfortOnsetMm),
+    excessOverOnset(thirst, discomfortOnsetMm),
+    excessOverOnset(urinaryUrgency, discomfortOnsetMm),
+  );
 
-  io.write({ hunger, fullness, thirst, urinaryUrgency });
+  io.write({ hunger, fullness, thirst, urinaryUrgency, discomfort });
 }

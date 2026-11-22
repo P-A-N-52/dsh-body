@@ -91,6 +91,15 @@
       "range": [205, 820],
       "source": "SRC-DEWACHTER-2003",
       "note": "尿意归一化锚点；410 mL 来自设计文档/主会话全文交接（摘要只确认 15 名健康女学生，是否未产与具体数值待全文核对），不是自然排尿阈值，也不是个体尿意标定"
+    },
+    {
+      "id": "interoception.discomfort.onsetMm",
+      "unit": "mm",
+      "value": 70,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "四感受超过该值才产生不适代理；design 舒适区上界，不是疼痛阈值或人体测量"
     }
   ]
 }

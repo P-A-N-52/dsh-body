@@ -1,6 +1,6 @@
 # 脑：体感与上报（brain）
 
-`brain/` 目前有四个脚本：`interoception.ts` 把胃壁机械感受、胃饥饿素、十二指肠营养暴露、下丘脑口渴驱动和膀胱充盈汇成 0–100 mm 的饥饿、饱满、口渴与尿意代理；`notify.ts` 在明显/强档位按会话决定是否提醒；`hypothalamus-adh.ts` 把体液亏缺映射成相对 ADH 水平；`hypothalamus-thirst.ts` 把同一亏缺映射成口渴驱动。四个脚本只写自己的部位，不写其他器官。
+`brain/` 目前有四个脚本：`interoception.ts` 把胃壁机械感受、胃饥饿素、十二指肠营养暴露、下丘脑口渴驱动和膀胱充盈汇成 0–100 mm 的饥饿、饱满、口渴与尿意代理，再由这四者超出舒适区的强度取最大值得到不适代理；`notify.ts` 在明显/强档位按会话决定是否提醒；`hypothalamus-adh.ts` 把体液亏缺映射成相对 ADH 水平；`hypothalamus-thirst.ts` 把同一亏缺映射成口渴驱动。四个脚本只写自己的部位，不写其他器官。
 
 实现状态：脚本与参数已在 `organs/human-organs/brain/`，四个脚本都已加入根清单；`body_act` / `body_state` 与通知投递在 `index.js` / `tools.js` / `notifications.js`。`interoception` 是 `producer only` 的体感读出，会读取下丘脑口渴与膀胱体积；`brainNotify` 是提醒策略，负责频率和次数，仍只读饥饿/饱满。
 
@@ -8,7 +8,7 @@
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `interoception.ts` | `interoception` | `hunger`、`fullness`、`thirst`、`urinaryUrgency` | `stomachSensory.mechanical`、`stomachGhrelin.relativeConcentration`、`duodenum.nutrientExposure`、`hypothalamusThirst.thirst`、`bladder.volumeMl` | `interoception.parameters.json` |
+| `interoception.ts` | `interoception` | `hunger`、`fullness`、`thirst`、`urinaryUrgency`、`discomfort` | `stomachSensory.mechanical`、`stomachGhrelin.relativeConcentration`、`duodenum.nutrientExposure`、`hypothalamusThirst.thirst`、`bladder.volumeMl` | `interoception.parameters.json` |
 | `notify.ts` | `brainNotify` | `lastSessionId`、`sessions`（内部状态） | `interoception.hunger/fullness`；本轮动作里的 `sessionId` | `notify.parameters.json` |
 | `hypothalamus-adh.ts` | `hypothalamusAdh` | `relativeConcentration` | `bodyFluid.waterDeficit` | `hypothalamus-adh.parameters.json` |
 | `hypothalamus-thirst.ts` | `hypothalamusThirst` | `thirst` | `bodyFluid.waterDeficit` | `hypothalamus-thirst.parameters.json` |
@@ -23,19 +23,22 @@
 | `fullness` | `mm` | 饱满的 0–100 mm VAS 代理 |
 | `thirst` | `mm` | 口渴的 0–100 mm 代理；把 `hypothalamusThirst.thirst` 原样钳位后读出 |
 | `urinaryUrgency` | `mm` | 尿意的 0–100 mm 代理；由轮初 `bladder.volumeMl` 归一化 |
+| `discomfort` | `mm` | 不适的 0–100 mm 代理；四个感受超过 70 mm 舒适区后的强度取最大值 |
 
-`hunger` / `fullness` / `thirst` / `urinaryUrgency` **不是物理长度、神经放电、激素浓度、膀胱压力或逼尿肌张力**，也不是胃容积或残余尿诊断值。`mm` 只沿用 100-mm 视觉模拟量表的刻度；把它们与胃内容量、血浆饥饿素、AVP pmol/L、膀胱 mL 或压力互换没有方法学依据。
+`hunger` / `fullness` / `thirst` / `urinaryUrgency` / `discomfort` **不是物理长度、神经放电、激素浓度、膀胱压力或逼尿肌张力**，也不是胃容积或残余尿诊断值。`mm` 只沿用 100-mm 视觉模拟量表的刻度；把它们与胃内容量、血浆饥饿素、AVP pmol/L、膀胱 mL 或压力互换没有方法学依据。`discomfort` 是“当前最强的不适感受”代理，不是疼痛评分、情绪、疾病严重度或四感受总分。
 
-`thirst` 与 `urinaryUrgency` 的方程：
+`thirst`、`urinaryUrgency` 与 `discomfort` 的方程：
 
 ```text
 thirst         = clamp(hypothalamusThirst.thirst, 0, 100)   // 缺失或非有限回落 50 mm
 urinaryUrgency = clamp(100 mm × bladder.volumeMl / 410 mL, 0, 100)
+excess(x)      = clamp(100 × (x − 70) / (100 − 70), 0, 100)
+discomfort     = max(excess(hunger), excess(fullness), excess(thirst), excess(urinaryUrgency))
 ```
 
-尿意读取轮初膀胱量，所以排尿后的低尿意和当轮新转入的尿都在下一轮读出。410 mL 的参考量是 `design`，只借 De Wachter 队列 SDV 的测压量级作归一化锚点，不是自然排尿阈值，也不是个体尿意标定。`thirst` 与 `urinaryUrgency` 目前只由 `body_state` / `GET /state` 读取；`brainNotify` 不读，也没有口渴或尿意提醒。
+尿意读取轮初膀胱量，所以排尿后的低尿意和当轮新转入的尿都在下一轮读出；尿意在 410 mL 处已饱和到 100 mm，再多的膀胱体积不会让 `urinaryUrgency` 或由它贡献的 `discomfort` 继续升高。410 mL 的参考量是 `design`，只借 De Wachter 队列 SDV 的测压量级作归一化锚点，不是自然排尿阈值，也不是个体尿意标定。`discomfort` 的起始值 70 mm 同样是 `design`、`source: null`：感受 70 mm 仍为 0，85 mm 为 50，100 mm 为 100；它取最大值而不是相加，避免把多个感受叠成没有依据的总分。`thirst`、`urinaryUrgency` 与 `discomfort` 目前由 `body_state` / `GET /state` 读取；`brainNotify` 不读，也没有口渴、尿意或不适提醒。
 
-`initialState` 为 `{ hunger: 50, fullness: 0, thirst: 50, urinaryUrgency: 0 }`；`hunger` / `fullness` 来自两个 `design` 基线参数，`thirst` 的 50 mm 是缺失回落，`urinaryUrgency` 初值 0。脚本每轮从上游输入重算，输出钳到 `[0, 100]`，不读自己的上一轮状态。
+`initialState` 为 `{ hunger: 50, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 0 }`；`hunger` / `fullness` 来自两个 `design` 基线参数，`thirst` 的 50 mm 是缺失回落，`urinaryUrgency` 与 `discomfort` 初值 0。脚本每轮从上游输入重算，输出钳到 `[0, 100]`，不读自己的上一轮状态。
 
 ### `hypothalamusAdh`
 
@@ -94,7 +97,7 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
                                   + fullnessNutrientGain   × N, 0, 100)
 ```
 
-四个输出互不串写：`thirst` 不参与饥饿/饱满方程，`urinaryUrgency` 也不参与。输入到输出有**一轮偏移**：同一轮的摄入先由胃脚本记账，下一轮的轮初快照里才出现新的 `mechanical`、`relativeConcentration` 与 `nutrientExposure`；`bodyFluid` 的变化也要下一轮才改变两个下丘脑脚本的输出。
+四个感受输出互不串写：`thirst` 不参与饥饿/饱满方程，`urinaryUrgency` 也不参与；`discomfort` 只读本轮已算出的四个感受，不回写它们，也不进入它们的方程。输入到输出有**一轮偏移**：同一轮的摄入先由胃脚本记账，下一轮的轮初快照里才出现新的 `mechanical`、`relativeConcentration` 与 `nutrientExposure`；`bodyFluid` 的变化也要下一轮才改变两个下丘脑脚本的输出。
 
 ## 4. 参数
 
@@ -109,8 +112,9 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 | `interoception.hunger.nutrientGain` | -5 | `mm/(kcal/min)` | `design` | — |
 | `interoception.fullness.nutrientGain` | 10 | `mm/(kcal/min)` | `design` | — |
 | `interoception.urinaryUrgency.referenceVolumeMl` | 410 | `mL` | `design` | `SRC-DEWACHTER-2003` |
+| `interoception.discomfort.onsetMm` | 70 | `mm` | `design` | — |
 
-前八个参数 `status: "design"`、`source: null`；尿意参考量也标 `design`，只挂测压队列量级的登记，不是人体测量、自然阈值或独立验证。九项全是工程假设。
+前八个参数与不适起始值 `status: "design"`、`source: null`；尿意参考量也标 `design`，只挂测压队列量级的登记，不是人体测量、自然阈值或独立验证。十项全是工程假设。
 
 ### `hypothalamus-adh.parameters.json`
 
@@ -152,20 +156,20 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 参数文件从 `systems/nervous/interoception.parameters.json` 迁入时裁掉了四项：
 
 - `interoception.hunger.ghrelinGainAbsolute` 与 `interoception.fullness.ghrelinGainAbsolute`（原 `fitted_dev`，单位 `mm/(ng/mL)`）没有迁入。当前 `stomachGhrelin` 只产出相对浓度（单位 `1`，空腹基线 1），没有绝对 `ng/mL` 的写入者；保留它们只会得到没有消费者的字段，还会让人误以为模型接受绝对浓度。
-- `interoception.discomfort.threshold` 与 `interoception.discomfort.slope`（原 `unset`）没有迁入。P1 不建模恶心、腹胀、疼痛或过度饱满，也没有脚本或会话工具读它们；留两个 `unset` 参数只会假装这些量已被建模。
+- `interoception.discomfort.threshold` 与 `interoception.discomfort.slope`（原 `unset`）没有迁入。当前的不适读出改用新的 `interoception.discomfort.onsetMm`（`design`）：只把四个已有感受超过舒适区后的强度取最大值，不恢复这两个没有消费者的旧参数，也不建恶心、腹胀、疼痛或撑感的独立症状读出。
 
 ## 5. 调节方式
 
-`interoception` 接五类只读输入：胃机械感受、相对饥饿素、十二指肠营养暴露、下丘脑口渴驱动与膀胱体积；前三类进入同一条线性叠加，后两类分别直通 `thirst` 与 `urinaryUrgency`。两个下丘脑脚本只读 `bodyFluid.waterDeficit`，彼此不读对方部位，也不产生动作。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
+`interoception` 接五类只读输入：胃机械感受、相对饥饿素、十二指肠营养暴露、下丘脑口渴驱动与膀胱体积；前三类进入同一条线性叠加，后两类分别直通 `thirst` 与 `urinaryUrgency`，`discomfort` 再由本轮四个感受超出 70 mm 的强度取最大值。两个下丘脑脚本只读 `bodyFluid.waterDeficit`，彼此不读对方部位，也不产生动作。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
 
-- 恶心、腹胀、疼痛、过度饱满（撑感）等独立症状；
+- 恶心、腹胀、疼痛、过度饱满（撑感）等独立症状；`discomfort` 只是四个已有感受超出舒适区后的最大强度代理，不是其中任何一项的独立测量或评分；
 - 餐食成分（脂肪 / 蛋白 / 碳水比例）、黏度、能量密度、温度、碳酸与甜味剂；
 - 餐时表、昼夜节律、睡眠、运动与疾病；
 - 个体差异：年龄、性别、BMI、胃排空、激素水平与膀胱容量的个体化参数；
 - CCK、GLP-1 等肠激素，以及迷走与中枢反馈；
 - 血浆/尿渗透压、电解质、血容量、血压与 RAAS；
 - 吸收前口咽解渴、习惯化、饮水动机与自动喝水；
-- 尿意阈值、排尿反射、失禁、夜尿与逼尿肌压力；
+- 尿意阈值、排尿反射、失禁、夜尿与逼尿肌压力；`urinaryUrgency` 只是按膀胱体积归一化的读出，脑内不建这些机制；
 - 通知历史文件、模型已读确认与按会话绑定不同身体（当前只有最近动作的会话收到提醒）。
 
 ## 6. 证据入口
@@ -186,16 +190,16 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 - 器官设计：[`docs/superpowers/specs/2026-11-20-organ-model-design.md`](../../../docs/superpowers/specs/2026-11-20-organ-model-design.md)
 - 水链设计：[`docs/superpowers/specs/2026-11-22-water-balance-design.md`](../../../docs/superpowers/specs/2026-11-22-water-balance-design.md)
 
-**证据边界：** 这些来源只支撑方向——餐后饥饿素下降、饥饿下降与饱满上升，胃充盈与营养到达参与饱感，饱感不只看排空；水负荷后 AVP 下降、尿量增加且尿变稀；吸收前口咽刺激可短暂抑制口渴。它们**没有**把机械感受、营养暴露、相对饥饿素、体液亏缺或膀胱体积校准到 0–100 mm VAS，也没有把 `relativeConcentration` 校准到 pmol/L。线性叠加、一阶滞后、基线、增益、参考量与缺失默认值全是 `design`；方程不是论文原方程，也没有独立验证或盲法留出。`brainNotify` 的阈值、冷却和次数上限没有登记人体来源，是 `policy`，不能当成生理常数。
+**证据边界：** 这些来源只支撑方向——餐后饥饿素下降、饥饿下降与饱满上升，胃充盈与营养到达参与饱感，饱感不只看排空；水负荷后 AVP 下降、尿量增加且尿变稀；吸收前口咽刺激可短暂抑制口渴。它们**没有**把机械感受、营养暴露、相对饥饿素、体液亏缺或膀胱体积校准到 0–100 mm VAS，也没有把 `relativeConcentration` 校准到 pmol/L。线性叠加、一阶滞后、基线、增益、参考量、不适起始值与缺失默认值全是 `design`；`discomfort` 的 70 mm 起始值和取最大值规则没有来源标定，不代表疼痛阈值、情绪或疾病严重度。方程不是论文原方程，也没有独立验证或盲法留出。`brainNotify` 的阈值、冷却和次数上限没有登记人体来源，是 `policy`，不能当成生理常数。
 
 ## 7. 当前限制
 
 - **体感已接入提醒**：`interoception` 仍是 `producer only` 的读出；`brainNotify` 会调用 `io.notify`，`notifications.js` 再投递到对应会话。通知历史文件、模型已读确认与多会话路由尚未实现。
-- **不是生理测量**：四个输出都是主观评分或驱动代理，不能当作物理长度、神经放电、激素浓度、胃容积、膀胱压力或残余尿诊断。
+- **不是生理测量**：五个输出都是主观评分或驱动代理，不能当作物理长度、神经放电、激素浓度、胃容积、膀胱压力或残余尿诊断。
 - **口渴不产生动作**：`hypothalamusThirst.thirst` 与 `interoception.thirst` 只作读出，不自动喝水；首段不建口咽解渴。
-- **尿意不是阈值**：`urinaryUrgency` 只按膀胱体积归一化，没有尿意阈值、排尿反射、失禁或夜尿；`urinate` 是会话主动动作。
+- **尿意不是阈值**：`urinaryUrgency` 只按膀胱体积归一化，并在 410 mL 处饱和；没有尿意阈值、排尿反射、失禁或夜尿；`urinate` 是会话主动动作。
 - **线性叠加是设计**：没有交互项、阈值、饱和或餐型差异；三路输入各自独立相加，口渴与尿意单独直通。
-- **未建模过度饱满**：`fullness` 封顶 100，但疼痛、恶心、腹胀与“撑得难受”没有独立读出。
+- **不适不是症状评分**：`discomfort` 只把四个感受超出 70 mm 的强度取最大值，不是疼痛、情绪、疾病严重度或四感受总分；疼痛、恶心、腹胀与“撑得难受”仍没有独立读出。
 - **没有餐时表**：不能产生餐前饥饿上升；饥饿素只由胃脚本的餐后抑制与恢复驱动。
 - **没有渗透压与血容量**：两个下丘脑脚本只读水量亏缺代理，不读血浆/尿渗透压、电解质、血压或 RAAS。
 - **没有个体化**：年龄、性别、BMI、胃排空、激素与膀胱容量差异都不进入方程；参数是证据默认值，不是某具身体的最终值。
