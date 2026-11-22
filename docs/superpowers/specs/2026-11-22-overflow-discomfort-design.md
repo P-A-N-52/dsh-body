@@ -55,7 +55,7 @@ discomfort = max(excess(hunger), excess(fullness), excess(thirst), excess(urinar
 | 3. 真实 Gateway 在非自主与主动排尿两种场景下均保持水账；累计离体水只累计 `voidedMl` | `test/organs.water-gateway.test.mjs` 的 `an overflow bladder voids involuntarily and keeps the water ledger`、`a 600 mL round-start bladder does not void until the next overflow round`、`urinate takes priority over overflow voiding and its retry does not void again` |
 | 4. 脑内基线不适为 0；四个感受分别 85 时不适均为 50；多感受同时存在取最大值；超过 100 的输入仍由原有钳位处理 | `test/organs.interoception.test.mjs` 的 `discomfort stays at zero at and below the 70 mm onset`、`each feeling at 85 mm yields 50 discomfort`、`discomfort takes the strongest feeling instead of summing them`、`oversized inputs clamp outputs to the 0-100 band and stay finite` |
 | 5. `body_state` 可读膀胱三个排出字段与 `interoception.discomfort`；原工具、动作 ID 和通知行为不变 | 膀胱三个排出字段由 `test/organs.bladder.test.mjs` 的字段契约用例与 `test/organs.water-gateway.test.mjs` 的 `body_state` 读取覆盖；工具名称、`body_act` 参数枚举与输出 schema 由 `test/dsh.tools.test.mjs` 与 `test/organs.di.test.mjs` 的形状用例保持不变；`brainNotify` 仍只读饥饿/饱满，没有新增通知。 |
-| 6. 真实 DSH 会话中的非自主排空、`discomfort` 读出与轮初读出一轮偏移 | M19（2026-11-22，33/33 verdicts）：预置 650 mL、无动作，sim 60 记 `involuntaryVoidedMl = 650`、`voluntaryVoidedMl = 0`、膀胱 1 mL；同轮 `urinaryUrgency` / `discomfort` 为 100 / 100（读的是轮初 650 mL），sim 120 回落到 0.244 mm / 0（读的是轮初 1 mL），下一轮无第二次排出。证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`（`EVIDENCE.md`、`logs/analysis.json`；仓库外，未入库）。 |
+| 6. 真实 DSH 会话中的非自主排空、`discomfort` 读出与轮初读出一轮偏移 | M19（2026-11-22，33/33 verdicts）：预置 650 mL、无动作，sim 60 记 `involuntaryVoidedMl = 650`、`voluntaryVoidedMl = 0`、膀胱 1 mL；同轮 `urinaryUrgency` / `discomfort` 为 100 / 100（读的是轮初 650 mL），sim 120 回落到 0.244 mm / 0（读的是轮初 1 mL），下一轮无第二次排出。650 mL 预置与预置会话的稳态 1 mL 请求都是测试设定，不是模型输出；正常会话 sim 300 的 0.9998 mL 是模型输出。证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`（`EVIDENCE.md`、`logs/analysis.json`；仓库外，未入库）。 |
 
 ### 4.1 M19 真实 DSH 会话补充（2026-11-22）
 
@@ -64,6 +64,7 @@ discomfort = max(excess(hunger), excess(fullness), excess(thirst), excess(urinar
 - **非自主排空：** 预置 650 mL、本轮无动作，sim 60 `voluntaryVoidedMl = 0`、`involuntaryVoidedMl = 650`、`voidedMl = 650`、膀胱 1 mL（同轮新尿）；sim 120 `voidedMl = 0`，下一轮无第二次排出。
 - **主动优先与重试：** 同一 650 mL 轮初提交 `urinate` 时只记 `voluntaryVoidedMl = 650`、`involuntaryVoidedMl = 0`；同 sessionId + callId 同载荷重试返回原 applied ID（`body-2a9170a9a1a1be4bd16174420aff86f8`）且不再次排空；同 callId 异载荷 409。所有会话通知 0。
 - **一轮偏移：** `urinaryUrgency` 与 `discomfort` 都读轮初膀胱体积，所以排水当轮读出仍是排前 650 mL 的值（100 / 100），下一轮才回落到排后 1 mL 对应的 0.244 / 0。
-- **边界：** 只覆盖默认/预置各 3 轮与 DI 对照的 2–5 轮短会话，不覆盖通知投递、120 轮长时程、重启补算、睡眠、大负荷利尿或口咽解渴；600 mL 与 70 mm 仍是 `design`、`source: null`，不是临床容量、疼痛阈值或失禁模型。
+- **测试设定：** 650 mL 预置与预置会话的稳态 1 mL 请求都是测试设定，不是模型输出；正常会话 sim 300 的 0.9998 mL 是模型输出。
+- **边界：** 只覆盖主会话（默认/预置）各 3 轮、DI 对照 5 轮与高 ADH 附加 2 轮，即 2–5 轮短会话，不覆盖通知投递、120 轮长时程、重启补算、睡眠、大负荷利尿或口咽解渴；600 mL 与 70 mm 仍是 `design`、`source: null`，不是临床容量、疼痛阈值或失禁模型。
 
 2026-11-22 定向运行 `node --test test/organs.bladder.test.mjs test/organs.interoception.test.mjs test/organs.di.test.mjs test/organs.water-gateway.test.mjs`：55 tests / 55 pass / 0 fail。M19 已在真实 DSH 会话中读出非自主排空与 `discomfort`（证据见上表与 §4.1），但只覆盖 3 轮预置场景；120 轮长时程、通知投递与重启补算未验。阈值 600 mL、起始 70 mm 都是 `design`，不是临床容量、疼痛阈值或失禁模型，边界见 `organs/human-organs/bladder/README.md` 与 `organs/human-organs/brain/README.md`。
