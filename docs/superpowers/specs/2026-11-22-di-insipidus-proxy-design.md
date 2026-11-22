@@ -1,6 +1,6 @@
 # 可选尿崩样多尿代理设计（DI-like polyuria proxy）
 
-**状态：** 用户已同意启动；本 mission 已落地代码、独立参数、定向测试与最小文档（2026-11-22）。**默认身体与正常参数零变化**：根清单 `body-modules.json` 仍只加载正常 12 部位，正常 ADH/肾参数文件未改。DI 样代理只通过独立清单与独立存档显式选择，不是临床诊断，也没有真实 DSH 会话验收。
+**状态：** 已实现（2026-11-22）：代码、独立参数、定向测试与最小文档均已落地。**默认身体与正常参数零变化**：根清单 `body-modules.json` 仍只加载正常 12 部位，正常 ADH/肾参数文件未改。DI 样代理只通过独立清单与独立存档显式选择，不是临床诊断、默认病理状态或治疗依据；只有离线模块测试与临时清单/临时存档的真实 Gateway 测试，**没有真实 DSH 会话验收**。测试证据见 §6。
 
 ## 1. 目标与取舍
 
@@ -107,16 +107,18 @@ urineProductionRequestMl = baselineRateMlPerMin × dtMin × relativeRate
 
 **可比性判断：** 三篇综述的人群、刺激、测量与时间原点都不适用于本模型的 60 s 轮；它们只支持机制方向与“>3 L/day”的量级。`design` 不因引用综述升级；没有拟合记录不得写 `fitted_dev`，没有独立验证不得写 `validated`。Ota 1994 与 Andersen 1990 仍是正常水链的证据边界（见 `2026-11-22-water-balance-design.md` §7），本设计不把它们改写成 DI 证据。
 
-## 6. 验收（本 mission 已做）
+## 6. 验收与测试证据（已实现）
 
-全部测试用临时目录、临时清单与独立存档，`autoTick: false`、固定 `now: () => 0`；仓库不提交 DI 清单或存档。
+全部测试用临时目录、临时清单与独立存档，`autoTick: false`、固定 `now: () => 0`；仓库不提交 DI 清单或存档。测试文件是 `test/organs.di.test.mjs`（9 个用例），变体契约另由 `test/organs.hypothalamus.test.mjs`、`test/organs.kidney.test.mjs`、`test/organs.modules.test.mjs` 与 `test/parameters.test.mjs` 覆盖。这些都不是真实 DSH 会话验收。
 
 1. **正常不变：** 根清单仍 12 个脚本，不含任何 `-di-` 入口；正常 ADH/肾参数文件数值逐项保持；从空存档运行正常根清单 10 轮，ADH、肾请求、体液水、缺水代理、口渴、膀胱体积与重构前的 10 轮 golden 逐点一致（`1e-12`）。
-2. **中枢性：** 临时清单换入中枢 ADH + 中枢肾后，ADH 恒 0、每轮请求 4 mL、膀胱逐轮 +4 mL；121 轮含 240 mL 饮水的水账本误差 ≤`1e-6 mL`，膀胱 480 mL 且无自动排尿。
+2. **中枢性：** 临时清单换入中枢 ADH + 中枢肾后，ADH 恒 0、每轮请求 4 mL、膀胱逐轮 +4 mL；121 轮含 240 mL 饮水的水账本误差 ≤`1e-6 mL`，膀胱 480 mL（低于 600 mL 非自主阈值，因此没有自动排尿）。
 3. **肾性：** 只换肾入口时，ADH 不被固定为 0，仍随缺水代理上升，但肾请求恒 4 mL；再用 `relativeConcentration = 0` 与 `3` 两种初始存档各跑一轮，请求都是 4 mL，证明肾变体完全不读 `hypothalamusAdh`。
 4. **重启：** 中枢 DI 清单运行 10 轮后停止，再用同一清单与同一存档启动；`simulatedSeconds`、`parts` 完全保持，下一轮继续 4 mL/min。
 5. **工具形状：** DI 清单下 `body_act` / `body_state` 的名称、参数枚举、输出 schema 与根清单一致；`body_act` 仍只接受 drink/eat/urinate，DI 不新增动作。
 6. **模块/参数：** 三个变体导出同 id、同 fields、`actionTypes: []`；三份新参数文件通过 `test/parameters.test.mjs` 的 schema、唯一 ID 与 loader 校验。
+
+2026-11-22 定向运行 `node --test test/organs.bladder.test.mjs test/organs.interoception.test.mjs test/organs.di.test.mjs test/organs.water-gateway.test.mjs`：55 tests / 55 pass / 0 fail（该命令同时覆盖本文件、非自主排尿与不适代理）。没有真实 DSH 会话验收，也没有把 DI 变体加入根清单；默认身体的正常水链数值保持逐点不变。
 
 ## 7. 未建模与明确不做
 
@@ -132,4 +134,4 @@ urineProductionRequestMl = baselineRateMlPerMin × dtMin × relativeRate
 - **为什么不做成参数开关？** 正常参数必须零变化，且 ADH 变体要固定 0、肾性变体要完全不读 ADH；用同 id 的独立入口最直接，也避免在正常脚本里塞病况分支或未使用字段。
 - **为什么中枢需要配套肾变体？** 正常肾在 A=0 只到 2 倍基线（2.88 L/day），低于综述的 >3 L/day 量级；配套变体只放宽低 ADH 端到 4 倍基线，不碰正常参数。
 - **为什么不拟合 4 mL/min？** 三篇综述都没有可用的个体尿流曲线、ADH 剂量轴或时间原点；4 mL/min 只是量级代理，拟合会制造不存在的证据等级。
-- **为什么不更新 `brain/README.md`？** 该文件由另一 mission 维护；ADH 变体的说明集中在本设计与 `organs/human-organs/kidney/README.md` 的变体节，避免并发冲突。
+- **为什么不在 `brain/README.md` 写 DI 变体？** 正常入口文档只描述默认身体，避免把可选病况混进 ADH 与体感的正常语义；ADH 变体的说明集中在本设计与 `organs/human-organs/kidney/README.md` §3a。
