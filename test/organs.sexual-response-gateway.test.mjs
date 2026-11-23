@@ -70,9 +70,13 @@ async function startBody(t, { manifestPath = rootManifestPath, parts = {} } = {}
   return { gateway, dir, statePath };
 }
 
-test('sex raises arousal, feeds interoception and pays sweat, lung water and glycogen', async (t) => {
+test('sex raises arousal, feeds interoception and pays sweat, lung water and regional glycogen', async (t) => {
   const { gateway } = await startBody(t, {
-    parts: { muscleGlucose: { uptakeG: 0, glycogenG: 10, glycogenConsumedG: 0 } },
+    parts: {
+      muscleHead: { uptakeG: 0, glycogenG: 10, glycogenConsumedG: 0 },
+      muscleTrunk: { uptakeG: 0, glycogenG: 10, glycogenConsumedG: 0 },
+      muscleLimbs: { uptakeG: 0, glycogenG: 10, glycogenConsumedG: 0 },
+    },
   });
   assert.equal(
     gateway.submitAction({ id: 'sex-1', type: 'sex', intensity: 1, durationMin: 30 }).statusCode,
@@ -91,7 +95,9 @@ test('sex raises arousal, feeds interoception and pays sweat, lung water and gly
   );
   assert.equal(parts.interoception.sexualArousalMm, 0, 'the action round has no round-start arousal');
   assert.equal(parts.physicalActivity.intensity, 1);
-  assert.equal(parts.muscleGlucose.glycogenConsumedG, 0);
+  assert.equal(parts.muscleHead.glycogenConsumedG, 0);
+  assert.equal(parts.muscleTrunk.glycogenConsumedG, 0);
+  assert.equal(parts.muscleLimbs.glycogenConsumedG, 0);
   assert.equal(parts.skin.sweatRequestMl, 0);
   assert.deepEqual(parts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
 
@@ -105,8 +111,10 @@ test('sex raises arousal, feeds interoception and pays sweat, lung water and gly
   assert.equal(parts.physicalActivity.remainingExerciseMin, 29, 'sex is counted as activity');
   assert.equal(parts.skin.sweatRequestMl, 0.6);
   assert.equal(parts.lungs.respiratoryWaterLossRequestMl, 0.3);
-  assert.equal(parts.muscleGlucose.glycogenConsumedG, 0.5);
-  assert.ok(parts.muscleGlucose.glycogenG < 10, 'the seeded glycogen is consumed');
+  for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
+    assert.equal(parts[region].glycogenConsumedG, 0.5, region);
+    assert.ok(parts[region].glycogenG < 10, `${region}: the seeded glycogen is consumed`);
+  }
 
   await gateway.tick();
   parts = gateway.getState().parts;
@@ -179,8 +187,11 @@ test('the female manifest loads sexualResponse and releases on orgasm', async (t
     parts: { sexualResponse: arousalState(80) },
   });
 
-  assert.equal(Object.keys(gateway.getState().parts).length, 32);
+  assert.equal(Object.keys(gateway.getState().parts).length, 35);
   assert.ok(gateway.getState().parts.liver, 'liver must be loaded');
+  assert.ok(gateway.getState().parts.muscleHead, 'muscleHead must be loaded');
+  assert.ok(gateway.getState().parts.muscleTrunk, 'muscleTrunk must be loaded');
+  assert.ok(gateway.getState().parts.muscleLimbs, 'muscleLimbs must be loaded');
   assert.ok(gateway.getState().parts.bloodOxygen, 'bloodOxygen must be loaded');
   assert.ok(gateway.getState().parts.lungsVentilation, 'lungsVentilation must be loaded');
   assert.ok(gateway.getState().parts.thyroid, 'thyroid must be loaded');

@@ -4,7 +4,7 @@
 
 `organs/human-organs/salivary-glands/` 目前只有一个部位 `salivaryGlands`，脚本为 `saliva.ts`。它按基础分泌、进食刺激和脱水状态计算本轮唾液产率 `salivaRateMlPerMin`，并换算出 0–100 mm 的口腔湿润度代理 `mouthMoistureMm`。当前有两个消费者：`duodenum` 读取产率，对含碳水餐的营养暴露给淀粉酶增益；`interoception` 读取湿润度，写出口干读数 `dryMouthMm`。本脚本不写其他部位、不调用 `transfer` 或 `notify`，也不建唾液水账。
 
-实现状态：脚本、参数、模块契约测试与真实 Gateway 测试已落地；根清单为 29 部位、31 份参数文件，女性清单为 31 部位、33 份；本切片不新增 `transfer`，根硬闭包仍为 10 个部位、女性 11 个。四个 `salivaryGlands.*` 参数与消费者参数 `duodenum.salivaryAmylaseGain` 全部是 `design`、`source: null`。本文只描述离线模型与契约，未做真实 DSH 会话、唾液流率实测或临床验证。
+实现状态：脚本、参数、模块契约测试与真实 Gateway 测试已落地；根清单为 29 部位、31 份参数文件，女性清单为 32 部位、34 份（乳腺切片后）；本切片不新增 `transfer`，根硬闭包仍为 10 个部位、女性 12 个。四个 `salivaryGlands.*` 参数与消费者参数 `duodenum.salivaryAmylaseGain` 全部是 `design`、`source: null`。本文只描述离线模型与契约，未做真实 DSH 会话、唾液流率实测或临床验证。
 
 ## 1. 脚本与部位
 

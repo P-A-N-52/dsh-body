@@ -16,33 +16,37 @@ const parametersUrl = new URL(
   import.meta.url,
 );
 
+const allRegions = {
+  muscleHead: { uptakeG: 0, glycogenG: 0, glycogenConsumedG: 0 },
+  muscleTrunk: { uptakeG: 0, glycogenG: 0, glycogenConsumedG: 0 },
+  muscleLimbs: { uptakeG: 0, glycogenG: 0, glycogenConsumedG: 0 },
+};
+
 function round({
   state,
-  activity,
+  regions = allRegions,
   glucose = { excessMassG: 0 },
   pancreas,
   dt = 60,
   simulatedSeconds = 60,
 } = {}) {
   const writes = [];
+  const transfers = [];
   heartbeat({
     read: (partId) => {
       if (partId === 'muscleGlucose') return state;
-      if (partId === 'physicalActivity') return activity;
       if (partId === 'glucose') return glucose === null ? undefined : glucose;
       if (partId === 'pancreasEndocrine') return pancreas;
+      if (Object.hasOwn(regions, partId)) return regions[partId];
       return undefined;
     },
     actions: [],
     dt,
     simulatedSeconds,
     write: (next) => { writes.push(next); },
+    transfer: (...args) => { transfers.push(args); },
   });
-  return { written: writes[writes.length - 1], writes };
-}
-
-function active(remainingExerciseMin = 10, intensity = 1) {
-  return { remainingExerciseMin, intensity };
+  return { written: writes[writes.length - 1], writes, transfers };
 }
 
 function assertClose(actual, expected, label, tolerance = 1e-12) {
@@ -54,30 +58,37 @@ function assertClose(actual, expected, label, tolerance = 1e-12) {
 
 function expectMuscleError({
   activity,
+  state,
+  regions,
   glucose = { excessMassG: 0 },
   pancreas,
 } = {}, label) {
   const writes = [];
+  const transfers = [];
   assert.throws(
     () => heartbeat({
       read: (partId) => {
-        if (partId === 'physicalActivity') return activity;
+        if (partId === 'muscleGlucose') return state;
         if (partId === 'glucose') return glucose === null ? undefined : glucose;
         if (partId === 'pancreasEndocrine') return pancreas;
+        if (activity !== undefined && partId === 'physicalActivity') return activity;
+        if (regions !== undefined && Object.hasOwn(regions, partId)) return regions[partId];
         return undefined;
       },
       actions: [],
       dt: 60,
       simulatedSeconds: 60,
       write: (next) => { writes.push(next); },
+      transfer: (...args) => { transfers.push(args); },
     }),
     Error,
     label,
   );
   assert.equal(writes.length, 0, `${label}: the round must not write`);
+  assert.equal(transfers.length, 0, `${label}: the round must not transfer`);
 }
 
-test('muscleGlucose exports the uptake, request, glycogen and consumption contract', () => {
+test('muscleGlucose exports the request and regional distribution contract', () => {
   assert.equal(id, 'muscleGlucose');
   assert.deepEqual(actionTypes, []);
   assert.deepEqual(fields, {
@@ -85,28 +96,27 @@ test('muscleGlucose exports the uptake, request, glycogen and consumption contra
       unit: 'g',
       mode: 'absolute',
       transferIn: ['glucose.glucoseMassG'],
+      transferOut: [
+        'muscleHead.uptakeG',
+        'muscleTrunk.uptakeG',
+        'muscleLimbs.uptakeG',
+      ],
     },
     uptakeRequestG: { unit: 'g', mode: 'absolute' },
-    glycogenG: { unit: 'g', mode: 'absolute' },
-    glycogenConsumedG: { unit: 'g', mode: 'absolute' },
   });
   assert.deepEqual(initialState, {
     uptakeG: 0,
     uptakeRequestG: 0,
-    glycogenG: 0,
-    glycogenConsumedG: 0,
   });
 
   const { written } = round();
   assert.deepEqual(written, {
     uptakeG: 0,
     uptakeRequestG: 0,
-    glycogenG: 0,
-    glycogenConsumedG: 0,
   });
 });
 
-test('the parameters replace the disposal share with an autonomous response', () => {
+test('the parameters keep the shared uptake and glycogen use design defaults', () => {
   const data = JSON.parse(readFileSync(parametersUrl, 'utf8'));
   assert.equal(data.owner, 'muscleGlucose');
 
@@ -204,14 +214,14 @@ test('the uptake request follows the saturating excess and insulin response form
 
 test('the request is rewritten every round from the round-start snapshot', () => {
   const zeroed = round({
-    state: { uptakeG: 0, uptakeRequestG: 3, glycogenG: 0, glycogenConsumedG: 0 },
+    state: { uptakeG: 0, uptakeRequestG: 3 },
     glucose: { excessMassG: 0 },
     pancreas: { insulinRelative: 1 },
   });
   assert.equal(zeroed.written.uptakeRequestG, 0, 'the old request is not carried over');
 
   const recomputed = round({
-    state: { uptakeG: 0, uptakeRequestG: 0, glycogenG: 0, glycogenConsumedG: 0 },
+    state: { uptakeG: 0, uptakeRequestG: 0 },
     glucose: { excessMassG: 20 },
     pancreas: { insulinRelative: 2 },
   });
@@ -230,102 +240,89 @@ test('a missing glucose or pancreas part falls back without hiding invalid loade
   );
 });
 
-test('each round books the previous uptake into glycogen and zeroes the uptake flux', () => {
-  const { written } = round({
-    state: { uptakeG: 1.2, glycogenG: 10 },
+test('settled uptake is distributed to the three regions by their shares', () => {
+  const { written, transfers } = round({
+    state: { uptakeG: 1.2, uptakeRequestG: 0 },
   });
-  assert.deepEqual(written, {
-    uptakeG: 0,
-    uptakeRequestG: 0,
-    glycogenG: 11.2,
-    glycogenConsumedG: 0,
-  });
-});
 
-test('the uptake request and the transferIn flux are independent', () => {
-  const { written } = round({
-    state: { uptakeG: 1.2, glycogenG: 10, uptakeRequestG: 0 },
-    glucose: { excessMassG: 20 },
-    pancreas: { insulinRelative: 1 },
-  });
-  assert.equal(written.uptakeG, 0, 'the received flux still resets to zero');
-  assertClose(written.uptakeRequestG, 0.25, 'the request comes from the upstream snapshot');
-  assertClose(written.glycogenG, 11.2, 'the previous uptake still books into glycogen');
-});
-
-test('exercise consumes glycogen at the reference rate times intensity and dt', () => {
-  const oneMinute = round({
-    state: { uptakeG: 0, glycogenG: 10 },
-    activity: active(30, 1),
-    dt: 60,
-  });
-  assertClose(oneMinute.written.glycogenConsumedG, 0.5, 'one minute at intensity 1');
-  assertClose(oneMinute.written.glycogenG, 9.5, 'glycogen after one minute');
-
-  const twoMinutes = round({
-    state: { uptakeG: 0, glycogenG: 10 },
-    activity: active(30, 1),
-    dt: 120,
-  });
-  assertClose(twoMinutes.written.glycogenConsumedG, 1, 'two minutes at intensity 1');
-  assertClose(twoMinutes.written.glycogenG, 9, 'glycogen after two minutes');
-
-  const halfMinuteLeft = round({
-    state: { uptakeG: 0, glycogenG: 10 },
-    activity: active(0.5, 1),
-    dt: 60,
-  });
+  assert.equal(transfers.length, 3);
+  const amounts = Object.fromEntries(
+    transfers.map(([, , toPart, toField, amount]) => {
+      assert.equal(toField, 'uptakeG');
+      return [toPart, amount];
+    }),
+  );
+  assertClose(amounts.muscleHead, 1.2 * 0.05, 'head share');
+  assertClose(amounts.muscleTrunk, 1.2 * 0.45, 'trunk share');
+  assertClose(amounts.muscleLimbs, 1.2 * 0.5, 'limbs share');
   assertClose(
-    halfMinuteLeft.written.glycogenConsumedG,
-    0.5,
-    'the last partial minute still consumes the whole dt',
+    amounts.muscleHead + amounts.muscleTrunk + amounts.muscleLimbs,
+    1.2,
+    'the shares add up to the settled uptake',
   );
 
-  const scaled = round({
-    state: { uptakeG: 0, glycogenG: 10 },
-    activity: active(30, 0.5),
-    dt: 60,
-  });
-  assertClose(scaled.written.glycogenConsumedG, 0.25, 'intensity 0.5 halves the rate');
-});
-
-test('consumption is clamped to the glycogen available this round', () => {
-  const { written } = round({
-    state: { uptakeG: 0, glycogenG: 0.2 },
-    activity: active(30, 1),
-    dt: 60,
-  });
-  assertClose(written.glycogenConsumedG, 0.2, 'only the available glycogen is consumed');
-  assert.equal(written.glycogenG, 0);
-});
-
-test('a missing physicalActivity consumes no glycogen', () => {
-  const { written } = round({
-    state: { uptakeG: 0.4, glycogenG: 10 },
-  });
-  assert.deepEqual(written, {
-    uptakeG: 0,
-    uptakeRequestG: 0,
-    glycogenG: 10.4,
-    glycogenConsumedG: 0,
-  });
-});
-
-test('a loaded activity part with missing or invalid fields fails the round', () => {
-  const invalid = [
-    ['empty part', {}],
-    ['missing intensity', { remainingExerciseMin: 10 }],
-    ['missing remaining minutes', { intensity: 1 }],
-    ['non-finite remaining minutes', { remainingExerciseMin: Number.NaN, intensity: 1 }],
-    ['negative remaining minutes', { remainingExerciseMin: -1, intensity: 1 }],
-    ['intensity below zero', { remainingExerciseMin: 10, intensity: -0.1 }],
-    ['intensity above one', { remainingExerciseMin: 10, intensity: 1.5 }],
-    ['non-finite intensity', { remainingExerciseMin: 10, intensity: Number.POSITIVE_INFINITY }],
-  ];
-
-  for (const [label, activity] of invalid) {
-    expectMuscleError({ activity }, label);
+  for (const transfer of transfers) {
+    assert.equal(transfer[0], 'muscleGlucose');
+    assert.equal(transfer[1], 'uptakeG');
   }
+  assert.equal(
+    written.uptakeG,
+    1.2,
+    'write returns the pre-transfer balance so the Gateway can subtract the transfers',
+  );
+  assert.equal('glycogenG' in written, false, 'muscleGlucose no longer stores glycogen');
+  assert.equal('glycogenConsumedG' in written, false);
+});
+
+test('the shares are normalized over the regions that are loaded', () => {
+  const headAndTrunk = round({
+    state: { uptakeG: 1, uptakeRequestG: 0 },
+    regions: { muscleHead: {}, muscleTrunk: {} },
+  });
+  assert.equal(headAndTrunk.transfers.length, 2);
+  assertClose(headAndTrunk.transfers[0][4], 0.1, 'head renormalized to 0.1');
+  assertClose(headAndTrunk.transfers[1][4], 0.9, 'trunk renormalized to 0.9');
+  assertClose(
+    headAndTrunk.transfers[0][4] + headAndTrunk.transfers[1][4],
+    1,
+    'head and trunk still distribute the whole uptake',
+  );
+
+  const limbsOnly = round({
+    state: { uptakeG: 0.7, uptakeRequestG: 0 },
+    regions: { muscleLimbs: {} },
+  });
+  assert.deepEqual(limbsOnly.transfers, [
+    ['muscleGlucose', 'uptakeG', 'muscleLimbs', 'uptakeG', 0.7],
+  ]);
+  assert.equal(limbsOnly.written.uptakeG, 0.7);
+});
+
+test('uptake stays pending when no region is loaded', () => {
+  const { written, transfers } = round({
+    state: { uptakeG: 0.7, uptakeRequestG: 0 },
+    regions: {},
+  });
+  assert.deepEqual(transfers, []);
+  assert.equal(written.uptakeG, 0.7, 'the balance is kept for a later round');
+});
+
+test('zero settled uptake produces no transfers', () => {
+  const { written, transfers } = round({
+    state: { uptakeG: 0, uptakeRequestG: 0 },
+  });
+  assert.deepEqual(transfers, []);
+  assert.equal(written.uptakeG, 0);
+});
+
+test('the per-region amounts never exceed the settled uptake', () => {
+  const { transfers } = round({
+    state: { uptakeG: 0.3, uptakeRequestG: 0 },
+    regions: { muscleHead: {}, muscleTrunk: {}, muscleLimbs: {} },
+  });
+  const total = transfers.reduce((sum, [, , , , amount]) => sum + amount, 0);
+  assert.ok(total <= 0.3, `transfers ${total} exceed the settled uptake`);
+  assertClose(total, 0.3, 'the whole uptake is distributed');
 });
 
 test('a loaded glucose or pancreas part with invalid fields fails with zero writes', () => {
@@ -346,40 +343,46 @@ test('a loaded glucose or pancreas part with invalid fields fails with zero writ
   }
 });
 
-test('muscleGlucose output is finite and JSON-safe for inactive and active rounds', () => {
+test('muscleGlucose output is finite and JSON-safe with or without regions', () => {
   const cases = [
-    { label: 'missing state and activity', options: {} },
+    { label: 'missing state and regions', options: { regions: {} } },
     {
-      label: 'active with an uptake request',
+      label: 'all regions with a request and settled uptake',
       options: {
-        state: initialState,
-        activity: active(),
+        state: { uptakeG: 1.2, uptakeRequestG: 0.3 },
         glucose: { excessMassG: 20 },
         pancreas: { insulinRelative: 2 },
       },
     },
     {
-      label: 'fractional activity and dt',
+      label: 'renormalized partial regions',
       options: {
-        state: { uptakeG: 1.2, glycogenG: 10, uptakeRequestG: 0.3 },
-        activity: active(10, 0.37),
+        state: { uptakeG: 0.7, uptakeRequestG: 0 },
+        regions: { muscleHead: {}, muscleLimbs: {} },
         glucose: { excessMassG: 7.5 },
         pancreas: { insulinRelative: 1.5 },
         dt: 90,
       },
     },
     {
-      label: 'old state and short activity',
-      options: { state: { uptakeG: 0.1, glycogenG: 0.1 }, activity: active(0.5, 1) },
+      label: 'pending uptake without regions',
+      options: { state: { uptakeG: 0.1, uptakeRequestG: 0 }, regions: {} },
     },
-    { label: 'finished activity', options: { state: initialState, activity: active(0, 1) } },
+    {
+      label: 'legacy glycogen fields are not written back',
+      options: { state: { uptakeG: 0.4, glycogenG: 10, glycogenConsumedG: 0.5 } },
+    },
   ];
 
   for (const { label, options } of cases) {
-    const { written, writes } = round(options);
+    const { written, writes, transfers } = round(options);
     assert.equal(writes.length, 1, label);
     for (const [field, value] of Object.entries(written)) {
       assert.ok(Number.isFinite(value), `${label}: ${field} must be finite`);
+    }
+    for (const transfer of transfers) {
+      assert.ok(Number.isFinite(transfer[4]), `${label}: transfer amount must be finite`);
+      assert.ok(transfer[4] >= 0, `${label}: transfer amount must not be negative`);
     }
     assertJsonValue(written);
     assert.deepEqual(JSON.parse(JSON.stringify(written)), written, label);

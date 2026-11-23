@@ -29,7 +29,12 @@ const organModules = [
   ['brain notify', 'brainNotify', '../organs/human-organs/brain/notify.ts'],
   ['skeletal muscle activity', 'physicalActivity', '../organs/human-organs/skeletal-muscle/activity.ts'],
   ['skeletal muscle glucose uptake', 'muscleGlucose', '../organs/human-organs/skeletal-muscle/glucose-uptake.ts'],
+  ['skeletal muscle head region', 'muscleHead', '../organs/human-organs/skeletal-muscle/regions/head.ts'],
+  ['skeletal muscle trunk region', 'muscleTrunk', '../organs/human-organs/skeletal-muscle/regions/trunk.ts'],
+  ['skeletal muscle limb region', 'muscleLimbs', '../organs/human-organs/skeletal-muscle/regions/limbs.ts'],
   ['mammary glands', 'mammaryGlands', '../organs/human-organs/mammary-glands/milk.ts'],
+  ['testes', 'testes', '../organs/human-organs/testes/testosterone.ts'],
+  ['epididymis', 'epididymis', '../organs/human-organs/epididymis/storage.ts'],
   ['sexual response', 'sexualResponse', '../organs/human-organs/sexual-response/response.ts'],
   ['skin sweat', 'skin', '../organs/human-organs/skin/sweat.ts'],
   ['lungs respiratory water loss', 'lungs', '../organs/human-organs/lungs/respiratory-water-loss.ts'],
@@ -50,9 +55,9 @@ for (const [label, expectedId, modulePath] of organModules) {
   });
 }
 
-test('the root manifest lists twenty-nine scripts with activity, sweat, lung water loss, blood oxygen, liver glycogen, the endocrine axes and salivary glands', () => {
+test('the root manifest lists thirty-two scripts with activity, sweat, lung water loss, blood oxygen, liver glycogen, the endocrine axes and salivary glands', () => {
   const manifest = JSON.parse(readFileSync(new URL('../body-modules.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.scripts.length, 29);
+  assert.equal(manifest.scripts.length, 32);
   assert.ok(manifest.scripts.includes('./organs/human-organs/stomach/hydration.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-compartments/glucose/glucose.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/liver/glycogen.ts'));
@@ -60,6 +65,9 @@ test('the root manifest lists twenty-nine scripts with activity, sweat, lung wat
   assert.ok(manifest.scripts.includes('./organs/human-organs/kidney/glucose-excretion.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/skeletal-muscle/activity.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/skeletal-muscle/glucose-uptake.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/skeletal-muscle/regions/head.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/skeletal-muscle/regions/trunk.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/skeletal-muscle/regions/limbs.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/sexual-response/response.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/skin/sweat.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/lungs/respiratory-water-loss.ts'));
@@ -73,14 +81,44 @@ test('the root manifest lists twenty-nine scripts with activity, sweat, lung wat
   assert.ok(manifest.scripts.includes('./organs/human-organs/salivary-glands/saliva.ts'));
   assert.equal(manifest.scripts.includes('./organs/human-organs/stomach/motility.ts'), false);
   assert.equal(manifest.scripts.includes('./organs/human-organs/mammary-glands/milk.ts'), false);
+  assert.equal(manifest.scripts.includes('./organs/human-organs/testes/testosterone.ts'), false);
+  assert.equal(manifest.scripts.includes('./organs/human-organs/epididymis/storage.ts'), false);
 });
 
-test('the female manifest lists thirty-two scripts with the glucose variant and mammary glands', () => {
+test('the female manifest lists thirty-five scripts with the glucose variant and mammary glands', () => {
   const manifest = JSON.parse(readFileSync(new URL('../body-modules.female.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.scripts.length, 32);
+  assert.equal(manifest.scripts.length, 35);
   assert.ok(manifest.scripts.includes('./organs/human-compartments/glucose/glucose.female.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/skeletal-muscle/regions/head.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/skeletal-muscle/regions/trunk.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/skeletal-muscle/regions/limbs.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/mammary-glands/milk.ts'));
   assert.equal(manifest.scripts.includes('./organs/human-compartments/glucose/glucose.ts'), false);
+});
+
+test('the male manifest adds only testes and epididymis to the root list', () => {
+  const rootManifest = JSON.parse(readFileSync(new URL('../body-modules.json', import.meta.url), 'utf8'));
+  const manifest = JSON.parse(readFileSync(new URL('../body-modules.male.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.scripts.length, 34);
+  assert.equal(manifest.scripts.length, rootManifest.scripts.length + 2);
+  assert.ok(manifest.scripts.includes('./organs/human-organs/testes/testosterone.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/epididymis/storage.ts'));
+  assert.deepEqual(
+    manifest.scripts.filter((entry) => !rootManifest.scripts.includes(entry)).sort(),
+    [
+      './organs/human-organs/epididymis/storage.ts',
+      './organs/human-organs/testes/testosterone.ts',
+    ],
+  );
+  for (const femaleEntry of [
+    './organs/human-compartments/glucose/glucose.female.ts',
+    './organs/human-compartments/body-water/water.female.ts',
+    './organs/human-organs/ovaries/menstrual-cycle.ts',
+    './organs/human-organs/uterus/uterus.ts',
+    './organs/human-organs/mammary-glands/milk.ts',
+  ]) {
+    assert.equal(manifest.scripts.includes(femaleEntry), false, `male manifest must not load ${femaleEntry}`);
+  }
 });
 
 test('duodenum treats a missing or invalid stomach reading as zero exposure', async () => {

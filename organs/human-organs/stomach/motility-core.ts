@@ -72,6 +72,14 @@
  * → 碳水链清单”借道保存待释放碳水：legacy 轮次丢弃切片的碳水身份，再切回时按 0 计，不猜历史。
  * 旧存档缺碳水字段按 0；`Ecn` 的按体积比例拆分、`Ecs` 直接复用固餐体积排出比例，都不是实测碳水
  * 排空曲线。
+ *
+ * 肠抑胃反射（design，见 docs/superpowers/specs/2026-11-24-digestive-feedback-design.md）：
+ * 轮初读取 `duodenum.nutrientExposure`（kcal/min），按
+ * `inhibition = 1 − gastricInhibitionGain × clamp(nutrientExposure, 0, 1)` 同时缩放非固餐与固餐
+ * 两组的排出比例；暴露为 0 或 `duodenum` 未加载时与旧轨迹逐点一致。`gastricInhibitionGain = 0.5`
+ * 是 design、`source: null`，不是肠抑胃反射的人体测量；把 kcal/min 暴露钳到 [0, 1] 再乘增益是工程
+ * 代理，CCK/GLP-1 等真实激素通路未建模。`duodenum` 已加载但缺少 `nutrientExposure`、读数非有限
+ * 时抛错，本轮不写任何状态。该读取滞后一轮，符合轮初快照契约。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
@@ -157,11 +165,28 @@ type Action = {
   readonly carbohydrateG?: unknown;
 };
 
+export type DuodenumReading = {
+  readonly nutrientExposure?: unknown;
+};
+
 const parameters = loadParameters(new URL('./motility.parameters.json', import.meta.url));
 const halfTimeMin = requireParameter(parameters, 'stomach.emptying.halfTimeMin');
 const baselineMl = requireParameter(parameters, 'stomach.emptying.baselineMl');
 const energyDensityGain = requireParameter(parameters, 'stomach.emptying.energyDensityGainMinPerKcalPerMl');
 const solidHalfTimeMin = requireParameter(parameters, 'stomach.emptying.solidHalfTimeMin');
+const gastricInhibitionGain = requireParameter(parameters, 'stomach.gastricInhibitionGain');
+
+export function readNutrientExposure(
+  duodenum: Readonly<DuodenumReading> | null | undefined,
+): number {
+  if (duodenum === undefined || duodenum === null) return 0;
+  if (typeof duodenum !== 'object') throw new Error('duodenum must be an object');
+  const exposure = duodenum.nutrientExposure;
+  if (typeof exposure !== 'number' || !Number.isFinite(exposure)) {
+    throw new Error('duodenum.nutrientExposure must be a finite number');
+  }
+  return Math.min(1, Math.max(0, exposure));
+}
 
 function finiteOrZero(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -329,23 +354,25 @@ export function advanceStomach(
   actions: readonly Action[],
   dt: number,
   simulatedSeconds: number,
-  { trackWater = false, trackCarbohydrate = false }: {
+  { trackWater = false, trackCarbohydrate = false, nutrientExposure = 0 }: {
     trackWater?: boolean;
     trackCarbohydrate?: boolean;
+    nutrientExposure?: number;
   } = {},
 ): StomachAdvance {
   const base = readStomachBase(prev);
   const dtMin = dt / 60;
+  const inhibition = 1 - gastricInhibitionGain * Math.min(1, Math.max(0, nutrientExposure));
   const nonSolidEnergyDensity = base.nonSolidVolumeMl > 0
     ? base.nonSolidEnergyKcal / base.nonSolidVolumeMl
     : 0;
   const halfTimeThisRound = halfTimeMin + energyDensityGain * nonSolidEnergyDensity;
   const emptiedNonSolidMl = base.nonSolidVolumeMl > 0
-    ? Math.max(0, base.nonSolidVolumeMl - baselineMl) * (1 - 2 ** (-dtMin / halfTimeThisRound))
+    ? Math.max(0, base.nonSolidVolumeMl - baselineMl) * (1 - 2 ** (-dtMin / halfTimeThisRound)) * inhibition
     : 0;
   const emptiedNonSolidKcal = emptiedNonSolidMl * nonSolidEnergyDensity;
 
-  const solidFraction = 1 - 2 ** (-dtMin / solidHalfTimeMin);
+  const solidFraction = (1 - 2 ** (-dtMin / solidHalfTimeMin)) * inhibition;
   const emptiedSolidMl = base.solidVolumeMl * solidFraction;
   const emptiedSolidKcal = base.solidEnergyKcal * solidFraction;
 

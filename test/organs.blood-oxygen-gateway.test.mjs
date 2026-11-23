@@ -246,6 +246,13 @@ test('the root body boots the endocrine parts at baseline and keeps resting dema
   assert.deepEqual(booted.pituitary, { tshRelative: 1, acthRelative: 1, prolactinRelative: 1 });
   assert.deepEqual(booted.thyroid, { thyroxineRelative: 1 });
   assert.deepEqual(booted.adrenal, { cortisolRelative: 1 });
+  for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
+    assert.deepEqual(booted[region], {
+      uptakeG: 0,
+      glycogenG: 0,
+      glycogenConsumedG: 0,
+    }, region);
+  }
   assert.equal(typeof booted.pineal.melatoninRelative, 'number');
   assert.deepEqual(booted.salivaryGlands, {
     salivaRateMlPerMin: 0.5,

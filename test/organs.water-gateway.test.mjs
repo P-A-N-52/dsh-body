@@ -29,6 +29,9 @@ const partIds = [
   'lungs',
   'lungsVentilation',
   'muscleGlucose',
+  'muscleHead',
+  'muscleLimbs',
+  'muscleTrunk',
   'pancreasEndocrine',
   'physicalActivity',
   'pineal',
@@ -212,6 +215,13 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
     involuntaryVoidedMl: 0,
   });
   assert.deepEqual(loaded.physicalActivity, { remainingExerciseMin: 0, intensity: 0 });
+  for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
+    assert.deepEqual(loaded[region], {
+      uptakeG: 0,
+      glycogenG: 0,
+      glycogenConsumedG: 0,
+    }, region);
+  }
   assert.deepEqual(loaded.sexualResponse, {
     arousalMm: 0,
     phase: 'rest',

@@ -41,6 +41,10 @@
 - [ ] Step 2: 文档（乳腺机制、催乳素、第五出口、女性葡萄糖变体、未建模：婴儿/吸吮动作/乳汁成分/孕期）。
 - [ ] Step 3: `npm test` 与 `git diff --check`。
 
-## 交付记录
+## 交付记录（2026-11-24）
 
-（Task 3 填写）
+- **已实现：** `mammaryGlands` 按 `pituitary.prolactinRelative` 产奶（`milkRequestMl = 0.5 × prolactin × dtMin`），乳汁水经 `bodyFluid` 第五出口（肾→肺→汗→子宫→乳腺）转移为 `milkMl`，乳糖经 `glucose.female.ts` 末位汇出为 `lactoseG`，`fullnessMm` 并入 `interoception.discomfort` 第六路。`pituitary.prolactinRelative` 由 `milkMl > 0`（吸吮代理）驱动。女性清单 32 部位 / 34 参数，根清单不含乳腺。
+- **已验证：** 模块与消费者链 94/94 定向测试通过；真实 Gateway 冒烟：高催乳素 → 产奶增加、体液水账含泌乳、血糖池出现乳糖汇、`fullnessMm` 与 `discomfort` 上升；`glucose.female.ts` 变体使根清单不被强制要求乳腺，女性清单缺乳腺启动报错；重启接续。合入后 `npm test` 全绿。
+- **实施中修正：** 初版 `glucose.ts` 无条件声明乳糖汇导致根清单启动失败，改为 `glucose-core.ts` 工厂 + 根入口（无乳腺）+ `glucose.female.ts`（含乳腺乳糖汇）。
+- **仍未实现/未验证：** 婴儿、吸吮动作、哺乳行为、乳腺病变、乳汁成分细分、孕期与产后阶段、独立生理数据、真实 DSH 会话、32 部位性能。
+- **工作区：** 与内分泌轴、唾液腺合入本地提交 `e0b2ae9`。

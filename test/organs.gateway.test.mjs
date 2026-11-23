@@ -9,7 +9,7 @@ import { checkpoint } from '../test-support/harness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the root manifest loads all twenty-nine body parts', async (t) => {
+test('the root manifest loads all thirty-two body parts', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-'));
   const statePath = join(dir, 'body-state.json');
   writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
@@ -67,6 +67,9 @@ test('the root manifest loads all twenty-nine body parts', async (t) => {
     'lungs',
     'lungsVentilation',
     'muscleGlucose',
+    'muscleHead',
+    'muscleLimbs',
+    'muscleTrunk',
     'pancreasEndocrine',
     'physicalActivity',
     'pineal',
@@ -101,9 +104,14 @@ test('the root manifest loads all twenty-nine body parts', async (t) => {
   assert.deepEqual(first.parts.muscleGlucose, {
     uptakeG: 0,
     uptakeRequestG: 0,
-    glycogenG: 0,
-    glycogenConsumedG: 0,
   });
+  for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
+    assert.deepEqual(first.parts[region], {
+      uptakeG: 0,
+      glycogenG: 0,
+      glycogenConsumedG: 0,
+    }, region);
+  }
   assert.deepEqual(first.parts.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
   assert.deepEqual(first.parts.hypothalamusEndocrine, { trhRelative: 1, crhRelative: 1 });
   assert.deepEqual(first.parts.pituitary, { tshRelative: 1, acthRelative: 1, prolactinRelative: 1 });
@@ -140,6 +148,7 @@ test('the root manifest loads all twenty-nine body parts', async (t) => {
     lastOrgasmAtSimMin: null,
   });
   assert.equal(first.parts.interoception.sexualArousalMm, 0);
+  assert.equal(first.parts.interoception.libidoMm, 0, 'root manifest has no testes, so libido falls back to 0');
   assert.deepEqual(first.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
   assert.deepEqual(first.parts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
   assert.deepEqual(first.parts.bloodOxygen, {

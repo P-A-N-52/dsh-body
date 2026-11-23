@@ -36,6 +36,9 @@ const partIds = [
   'lungs',
   'lungsVentilation',
   'muscleGlucose',
+  'muscleHead',
+  'muscleLimbs',
+  'muscleTrunk',
   'pancreasEndocrine',
   'physicalActivity',
   'pineal',
@@ -149,7 +152,7 @@ function snapshot(parts) {
 
 test('the root manifest keeps the normal water chain with no DI variant loaded', () => {
   const manifest = JSON.parse(readFileSync(rootManifestPath, 'utf8'));
-  assert.equal(manifest.scripts.length, 29);
+  assert.equal(manifest.scripts.length, 32);
   assert.ok(manifest.scripts.includes(normalAdhPath));
   assert.ok(manifest.scripts.includes(normalKidneyPath));
   assert.ok(manifest.scripts.includes(lungsPath));
@@ -201,9 +204,14 @@ test('the default root manifest still produces the same ten rounds point by poin
   assert.deepEqual(finalParts.muscleGlucose, {
     uptakeG: 0,
     uptakeRequestG: 0,
-    glycogenG: 0,
-    glycogenConsumedG: 0,
   });
+  for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
+    assert.deepEqual(finalParts[region], {
+      uptakeG: 0,
+      glycogenG: 0,
+      glycogenConsumedG: 0,
+    }, region);
+  }
   assert.deepEqual(finalParts.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
   assert.deepEqual(finalParts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
 });

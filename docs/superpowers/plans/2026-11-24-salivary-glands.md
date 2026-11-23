@@ -40,6 +40,9 @@
 - [ ] Step 3: 文档。
 - [ ] Step 4: `npm test` 与 `git diff --check`。
 
-## 交付记录
+## 交付记录（2026-11-24）
 
-（Task 3 填写）
+- **已实现：** `salivaryGlands` 唾液产率（基础 0.5 mL/min、进食刺激 ×3 持续 5 min、`bodyFluid.waterDeficit` 脱水减半）与 `mouthMoistureMm`；`duodenum` 对含碳水餐按 `1 + 0.05 × salivaRate / basalRate` 增益营养暴露（唾液淀粉酶）；`interoception` 新增 `dryMouthMm`（软读缺省 0）。根清单 29 部位 / 31 参数、女性 31 / 33。
+- **已验证：** 模块单元测试全绿；真实 Gateway 4 用例：`eat`/`drink` 后产率 ×3 并于 5 轮后回落、碳水餐暴露含淀粉酶增益、预置脱水存档产率下降且 `dryMouthMm` 上升、重启接续。隔离副本 147/147。
+- **仍未实现/未验证：** 唾液水账、淀粉酶浓度、吞咽/食管、口腔疾病、味觉、口咽解渴支路、独立生理数据、真实 DSH 会话、29 部位性能。
+- **工作区：** 与内分泌轴、乳腺合入本地提交 `e0b2ae9`。

@@ -53,15 +53,16 @@
 | 肾上腺 | ACTH 驱动的皮质醇相对信号，缩放肝糖释放、产生 `stressMm` 并负反馈抑制 CRH/ACTH |
 | 松果体 | 仿真昼夜褪黑素相对信号，驱动 `sleepinessMm` |
 | 体液隔室 | 体液水与水分亏缺，按肾 → 肺 → 汗结算 |
-| 葡萄糖隔室 | 可及池质量与浓度代理，超基线处置分配肌肉、残余与肾糖 |
+| 葡萄糖隔室 | 可及池质量与浓度代理，按肾 → 肝 → 肌结算摄糖请求；女性变体末位加乳腺乳糖汇 |
 | 血氧隔室 | 行为与消化氧耗、供需平衡与 SpO2 代理 |
 
-女性清单 `body-modules.female.json`（30 部位、32 份参数文件，独立存档）在此基础上增加：
+女性清单 `body-modules.female.json`（32 部位、34 份参数文件，独立存档）在此基础上增加：
 
 | 器官 | 已实现功能 |
 | --- | --- |
 | 卵巢 | 周期日与相位、雌二醇/孕酮相对量（周期长度取 Bull 2019） |
-| 子宫 | 内膜相对量、月经失水、痛经（并入 `discomfort`） |
+| 子宫 | 内膜相对量、月经失水、痛经（并入 `discomfort` 第五路） |
+| 乳腺 | 催乳素驱动的乳汁水与乳糖请求、胀奶（并入 `discomfort` 第六路；乳汁水走 `bodyFluid` 第五出口，乳糖走女性 `glucose` 变体） |
 
 完整部位与动作清单以 `body-modules.json`、`tools.js` 及各器官 README 为准。
 
@@ -110,7 +111,7 @@ dsh web
 | 入口 | 内容 |
 | --- | --- |
 | [`index.js`](index.js)、[`gateway/`](gateway/) | DSH 插件入口；本地 HTTP、动作队列、轮次结算和存档。 |
-| [`body-modules.json`](body-modules.json)、[`body-modules.female.json`](body-modules.female.json)、[`organs/human-organs/`](organs/human-organs/) | 脚本清单；[胃](organs/human-organs/stomach/README.md)、[十二指肠](organs/human-organs/duodenum/README.md)、[小肠](organs/human-organs/small-intestine/README.md)、[骨骼肌活动与肌糖原](organs/human-organs/skeletal-muscle/README.md)、[皮肤](organs/human-organs/skin/README.md)、[肺](organs/human-organs/lungs/README.md)、[胰腺](organs/human-organs/pancreas/README.md)、[肝](organs/human-organs/liver/README.md)、[肾](organs/human-organs/kidney/README.md)、[膀胱](organs/human-organs/bladder/README.md)、[卵巢](organs/human-organs/ovaries/README.md)、[子宫](organs/human-organs/uterus/README.md)、[甲状腺](organs/human-organs/thyroid/README.md)、[肾上腺](organs/human-organs/adrenal/README.md)、[松果体](organs/human-organs/pineal/README.md)、[体感和提醒](organs/human-organs/brain/README.md)的模块、参数与证据；[体液隔室](organs/human-compartments/body-water/README.md)、[葡萄糖隔室](organs/human-compartments/glucose/README.md)与[血氧隔室](organs/human-compartments/blood-oxygen/README.md)是隔室而不是器官。女性清单另用独立存档。 |
+| [`body-modules.json`](body-modules.json)、[`body-modules.female.json`](body-modules.female.json)、[`organs/human-organs/`](organs/human-organs/) | 脚本清单；[胃](organs/human-organs/stomach/README.md)、[十二指肠](organs/human-organs/duodenum/README.md)、[小肠](organs/human-organs/small-intestine/README.md)、[骨骼肌活动与肌糖原](organs/human-organs/skeletal-muscle/README.md)、[皮肤](organs/human-organs/skin/README.md)、[肺](organs/human-organs/lungs/README.md)、[胰腺](organs/human-organs/pancreas/README.md)、[肝](organs/human-organs/liver/README.md)、[肾](organs/human-organs/kidney/README.md)、[膀胱](organs/human-organs/bladder/README.md)、[卵巢](organs/human-organs/ovaries/README.md)、[子宫](organs/human-organs/uterus/README.md)、[乳腺](organs/human-organs/mammary-glands/README.md)、[甲状腺](organs/human-organs/thyroid/README.md)、[肾上腺](organs/human-organs/adrenal/README.md)、[松果体](organs/human-organs/pineal/README.md)、[体感和提醒](organs/human-organs/brain/README.md)的模块、参数与证据；[体液隔室](organs/human-compartments/body-water/README.md)、[葡萄糖隔室](organs/human-compartments/glucose/README.md)与[血氧隔室](organs/human-compartments/blood-oxygen/README.md)是隔室而不是器官。女性清单另用独立存档。 |
 | [`docs/gateway-and-scripts.md`](docs/gateway-and-scripts.md)、[`docs/gateway-operations.md`](docs/gateway-operations.md) | 当前接口、脚本接入，以及 `write` / `add` / `transfer` 的边界。 |
 | [`docs/superpowers/specs/`](docs/superpowers/specs/) | 已批准的设计文档：器官模型、固／液餐、水链、碳水—血糖、胰腺相对胰岛素、肾糖、口渴提醒、活动—皮肤出汗、运动相关呼吸失水、过度充盈与不适、女性生殖周期、肝糖原与胰高血糖素、血氧池与肺通气、内分泌轴与松果体、可选 DI 样代理。 |
 | [`docs/virtual-body.md`](docs/virtual-body.md) | 设计草案与路线图，设计目标不等于已实现功能。 |

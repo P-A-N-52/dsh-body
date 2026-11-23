@@ -38,6 +38,8 @@ const parametersFiles = [
   { label: 'organs/human-organs/uterus/uterus.parameters.json', url: new URL('../organs/human-organs/uterus/uterus.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/mammary-glands/milk.parameters.json', url: new URL('../organs/human-organs/mammary-glands/milk.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/sexual-response/response.parameters.json', url: new URL('../organs/human-organs/sexual-response/response.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/testes/testosterone.parameters.json', url: new URL('../organs/human-organs/testes/testosterone.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/epididymis/storage.parameters.json', url: new URL('../organs/human-organs/epididymis/storage.parameters.json', import.meta.url) },
 ];
 
 const sourcedStatuses = new Set(['prior', 'fitted_dev', 'validated']);
@@ -118,9 +120,14 @@ test('glucose parameters keep the fixed design defaults', () => {
   assert.deepEqual(byId['glucose.residualDisposalHalfTimeMin'].range, [10, 300]);
 });
 
-test('the parameter inventory covers thirty-four files including blood oxygen, liver glycogen, the endocrine axes, salivary glands and mammary glands', () => {
-  assert.equal(parametersFiles.length, 34);
+test('the parameter inventory covers thirty-six files including blood oxygen, the endocrine axes, salivary glands, mammary glands and the male organs', () => {
+  assert.equal(parametersFiles.length, 36);
   const labels = parametersFiles.map(({ label }) => label);
+  assert.equal(
+    labels.some((label) => label.includes('/skeletal-muscle/regions/')),
+    false,
+    'the three regional muscle parts reuse glucose-uptake.parameters.json; they add no parameter file',
+  );
   assert.ok(labels.includes('organs/human-organs/salivary-glands/saliva.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/pancreas/insulin.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/kidney/glucose-excretion.parameters.json'));
@@ -134,6 +141,8 @@ test('the parameter inventory covers thirty-four files including blood oxygen, l
   assert.ok(labels.includes('organs/human-organs/uterus/uterus.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/mammary-glands/milk.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/sexual-response/response.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/testes/testosterone.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/epididymis/storage.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/brain/hypothalamus-endocrine.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/brain/pituitary.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/thyroid/thyroid.parameters.json'));

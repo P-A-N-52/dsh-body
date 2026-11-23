@@ -38,6 +38,13 @@ test('cola replay records energy intake and the design interoception readout', (
   assert.ok(atFive['stomach.volumeMl'] > 0);
   assert.ok(atFive['stomach.energyKcal'] > 0);
   assert.ok(atFive['stomachGhrelin.relativeConcentration'] < 0.55);
+  assert.ok(atFive['stomachGhrelin.relativeConcentration'] > 0.2);
   assert.ok(atFive['interoception.hunger'] < 50);
   assert.ok(atFive['interoception.fullness'] > 0);
+
+  const atNinety = result.observations.find((entry) => entry.simMin === 90);
+  assert.ok(
+    atNinety['stomachGhrelin.relativeConcentration'] > atFive['stomachGhrelin.relativeConcentration'],
+    'ghrelin should recover as distension and nutrient exposure fade',
+  );
 });

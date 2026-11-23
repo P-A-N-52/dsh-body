@@ -304,7 +304,7 @@ test('body_state returns all parts or one part', async (t) => {
 
   const all = await tools.body_state.execute({}, fakeExec({ callId: 'call-2' }));
   assert.equal(all.simulatedSeconds, 60);
-  assert.equal(Object.keys(all.parts).length, 29);
+  assert.equal(Object.keys(all.parts).length, 32);
   for (const part of [
     'stomach',
     'stomachGhrelin',
@@ -315,6 +315,9 @@ test('body_state returns all parts or one part', async (t) => {
     'glucose',
     'liver',
     'muscleGlucose',
+    'muscleHead',
+    'muscleLimbs',
+    'muscleTrunk',
     'pancreasEndocrine',
     'kidneyGlucose',
     'bodyFluid',
@@ -347,6 +350,7 @@ test('body_state returns all parts or one part', async (t) => {
     lastOrgasmAtSimMin: null,
   });
   assert.equal(all.parts.interoception.sexualArousalMm, 0);
+  assert.equal(all.parts.interoception.libidoMm, 0);
   assert.deepEqual(all.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
   assert.deepEqual(all.parts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
   assert.deepEqual(all.parts.bloodOxygen, {
@@ -386,9 +390,14 @@ test('body_state returns all parts or one part', async (t) => {
   assert.deepEqual(all.parts.muscleGlucose, {
     uptakeG: 0,
     uptakeRequestG: 0,
-    glycogenG: 0,
-    glycogenConsumedG: 0,
   });
+  for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
+    assert.deepEqual(all.parts[region], {
+      uptakeG: 0,
+      glycogenG: 0,
+      glycogenConsumedG: 0,
+    }, region);
+  }
   assert.deepEqual(all.parts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
   assert.ok(all.parts.stomach.volumeMl > 0);
 
@@ -444,14 +453,15 @@ test('solid and liquid meals empty at different rates through the body tools', a
     `solid energy ${readings.solid.energyKcal} should exceed liquid ${readings.liquid.energyKcal}`,
   );
 
-  const liquidRemaining = 2 ** (-30 / (13 + 53.75 * (200 / 300)));
+  const liquidNoFeedbackMl = 300 * 2 ** (-30 / (13 + 53.75 * (200 / 300)));
   assert.ok(
-    Math.abs(readings.liquid.volumeMl - 300 * liquidRemaining) < 1e-9,
-    `liquid volume ${readings.liquid.volumeMl} should follow the original formula`,
+    readings.liquid.volumeMl > liquidNoFeedbackMl,
+    `liquid volume ${readings.liquid.volumeMl} should be slowed by duodenum feedback (${liquidNoFeedbackMl})`,
   );
+  assert.ok(readings.liquid.volumeMl < 300);
   assert.ok(
-    Math.abs(readings.liquid.energyKcal - 200 * liquidRemaining) < 1e-9,
-    `liquid energy ${readings.liquid.energyKcal} should follow the original formula`,
+    Math.abs(readings.liquid.energyKcal - readings.liquid.volumeMl * (200 / 300)) < 1e-9,
+    'non-solid emptying should keep the meal energy density',
   );
 });
 

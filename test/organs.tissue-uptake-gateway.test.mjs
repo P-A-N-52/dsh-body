@@ -18,6 +18,11 @@ const initialLiverGlycogenG = 80;
 const liverCapacityG = 100;
 const ledgerToleranceG = 1e-6;
 const poolToleranceG = 1e-9;
+const muscleRegions = ['muscleHead', 'muscleTrunk', 'muscleLimbs'];
+
+function muscleSum(parts, field) {
+  return muscleRegions.reduce((sum, region) => sum + parts[region][field], 0);
+}
 
 function silence(t) {
   for (const method of ['log', 'error', 'warn']) {
@@ -68,7 +73,8 @@ function carbohydrateLedgerG(parts, cumulative) {
     + (parts.glucose.glucoseMassG - baselineMassG)
     + cumulative.disposedG
     + cumulative.excretedG
-    + parts.muscleGlucose.glycogenG
+    + muscleSum(parts, 'glycogenG')
+    + muscleSum(parts, 'uptakeG')
     + parts.muscleGlucose.uptakeG
     + cumulative.muscleConsumedG
     + (parts.liver.glycogenG - initialLiverGlycogenG)
@@ -136,7 +142,7 @@ test('a carb meal produces an emergent rise-then-fall trajectory with a per-roun
     );
     cumulative.disposedG += parts.glucose.disposedGlucoseG;
     cumulative.excretedG += parts.kidneyGlucose.excretedGlucoseG;
-    cumulative.muscleConsumedG += parts.muscleGlucose.glycogenConsumedG;
+    cumulative.muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
     assert.ok(
       Math.abs(carbohydrateLedgerG(parts, cumulative) - 60) <= ledgerToleranceG,
       `${label}: carbohydrate ledger ${carbohydrateLedgerG(parts, cumulative)}`,
@@ -327,7 +333,7 @@ test('restarting keeps pending requests and books the in-flight uptake and stora
     assertPoolBalance(previousMassG, parts, `pre-restart round ${round}`);
     cumulative.disposedG += parts.glucose.disposedGlucoseG;
     cumulative.excretedG += parts.kidneyGlucose.excretedGlucoseG;
-    cumulative.muscleConsumedG += parts.muscleGlucose.glycogenConsumedG;
+    cumulative.muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
     previousMassG = parts.glucose.glucoseMassG;
   }
 
@@ -348,11 +354,15 @@ test('restarting keeps pending requests and books the in-flight uptake and stora
   const after = gateway.getState().parts;
   const before = beforeRestart.parts;
   assert.ok(
+    Math.abs(muscleSum(after, 'uptakeG') - before.muscleGlucose.uptakeG) <= 1e-12,
+    'the restored muscle uptake must move to the regions exactly once',
+  );
+  assert.ok(
     Math.abs(
-      after.muscleGlucose.glycogenG
-        - (before.muscleGlucose.glycogenG + before.muscleGlucose.uptakeG),
+      muscleSum(after, 'glycogenG')
+        - (muscleSum(before, 'glycogenG') + muscleSum(before, 'uptakeG')),
     ) <= 1e-12,
-    'the restored muscle uptake must be booked exactly once',
+    'the handoff round books only the regional uptake that was already in flight',
   );
   assert.ok(
     Math.abs(
@@ -368,9 +378,21 @@ test('restarting keeps pending requests and books the in-flight uptake and stora
   );
   assertPoolBalance(before.glucose.glucoseMassG, after, 'post-restart round');
 
+  await gateway.tick();
+  const booked = gateway.getState().parts;
+  assert.ok(
+    Math.abs(
+      muscleSum(booked, 'glycogenG')
+        - (muscleSum(before, 'glycogenG')
+          + muscleSum(before, 'uptakeG')
+          + before.muscleGlucose.uptakeG),
+    ) <= 1e-12,
+    'the restored muscle uptake must be booked exactly once',
+  );
+
   cumulative.disposedG += after.glucose.disposedGlucoseG;
   cumulative.excretedG += after.kidneyGlucose.excretedGlucoseG;
-  cumulative.muscleConsumedG += after.muscleGlucose.glycogenConsumedG;
+  cumulative.muscleConsumedG += muscleSum(after, 'glycogenConsumedG');
   assert.ok(
     Math.abs(carbohydrateLedgerG(after, cumulative) - seededLedgerG) <= ledgerToleranceG,
     'the seeded excess ledger must stay balanced across restart',

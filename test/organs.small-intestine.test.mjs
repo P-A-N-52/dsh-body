@@ -10,11 +10,11 @@ import {
 } from '../organs/human-organs/small-intestine/water-absorption.ts';
 import { applyOperations, createFieldRegistry } from '../gateway/operations.js';
 
-function round(state, dt = 60) {
+function round(state, dt = 60, parts = {}) {
   let written;
   const transfers = [];
   heartbeat({
-    read: () => state,
+    read: (partId) => (partId === 'smallIntestine' ? state : parts[partId]),
     actions: [],
     dt,
     simulatedSeconds: 60,
@@ -309,4 +309,111 @@ test('the carbohydrate pool plus cumulative absorption is conserved over 200 rou
     };
   }
   assert.ok(Math.abs(state.carbohydrateG + absorbed - 60) < 1e-6);
+});
+
+test('dehydration scales water absorption by the dehydration factor', () => {
+  const start = { ...initialState, waterVolumeMl: 100 };
+  const baseline = absorbedFrom(100);
+  const half = round(start, 60, { bodyFluid: { waterDeficit: 1 } }).written;
+  assert.ok(Math.abs(half.absorbedWaterMl - baseline * 0.5) < 1e-12);
+  const quarter = round(start, 60, { bodyFluid: { waterDeficit: 0.5 } }).written;
+  assert.ok(Math.abs(quarter.absorbedWaterMl - baseline * 0.75) < 1e-12);
+});
+
+test('water deficit clamps to the unit interval and missing bodyFluid keeps the rate', () => {
+  const start = { ...initialState, waterVolumeMl: 100 };
+  const baseline = round(start).written;
+  assert.deepEqual(round(start, 60, { bodyFluid: { waterDeficit: 2 } }).written,
+    round(start, 60, { bodyFluid: { waterDeficit: 1 } }).written);
+  assert.deepEqual(round(start, 60, { bodyFluid: { waterDeficit: -1 } }).written, baseline);
+  assert.deepEqual(round(start, 60, { bodyFluid: { waterDeficit: 0 } }).written, baseline);
+});
+
+test('insulin and the glucose gradient raise carbohydrate absorption', () => {
+  const start = { ...initialState, carbohydrateG: 60 };
+  const baseline = absorbedCarbohydrateFrom(60);
+  const both = round(start, 60, {
+    pancreasEndocrine: { insulinRelative: 2 },
+    glucose: { concentrationMgDl: 180 },
+  }).written;
+  assert.ok(Math.abs(both.absorbedCarbohydrateG - baseline * 1.4) < 1e-12);
+
+  const insulinOnly = round(start, 60, {
+    pancreasEndocrine: { insulinRelative: 2 },
+    glucose: { concentrationMgDl: 90 },
+  }).written;
+  assert.ok(Math.abs(insulinOnly.absorbedCarbohydrateG - baseline * 1.2) < 1e-12);
+
+  const gradientOnly = round(start, 60, {
+    pancreasEndocrine: { insulinRelative: 1 },
+    glucose: { concentrationMgDl: 180 },
+  }).written;
+  assert.ok(Math.abs(gradientOnly.absorbedCarbohydrateG - baseline * 1.2) < 1e-12);
+
+  const baselineRound = round(start, 60, {
+    pancreasEndocrine: { insulinRelative: 1 },
+    glucose: { concentrationMgDl: 90 },
+  }).written;
+  assert.ok(Math.abs(baselineRound.absorbedCarbohydrateG - baseline) < 1e-12);
+});
+
+test('missing glucose and pancreas parts keep the original carbohydrate rate', () => {
+  const start = { ...initialState, carbohydrateG: 60 };
+  assert.deepEqual(round(start).written, round(start, 60, {
+    glucose: undefined,
+    pancreasEndocrine: undefined,
+  }).written);
+});
+
+test('invalid upstream readings throw before writing or transferring', () => {
+  const cases = [
+    ['bodyFluid', {}],
+    ['bodyFluid', { waterDeficit: Number.NaN }],
+    ['bodyFluid', { waterDeficit: Number.POSITIVE_INFINITY }],
+    ['glucose', {}],
+    ['glucose', { concentrationMgDl: Number.NaN }],
+    ['glucose', { concentrationMgDl: -1 }],
+    ['pancreasEndocrine', {}],
+    ['pancreasEndocrine', { insulinRelative: Number.NaN }],
+    ['pancreasEndocrine', { insulinRelative: Number.POSITIVE_INFINITY }],
+    ['pancreasEndocrine', { insulinRelative: -1 }],
+  ];
+  for (const [partId, reading] of cases) {
+    let written;
+    const transfers = [];
+    assert.throws(() => {
+      heartbeat({
+        read: (id) => (id === 'smallIntestine'
+          ? { ...initialState, waterVolumeMl: 100, carbohydrateG: 60 }
+          : id === partId ? reading : undefined),
+        actions: [],
+        dt: 60,
+        simulatedSeconds: 60,
+        write: (next) => { written = next; },
+        transfer: (...args) => transfers.push(args),
+      });
+    }, new RegExp(`${partId}\\.`));
+    assert.equal(written, undefined);
+    assert.equal(transfers.length, 0);
+  }
+});
+
+test('absorption feedback parameters are design placeholders', () => {
+  const data = JSON.parse(readFileSync(
+    new URL('../organs/human-organs/small-intestine/water-absorption.parameters.json', import.meta.url),
+    'utf8',
+  ));
+  const byId = Object.fromEntries(data.parameters.map((parameter) => [parameter.id, parameter]));
+  for (const [parameterId, value, unit] of [
+    ['smallIntestine.waterAbsorptionDehydrationFactor', 0.5, '1'],
+    ['smallIntestine.carbAbsorptionInsulinGain', 0.2, '1'],
+    ['smallIntestine.carbAbsorptionGradientGain', 0.2, '1'],
+  ]) {
+    const parameter = byId[parameterId];
+    assert.ok(parameter, `${parameterId} must be declared`);
+    assert.equal(parameter.value, value, `${parameterId}: value`);
+    assert.equal(parameter.unit, unit, `${parameterId}: unit`);
+    assert.equal(parameter.status, 'design', `${parameterId}: status`);
+    assert.equal(parameter.source, null, `${parameterId}: source`);
+  }
 });

@@ -37,6 +37,15 @@
       "range": [1, 240],
       "source": "SRC-VASAVID-2014",
       "note": "Vasavid 2014 Results 描述统计表中健康成人米饭鸡蛋标准餐的标记固相半排空时间中位数 68.7 min（第 5–95 百分位 45.1–107.8）；该值是标记保留曲线的拟合值，不是胃内 mL 或 kcal 的半时。把 68.7 min 当作已入胃固餐小计的固定一阶时间常数是工程假设，未复现 18.6 min 滞后；range 是工程调参范围，不是人体百分位"
+    },
+    {
+      "id": "stomach.gastricInhibitionGain",
+      "unit": "1",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "肠抑胃反射的工程增益：inhibition = 1 − gain × clamp(duodenum.nutrientExposure, 0, 1)，同时缩放非固餐与固餐排空。暴露单位是 kcal/min，先钳到 [0, 1] 再乘增益；满暴露时排空减半。不是肠抑胃反射或 CCK/GLP-1 的人体测量"
     }
   ]
 }

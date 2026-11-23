@@ -20,10 +20,14 @@
  * 不支持“水链清单 → legacy 清单 → 水链清单”借道保存待释放水：切到 legacy 后用掉的轮次会丢弃
  * 切片的水身份，再切回 `hydration.ts` 时队列水按 0 计，不猜历史饮品。
  *
+ * 肠抑胃反射（design）：轮初读取 `duodenum.nutrientExposure`，经核心按
+ * `1 − 0.5 × clamp(exposure, 0, 1)` 缩放两组排空；`duodenum` 未加载按 0，已加载但读数非法抛错。
+ *
  * 根清单的饮水链入口是 `hydration.ts`；同一清单不能同时加载两个 `stomach`。
  */
 import {
   advanceStomach,
+  readNutrientExposure,
   stomachActionTypes,
   stomachFields,
   stomachInitialState,
@@ -44,6 +48,7 @@ type Action = {
 
 type IO = {
   read(id: 'stomach'): Readonly<typeof initialState> | undefined;
+  read(id: 'duodenum'): Readonly<{ nutrientExposure?: unknown }> | undefined;
   readonly actions: readonly Action[];
   readonly dt: number;
   readonly simulatedSeconds: number;
@@ -52,6 +57,9 @@ type IO = {
 
 export function heartbeat(io: IO): void {
   const prev = io.read(id) ?? initialState;
-  const { state } = advanceStomach(prev, io.actions, io.dt, io.simulatedSeconds);
+  const nutrientExposure = readNutrientExposure(io.read('duodenum'));
+  const { state } = advanceStomach(prev, io.actions, io.dt, io.simulatedSeconds, {
+    nutrientExposure,
+  });
   io.write(state);
 }

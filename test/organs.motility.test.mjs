@@ -1,16 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { fields, heartbeat, initialState } from '../organs/human-organs/stomach/motility.ts';
 import {
   heartbeat as hydrationHeartbeat,
   initialState as hydrationInitialState,
 } from '../organs/human-organs/stomach/hydration.ts';
 
-function hydrationRound(state, actions = []) {
+function hydrationRound(state, actions = [], duodenum = undefined) {
   let written;
   const transfers = [];
   hydrationHeartbeat({
-    read: () => state,
+    read: (partId) => (partId === 'stomach' ? state : partId === 'duodenum' ? duodenum : undefined),
     actions,
     dt: 60,
     simulatedSeconds: 60,
@@ -60,10 +61,10 @@ function assertNoCarbohydrateFields(state) {
   }
 }
 
-function round(state, actions = []) {
+function round(state, actions = [], duodenum = undefined) {
   let written;
   heartbeat({
-    read: () => state,
+    read: (partId) => (partId === 'stomach' ? state : partId === 'duodenum' ? duodenum : undefined),
     actions,
     dt: 60,
     simulatedSeconds: 60,
@@ -323,7 +324,7 @@ test('the legacy entry keeps the pre-carbohydrate state shape and strips queue m
   const transfers = [];
   let written;
   heartbeat({
-    read: () => ({ ...initialState }),
+    read: (partId) => (partId === 'stomach' ? { ...initialState } : undefined),
     actions: [{ type: 'drink', volumeMl: 240, durationMin: 3, carbohydrateG: 90 }],
     dt: 60,
     simulatedSeconds: 60,
@@ -334,4 +335,87 @@ test('the legacy entry keeps the pre-carbohydrate state shape and strips queue m
   assertNoCarbohydrateFields(written);
   assert.equal(written.mealQueue.length, 1);
   assertNoCarbohydrateMetadata(written);
+});
+
+test('duodenum nutrient exposure halves emptying at full exposure', () => {
+  const start = { ...initialState, volumeMl: 240 };
+  const control = round(start);
+  const exposed = round(start, [], { nutrientExposure: 1 });
+  assert.ok(Math.abs(exposed.emptiedMl - control.emptiedMl * 0.5) < 1e-12);
+  assert.ok(Math.abs(exposed.volumeMl - (240 - control.emptiedMl * 0.5)) < 1e-12);
+});
+
+test('half exposure scales emptying by the 0.5 inhibition gain', () => {
+  const start = { ...initialState, volumeMl: 240 };
+  const control = round(start);
+  const exposed = round(start, [], { nutrientExposure: 0.5 });
+  assert.ok(Math.abs(exposed.emptiedMl - control.emptiedMl * 0.75) < 1e-12);
+});
+
+test('zero or missing duodenum exposure keeps the original trajectory', () => {
+  const start = { ...initialState, volumeMl: 240, energyKcal: 40 };
+  assert.deepEqual(round(start), round(start, [], { nutrientExposure: 0 }));
+});
+
+test('duodenum exposure clamps to the unit interval', () => {
+  const start = { ...initialState, volumeMl: 240 };
+  assert.deepEqual(round(start, [], { nutrientExposure: 2 }), round(start, [], { nutrientExposure: 1 }));
+  assert.deepEqual(round(start, [], { nutrientExposure: -1 }), round(start));
+});
+
+test('solid emptying is scaled by the same inhibition', () => {
+  const start = {
+    ...initialState,
+    volumeMl: 100,
+    energyKcal: 50,
+    solidVolumeMl: 100,
+    solidEnergyKcal: 50,
+  };
+  const control = round(start);
+  const exposed = round(start, [], { nutrientExposure: 1 });
+  assert.ok(control.emptiedMl > 0);
+  assert.ok(Math.abs(exposed.emptiedMl - control.emptiedMl * 0.5) < 1e-12);
+  assert.ok(Math.abs(exposed.emptiedKcal - control.emptiedKcal * 0.5) < 1e-12);
+});
+
+test('an invalid duodenum exposure throws before writing state', () => {
+  for (const duodenum of [
+    {},
+    { nutrientExposure: Number.NaN },
+    { nutrientExposure: Number.POSITIVE_INFINITY },
+    { nutrientExposure: '0.5' },
+  ]) {
+    let written;
+    assert.throws(() => {
+      heartbeat({
+        read: (partId) => (partId === 'stomach' ? { ...initialState, volumeMl: 240 } : duodenum),
+        actions: [],
+        dt: 60,
+        simulatedSeconds: 60,
+        write: (next) => { written = next; },
+      });
+    }, /duodenum\.nutrientExposure/);
+    assert.equal(written, undefined);
+  }
+});
+
+test('the hydration entry applies the same duodenum inhibition to emptied water', () => {
+  const start = { ...hydrationInitialState, volumeMl: 240, waterVolumeMl: 240 };
+  const control = hydrationRound(start).state;
+  const exposed = hydrationRound(start, [], { nutrientExposure: 1 }).state;
+  assert.ok(control.emptiedWaterMl > 0);
+  assert.ok(Math.abs(exposed.emptiedWaterMl - control.emptiedWaterMl * 0.5) < 1e-12);
+});
+
+test('gastric inhibition gain is a design placeholder', () => {
+  const data = JSON.parse(readFileSync(
+    new URL('../organs/human-organs/stomach/motility.parameters.json', import.meta.url),
+    'utf8',
+  ));
+  const parameter = data.parameters.find((entry) => entry.id === 'stomach.gastricInhibitionGain');
+  assert.ok(parameter, 'stomach.gastricInhibitionGain must be declared');
+  assert.equal(parameter.value, 0.5);
+  assert.equal(parameter.unit, '1');
+  assert.equal(parameter.status, 'design');
+  assert.equal(parameter.source, null);
 });

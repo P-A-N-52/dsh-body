@@ -53,7 +53,7 @@ function hungerNotifications(notifications) {
   return notifications.filter((notification) => notification.text.includes('饥饿'));
 }
 
-test('1200 rounds without energy intake raises hunger and an energy drink resets it', async (t) => {
+test('1200 rounds without energy intake raises hunger and an energy drink suppresses it by dose', async (t) => {
   silence(t);
   const { gateway } = await startBody(t);
 
@@ -89,7 +89,10 @@ test('1200 rounds without energy intake raises hunger and an energy drink resets
 
   await gateway.tick();
   const suppressed = gateway.getState().parts;
-  assert.equal(suppressed.stomachGhrelin.relativeConcentration, 0.5);
+  assert.ok(
+    Math.abs(suppressed.stomachGhrelin.relativeConcentration - 0.276) < 1e-12,
+    `ghrelin ${suppressed.stomachGhrelin.relativeConcentration} should be nadir minus the 140 kcal dose`,
+  );
   assert.equal(suppressed.stomachGhrelin.minutesSinceEnergyIntake, 0);
 
   await gateway.tick();

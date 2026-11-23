@@ -32,9 +32,14 @@
  * 比例拆分碳水，`mixed` 归入非固餐组，都是 design 比例假设，糖组成、纤维、胃内混合与选择性排空
  * 不建模。没有非固餐体积时不虚构碳水排空，但零体积仍有余碳的队列末轮会释放余量。旧档缺碳水
  * 字段按 0；legacy 入口剥离队列碳水元数据，不支持借 legacy 清单往返保存待释放碳水。
+ *
+ * 肠抑胃反射（design）：轮初读取 `duodenum.nutrientExposure`，经核心按
+ * `1 − 0.5 × clamp(exposure, 0, 1)` 缩放两组排空；水子集仍按非固餐排出量与轮初水占比拆分，
+ * 因此水与碳水一起随暴露减慢。`duodenum` 未加载按 0，已加载但读数非法抛错。
  */
 import {
   advanceStomach,
+  readNutrientExposure,
   readStomachBase,
   stomachActionTypes,
   stomachFields,
@@ -73,6 +78,7 @@ type Action = {
 
 type IO = {
   read(id: 'stomach'): Readonly<typeof initialState> | undefined;
+  read(id: 'duodenum'): Readonly<{ nutrientExposure?: unknown }> | undefined;
   readonly actions: readonly Action[];
   readonly dt: number;
   readonly simulatedSeconds: number;
@@ -88,12 +94,13 @@ type IO = {
 
 export function heartbeat(io: IO): void {
   const prev = io.read(id) ?? initialState;
+  const nutrientExposure = readNutrientExposure(io.read('duodenum'));
   const { state, emptiedNonSolidMl, deliveredWaterMl, carbohydrate } = advanceStomach(
     prev,
     io.actions,
     io.dt,
     io.simulatedSeconds,
-    { trackWater: true, trackCarbohydrate: true },
+    { trackWater: true, trackCarbohydrate: true, nutrientExposure },
   );
   const { nonSolidVolumeMl, waterVolumeMl } = readStomachBase(prev);
   const emptiedWaterMl = nonSolidVolumeMl > 0

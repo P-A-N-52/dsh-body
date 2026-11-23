@@ -13,6 +13,11 @@ const baselineMassG = 12.69;
 const distributionVolumeDl = 141;
 const initialLiverGlycogenG = 80;
 const ledgerToleranceG = 1e-6;
+const muscleRegions = ['muscleHead', 'muscleTrunk', 'muscleLimbs'];
+
+function muscleSum(parts, field) {
+  return muscleRegions.reduce((sum, region) => sum + parts[region][field], 0);
+}
 
 function silence(t) {
   for (const method of ['log', 'error', 'warn']) {
@@ -62,7 +67,8 @@ function carbohydrateLedgerG(parts, cumulative) {
     + (parts.glucose.glucoseMassG - baselineMassG)
     + cumulative.disposedG
     + cumulative.excretedG
-    + parts.muscleGlucose.glycogenG
+    + muscleSum(parts, 'glycogenG')
+    + muscleSum(parts, 'uptakeG')
     + parts.muscleGlucose.uptakeG
     + cumulative.muscleConsumedG
     + (parts.liver.glycogenG - initialLiverGlycogenG)
@@ -103,7 +109,7 @@ test('a carb-rich meal raises glucose, then disposal lowers it while the liver s
     }
     cumulative.disposedG += parts.glucose.disposedGlucoseG;
     cumulative.excretedG += parts.kidneyGlucose.excretedGlucoseG;
-    cumulative.muscleConsumedG += parts.muscleGlucose.glycogenConsumedG;
+    cumulative.muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
     const ledgerG = carbohydrateLedgerG(parts, cumulative);
     assert.ok(
       Math.abs(ledgerG - 60) <= ledgerToleranceG,
@@ -172,8 +178,15 @@ test('high glucose disposes into muscle and liver, then low glucose releases liv
     'the liver must book the previous round storage',
   );
   assert.ok(
-    high4.muscleGlucose.glycogenG > 0,
-    'the muscle must book the previous round uptake',
+    muscleSum(high4, 'uptakeG') > 0,
+    'the muscle regions must receive the previous round uptake',
+  );
+
+  await high.tick();
+  const high5 = high.getState().parts;
+  assert.ok(
+    muscleSum(high5, 'glycogenG') > 0,
+    'the muscle regions must book the previous round uptake',
   );
 
   const low = makeBody(t, {

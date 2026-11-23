@@ -32,6 +32,19 @@
  * 网关的 write 在 transfer 之前应用：本脚本写回的是本轮转出前的轮初池，随后由 `io.transfer`
  * 扣除吸收量。胃同轮转入的水和碳水在 transfer 阶段才加入肠池，下一轮才参与吸收，因此不会
  * 放大本轮的吸收量。旧存档没有 `waterVolumeMl` / `carbohydrateG` 时按 0 读取。
+ *
+ * 吸收反馈（design，见 docs/superpowers/specs/2026-11-24-digestive-feedback-design.md）：
+ *   waterFactor = 1 − waterAbsorptionDehydrationFactor × clamp(bodyFluid.waterDeficit, 0, 1)
+ *   carbFactor  = 1 + carbAbsorptionInsulinGain × (pancreasEndocrine.insulinRelative − 1)
+ *                 + carbAbsorptionGradientGain × (glucose.concentrationMgDl / 90 − 1)
+ * 吸收量 = 原一阶吸收 × 对应 factor。90 mg/dL 是硬编码的工程参考浓度（与
+ * `glucose.baselineConcentrationMgDl = 90` 对齐），不跨模块读取参数。三个增益参数全部为
+ * design、`source: null`，不是水合-吸收或胰岛素-吸收的人体实测斜率；转运体、渗透压、血流与
+ * 肠段差异不建模。
+ *
+ * 上游契约：`bodyFluid` / `glucose` / `pancreasEndocrine` 未加载（undefined/null）时对应 factor
+ * 按 1（原速率）；部位已加载但字段缺失、非有限或为负时抛错，本轮不写状态也不发 transfer。
+ * 水亏缺按 [0, 1] 钳位，超出不报错；读数来自轮初快照，滞后一轮。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
@@ -69,8 +82,23 @@ export const fields = {
   absorbedCarbohydrateG: { unit: 'g', mode: 'absolute' },
 };
 
+type BodyFluidReading = {
+  readonly waterDeficit?: unknown;
+};
+
+type GlucoseReading = {
+  readonly concentrationMgDl?: unknown;
+};
+
+type PancreasReading = {
+  readonly insulinRelative?: unknown;
+};
+
 type IO = {
   read(id: 'smallIntestine'): Readonly<SmallIntestineState> | undefined;
+  read(id: 'bodyFluid'): Readonly<BodyFluidReading> | undefined;
+  read(id: 'glucose'): Readonly<GlucoseReading> | undefined;
+  read(id: 'pancreasEndocrine'): Readonly<PancreasReading> | undefined;
   readonly dt: number;
   write(next: SmallIntestineState): void;
   transfer(
@@ -95,6 +123,24 @@ const carbohydrateHalfTimeMin = requireParameter(
   parameters,
   'smallIntestine.carbohydrateAbsorption.halfTimeMin',
 );
+const waterAbsorptionDehydrationFactor = requireParameter(
+  parameters,
+  'smallIntestine.waterAbsorptionDehydrationFactor',
+);
+const carbAbsorptionInsulinGain = requireParameter(
+  parameters,
+  'smallIntestine.carbAbsorptionInsulinGain',
+);
+const carbAbsorptionGradientGain = requireParameter(
+  parameters,
+  'smallIntestine.carbAbsorptionGradientGain',
+);
+
+const CARBOHYDRATE_BASELINE_MG_DL = 90;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 function finiteOrZero(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -104,13 +150,50 @@ function absorbedFrom(pool: number, dtMin: number, halfTime: number): number {
   return pool * (1 - 2 ** (-dtMin / halfTime));
 }
 
+function readWaterDeficit(bodyFluid: Readonly<BodyFluidReading> | undefined): number {
+  if (bodyFluid === undefined || bodyFluid === null) return 0;
+  if (typeof bodyFluid !== 'object') throw new Error('bodyFluid must be an object');
+  const deficit = bodyFluid.waterDeficit;
+  if (typeof deficit !== 'number' || !Number.isFinite(deficit)) {
+    throw new Error('bodyFluid.waterDeficit must be a finite number');
+  }
+  return clamp(deficit, 0, 1);
+}
+
+function readInsulinRelative(pancreas: Readonly<PancreasReading> | undefined): number {
+  if (pancreas === undefined || pancreas === null) return 1;
+  if (typeof pancreas !== 'object') throw new Error('pancreasEndocrine must be an object');
+  const insulinRelative = pancreas.insulinRelative;
+  if (typeof insulinRelative !== 'number' || !Number.isFinite(insulinRelative) || insulinRelative < 0) {
+    throw new Error('pancreasEndocrine.insulinRelative must be a finite non-negative number');
+  }
+  return insulinRelative;
+}
+
+function readConcentrationMgDl(glucose: Readonly<GlucoseReading> | undefined): number {
+  if (glucose === undefined || glucose === null) return CARBOHYDRATE_BASELINE_MG_DL;
+  if (typeof glucose !== 'object') throw new Error('glucose must be an object');
+  const concentrationMgDl = glucose.concentrationMgDl;
+  if (typeof concentrationMgDl !== 'number' || !Number.isFinite(concentrationMgDl) || concentrationMgDl < 0) {
+    throw new Error('glucose.concentrationMgDl must be a finite non-negative number');
+  }
+  return concentrationMgDl;
+}
+
 export function heartbeat(io: IO): void {
   const prev = io.read(id) ?? initialState;
   const waterVolumeMl = Math.max(0, finiteOrZero(prev.waterVolumeMl));
   const carbohydrateG = Math.max(0, finiteOrZero(prev.carbohydrateG));
   const dtMin = io.dt / 60;
-  const absorbedWaterMl = absorbedFrom(waterVolumeMl, dtMin, halfTimeMin);
-  const absorbedCarbohydrateG = absorbedFrom(carbohydrateG, dtMin, carbohydrateHalfTimeMin);
+
+  const waterFactor = 1 - waterAbsorptionDehydrationFactor * readWaterDeficit(io.read('bodyFluid'));
+  const carbFactor = 1
+    + carbAbsorptionInsulinGain * (readInsulinRelative(io.read('pancreasEndocrine')) - 1)
+    + carbAbsorptionGradientGain
+      * (readConcentrationMgDl(io.read('glucose')) / CARBOHYDRATE_BASELINE_MG_DL - 1);
+
+  const absorbedWaterMl = absorbedFrom(waterVolumeMl, dtMin, halfTimeMin) * waterFactor;
+  const absorbedCarbohydrateG = absorbedFrom(carbohydrateG, dtMin, carbohydrateHalfTimeMin) * carbFactor;
 
   io.write({
     waterVolumeMl,
