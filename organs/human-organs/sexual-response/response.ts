@@ -9,10 +9,13 @@
  * - `orgasm`：无载荷。只在轮初 `arousalMm >= orgasmAllowedMm` 时释放；低于该值被忽略，
  *   不改变状态。高潮不再由唤醒跨阈值自动记录。
  *
- * 消费者（两条，均为轮初读取）
+ * 消费者与上游（均为轮初读取）
  * - `physicalActivity`：把 `sex` 与 `exercise` 一样按强度 × 时长计入剩余体力活动。
  * - `interoception`：软读 `arousalMm`，输出体感读数 `sexualArousalMm`（只进 body_state，
  *   不进 discomfort、不发通知）。
+ * - 上游 `testes`（可选）：轮初软读 `testosteroneRelative`，按 `0.5 + 0.5 × 相对值` 缩放
+ *   唤醒目标；`testes` 未加载、字段缺失或非有限时按 1（因子 1，行为与无睾酮增益一致）。
+ *   它只影响目标幅度，不改变相位、阈值或排空判定；相对值 1（工程基线）时目标不变。
  *
  * 公式（dtMin = io.dt / 60，simMin = io.simulatedSeconds / 60）：
  *   remainingSexMin = max(0, prev.remainingSexMin − dtMin)，合法 sex 动作整体替换
@@ -20,7 +23,10 @@
  *   active = remainingSexMin > 0 && sexIntensity > 0
  *   sinceOrgasm = lastOrgasmAtSimMin === null ? Infinity : simMin − lastOrgasmAtSimMin
  *   refractory = sinceOrgasm < refractoryMin（释放判定用更新前的记录）
- *   target = active && !refractory ? 100 × sexIntensity : 0
+ *   testosteroneRelative = finiteOr(testes.testosteroneRelative, 1)
+ *   target = active && !refractory
+ *     ? 100 × sexIntensity × (0.5 + 0.5 × testosteroneRelative)
+ *     : 0
  *   halfTime = target > prevArousal ? arousalHalfTimeMin : resolutionHalfTimeMin
  *   arousalMm = target + (prevArousal − target) × 2^(−dtMin / halfTime)
  *
@@ -43,7 +49,8 @@
  * `sexIntensity` 是模型内相对强度，不是 MET、心率、耗氧量或能量消耗。
  *
  * 未建模（design）：催产素 / 催乳素 / 内啡肽等激素，心率 / 血压 / 通气量，受孕 / 妊娠 /
- * 生育力窗，性欲与情绪，伴侣，性传播感染，避孕，性活动类型、性别差异与个体差异，
+ * 生育力窗，性欲的行为与情绪成分（`interoception.libidoMm` 只是体感读数），伴侣，
+ * 性传播感染，避孕，性活动类型、性别差异与个体差异，
  * 任何显性内容；也不反推历史。旧存档缺字段按 0 / null 补齐，重启保留剩余分钟与
  * `lastOrgasmAtSimMin`。
  */
@@ -75,8 +82,13 @@ type Action = {
   readonly intensity?: unknown;
 };
 
+type TestesReading = {
+  readonly testosteroneRelative?: unknown;
+};
+
 type IO = {
   read(id: 'sexualResponse'): Readonly<SavedSexualResponseState> | undefined;
+  read(id: 'testes'): Readonly<TestesReading> | undefined;
   readonly actions: readonly Action[];
   readonly dt: number;
   readonly simulatedSeconds: number;
@@ -167,7 +179,10 @@ export function heartbeat(io: IO): void {
     ? Number.POSITIVE_INFINITY
     : simMin - lastOrgasmAtSimMin;
   const refractory = sincePreviousOrgasm < refractoryMin;
-  const target = active && !refractory ? 100 * sexIntensity : 0;
+  const testosteroneRelative = finiteOr(io.read('testes')?.testosteroneRelative, 1);
+  const target = active && !refractory
+    ? 100 * sexIntensity * (0.5 + 0.5 * testosteroneRelative)
+    : 0;
   const halfTimeMin = target > prevArousal ? arousalHalfTimeMin : resolutionHalfTimeMin;
   const arousalMm = target + (prevArousal - target) * 2 ** (-dtMin / halfTimeMin);
 

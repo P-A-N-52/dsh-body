@@ -1,13 +1,14 @@
 /*
  * 体液隔室（bodyFluid）结算核心；正常入口 `water.ts`（肾 → 肺 → 汗三出口）与女性变体
- * `water.female.ts`（末位追加子宫月经血出口）共用。部位 `bodyFluid` 的唯一结算逻辑在这里，
- * 两个入口只提供自己的出口列表与模块契约。
+ * `water.female.ts`（末位追加子宫月经血、乳腺乳汁两个出口）共用。部位 `bodyFluid` 的唯一
+ * 结算逻辑在这里，两个入口只提供自己的出口列表与模块契约。
  *
  * 直接证据：无。`bodyFluid.referenceVolumeMl = 30000 mL` 与 `bodyFluid.deficitScaleMl = 500 mL`
  * 都是 `design`（同目录 `water.parameters.json`），不是实测总体水、血浆容量、体重比例或渗透压。
- * 设计依据是 `docs/superpowers/specs/2026-11-22-water-balance-design.md` §3.3；女性变体的第四
- * 出口见 `docs/superpowers/specs/2026-11-23-reproductive-cycle-design.md`。两个入口复用同一份
- * 参数文件，不新增参数。
+ * 设计依据是 `docs/superpowers/specs/2026-11-22-water-balance-design.md` §3.3；女性变体的第四、
+ * 第五出口见 `docs/superpowers/specs/2026-11-23-reproductive-cycle-design.md` 与
+ * `docs/superpowers/specs/2026-11-24-mammary-glands-design.md`。两个入口复用同一份参数文件，
+ * 不新增参数。
  *
  * 工程假设（design）：
  * - `waterDeficit = clamp((referenceVolumeMl - W_start) / deficitScaleMl, -1, 1)`，
@@ -18,10 +19,13 @@
  *   `U_lung = clamp(lungs.respiratoryWaterLossRequestMl, 0, max(0, W_start - U_kidney))`；
  *   `U_sweat = clamp(skin.sweatRequestMl, 0, max(0, W_start - U_kidney - U_lung))`。
  *   女性变体在前三路之后追加
- *   `U_uterus = clamp(uterus.bleedingRequestMl, 0, max(0, W_start - U_kidney - U_lung - U_sweat))`，
- *   所以月经失水只能用其他出口支付后的轮初余量，不会与尿、肺失水或汗重复支付。
+ *   `U_uterus = clamp(uterus.bleedingRequestMl, 0, max(0, W_start - U_kidney - U_lung - U_sweat))`
+ *   与 `U_mammary = clamp(mammaryGlands.milkRequestMl, 0,
+ *   max(0, W_start - U_kidney - U_lung - U_sweat - U_uterus))`，
+ *   所以月经失水与乳汁水只能用其他出口支付后的轮初余量，不会与尿、肺失水或汗重复支付。
  *   肺请求只表示上一轮快照计算的**运动相关**呼吸失水，不是总呼吸失水，也不含静息呼吸。
- *   子宫请求只表示上一轮快照的月经失水请求，不是瞬时经血流率。
+ *   子宫请求只表示上一轮快照的月经失水请求，不是瞬时经血流率；乳腺请求只表示上一轮快照的
+ *   乳汁水请求，不是实测泌乳率或婴儿需求。
  * - `io.write` 交回的是**转出前**的 `W_start`；Gateway 在 transfer 阶段才扣各出口并加入小肠
  *   同轮转入。因此本轮请求只能由轮初水支付，当轮肠流入不能支付本轮转出。
  * - 直接模块调用缺少出口来源部位或请求字段非有限、为负时按 0；Gateway 中每个 `transferOut`
@@ -30,12 +34,13 @@
  *
  * 水账：胃水 + 队列水 + 小肠水 + (体液水 − 初始体液水) + 膀胱尿 + 累计 voidedMl
  *   + 累计 `skin.sweatVolumeMl` + 累计 `lungs.respiratoryWaterLossMl` = 累计饮水；
- *   女性变体再加累计 `uterus.bleedingMl` 一项。请求字段不计入实际失水，只有逐轮转移量进入水账。
+ *   女性变体再加累计 `uterus.bleedingMl` 与累计 `mammaryGlands.milkMl` 两项。请求字段不计入
+ *   实际失水，只有逐轮转移量进入水账。
  *
  * 不能推出：`waterDeficit` 是归一化代理，不是血浆渗透压、血容量、口渴或尿意评分；各出口是
- * 请求量而不是瞬时尿流率、呼吸失水率、出汗率或经血流率。不建血浆/尿渗、电解质、血容量/血压、
- * RAAS、体温调节、蒸发、肺通气、月经血成分或子宫内膜变化；上游胃水、小肠吸收、肺、皮肤与子宫
- * 的证据边界见对应器官 README，本文件不引用具体论文。
+ * 请求量而不是瞬时尿流率、呼吸失水率、出汗率、经血流率或泌乳率。不建血浆/尿渗、电解质、
+ * 血容量/血压、RAAS、体温调节、蒸发、肺通气、月经血成分、乳汁成分或乳房解剖；上游胃水、
+ * 小肠吸收、肺、皮肤、子宫与乳腺的证据边界见对应器官 README，本文件不引用具体论文。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 

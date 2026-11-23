@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "owner": "bloodOxygen",
+  "parameters": [
+    {
+      "id": "bloodOxygen.basalMlMin",
+      "unit": "mL/min",
+      "value": 250,
+      "status": "design",
+      "range": [100, 500],
+      "source": null,
+      "note": "静息氧耗量级，工程占位；不是人体测量或代谢实测，也不区分体重、性别、年龄或体温。未来由具备氧耗证据的模型替换。range 是工程调参范围"
+    },
+    {
+      "id": "bloodOxygen.activityGainMlMin",
+      "unit": "mL/min",
+      "value": 1000,
+      "status": "design",
+      "range": [0, 5000],
+      "source": null,
+      "note": "intensity=1 时在基础氧耗上追加的氧耗，工程占位；模型内 relative intensity 不是 MET、%VO2max 或实测强度，不能从任何 MET 表反推。未来由活动—氧耗证据替换。range 是工程调参范围"
+    },
+    {
+      "id": "bloodOxygen.digestionGain",
+      "unit": "1",
+      "value": 0.1,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "餐后产热占基础氧耗的比例，乘轮初十二指肠营养暴露代理（kcal/min）与基础氧耗；工程占位，不是间接测热法测量，也不表示营养暴露与氧耗的线性关系。未来由餐后产热/消化氧耗证据替换"
+    },
+    {
+      "id": "bloodOxygen.baselineSpo2Percent",
+      "unit": "%",
+      "value": 97,
+      "status": "design",
+      "range": [70, 100],
+      "source": null,
+      "note": "供氧充足时的血氧饱和度代理基线，工程占位；不是脉搏血氧仪测量、血气分析、氧合曲线或个体基线，不能称 validated。未来由具备血氧证据的模型替换"
+    }
+  ]
+}

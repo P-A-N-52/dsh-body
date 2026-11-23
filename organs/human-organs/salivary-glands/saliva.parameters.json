@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "owner": "salivaryGlands",
+  "parameters": [
+    {
+      "id": "salivaryGlands.basalRateMlPerMin",
+      "unit": "mL/min",
+      "value": 0.5,
+      "status": "design",
+      "range": [0.1, 2],
+      "source": null,
+      "note": "静息唾液产率工程基线，不是实测静息流率；range 是工程调参范围，不是人体范围"
+    },
+    {
+      "id": "salivaryGlands.mealGain",
+      "unit": "1",
+      "value": 3,
+      "status": "design",
+      "range": [1, 5],
+      "source": null,
+      "note": "进食刺激相对基线的倍数，不是实测唾液流率倍数"
+    },
+    {
+      "id": "salivaryGlands.mealWindowMin",
+      "unit": "min",
+      "value": 5,
+      "status": "design",
+      "range": [1, 30],
+      "source": null,
+      "note": "一次合法 eat/drink 后保持刺激的仿真分钟数，不是口腔消化时长"
+    },
+    {
+      "id": "salivaryGlands.dehydrationFactor",
+      "unit": "1",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "bodyFluid.waterDeficit = 1 时唾液产率的缩减比例；线性关系和系数均为工程假设"
+    }
+  ],
+  "consumerParameters": [
+    {
+      "id": "duodenum.salivaryAmylaseGain",
+      "unit": "1",
+      "value": 0.05,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": null,
+      "note": "duodenum 消费者读取的唾液淀粉酶相对增益；id 保留 duodenum 前缀，故不放入 owner 前缀校验的 parameters 数组。本文件只声明，salivaryGlands 脚本不使用"
+    }
+  ]
+}

@@ -1,183 +1,44 @@
 /*
- * 葡萄糖表观分布隔室（glucose）；部位 `glucose` 的唯一写者。它是隔室而不是解剖器官，因此放在
- * `organs/human-compartments/glucose/`。
+ * 葡萄糖表观分布隔室（glucose）正常入口；固定“肾 → 肝 → 肌”三汇，不声明乳腺乳糖汇。
+ * 方程、证据边界与质量账在共享核心 `glucose-core.ts`；女性变体 `glucose.female.ts` 在末位
+ * 追加 `mammaryGlands.lactoseG`，只用于独立清单 `body-modules.female.json`。同一清单不能
+ * 同时加载 `glucose.ts` 与 `glucose.female.ts`。
  *
- * 来源（登记见 organs/human-organs/references/source-index.csv）：
- * - SRC-DALLAMAN-2007 / dalla-man-2007：笔记
- *   organs/human-compartments/glucose/references/notes/dalla-man-2007.md，PMID 17926672，
- *   DOI 10.1109/TBME.2007.893506。原文 p.1741 §III.A 与式 (1) 把 `G_p` 定义为血浆和快速平衡
- *   组织中的葡萄糖质量，把 `V_G` 定义为按体重计的葡萄糖分布体积（dL/kg）；p.1743 Table I
- *   的正常组模型常数为 1.88 dL/kg。该常数来自 204 名正常人的三重示踪混合餐均值数据所建平均
- *   模型，不是 204 人的直接实测均值；原文未报告该常数单独的估计/固定方法、精度或个体间离散度，
- *   也未标注 ± 类型，本脚本不猜。p.1748 Discussion 称该模型是 mean model。
- *   p.1745 §III.C.5 式 (27) 的肾糖排泄结构只用于下游 `kidneyGlucose` 请求；本脚本不重复其
- *   滤过参数，只按轮初请求结算实际质量转出。
- *
- * 可及池定义（design）：`glucoseMassG` 是“血浆 + 快速平衡组织”可及池的葡萄糖质量；
- * `apparentDistributionVolumeDl = 75 kg × 1.88 dL/kg = 141 dL` 是按体重归一的表观分布体积，
- * 不是血浆体积、瘦体重归一化、总体水或直接测得的全身葡萄糖。90 mg/dL 基线对应
- * `B = 90 × 141 / 1000 = 12.69 g`，是工程初始量与清除下限，不是实测血浆葡萄糖质量。
- * 本脚本不声称复现原文的两室动力学、胰岛素依赖处置或个体预测。
- *
- * 工程假设（design）：
- * - 固定 75 kg、90 mg/dL 基线与 60 min 表观清除半时都 `source: null`
- *   （同目录 `glucose.parameters.json`）；未来分别由身体预设/个体输入、个体空腹测量和
- *   胰岛素—组织利用模型替换。分布体积参数 `source: SRC-DALLAMAN-2007` 只是定义与量级锚点。
- * - 浓度是本轮轮初质量读数：`concentrationMgDl = M_start × 1000 / V`。小肠同轮 transfer 的
- *   新吸收量在 write 之后才加入 `glucoseMassG`，因此当轮浓度仍读旧质量，下一轮才上升。
- * - 超基线表观处置 `D_total = max(0, M_start − B) × (1 − 2^(−dtMin × I / 60))` 按参数
- *   `muscleDisposalShare` 拆成肌肉份额 `U = D_total × share` 与残余 `D = D_total − U`。
- *   `I = 1` 时 `D_total` 与旧 60 min 公式一致；`I = 0` 时停止超基线清除，低于基线时保持
- *   原质量、不虚构肝糖补充。`disposedGlucoseG` 只是非肌、非肾残余清除汇，不含肌肉摄取与
- *   肾糖排泄。Dalla Man 2007 §III.C.3 只支撑“利用分为胰岛素依赖与非依赖项”的分区结构，
- *   不支撑该份额数值；share 是 `design`、`source: null` 的工程占位。
- * - 网关 write 在 transfer 之前应用：write 写转移前质量 `W = M_after + U`（= `M_start − D`）；
- *   随后 transfer `glucoseMassG → muscleGlucose.uptakeG`（`U`）与
- *   `glucoseMassG → kidneyGlucose.excretedGlucoseG`（轮初请求 `R`，按 `M_after` 钳位）。
- *   `W − U` 即处置后质量 `M_after = M_start − D_total`；存储的 `glucoseMassG` 轨迹与旧模型
- *   一致到 ≤ 1 ulp（< 1e-12 g），`W` 跨二进制 binade 时 `W − U` 可与 `M_after` 差 1 ulp。
- *   肾糖 `X = min(max(0, R), M_after)` 与旧模型逐位相同。`gateway/operations.js` 按目标名称
- *   排序结算，肾糖实际先扣；肾请求抽干池子时留给肌肉的浮点余额可能比 `U` 少 1 ulp，故肌肉
- *   转出按 `W − X` 封顶，避免末位误差让本轮失败。同轮小肠新流入不能支付本轮请求。
- * - 缺失 `pancreasEndocrine` 时按 `I = 1`；仅直接调用 `heartbeat`/不构建字段注册表时，缺失
- *   `kidneyGlucose` 按请求 0。任何包含 `glucose` 的 Gateway 清单必须同时加载 `kidneyGlucose`
- *   与 `muscleGlucose`，否则启动配对校验失败。上游部位已加载但字段缺失、非有限或为负数时
- *   抛错使本轮失败，不用健康常量掩盖。合法 0 信号/请求有效。
- * - 旧存档缺 `glucoseMassG` 时按基础质量初始化；负值按 0 读取，不产生负质量或负清除。
+ * `glucoseMassG.transferOut` 只声明 `kidneyGlucose.excretedGlucoseG`、`liver.storageG` 与
+ * `muscleGlucose.uptakeG`，因此任何包含本入口的清单都不需要 `mammaryGlands`；根清单只加载
+ * 本入口。缺任一已声明出口目标的清单仍会在 `createFieldRegistry` 启动校验时报字段配对错误。
+ * 轮初肾糖请求缺失（未加载 `kidneyGlucose`）按 0；`liver` 与 `muscleGlucose` 是必需汇，
+ * 缺部位时 `heartbeat` 抛错。本入口复用 `glucose.parameters.json`，不新增参数文件。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import { createGlucose } from './glucose-core.ts';
 
 export const id = 'glucose';
 export const actionTypes: string[] = [];
 
-type GlucoseState = {
-  glucoseMassG: number;
-  concentrationMgDl: number;
-  disposedGlucoseG: number;
-};
-
-type PancreasState = {
-  insulinRelative: number;
-};
-
-type KidneyGlucoseState = {
-  excretionRequestG: number;
-};
-
-const parameters = loadParameters(new URL('./glucose.parameters.json', import.meta.url));
-const referenceBodyMassKg = requireParameter(parameters, 'glucose.referenceBodyMassKg');
-const distributionVolumeDlPerKg = requireParameter(parameters, 'glucose.distributionVolumeDlPerKg');
-const baselineConcentrationMgDl = requireParameter(parameters, 'glucose.baselineConcentrationMgDl');
-const apparentDisposalHalfTimeMin = requireParameter(
-  parameters,
-  'glucose.apparentDisposalHalfTimeMin',
-);
-const muscleDisposalShare = requireParameter(parameters, 'glucose.muscleDisposalShare');
-
-const distributionVolumeDl = referenceBodyMassKg * distributionVolumeDlPerKg;
-const baselineMassG = baselineConcentrationMgDl * distributionVolumeDl / 1000;
-
-export const initialState: GlucoseState = {
-  glucoseMassG: baselineMassG,
-  concentrationMgDl: baselineConcentrationMgDl,
-  disposedGlucoseG: 0,
-};
-
-export const fields = {
-  glucoseMassG: {
-    unit: 'g',
-    mode: 'absolute',
-    transferIn: ['smallIntestine.carbohydrateG'],
-    transferOut: ['kidneyGlucose.excretedGlucoseG', 'muscleGlucose.uptakeG'],
-  },
-  concentrationMgDl: { unit: 'mg/dL', mode: 'absolute' },
-  disposedGlucoseG: { unit: 'g', mode: 'absolute' },
-};
-
-type IO = {
-  read(id: 'glucose'): Readonly<GlucoseState> | undefined;
-  read(id: 'pancreasEndocrine'): Readonly<PancreasState> | undefined;
-  read(id: 'kidneyGlucose'): Readonly<KidneyGlucoseState> | undefined;
-  readonly dt: number;
-  write(next: GlucoseState): void;
-  transfer(
-    fromPart: 'glucose',
-    fromField: 'glucoseMassG',
+const glucose = createGlucose([
+  {
+    requestPart: 'kidneyGlucose',
+    requestField: 'excretionRequestG',
     toPart: 'kidneyGlucose',
     toField: 'excretedGlucoseG',
-    amount: number,
-  ): void;
-  transfer(
-    fromPart: 'glucose',
-    fromField: 'glucoseMassG',
+    required: false,
+  },
+  {
+    requestPart: 'liver',
+    requestField: 'storageRequestG',
+    toPart: 'liver',
+    toField: 'storageG',
+    required: true,
+  },
+  {
+    requestPart: 'muscleGlucose',
+    requestField: 'uptakeRequestG',
     toPart: 'muscleGlucose',
     toField: 'uptakeG',
-    amount: number,
-  ): void;
-};
+    required: true,
+  },
+]);
 
-function finiteOrZero(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
-
-function insulinRelativeOf(pancreas: Readonly<PancreasState>): number {
-  const insulinRelative = pancreas.insulinRelative;
-  if (
-    typeof insulinRelative !== 'number'
-    || !Number.isFinite(insulinRelative)
-    || insulinRelative < 0
-  ) {
-    throw new Error(
-      'glucose: pancreasEndocrine.insulinRelative must be a finite non-negative number',
-    );
-  }
-  return insulinRelative;
-}
-
-function excretionRequestOf(kidney: Readonly<KidneyGlucoseState>): number {
-  const excretionRequestG = kidney.excretionRequestG;
-  if (
-    typeof excretionRequestG !== 'number'
-    || !Number.isFinite(excretionRequestG)
-    || excretionRequestG < 0
-  ) {
-    throw new Error(
-      'glucose: kidneyGlucose.excretionRequestG must be a finite non-negative number',
-    );
-  }
-  return excretionRequestG;
-}
-
-export function heartbeat(io: IO): void {
-  const prev = io.read(id) ?? initialState;
-  const startMassG = Math.max(0, finiteOrZero(prev.glucoseMassG));
-  const concentrationMgDl = startMassG * 1000 / distributionVolumeDl;
-  const excessG = Math.max(0, startMassG - baselineMassG);
-  const dtMin = io.dt / 60;
-
-  const pancreas = io.read('pancreasEndocrine');
-  const insulinRelative = pancreas === undefined ? 1 : insulinRelativeOf(pancreas);
-  const disposalTotalG = excessG
-    * (1 - 2 ** (-dtMin * insulinRelative / apparentDisposalHalfTimeMin));
-  const muscleUptakeG = disposalTotalG * muscleDisposalShare;
-  const disposedGlucoseG = disposalTotalG - muscleUptakeG;
-  const afterDisposalG = startMassG - disposalTotalG;
-  const writtenMassG = afterDisposalG + muscleUptakeG;
-
-  const kidney = io.read('kidneyGlucose');
-  const requestG = kidney === undefined ? 0 : excretionRequestOf(kidney);
-  const renalExcretionG = Math.min(Math.max(0, requestG), afterDisposalG);
-  const muscleTransferG = Math.min(muscleUptakeG, writtenMassG - renalExcretionG);
-
-  io.write({
-    glucoseMassG: writtenMassG,
-    concentrationMgDl,
-    disposedGlucoseG,
-  });
-  if (muscleTransferG > 0) {
-    io.transfer(id, 'glucoseMassG', 'muscleGlucose', 'uptakeG', muscleTransferG);
-  }
-  if (kidney !== undefined && renalExcretionG > 0) {
-    io.transfer(id, 'glucoseMassG', 'kidneyGlucose', 'excretedGlucoseG', renalExcretionG);
-  }
-}
+export const initialState = glucose.initialState;
+export const fields = glucose.fields;
+export const heartbeat = glucose.heartbeat;

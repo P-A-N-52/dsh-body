@@ -34,7 +34,7 @@
 
 ## 当前实现范围
 
-根清单 `body-modules.json`（20 部位、22 份参数文件）：
+根清单 `body-modules.json`（28 部位、30 份参数文件）：
 
 | 器官 | 已实现功能 |
 | --- | --- |
@@ -43,15 +43,20 @@
 | 小肠 | 水与碳水一阶吸收 |
 | 骨骼肌 | 活动计时、肌糖原储存与运动消耗 |
 | 皮肤 | 活动相关汗液请求与实际汗量 |
-| 肺 | 运动相关呼吸失水 |
-| 胰腺 | 血糖驱动的相对胰岛素信号 |
+| 肺 | 运动相关呼吸失水、自动通气 |
+| 胰腺 | 血糖驱动的相对胰岛素与胰高血糖素信号 |
+| 肝 | 肝糖原储存（上限 100 g）与低血糖释放 |
 | 肾 | ADH 驱动产尿、肾糖质量排泄；可选中枢/肾性 DI 变体（独立清单） |
 | 膀胱 | 储尿、主动排尿、过度充盈非自主排空 |
-| 脑 | 下丘脑 ADH 与口渴、体感读出、四类体感提醒 |
+| 脑 | 下丘脑 ADH、口渴与内分泌轴（TRH/CRH、TSH/ACTH）、体感读出、四类体感提醒 |
+| 甲状腺 | TSH 驱动的 T4 相对信号，缩放基础氧耗并负反馈抑制 TRH/TSH |
+| 肾上腺 | ACTH 驱动的皮质醇相对信号，缩放肝糖释放、产生 `stressMm` 并负反馈抑制 CRH/ACTH |
+| 松果体 | 仿真昼夜褪黑素相对信号，驱动 `sleepinessMm` |
 | 体液隔室 | 体液水与水分亏缺，按肾 → 肺 → 汗结算 |
 | 葡萄糖隔室 | 可及池质量与浓度代理，超基线处置分配肌肉、残余与肾糖 |
+| 血氧隔室 | 行为与消化氧耗、供需平衡与 SpO2 代理 |
 
-女性清单 `body-modules.female.json`（22 部位、24 份参数文件，独立存档）在此基础上增加：
+女性清单 `body-modules.female.json`（30 部位、32 份参数文件，独立存档）在此基础上增加：
 
 | 器官 | 已实现功能 |
 | --- | --- |
@@ -67,6 +72,14 @@
 - `brainNotify` 对饥饿、饱满、口渴、尿意按明显/强档投递提醒，带滞回、冷却与配额。
 - LLM 通过提交动作驱动身体，状态由器官脚本计算并整轮提交。
 - 参数分 `prior`（有登记文献支撑）与 `design`（工程假设）两类。M1、M3 水链与 M19 已做真实 DSH 会话验收，其余切片有离线单元与真实 Gateway 集成测试。
+
+## 开发与验证
+
+- **一个部位 = 一个后台子代理整包**：模块、参数、单元测试、清单与文档一起完成，spec 写半页即可；相关小部位可打包一片，主代理最后跑 `npm test` 与 `git diff --check`。
+- **测试底线**：质量守恒、transfer 双向闭包、旧档与重启、参数 schema（`owner` 前缀、`design` / `source`、`unset` / `null`）、JSON-safe。这些是反复抓到过 bug 的地方。
+- **Gateway 的 transfer 顺序**：按 `fromPart.fromField->target` 排序（`gateway/operations.js:206`），与模块调用顺序无关；write 先于 transfer，源余额按 write 值逐笔校验，所以 write 值必须覆盖本轮全部转出。
+- **不要写“轨迹逐位一致”**：用加法构造 write 值时跨二进制 binade 会差 1 ulp，应写 ≤ 1 ulp 或给容差。
+- **质量账只记真实转移量**：请求字段不入账，在途字段（本轮到账、下轮入账）必须入账，否则账会漏。
 
 ## 快速开始
 
@@ -97,9 +110,9 @@ dsh web
 | 入口 | 内容 |
 | --- | --- |
 | [`index.js`](index.js)、[`gateway/`](gateway/) | DSH 插件入口；本地 HTTP、动作队列、轮次结算和存档。 |
-| [`body-modules.json`](body-modules.json)、[`body-modules.female.json`](body-modules.female.json)、[`organs/human-organs/`](organs/human-organs/) | 脚本清单；[胃](organs/human-organs/stomach/README.md)、[十二指肠](organs/human-organs/duodenum/README.md)、[小肠](organs/human-organs/small-intestine/README.md)、[骨骼肌活动与肌糖原](organs/human-organs/skeletal-muscle/README.md)、[皮肤](organs/human-organs/skin/README.md)、[肺](organs/human-organs/lungs/README.md)、[胰腺](organs/human-organs/pancreas/README.md)、[肾](organs/human-organs/kidney/README.md)、[膀胱](organs/human-organs/bladder/README.md)、[卵巢](organs/human-organs/ovaries/README.md)、[子宫](organs/human-organs/uterus/README.md)、[体感和提醒](organs/human-organs/brain/README.md)的模块、参数与证据；[体液隔室](organs/human-compartments/body-water/README.md)与[葡萄糖隔室](organs/human-compartments/glucose/README.md)是隔室而不是器官。女性清单另用独立存档。 |
+| [`body-modules.json`](body-modules.json)、[`body-modules.female.json`](body-modules.female.json)、[`organs/human-organs/`](organs/human-organs/) | 脚本清单；[胃](organs/human-organs/stomach/README.md)、[十二指肠](organs/human-organs/duodenum/README.md)、[小肠](organs/human-organs/small-intestine/README.md)、[骨骼肌活动与肌糖原](organs/human-organs/skeletal-muscle/README.md)、[皮肤](organs/human-organs/skin/README.md)、[肺](organs/human-organs/lungs/README.md)、[胰腺](organs/human-organs/pancreas/README.md)、[肝](organs/human-organs/liver/README.md)、[肾](organs/human-organs/kidney/README.md)、[膀胱](organs/human-organs/bladder/README.md)、[卵巢](organs/human-organs/ovaries/README.md)、[子宫](organs/human-organs/uterus/README.md)、[甲状腺](organs/human-organs/thyroid/README.md)、[肾上腺](organs/human-organs/adrenal/README.md)、[松果体](organs/human-organs/pineal/README.md)、[体感和提醒](organs/human-organs/brain/README.md)的模块、参数与证据；[体液隔室](organs/human-compartments/body-water/README.md)、[葡萄糖隔室](organs/human-compartments/glucose/README.md)与[血氧隔室](organs/human-compartments/blood-oxygen/README.md)是隔室而不是器官。女性清单另用独立存档。 |
 | [`docs/gateway-and-scripts.md`](docs/gateway-and-scripts.md)、[`docs/gateway-operations.md`](docs/gateway-operations.md) | 当前接口、脚本接入，以及 `write` / `add` / `transfer` 的边界。 |
-| [`docs/superpowers/specs/`](docs/superpowers/specs/) | 已批准的设计文档：器官模型、固／液餐、水链、碳水—血糖、胰腺相对胰岛素、肾糖、口渴提醒、活动—皮肤出汗、运动相关呼吸失水、过度充盈与不适、女性生殖周期、可选 DI 样代理。 |
+| [`docs/superpowers/specs/`](docs/superpowers/specs/) | 已批准的设计文档：器官模型、固／液餐、水链、碳水—血糖、胰腺相对胰岛素、肾糖、口渴提醒、活动—皮肤出汗、运动相关呼吸失水、过度充盈与不适、女性生殖周期、肝糖原与胰高血糖素、血氧池与肺通气、内分泌轴与松果体、可选 DI 样代理。 |
 | [`docs/virtual-body.md`](docs/virtual-body.md) | 设计草案与路线图，设计目标不等于已实现功能。 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 开发与协作约定：脚本、参数、证据与提交。 |
 

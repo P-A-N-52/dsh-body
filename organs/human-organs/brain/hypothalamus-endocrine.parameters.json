@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "owner": "hypothalamusEndocrine",
+  "parameters": [
+    {
+      "id": "hypothalamusEndocrine.trhFeedbackGain",
+      "unit": "1/1",
+      "value": 1,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "T4 相对值每偏离 1 时对 TRH 相对目标的线性反馈增益；工程假设，不是实测下丘脑—垂体—甲状腺轴剂量反应"
+    },
+    {
+      "id": "hypothalamusEndocrine.crhFeedbackGain",
+      "unit": "1/1",
+      "value": 1,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "皮质醇相对值每偏离 1 时对 CRH 相对目标的线性反馈增益；工程假设，不是实测下丘脑—垂体—肾上腺轴剂量反应"
+    }
+  ]
+}

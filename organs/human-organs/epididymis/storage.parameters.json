@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "owner": "epididymis",
+  "parameters": [
+    {
+      "id": "epididymis.recoveryMlPerMin",
+      "unit": "mL/min",
+      "value": 0.002,
+      "status": "design",
+      "range": [0, 0.02],
+      "source": null,
+      "note": "精液储存恢复速率的工程占位（约 2.88 mL/d，排空后约 1.7 d 填满 5 mL）；不是精液产生率、附睾转运时间或生育力参数。range 是工程调参范围，不是人体测量范围"
+    },
+    {
+      "id": "epididymis.capacityMl",
+      "unit": "mL",
+      "value": 5,
+      "status": "design",
+      "range": [0, 20],
+      "source": null,
+      "note": "储存容量上限的工程占位；不是正常精液量、附睾/精囊容量或临床界值，也不含前列腺与精囊液。range 是工程调参范围"
+    }
+  ]
+}

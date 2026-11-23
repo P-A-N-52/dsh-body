@@ -53,6 +53,7 @@ function accumulate(accumulator, parts) {
   accumulator.sweatMl += parts.skin.sweatVolumeMl;
   accumulator.lungsMl += parts.lungs.respiratoryWaterLossMl;
   accumulator.bleedingMl += parts.uterus.bleedingMl;
+  accumulator.milkMl += parts.mammaryGlands.milkMl;
 }
 
 function waterLedgerMl(parts, accumulator) {
@@ -64,21 +65,52 @@ function waterLedgerMl(parts, accumulator) {
     + accumulator.voidedMl
     + accumulator.sweatMl
     + accumulator.lungsMl
-    + accumulator.bleedingMl;
+    + accumulator.bleedingMl
+    + accumulator.milkMl;
 }
 
 function emptyAccumulator() {
-  return { voidedMl: 0, sweatMl: 0, lungsMl: 0, bleedingMl: 0 };
+  return { voidedMl: 0, sweatMl: 0, lungsMl: 0, bleedingMl: 0, milkMl: 0 };
 }
 
-test('the female manifest boots 22 parts and pays menses into the water ledger', async (t) => {
+test('the female manifest boots 32 parts and pays menses and milk into the water ledger', async (t) => {
   silence(t);
   const { gateway } = await startBody(t, { parts: { ovaries: { cycleDay: 0 } } });
   const booted = gateway.getState().parts;
-  assert.equal(Object.keys(booted).length, 22);
+  assert.equal(Object.keys(booted).length, 32);
   assert.ok(booted.ovaries, 'ovaries must be loaded');
   assert.ok(booted.uterus, 'uterus must be loaded');
+  assert.ok(booted.liver, 'liver must be loaded');
   assert.ok(booted.sexualResponse, 'sexualResponse must be loaded');
+  assert.ok(booted.bloodOxygen, 'bloodOxygen must be loaded');
+  assert.ok(booted.lungsVentilation, 'lungsVentilation must be loaded');
+  assert.ok(booted.hypothalamusEndocrine, 'hypothalamusEndocrine must be loaded');
+  assert.ok(booted.pituitary, 'pituitary must be loaded');
+  assert.ok(booted.thyroid, 'thyroid must be loaded');
+  assert.ok(booted.adrenal, 'adrenal must be loaded');
+  assert.ok(booted.pineal, 'pineal must be loaded');
+  assert.ok(booted.salivaryGlands, 'salivaryGlands must be loaded');
+  assert.ok(booted.mammaryGlands, 'mammaryGlands must be loaded');
+  assert.deepEqual(booted.mammaryGlands, {
+    milkRequestMl: 0,
+    milkMl: 0,
+    lactoseRequestG: 0,
+    lactoseG: 0,
+    fullnessMm: 0,
+  });
+  assert.deepEqual(booted.bloodOxygen, {
+    oxygenConsumptionMlMin: 250,
+    oxygenSupplyMlMin: 250,
+    spo2Percent: 97,
+    oxygenDeficit: 0,
+  });
+  assert.deepEqual(booted.lungsVentilation, {
+    tidalVolumeMl: 500,
+    respiratoryRatePerMin: 12,
+    ventilationMlMin: 6000,
+    alveolarO2MlMin: 900,
+    alveolarO2CapacityMlMin: 9000,
+  });
   assert.equal(booted.ovaries.cycleDay, 0);
   assert.deepEqual(booted.uterus, {
     endometriumRelative: 0.1,
@@ -106,6 +138,7 @@ test('the female manifest boots 22 parts and pays menses into the water ledger',
   assert.deepEqual(bleedingRounds, [2, 3, 4, 5], 'round one writes the request, the next round pays it');
   assert.deepEqual(discomfortRounds, [2, 3, 4, 5], 'discomfort reads the previous round cramp');
   assert.ok(accumulator.bleedingMl > 0);
+  assert.ok(accumulator.milkMl > 0, 'the baseline mammary request must be paid into milk');
   assert.ok(
     Math.abs(waterLedgerMl(gateway.getState().parts, accumulator)) <= 1e-6,
     'the ledger must still include every paid bleed',
@@ -129,6 +162,7 @@ test('a non-menses seed keeps bleeding, cramps and requests at zero', async (t) 
   }
 
   assert.equal(accumulator.bleedingMl, 0);
+  assert.ok(accumulator.milkMl > 0, 'baseline milk must still be paid outside menses');
 });
 
 test('a restart on the same state path continues the cycle and pays the pending bleed', async (t) => {

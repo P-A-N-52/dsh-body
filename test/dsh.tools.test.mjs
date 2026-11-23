@@ -304,20 +304,27 @@ test('body_state returns all parts or one part', async (t) => {
 
   const all = await tools.body_state.execute({}, fakeExec({ callId: 'call-2' }));
   assert.equal(all.simulatedSeconds, 60);
-  assert.equal(Object.keys(all.parts).length, 20);
+  assert.equal(Object.keys(all.parts).length, 29);
   for (const part of [
     'stomach',
     'stomachGhrelin',
     'stomachSensory',
     'duodenum',
+    'salivaryGlands',
     'smallIntestine',
     'glucose',
+    'liver',
     'muscleGlucose',
     'pancreasEndocrine',
     'kidneyGlucose',
     'bodyFluid',
     'hypothalamusAdh',
     'hypothalamusThirst',
+    'hypothalamusEndocrine',
+    'pituitary',
+    'thyroid',
+    'adrenal',
+    'pineal',
     'kidney',
     'bladder',
     'interoception',
@@ -326,6 +333,8 @@ test('body_state returns all parts or one part', async (t) => {
     'sexualResponse',
     'skin',
     'lungs',
+    'bloodOxygen',
+    'lungsVentilation',
   ]) {
     assert.ok(Object.hasOwn(all.parts, part), `missing part ${part}`);
   }
@@ -340,12 +349,46 @@ test('body_state returns all parts or one part', async (t) => {
   assert.equal(all.parts.interoception.sexualArousalMm, 0);
   assert.deepEqual(all.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
   assert.deepEqual(all.parts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
+  assert.deepEqual(all.parts.bloodOxygen, {
+    oxygenConsumptionMlMin: 250 * (0.8 + 0.4),
+    oxygenSupplyMlMin: 250 * (0.8 + 0.4),
+    spo2Percent: 97,
+    oxygenDeficit: 0,
+  });
+  assert.deepEqual(all.parts.lungsVentilation, {
+    tidalVolumeMl: 500,
+    respiratoryRatePerMin: 12,
+    ventilationMlMin: 6000,
+    alveolarO2MlMin: 900,
+    alveolarO2CapacityMlMin: 9000,
+  });
+  assert.equal(all.parts.interoception.dyspneaMm, 0);
   assert.deepEqual(all.parts.glucose, {
     glucoseMassG: 12.69,
     concentrationMgDl: 90,
     disposedGlucoseG: 0,
+    excessMassG: 0,
   });
-  assert.deepEqual(all.parts.pancreasEndocrine, { insulinRelative: 1 });
+  assert.deepEqual(all.parts.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
+  assert.deepEqual(all.parts.hypothalamusEndocrine, { trhRelative: 1, crhRelative: 1 });
+  assert.deepEqual(all.parts.pituitary, { tshRelative: 1, acthRelative: 1, prolactinRelative: 1 });
+  assert.deepEqual(all.parts.thyroid, { thyroxineRelative: 1 });
+  assert.deepEqual(all.parts.adrenal, { cortisolRelative: 1 });
+  assert.equal(all.parts.interoception.stressMm, 0);
+  assert.equal(all.parts.interoception.sleepinessMm, 50);
+  assert.deepEqual(all.parts.liver, {
+    glycogenCapacityG: 100,
+    glycogenG: 80,
+    storageG: 0,
+    storageRequestG: 0,
+    outputG: 0,
+  });
+  assert.deepEqual(all.parts.muscleGlucose, {
+    uptakeG: 0,
+    uptakeRequestG: 0,
+    glycogenG: 0,
+    glycogenConsumedG: 0,
+  });
   assert.deepEqual(all.parts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
   assert.ok(all.parts.stomach.volumeMl > 0);
 

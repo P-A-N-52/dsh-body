@@ -1,6 +1,6 @@
 # 十二指肠（duodenum）
 
-十二指肠只有一个脚本：把胃排出的能量流做成一阶滤波的“近期营养暴露”代理。它不负责水吸收；水链的小肠吸收在 `small-intestine/water-absorption.ts`，两者不是同一个部位。
+十二指肠只有一个脚本：把胃排出的能量流做成一阶滤波的“近期营养暴露”代理。它不负责水吸收；水链的小肠吸收在 `small-intestine/water-absorption.ts`，两者不是同一个部位。`nutrientExposure` 还会被血氧隔室的 `bloodOxygen` 软读，作为餐后消化氧耗的输入；这只是同一代理的消费者，不表示十二指肠建模了吸收或产热。对含碳水餐，本脚本还软读 `salivaryGlands.salivaRateMlPerMin`，按 `duodenum.salivaryAmylaseGain` 给到达速率一个小幅增益，表示唾液淀粉酶从口腔开始的消化贡献；这不是酶动力学或吸收模型。
 
 实现状态：脚本与参数已在 `organs/human-organs/duodenum/`；根清单已挂载这个脚本；身体启用时，启动 Gateway 即加载。
 
@@ -8,7 +8,7 @@
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `nutrient-exposure.ts` | `duodenum` | `nutrientExposure` | 自己的轮初状态 `duodenum`；`stomach.emptiedKcal` | `nutrient-exposure.parameters.json` |
+| `nutrient-exposure.ts` | `duodenum` | `nutrientExposure` | 自己的轮初状态 `duodenum`；`stomach.emptiedKcal`、`stomach.emptiedCarbohydrateG`；`salivaryGlands.salivaRateMlPerMin`（可选软读） | `nutrient-exposure.parameters.json` |
 
 参数文件与脚本同目录，模块在 import 时经 `lib/parameters.js` 只读加载；参数是证据默认值，不做运行中热切换。
 
@@ -18,27 +18,35 @@
 | --- | --- | --- |
 | `nutrientExposure` | `kcal/min` | 近期营养到达速率的滤波代理；不是吸收入血速率，不是肠内容量，也不是浓度 |
 
-`fields` 声明为 `absolute` 写入，只有 `duodenum` 脚本写它。P1 的 `brain/interoception.ts` 读取这个字段；肠激素、吸收与通知消费者仍未实现。
+`fields` 声明为 `absolute` 写入，只有 `duodenum` 脚本写它。当前消费者：`brain/interoception.ts` 把该字段用于饥饿/饱满的线性项，`blood-oxygen/oxygen.ts` 把它用于餐后消化氧耗；两者都只软读这个代理。本脚本自己的上游软读是 `salivaryGlands.salivaRateMlPerMin`（见下）。肠激素、吸收与通知消费者仍未实现。
 
 滤波逻辑：
 
-- 本轮的到达速率 `arrivalRate = stomach.emptiedKcal / dtMin`，单位 `kcal/min`；
-- `nutrientExposure` 以时间常数 `duodenum.exposure.timeConstantMin` 一阶跟随：`next = exposure + (1 − e^(−dtMin/τ)) × (arrivalRate − exposure)`，结果截到非负；
-- 读的是轮初快照里的 `stomach.emptiedKcal`，即胃上一轮结算后的排出量，所以胃→十二指肠在时间上有**一轮偏移**；`stomach` 缺失、非有限或负数时按 0 流入处理。
+- 本轮到达速率 `arrivalRate = stomach.emptiedKcal / dtMin × amylaseFactor`，单位 `kcal/min`；`amylaseFactor` 只在轮初 `stomach.emptiedCarbohydrateG` 为有限正数时生效。
+- `amylaseFactor = 1 + duodenum.salivaryAmylaseGain × salivaRateMlPerMin / salivaryGlands.basalRateMlPerMin`。归一化用的 `salivaryGlands.basalRateMlPerMin` 从唾液腺参数文件只读加载，不复制常数；`salivaryGlands` 未加载时按增益 0（`amylaseFactor = 1`）。已加载但 `salivaRateMlPerMin` 缺失、非数、非有限或为负时抛错，本轮不写状态；不含碳水的餐不读取该字段，因此不受损坏的唾液状态影响。
+- `nutrientExposure` 以时间常数 `duodenum.exposure.timeConstantMin` 一阶跟随：`next = exposure + (1 − e^(−dtMin/τ)) × (arrivalRate − exposure)`，结果截到非负。增益乘在到达速率上，不乘在滤波状态上，避免逐轮复利。
+- 读的是轮初快照里的 `stomach.emptiedKcal` 与 `stomach.emptiedCarbohydrateG`，即胃上一轮结算后的排出量，所以胃→十二指肠在时间上有**一轮偏移**；`stomach` 缺失、非有限或负数时按 0 流入处理。`salivaryGlands` 也读轮初快照，因此唾液刺激最早在下一轮改变增益，而含碳水餐的暴露还要再等胃排入后才上升。
+
+`bloodOxygen` 的消化项为 `digestionGain × nutrientExposure × basalMlMin`（`digestionGain = 0.1`、`basalMlMin = 250 mL/min`，均 `design`）：`nutrientExposure = 0.5 kcal/min` 时约增加 12.5 mL/min 需氧。血氧读的是轮初快照，所以十二指肠本轮写出的新暴露最早下一轮才进入需氧；血氧不读胃排空或吸收，也不写回十二指肠。该系数不是食物热效应测量，也不把 kcal 换算成耗氧量。
 
 这条链只处理能量，不处理水。胃水经 `hydration.ts` 的 `emptiedWaterMl` 直接转给 `smallIntestine`，不经过 `duodenum`；`stomach.emptiedMl` 也不当水量使用。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
 | `duodenum.exposure.timeConstantMin` | 10 | `min` | `design` | — |
+| `duodenum.salivaryAmylaseGain` | 0.05 | `1` | `design` | — |
+
+`duodenum.salivaryAmylaseGain` 是相对增益：唾液产率等于基线时含碳水餐的到达速率乘 1.05，等于 3 倍基线时乘 1.15。0.05、线性缩放和“只看碳水”的判定都是 `design`，没有淀粉酶浓度、餐食成分或人体测量支撑。脚本从本目录 `nutrient-exposure.parameters.json` 读取该参数；唾液腺参数文件的 `consumerParameters` 另保留一份同值声明供读者对照，`salivaryGlands` 脚本不读取它。
 
 ## 3. 调节方式
 
-当前只接胃流出能量这一条输入，自身状态只做一阶滤波。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
+当前接胃流出能量与唾液产率两条输入：前者决定到达速率，后者只在含碳水餐时缩放到达速率；自身状态仍只做一阶滤波。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
 
+- 唾液淀粉酶浓度、活性、pH 与餐食成分；当前只按唾液产率比例缩放到达速率，不建酶动力学；
 - CCK、GLP-1、促胰液素等肠激素反馈；
 - 胆囊收缩、胰酶与胆汁分泌；
 - 肠道渗透压、肠内容量与吸收；
+- 食物热效应（TEF）、消化氧耗与能量代谢；`bloodOxygen` 只按固定 `design` 比例使用本字段，不表示吸收、产热或氧耗已被测量；
 - 肠神经系统与迷走反馈。
 
 ## 4. 证据入口
@@ -54,5 +62,7 @@
 - **十二指肠不建肠内容量/吸收模型**：本部位没有 `contentMl`、没有营养吸收或血糖，也没有与肠内容量或吸收相关的状态；水吸收与肠腔水量在小肠脚本里，不在这里。
 - **十二指肠自身仍未用 `transfer`**：它的输入仍是 `stomach.emptiedKcal` 的读出与一轮偏移；胃→小肠的水转移由 `stomach/hydration.ts` 负责，与本脚本无关。
 - **`nutrientExposure` 是代理**：单位 `kcal/min` 只表示滤波后的到达速率，不等于吸收速率、门静脉葡萄糖或激素分泌；时间常数是 `design`，来自工程可运行性，不是人体测量。
+- **唾液淀粉酶增益不是酶模型**：`amylaseFactor` 只按 `salivaRateMlPerMin` 与基线之比线性缩放含碳水餐的到达速率，不建淀粉酶浓度、活性、pH、食物结构或口腔消化时长；`duodenum.salivaryAmylaseGain = 0.05` 是 `design`、`source: null`，没有直接人体证据或独立验证。
+- **消化氧耗不是产热模型**：`nutrientExposure` 只按固定 `design` 比例进入 `bloodOxygen` 的需氧；不建食物热效应、氧耗—能量换算、餐后体温或代谢率，也不能把血氧缺口当作吸收不良或胃肠疾病。
 - **没有专属来源**：`source-index.csv` 里没有十二指肠特异的登记行，当前模型参数不能声称有该器官的直接证据。
 - 不建黏膜、刷状缘酶、转运体、渗透压与肠腔 pH。

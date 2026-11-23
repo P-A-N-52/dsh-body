@@ -6,27 +6,37 @@ import { loadParameters, requireParameter } from '../lib/parameters.js';
 const parametersFiles = [
   { label: 'organs/human-organs/stomach/motility.parameters.json', url: new URL('../organs/human-organs/stomach/motility.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/duodenum/nutrient-exposure.parameters.json', url: new URL('../organs/human-organs/duodenum/nutrient-exposure.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/salivary-glands/saliva.parameters.json', url: new URL('../organs/human-organs/salivary-glands/saliva.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/stomach/ghrelin.parameters.json', url: new URL('../organs/human-organs/stomach/ghrelin.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/stomach/gastric-sensory.parameters.json', url: new URL('../organs/human-organs/stomach/gastric-sensory.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/brain/interoception.parameters.json', url: new URL('../organs/human-organs/brain/interoception.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/brain/notify.parameters.json', url: new URL('../organs/human-organs/brain/notify.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/small-intestine/water-absorption.parameters.json', url: new URL('../organs/human-organs/small-intestine/water-absorption.parameters.json', import.meta.url) },
   { label: 'organs/human-compartments/body-water/water.parameters.json', url: new URL('../organs/human-compartments/body-water/water.parameters.json', import.meta.url) },
+  { label: 'organs/human-compartments/blood-oxygen/oxygen.parameters.json', url: new URL('../organs/human-compartments/blood-oxygen/oxygen.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/skin/sweat.parameters.json', url: new URL('../organs/human-organs/skin/sweat.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/lungs/respiratory-water-loss.parameters.json', url: new URL('../organs/human-organs/lungs/respiratory-water-loss.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/lungs/ventilation.parameters.json', url: new URL('../organs/human-organs/lungs/ventilation.parameters.json', import.meta.url) },
   { label: 'organs/human-compartments/glucose/glucose.parameters.json', url: new URL('../organs/human-compartments/glucose/glucose.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/liver/glycogen.parameters.json', url: new URL('../organs/human-organs/liver/glycogen.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/skeletal-muscle/glucose-uptake.parameters.json', url: new URL('../organs/human-organs/skeletal-muscle/glucose-uptake.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/pancreas/insulin.parameters.json', url: new URL('../organs/human-organs/pancreas/insulin.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/kidney/glucose-excretion.parameters.json', url: new URL('../organs/human-organs/kidney/glucose-excretion.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/kidney/urine-production.parameters.json', url: new URL('../organs/human-organs/kidney/urine-production.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/brain/hypothalamus-adh.parameters.json', url: new URL('../organs/human-organs/brain/hypothalamus-adh.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/brain/hypothalamus-thirst.parameters.json', url: new URL('../organs/human-organs/brain/hypothalamus-thirst.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/brain/hypothalamus-endocrine.parameters.json', url: new URL('../organs/human-organs/brain/hypothalamus-endocrine.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/brain/pituitary.parameters.json', url: new URL('../organs/human-organs/brain/pituitary.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/thyroid/thyroid.parameters.json', url: new URL('../organs/human-organs/thyroid/thyroid.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/adrenal/cortisol.parameters.json', url: new URL('../organs/human-organs/adrenal/cortisol.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/pineal/melatonin.parameters.json', url: new URL('../organs/human-organs/pineal/melatonin.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/bladder/storage.parameters.json', url: new URL('../organs/human-organs/bladder/storage.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/brain/hypothalamus-adh-di-central.parameters.json', url: new URL('../organs/human-organs/brain/hypothalamus-adh-di-central.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/kidney/urine-production-di-central.parameters.json', url: new URL('../organs/human-organs/kidney/urine-production-di-central.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/kidney/urine-production-di-nephrogenic.parameters.json', url: new URL('../organs/human-organs/kidney/urine-production-di-nephrogenic.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/ovaries/menstrual-cycle.parameters.json', url: new URL('../organs/human-organs/ovaries/menstrual-cycle.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/uterus/uterus.parameters.json', url: new URL('../organs/human-organs/uterus/uterus.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/mammary-glands/milk.parameters.json', url: new URL('../organs/human-organs/mammary-glands/milk.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/sexual-response/response.parameters.json', url: new URL('../organs/human-organs/sexual-response/response.parameters.json', import.meta.url) },
 ];
 
@@ -84,11 +94,10 @@ test('glucose parameters keep the fixed design defaults', () => {
   ));
   const byId = Object.fromEntries(data.parameters.map((parameter) => [parameter.id, parameter]));
   assert.deepEqual(Object.keys(byId).sort(), [
-    'glucose.apparentDisposalHalfTimeMin',
     'glucose.baselineConcentrationMgDl',
     'glucose.distributionVolumeDlPerKg',
-    'glucose.muscleDisposalShare',
     'glucose.referenceBodyMassKg',
+    'glucose.residualDisposalHalfTimeMin',
   ]);
 
   assert.equal(byId['glucose.referenceBodyMassKg'].value, 75);
@@ -101,29 +110,69 @@ test('glucose parameters keep the fixed design defaults', () => {
   assert.equal(byId['glucose.baselineConcentrationMgDl'].value, 90);
   assert.equal(byId['glucose.baselineConcentrationMgDl'].unit, 'mg/dL');
   assert.equal(byId['glucose.baselineConcentrationMgDl'].status, 'design');
-  assert.equal(byId['glucose.apparentDisposalHalfTimeMin'].value, 60);
-  assert.equal(byId['glucose.apparentDisposalHalfTimeMin'].unit, 'min');
-  assert.equal(byId['glucose.apparentDisposalHalfTimeMin'].status, 'design');
-
-  const muscleShare = byId['glucose.muscleDisposalShare'];
-  assert.equal(muscleShare.value, 0.75);
-  assert.equal(muscleShare.unit, '1');
-  assert.equal(muscleShare.status, 'design');
-  assert.equal(muscleShare.source, null);
-  assert.deepEqual(muscleShare.range, [0, 1]);
+  assert.equal(byId['glucose.baselineConcentrationMgDl'].source, null);
+  assert.equal(byId['glucose.residualDisposalHalfTimeMin'].value, 60);
+  assert.equal(byId['glucose.residualDisposalHalfTimeMin'].unit, 'min');
+  assert.equal(byId['glucose.residualDisposalHalfTimeMin'].status, 'design');
+  assert.equal(byId['glucose.residualDisposalHalfTimeMin'].source, null);
+  assert.deepEqual(byId['glucose.residualDisposalHalfTimeMin'].range, [10, 300]);
 });
 
-test('the parameter inventory covers twenty-four files including sexual response', () => {
-  assert.equal(parametersFiles.length, 24);
+test('the parameter inventory covers thirty-four files including blood oxygen, liver glycogen, the endocrine axes, salivary glands and mammary glands', () => {
+  assert.equal(parametersFiles.length, 34);
   const labels = parametersFiles.map(({ label }) => label);
+  assert.ok(labels.includes('organs/human-organs/salivary-glands/saliva.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/pancreas/insulin.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/kidney/glucose-excretion.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/liver/glycogen.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/skin/sweat.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/lungs/respiratory-water-loss.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/lungs/ventilation.parameters.json'));
+  assert.ok(labels.includes('organs/human-compartments/blood-oxygen/oxygen.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/skeletal-muscle/glucose-uptake.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/ovaries/menstrual-cycle.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/uterus/uterus.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/mammary-glands/milk.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/sexual-response/response.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/brain/hypothalamus-endocrine.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/brain/pituitary.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/thyroid/thyroid.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/adrenal/cortisol.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/pineal/melatonin.parameters.json'));
+});
+
+test('endocrine parameters keep their design-only defaults', () => {
+  const expected = {
+    'organs/human-organs/brain/hypothalamus-endocrine.parameters.json': {
+      'hypothalamusEndocrine.trhFeedbackGain': 1,
+      'hypothalamusEndocrine.crhFeedbackGain': 1,
+    },
+    'organs/human-organs/brain/pituitary.parameters.json': {
+      'pituitary.tshFeedbackGain': 1,
+      'pituitary.acthFeedbackGain': 1,
+    },
+    'organs/human-organs/thyroid/thyroid.parameters.json': {
+      'thyroid.thyroxineHalfTimeMin': 60,
+    },
+    'organs/human-organs/adrenal/cortisol.parameters.json': {
+      'adrenal.responseHalfTimeMin': 15,
+    },
+    'organs/human-organs/pineal/melatonin.parameters.json': {
+      'pineal.melatoninBaseRelative': 1,
+      'pineal.melatoninAmplitudeRelative': 0.8,
+      'pineal.melatoninPeakHour': 2,
+      'pineal.melatoninPeriodHours': 24,
+    },
+  };
+
+  for (const [label, values] of Object.entries(expected)) {
+    const data = readParameters(new URL(`../${label}`, import.meta.url));
+    assert.deepEqual(loadParameters(new URL(`../${label}`, import.meta.url)), values, label);
+    for (const parameter of data.parameters) {
+      assert.equal(parameter.status, 'design', `${parameter.id}: status`);
+      assert.equal(parameter.source, null, `${parameter.id}: source`);
+    }
+  }
 });
 
 test('sexualResponse keeps six design defaults for arousal and release timing', () => {
@@ -259,6 +308,64 @@ test('lungs respiratory water loss keeps the design reference rate', () => {
   assert.deepEqual(parameter.range, [0, 2]);
 });
 
+test('blood oxygen and lung ventilation parameters keep the design defaults', () => {
+  const oxygen = readParameters(new URL(
+    '../organs/human-compartments/blood-oxygen/oxygen.parameters.json',
+    import.meta.url,
+  ));
+  const oxygenById = Object.fromEntries(oxygen.parameters.map((parameter) => [parameter.id, parameter]));
+  assert.deepEqual(Object.keys(oxygenById).sort(), [
+    'bloodOxygen.activityGainMlMin',
+    'bloodOxygen.basalMlMin',
+    'bloodOxygen.baselineSpo2Percent',
+    'bloodOxygen.digestionGain',
+  ]);
+  for (const [parameterId, value, unit] of [
+    ['bloodOxygen.basalMlMin', 250, 'mL/min'],
+    ['bloodOxygen.activityGainMlMin', 1000, 'mL/min'],
+    ['bloodOxygen.digestionGain', 0.1, '1'],
+    ['bloodOxygen.baselineSpo2Percent', 97, '%'],
+  ]) {
+    const parameter = oxygenById[parameterId];
+    assert.equal(parameter.value, value, `${parameterId}: value`);
+    assert.equal(parameter.unit, unit, `${parameterId}: unit`);
+    assert.equal(parameter.status, 'design', `${parameterId}: status`);
+    assert.equal(parameter.source, null, `${parameterId}: source`);
+  }
+
+  const ventilation = readParameters(new URL(
+    '../organs/human-organs/lungs/ventilation.parameters.json',
+    import.meta.url,
+  ));
+  const ventilationById = Object.fromEntries(
+    ventilation.parameters.map((parameter) => [parameter.id, parameter]),
+  );
+  assert.deepEqual(Object.keys(ventilationById).sort(), [
+    'lungsVentilation.deadSpaceFactor',
+    'lungsVentilation.inspiredO2Fraction',
+    'lungsVentilation.maxRatePerMin',
+    'lungsVentilation.maxVentilationMlMin',
+    'lungsVentilation.restingRatePerMin',
+    'lungsVentilation.restingTidalVolumeMl',
+    'lungsVentilation.restingVentilationMlMin',
+  ]);
+  for (const [parameterId, value, unit] of [
+    ['lungsVentilation.restingTidalVolumeMl', 500, 'mL'],
+    ['lungsVentilation.restingRatePerMin', 12, '1/min'],
+    ['lungsVentilation.maxRatePerMin', 40, '1/min'],
+    ['lungsVentilation.restingVentilationMlMin', 6000, 'mL/min'],
+    ['lungsVentilation.maxVentilationMlMin', 60000, 'mL/min'],
+    ['lungsVentilation.inspiredO2Fraction', 0.21, '1'],
+    ['lungsVentilation.deadSpaceFactor', 1.4, '1'],
+  ]) {
+    const parameter = ventilationById[parameterId];
+    assert.equal(parameter.value, value, `${parameterId}: value`);
+    assert.equal(parameter.unit, unit, `${parameterId}: unit`);
+    assert.equal(parameter.status, 'design', `${parameterId}: status`);
+    assert.equal(parameter.source, null, `${parameterId}: source`);
+  }
+});
+
 test('pancreas parameters reuse the glucose baseline and keep engineering defaults', () => {
   const glucose = readParameters(new URL(
     '../organs/human-compartments/glucose/glucose.parameters.json',
@@ -276,6 +383,9 @@ test('pancreas parameters reuse the glucose baseline and keep engineering defaul
   );
 
   assert.deepEqual(Object.keys(byId).sort(), [
+    'pancreasEndocrine.glucagon.glucoseGainPerMgDl',
+    'pancreasEndocrine.glucagon.maxRelative',
+    'pancreasEndocrine.glucagon.responseHalfTimeMin',
     'pancreasEndocrine.insulin.glucoseGainPerMgDl',
     'pancreasEndocrine.insulin.maxRelative',
     'pancreasEndocrine.insulin.responseHalfTimeMin',
@@ -305,6 +415,48 @@ test('pancreas parameters reuse the glucose baseline and keep engineering defaul
   assert.equal(maximum.unit, '1');
   assert.equal(maximum.status, 'design');
   assert.equal(maximum.source, null);
+
+  for (const [parameterId, value, unit] of [
+    ['pancreasEndocrine.glucagon.glucoseGainPerMgDl', 0.02, '1/(mg/dL)'],
+    ['pancreasEndocrine.glucagon.responseHalfTimeMin', 10, 'min'],
+    ['pancreasEndocrine.glucagon.maxRelative', 5, '1'],
+  ]) {
+    const parameter = byId[parameterId];
+    assert.equal(parameter.value, value, `${parameterId}: value`);
+    assert.equal(parameter.unit, unit, `${parameterId}: unit`);
+    assert.equal(parameter.status, 'design', `${parameterId}: status`);
+    assert.equal(parameter.source, null, `${parameterId}: source`);
+  }
+});
+
+test('liver glycogen parameters stay design placeholders', () => {
+  const data = readParameters(new URL(
+    '../organs/human-organs/liver/glycogen.parameters.json',
+    import.meta.url,
+  ));
+  const byId = Object.fromEntries(data.parameters.map((parameter) => [parameter.id, parameter]));
+  assert.deepEqual(Object.keys(byId).sort(), [
+    'liver.glycogenCapacityG',
+    'liver.halfMaxExcessG',
+    'liver.initialGlycogenG',
+    'liver.insulinSensitivity',
+    'liver.maxOutputRateGPerMin',
+    'liver.maxUptakeRateGPerMin',
+  ]);
+  for (const [parameterId, value, unit] of [
+    ['liver.maxOutputRateGPerMin', 1, 'g/min'],
+    ['liver.initialGlycogenG', 80, 'g'],
+    ['liver.glycogenCapacityG', 100, 'g'],
+    ['liver.maxUptakeRateGPerMin', 0.2, 'g/min'],
+    ['liver.halfMaxExcessG', 15, 'g'],
+    ['liver.insulinSensitivity', 0.5, '1'],
+  ]) {
+    const parameter = byId[parameterId];
+    assert.equal(parameter.value, value, `${parameterId}: value`);
+    assert.equal(parameter.unit, unit, `${parameterId}: unit`);
+    assert.equal(parameter.status, 'design', `${parameterId}: status`);
+    assert.equal(parameter.source, null, `${parameterId}: source`);
+  }
 });
 
 test('kidney glucose parameters reuse the glucose body and carry the Dalla Man priors', () => {

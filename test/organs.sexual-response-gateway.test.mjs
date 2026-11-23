@@ -179,7 +179,14 @@ test('the female manifest loads sexualResponse and releases on orgasm', async (t
     parts: { sexualResponse: arousalState(80) },
   });
 
-  assert.equal(Object.keys(gateway.getState().parts).length, 22);
+  assert.equal(Object.keys(gateway.getState().parts).length, 32);
+  assert.ok(gateway.getState().parts.liver, 'liver must be loaded');
+  assert.ok(gateway.getState().parts.bloodOxygen, 'bloodOxygen must be loaded');
+  assert.ok(gateway.getState().parts.lungsVentilation, 'lungsVentilation must be loaded');
+  assert.ok(gateway.getState().parts.thyroid, 'thyroid must be loaded');
+  assert.ok(gateway.getState().parts.adrenal, 'adrenal must be loaded');
+  assert.ok(gateway.getState().parts.pineal, 'pineal must be loaded');
+  assert.ok(gateway.getState().parts.mammaryGlands, 'mammaryGlands must be loaded');
   assert.deepEqual(gateway.getCapabilities().sex, ['physicalActivity', 'sexualResponse']);
   assert.deepEqual(gateway.getCapabilities().orgasm, ['sexualResponse']);
   assert.equal(gateway.submitAction({ id: 'female-orgasm', type: 'orgasm' }).statusCode, 202);

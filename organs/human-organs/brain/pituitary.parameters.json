@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "owner": "pituitary",
+  "parameters": [
+    {
+      "id": "pituitary.tshFeedbackGain",
+      "unit": "1",
+      "value": 1,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "T4 低于参考值 1 时对 TSH 目标的相对增益；纯工程假设，不是 HPT 轴剂量—反应、受体亲和力或人体测量，未来由促甲状腺激素反馈证据替换"
+    },
+    {
+      "id": "pituitary.acthFeedbackGain",
+      "unit": "1",
+      "value": 1,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "皮质醇低于参考值 1 时对 ACTH 目标的相对增益；纯工程假设，不是 HPA 轴剂量—反应、受体亲和力或人体测量，未来由皮质醇反馈证据替换"
+    }
+  ]
+}

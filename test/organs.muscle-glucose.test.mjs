@@ -16,12 +16,21 @@ const parametersUrl = new URL(
   import.meta.url,
 );
 
-function round({ state, activity, dt = 60, simulatedSeconds = 60 } = {}) {
+function round({
+  state,
+  activity,
+  glucose = { excessMassG: 0 },
+  pancreas,
+  dt = 60,
+  simulatedSeconds = 60,
+} = {}) {
   const writes = [];
   heartbeat({
     read: (partId) => {
       if (partId === 'muscleGlucose') return state;
       if (partId === 'physicalActivity') return activity;
+      if (partId === 'glucose') return glucose === null ? undefined : glucose;
+      if (partId === 'pancreasEndocrine') return pancreas;
       return undefined;
     },
     actions: [],
@@ -43,11 +52,20 @@ function assertClose(actual, expected, label, tolerance = 1e-12) {
   );
 }
 
-function expectMuscleError(activity, label) {
+function expectMuscleError({
+  activity,
+  glucose = { excessMassG: 0 },
+  pancreas,
+} = {}, label) {
   const writes = [];
   assert.throws(
     () => heartbeat({
-      read: (partId) => (partId === 'physicalActivity' ? activity : undefined),
+      read: (partId) => {
+        if (partId === 'physicalActivity') return activity;
+        if (partId === 'glucose') return glucose === null ? undefined : glucose;
+        if (partId === 'pancreasEndocrine') return pancreas;
+        return undefined;
+      },
       actions: [],
       dt: 60,
       simulatedSeconds: 60,
@@ -59,7 +77,7 @@ function expectMuscleError(activity, label) {
   assert.equal(writes.length, 0, `${label}: the round must not write`);
 }
 
-test('muscleGlucose exports the uptake, glycogen and consumption contract', () => {
+test('muscleGlucose exports the uptake, request, glycogen and consumption contract', () => {
   assert.equal(id, 'muscleGlucose');
   assert.deepEqual(actionTypes, []);
   assert.deepEqual(fields, {
@@ -68,11 +86,13 @@ test('muscleGlucose exports the uptake, glycogen and consumption contract', () =
       mode: 'absolute',
       transferIn: ['glucose.glucoseMassG'],
     },
+    uptakeRequestG: { unit: 'g', mode: 'absolute' },
     glycogenG: { unit: 'g', mode: 'absolute' },
     glycogenConsumedG: { unit: 'g', mode: 'absolute' },
   });
   assert.deepEqual(initialState, {
     uptakeG: 0,
+    uptakeRequestG: 0,
     glycogenG: 0,
     glycogenConsumedG: 0,
   });
@@ -80,12 +100,13 @@ test('muscleGlucose exports the uptake, glycogen and consumption contract', () =
   const { written } = round();
   assert.deepEqual(written, {
     uptakeG: 0,
+    uptakeRequestG: 0,
     glycogenG: 0,
     glycogenConsumedG: 0,
   });
 });
 
-test('the glycogen use rate parameter is a design default with no source', () => {
+test('the parameters replace the disposal share with an autonomous response', () => {
   const data = JSON.parse(readFileSync(parametersUrl, 'utf8'));
   assert.equal(data.owner, 'muscleGlucose');
 
@@ -94,18 +115,119 @@ test('the glycogen use rate parameter is a design default with no source', () =>
   );
   assert.deepEqual(Object.keys(byId), [
     'muscleGlucose.glycogenUseRateGPerMin',
+    'muscleGlucose.maxUptakeRateGPerMin',
+    'muscleGlucose.halfMaxExcessG',
+    'muscleGlucose.insulinSensitivity',
   ]);
 
-  const parameter = byId['muscleGlucose.glycogenUseRateGPerMin'];
-  assert.equal(parameter.value, 0.5);
-  assert.equal(parameter.unit, 'g/min');
-  assert.equal(parameter.status, 'design');
-  assert.equal(parameter.source, null);
-  assert.deepEqual(parameter.range, [0, 5]);
+  const useRate = byId['muscleGlucose.glycogenUseRateGPerMin'];
+  assert.equal(useRate.value, 0.5);
+  assert.equal(useRate.unit, 'g/min');
+  assert.equal(useRate.status, 'design');
+  assert.equal(useRate.source, null);
+  assert.deepEqual(useRate.range, [0, 5]);
+
+  const expected = {
+    'muscleGlucose.maxUptakeRateGPerMin': [0.5, 'g/min', [0, 5]],
+    'muscleGlucose.halfMaxExcessG': [20, 'g', [0.1, 500]],
+    'muscleGlucose.insulinSensitivity': [1, '1', [0, 5]],
+  };
+  for (const [parameterId, [value, unit, range]] of Object.entries(expected)) {
+    const parameter = byId[parameterId];
+    assert.equal(parameter.value, value, `${parameterId}: value`);
+    assert.equal(parameter.unit, unit, `${parameterId}: unit`);
+    assert.equal(parameter.status, 'design', `${parameterId}: status`);
+    assert.equal(parameter.source, null, `${parameterId}: source`);
+    assert.deepEqual(parameter.range, range, `${parameterId}: range`);
+  }
 
   assert.deepEqual(loadParameters(parametersUrl), {
     'muscleGlucose.glycogenUseRateGPerMin': 0.5,
+    'muscleGlucose.maxUptakeRateGPerMin': 0.5,
+    'muscleGlucose.halfMaxExcessG': 20,
+    'muscleGlucose.insulinSensitivity': 1,
   });
+});
+
+test('the uptake request follows the saturating excess and insulin response formula', () => {
+  const baseline = round({
+    glucose: { excessMassG: 20 },
+    pancreas: { insulinRelative: 1 },
+    dt: 60,
+  });
+  assertClose(
+    baseline.written.uptakeRequestG,
+    0.5 * (20 / 40),
+    '20 g excess at baseline insulin over one minute',
+  );
+
+  const doubled = round({
+    glucose: { excessMassG: 20 },
+    pancreas: { insulinRelative: 2 },
+    dt: 60,
+  });
+  assertClose(
+    doubled.written.uptakeRequestG,
+    0.5 * (20 / 40) * 2,
+    'insulin sensitivity 1 doubles the response at relative 2',
+  );
+
+  const fractionalMinute = round({
+    glucose: { excessMassG: 20 },
+    pancreas: { insulinRelative: 2 },
+    dt: 30,
+  });
+  assertClose(
+    fractionalMinute.written.uptakeRequestG,
+    0.5 * (20 / 40) * 2 * 0.5,
+    'the request scales with dt',
+  );
+
+  const noExcess = round({
+    glucose: { excessMassG: 0 },
+    pancreas: { insulinRelative: 2 },
+    dt: 60,
+  });
+  assert.equal(noExcess.written.uptakeRequestG, 0, 'no excess yields no request');
+
+  const saturating = round({
+    glucose: { excessMassG: 60 },
+    pancreas: { insulinRelative: 1 },
+    dt: 60,
+  });
+  assertClose(
+    saturating.written.uptakeRequestG,
+    0.5 * (60 / 80),
+    'the half-max excess keeps the response below the maximum rate',
+  );
+});
+
+test('the request is rewritten every round from the round-start snapshot', () => {
+  const zeroed = round({
+    state: { uptakeG: 0, uptakeRequestG: 3, glycogenG: 0, glycogenConsumedG: 0 },
+    glucose: { excessMassG: 0 },
+    pancreas: { insulinRelative: 1 },
+  });
+  assert.equal(zeroed.written.uptakeRequestG, 0, 'the old request is not carried over');
+
+  const recomputed = round({
+    state: { uptakeG: 0, uptakeRequestG: 0, glycogenG: 0, glycogenConsumedG: 0 },
+    glucose: { excessMassG: 20 },
+    pancreas: { insulinRelative: 2 },
+  });
+  assertClose(recomputed.written.uptakeRequestG, 0.5, 'the new request uses this round inputs');
+});
+
+test('a missing glucose or pancreas part falls back without hiding invalid loaded data', () => {
+  const noGlucose = round({ glucose: null, pancreas: { insulinRelative: 1 } });
+  assert.equal(noGlucose.written.uptakeRequestG, 0, 'no glucose part means no excess signal');
+
+  const noPancreas = round({ glucose: { excessMassG: 20 }, pancreas: undefined });
+  assertClose(
+    noPancreas.written.uptakeRequestG,
+    0.5 * (20 / 40),
+    'a missing pancreas part reads baseline insulin',
+  );
 });
 
 test('each round books the previous uptake into glycogen and zeroes the uptake flux', () => {
@@ -114,9 +236,21 @@ test('each round books the previous uptake into glycogen and zeroes the uptake f
   });
   assert.deepEqual(written, {
     uptakeG: 0,
+    uptakeRequestG: 0,
     glycogenG: 11.2,
     glycogenConsumedG: 0,
   });
+});
+
+test('the uptake request and the transferIn flux are independent', () => {
+  const { written } = round({
+    state: { uptakeG: 1.2, glycogenG: 10, uptakeRequestG: 0 },
+    glucose: { excessMassG: 20 },
+    pancreas: { insulinRelative: 1 },
+  });
+  assert.equal(written.uptakeG, 0, 'the received flux still resets to zero');
+  assertClose(written.uptakeRequestG, 0.25, 'the request comes from the upstream snapshot');
+  assertClose(written.glycogenG, 11.2, 'the previous uptake still books into glycogen');
 });
 
 test('exercise consumes glycogen at the reference rate times intensity and dt', () => {
@@ -171,6 +305,7 @@ test('a missing physicalActivity consumes no glycogen', () => {
   });
   assert.deepEqual(written, {
     uptakeG: 0,
+    uptakeRequestG: 0,
     glycogenG: 10.4,
     glycogenConsumedG: 0,
   });
@@ -189,17 +324,49 @@ test('a loaded activity part with missing or invalid fields fails the round', ()
   ];
 
   for (const [label, activity] of invalid) {
-    expectMuscleError(activity, label);
+    expectMuscleError({ activity }, label);
+  }
+});
+
+test('a loaded glucose or pancreas part with invalid fields fails with zero writes', () => {
+  const invalid = [
+    ['missing excess', { glucose: {} }],
+    ['non-number excess', { glucose: { excessMassG: '20' } }],
+    ['non-finite excess', { glucose: { excessMassG: Number.NaN } }],
+    ['infinite excess', { glucose: { excessMassG: Number.POSITIVE_INFINITY } }],
+    ['negative excess', { glucose: { excessMassG: -0.1 } }],
+    ['missing insulin', { pancreas: {} }],
+    ['non-number insulin', { pancreas: { insulinRelative: '1' } }],
+    ['non-finite insulin', { pancreas: { insulinRelative: Number.NaN } }],
+    ['negative insulin', { pancreas: { insulinRelative: -1 } }],
+  ];
+
+  for (const [label, parts] of invalid) {
+    expectMuscleError(parts, label);
   }
 });
 
 test('muscleGlucose output is finite and JSON-safe for inactive and active rounds', () => {
   const cases = [
     { label: 'missing state and activity', options: {} },
-    { label: 'active', options: { state: initialState, activity: active() } },
+    {
+      label: 'active with an uptake request',
+      options: {
+        state: initialState,
+        activity: active(),
+        glucose: { excessMassG: 20 },
+        pancreas: { insulinRelative: 2 },
+      },
+    },
     {
       label: 'fractional activity and dt',
-      options: { state: { uptakeG: 1.2, glycogenG: 10 }, activity: active(10, 0.37), dt: 90 },
+      options: {
+        state: { uptakeG: 1.2, glycogenG: 10, uptakeRequestG: 0.3 },
+        activity: active(10, 0.37),
+        glucose: { excessMassG: 7.5 },
+        pancreas: { insulinRelative: 1.5 },
+        dt: 90,
+      },
     },
     {
       label: 'old state and short activity',

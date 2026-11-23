@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "owner": "pineal",
+  "parameters": [
+    {
+      "id": "pineal.melatoninBaseRelative",
+      "unit": "1",
+      "value": 1,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "昼夜曲线的工程基线；不是人体褪黑素测量，也不代表绝对浓度。range 是工程调参范围"
+    },
+    {
+      "id": "pineal.melatoninAmplitudeRelative",
+      "unit": "1",
+      "value": 0.8,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "余弦振幅；与基线相加得到峰值 1.8、谷值 0.2。纯工程假设，不是昼夜节律实测幅度"
+    },
+    {
+      "id": "pineal.melatoninPeakHour",
+      "unit": "h",
+      "value": 2,
+      "status": "design",
+      "range": [0, 24],
+      "source": null,
+      "note": "曲线峰值所在的仿真时刻（以仿真起点为 0 时），不是本地钟点或个体相位"
+    },
+    {
+      "id": "pineal.melatoninPeriodHours",
+      "unit": "h",
+      "value": 24,
+      "status": "design",
+      "range": [1, 48],
+      "source": null,
+      "note": "曲线周期；固定 24 h 是 design 假设，未建自由运行周期或时差"
+    }
+  ]
+}

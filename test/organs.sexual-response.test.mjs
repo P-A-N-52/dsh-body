@@ -17,10 +17,14 @@ const parametersUrl = new URL(
 );
 const parameterFile = JSON.parse(readFileSync(parametersUrl, 'utf8'));
 
-function round({ state, actions = [], dt = 60, simulatedSeconds = 60 } = {}) {
+function round({ state, actions = [], dt = 60, simulatedSeconds = 60, testes } = {}) {
   const writes = [];
   heartbeat({
-    read: (partId) => (partId === 'sexualResponse' ? state : undefined),
+    read: (partId) => {
+      if (partId === 'sexualResponse') return state;
+      if (partId === 'testes') return testes;
+      return undefined;
+    },
     actions,
     dt,
     simulatedSeconds,
@@ -116,6 +120,33 @@ test('a valid sex action replaces the remaining minutes and raises arousal into 
     assert.ok(next.arousalMm < 80, `minute ${minute}: arousal stays below target`);
     assert.equal(next.remainingSexMin, 31 - minute, `minute ${minute}: remaining`);
     state = next;
+  }
+});
+
+test('round-start testosterone scales the arousal target with a neutral fallback', () => {
+  const action = [sex(0.8, 30)];
+  const withoutTestes = round({ actions: action }).written;
+
+  const atOne = round({ actions: action, testes: { testosteroneRelative: 1 } }).written;
+  assert.deepEqual(atOne, withoutTestes);
+  assertClose(atOne.arousalMm, 80 * (1 - 2 ** (-1 / 5)), 'testosterone 1 target 80');
+
+  const atTwo = round({ actions: action, testes: { testosteroneRelative: 2 } }).written;
+  // 目标 100 × 0.8 × (0.5 + 0.5 × 2) = 120 mm，唤醒半时 5 min，轮末 1 min。
+  assertClose(atTwo.arousalMm, 120 * (1 - 2 ** (-1 / 5)), 'testosterone 2 target 120');
+  assert.ok(atTwo.arousalMm > withoutTestes.arousalMm, 'higher testosterone raises arousal');
+
+  for (const testes of [
+    undefined,
+    {},
+    { testosteroneRelative: Number.NaN },
+    { testosteroneRelative: Number.POSITIVE_INFINITY },
+  ]) {
+    assert.deepEqual(
+      round({ actions: action, testes }).written,
+      withoutTestes,
+      `fallback for ${String(testes)}`,
+    );
   }
 });
 

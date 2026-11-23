@@ -12,26 +12,35 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rootManifestPath = join(root, 'body-modules.json');
 const initialBodyWaterMl = 30000;
 const partIds = [
+  'adrenal',
   'bladder',
+  'bloodOxygen',
   'bodyFluid',
   'brainNotify',
   'duodenum',
   'glucose',
   'hypothalamusAdh',
+  'hypothalamusEndocrine',
   'hypothalamusThirst',
   'interoception',
   'kidney',
   'kidneyGlucose',
+  'liver',
   'lungs',
+  'lungsVentilation',
   'muscleGlucose',
   'pancreasEndocrine',
   'physicalActivity',
+  'pineal',
+  'pituitary',
+  'salivaryGlands',
   'sexualResponse',
   'skin',
   'smallIntestine',
   'stomach',
   'stomachGhrelin',
   'stomachSensory',
+  'thyroid',
 ];
 
 function fakeExec({ sessionId = 'water-session', callId = 'call-1' } = {}) {
@@ -181,13 +190,21 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
     glucoseMassG: 12.69,
     concentrationMgDl: 90,
     disposedGlucoseG: 0,
+    excessMassG: 0,
   });
   assert.deepEqual(loaded.bodyFluid, { waterVolumeMl: 30000, waterDeficit: 0 });
   assert.deepEqual(loaded.hypothalamusAdh, { relativeConcentration: 1 });
   assert.deepEqual(loaded.hypothalamusThirst, { thirst: 50 });
   assert.deepEqual(loaded.kidney, { urineProductionRequestMl: 0 });
   assert.deepEqual(loaded.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
-  assert.deepEqual(loaded.pancreasEndocrine, { insulinRelative: 1 });
+  assert.deepEqual(loaded.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
+  assert.deepEqual(loaded.liver, {
+    glycogenCapacityG: 100,
+    glycogenG: 80,
+    storageG: 0,
+    storageRequestG: 0,
+    outputG: 0,
+  });
   assert.deepEqual(loaded.bladder, {
     volumeMl: 0,
     voidedMl: 0,
@@ -219,9 +236,10 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
     glucoseMassG: 12.69,
     concentrationMgDl: 90,
     disposedGlucoseG: 0,
+    excessMassG: 0,
   });
   assert.deepEqual(after.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
-  assert.deepEqual(after.pancreasEndocrine, { insulinRelative: 1 });
+  assert.deepEqual(after.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
   assert.equal(after.stomach.mealQueue.length, 1);
   assert.equal(after.stomach.mealQueue[0].remainingRounds, 1);
 

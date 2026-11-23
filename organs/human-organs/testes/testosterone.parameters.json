@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "owner": "testes",
+  "parameters": [
+    {
+      "id": "testes.baselineRelative",
+      "unit": "1",
+      "value": 1,
+      "status": "design",
+      "range": [0.5, 1.5],
+      "source": null,
+      "note": "睾酮相对信号的工程基线；1 表示未受刺激的基线，不是血清睾酮浓度、分泌率或人体正常值。range 是工程调参范围，不是人体测量范围"
+    },
+    {
+      "id": "testes.circadianAmplitude",
+      "unit": "1",
+      "value": 0.1,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": null,
+      "note": "昼夜余弦项相对基线的振幅；曲线峰值 08:00、谷值 20:00，纯工程假设，不是实测昼夜幅度或个体相位。range 是工程调参范围"
+    },
+    {
+      "id": "testes.responseHalfTimeMin",
+      "unit": "min",
+      "value": 60,
+      "status": "design",
+      "range": [1, 720],
+      "source": null,
+      "note": "相对信号向当前昼夜目标一阶趋近的工程半时；不是睾酮半衰期、HPG 轴响应时间或实测动力学。range 是工程调参范围"
+    }
+  ]
+}

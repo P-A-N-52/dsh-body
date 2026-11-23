@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "owner": "lungsVentilation",
+  "parameters": [
+    {
+      "id": "lungsVentilation.restingTidalVolumeMl",
+      "unit": "mL",
+      "value": 500,
+      "status": "design",
+      "range": [100, 1000],
+      "source": null,
+      "note": "静息潮气量工程默认值；本切片固定潮气量、不调节，不是人体测量"
+    },
+    {
+      "id": "lungsVentilation.restingRatePerMin",
+      "unit": "1/min",
+      "value": 12,
+      "status": "design",
+      "range": [6, 30],
+      "source": null,
+      "note": "静息呼吸频率工程默认值；不是人体测量"
+    },
+    {
+      "id": "lungsVentilation.maxRatePerMin",
+      "unit": "1/min",
+      "value": 40,
+      "status": "design",
+      "range": [12, 80],
+      "source": null,
+      "note": "呼吸频率读数上限；工程假设，不是实测最大呼吸频率"
+    },
+    {
+      "id": "lungsVentilation.restingVentilationMlMin",
+      "unit": "mL/min",
+      "value": 6000,
+      "status": "design",
+      "range": [3000, 12000],
+      "source": null,
+      "note": "静息每分通气量下限；工程默认值，不是人体测量"
+    },
+    {
+      "id": "lungsVentilation.maxVentilationMlMin",
+      "unit": "mL/min",
+      "value": 60000,
+      "status": "design",
+      "range": [6000, 150000],
+      "source": null,
+      "note": "每分通气量上限；触顶后肺泡氧供给封顶，工程默认值，不是实测最大通气量"
+    },
+    {
+      "id": "lungsVentilation.inspiredO2Fraction",
+      "unit": "1",
+      "value": 0.21,
+      "status": "design",
+      "range": [0.1, 1],
+      "source": null,
+      "note": "吸入氧分数，室内空气量级；工程默认值，不是环境测量，也不建模高原或吸氧"
+    },
+    {
+      "id": "lungsVentilation.deadSpaceFactor",
+      "unit": "1",
+      "value": 1.4,
+      "status": "design",
+      "range": [1, 3],
+      "source": null,
+      "note": "需氧到通气量的死腔与氧提取折算系数；工程假设，不是解剖死腔或氧提取测量"
+    }
+  ]
+}

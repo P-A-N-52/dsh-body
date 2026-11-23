@@ -19,26 +19,35 @@ const centralAdhPath = './organs/human-organs/brain/hypothalamus-adh-di-central.
 const centralKidneyPath = './organs/human-organs/kidney/urine-production-di-central.ts';
 const nephrogenicKidneyPath = './organs/human-organs/kidney/urine-production-di-nephrogenic.ts';
 const partIds = [
+  'adrenal',
   'bladder',
+  'bloodOxygen',
   'bodyFluid',
   'brainNotify',
   'duodenum',
   'glucose',
   'hypothalamusAdh',
+  'hypothalamusEndocrine',
   'hypothalamusThirst',
   'interoception',
   'kidney',
   'kidneyGlucose',
+  'liver',
   'lungs',
+  'lungsVentilation',
   'muscleGlucose',
   'pancreasEndocrine',
   'physicalActivity',
+  'pineal',
+  'pituitary',
+  'salivaryGlands',
   'sexualResponse',
   'skin',
   'smallIntestine',
   'stomach',
   'stomachGhrelin',
   'stomachSensory',
+  'thyroid',
 ];
 
 const normalGolden = [
@@ -140,7 +149,7 @@ function snapshot(parts) {
 
 test('the root manifest keeps the normal water chain with no DI variant loaded', () => {
   const manifest = JSON.parse(readFileSync(rootManifestPath, 'utf8'));
-  assert.equal(manifest.scripts.length, 20);
+  assert.equal(manifest.scripts.length, 29);
   assert.ok(manifest.scripts.includes(normalAdhPath));
   assert.ok(manifest.scripts.includes(normalKidneyPath));
   assert.ok(manifest.scripts.includes(lungsPath));
@@ -189,8 +198,13 @@ test('the default root manifest still produces the same ten rounds point by poin
   }
   const finalParts = gateway.getState().parts;
   assert.deepEqual(finalParts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
-  assert.deepEqual(finalParts.muscleGlucose, { uptakeG: 0, glycogenG: 0, glycogenConsumedG: 0 });
-  assert.deepEqual(finalParts.pancreasEndocrine, { insulinRelative: 1 });
+  assert.deepEqual(finalParts.muscleGlucose, {
+    uptakeG: 0,
+    uptakeRequestG: 0,
+    glycogenG: 0,
+    glycogenConsumedG: 0,
+  });
+  assert.deepEqual(finalParts.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
   assert.deepEqual(finalParts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
 });
 
@@ -200,8 +214,8 @@ test('a central DI manifest zeroes ADH and produces four mL per minute of urine'
     swaps: { [normalAdhPath]: centralAdhPath, [normalKidneyPath]: centralKidneyPath },
   });
   assert.deepEqual(gateway.getCapabilities(), {
-    drink: ['stomach', 'stomachGhrelin'],
-    eat: ['stomach', 'stomachGhrelin'],
+    drink: ['stomach', 'stomachGhrelin', 'salivaryGlands'],
+    eat: ['stomach', 'stomachGhrelin', 'salivaryGlands'],
     urinate: ['bladder'],
     exercise: ['physicalActivity'],
     sex: ['physicalActivity', 'sexualResponse'],

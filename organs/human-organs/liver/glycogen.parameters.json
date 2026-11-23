@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "owner": "liver",
+  "parameters": [
+    {
+      "id": "liver.maxOutputRateGPerMin",
+      "unit": "g/min",
+      "value": 1,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "glucagonRelative = 1 时肝糖原最大释放速率的工程占位；低血糖或高胰高血糖素时按相对信号线性缩放，并按 prev.glycogenG + prev.storageG 钳位，存量耗尽即停止。不是实测肝糖输出率、糖原分解速率或胰高血糖素剂量反应，无登记来源。range 是工程调参范围，不是人体测量范围"
+    },
+    {
+      "id": "liver.initialGlycogenG",
+      "unit": "g",
+      "value": 80,
+      "status": "design",
+      "range": [0, 500],
+      "source": null,
+      "note": "新身体肝糖原初始存量的工程占位，不是实测肝糖原储量、人群均值或临床值；旧档缺 liver 时由 initialState 补 80 g。未来由具备肝糖原测量证据的身体预设替换"
+    },
+    {
+      "id": "liver.glycogenCapacityG",
+      "unit": "g",
+      "value": 100,
+      "status": "design",
+      "range": [0, 500],
+      "source": null,
+      "note": "肝糖原储存容量的工程占位，不是实测肝糖原容量、人群均值或临床上限；每轮经字段 glycogenCapacityG 暴露，由本脚本读取轮初 glycogenG + storageG 计算剩余容量并把摄糖请求钳到 max(0, capacity − 存量)，存满后请求为 0。range 是工程调参范围，不是人体测量范围"
+    },
+    {
+      "id": "liver.maxUptakeRateGPerMin",
+      "unit": "g/min",
+      "value": 0.2,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "超基线量远大于 halfMaxExcessG、insulinRelative = 1 时肝摄糖请求速率的工程占位；实际请求还乘半饱和项、胰岛素响应与 dtMin，并按剩余容量钳位。不是实测肝糖摄取率、糖原合成速率或胰岛素剂量反应，无登记来源。range 是工程调参范围，不是人体测量范围"
+    },
+    {
+      "id": "liver.halfMaxExcessG",
+      "unit": "g",
+      "value": 15,
+      "status": "design",
+      "range": [1, 200],
+      "source": null,
+      "note": "肝摄糖请求达到最大速率一半时的超基线血糖质量（半饱和量）工程占位，只用于 excess / (excess + halfMaxExcessG) 的饱和形状；不是实测米氏常数、肝糖摄取半饱和量或临床阈值，无登记来源。range 是工程调参范围，不是人体测量范围"
+    },
+    {
+      "id": "liver.insulinSensitivity",
+      "unit": "1",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "胰岛素相对信号对肝摄糖请求的敏感度工程占位：response = 1 + sensitivity × (insulinRelative − 1)，insulinRelative = 1 时不影响请求；0.5 低于肌肉的 1.0 只是本切片的工程设定，不是实测肝/肌胰岛素敏感性比，也不作用于释放。无登记来源。range 是工程调参范围，不是人体测量范围"
+    }
+  ]
+}

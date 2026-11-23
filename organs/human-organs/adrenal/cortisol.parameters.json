@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "owner": "adrenal",
+  "parameters": [
+    {
+      "id": "adrenal.responseHalfTimeMin",
+      "unit": "min",
+      "value": 15,
+      "status": "design",
+      "range": [1, 60],
+      "source": null,
+      "note": "皮质醇相对信号向轮初 pituitary.acthRelative 一阶趋近的半时工程占位；每轮按 2^(−dtMin / 15) 计算保留比例，不是实测 HPA 轴响应时间、皮质醇半衰期或 ACTH 剂量反应。range 是工程调参范围，不是人体测量范围。无登记来源"
+    }
+  ]
+}

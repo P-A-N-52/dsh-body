@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "owner": "mammaryGlands",
+  "parameters": [
+    {
+      "id": "mammaryGlands.basalMilkRateMlPerMin",
+      "unit": "mL/min",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "催乳素为 1 时的乳汁水生成速率工程假设，不是实测泌乳量、婴儿需求或乳头刺激剂量—反应；只表示 bodyFluid 下一轮的转出请求上限"
+    },
+    {
+      "id": "mammaryGlands.lactoseGPerMl",
+      "unit": "g/mL",
+      "value": 0.07,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": null,
+      "note": "每毫升乳汁对应的乳糖葡萄糖当量工程假设，用于向 glucose 发起 lactoseRequestG；不是实测乳糖浓度，也不拆分脂肪、蛋白或免疫成分"
+    },
+    {
+      "id": "mammaryGlands.fullnessGainPerMl",
+      "unit": "mm/mL",
+      "value": 4,
+      "status": "design",
+      "range": [0, 20],
+      "source": null,
+      "note": "每轮产奶请求超出上一轮实际泌乳量 1 mL 时胀奶代理的增量，0–100 mm 量程；不是乳腺压力、容量或胀痛测量"
+    }
+  ]
+}

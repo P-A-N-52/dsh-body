@@ -10,6 +10,33 @@
       "range": [0, 5],
       "source": null,
       "note": "intensity=1 时每分钟运动消耗肌糖原的工程占位速率，不是实测肌糖原分解率；不区分运动类型、MET、强度非线性或个体差异，无登记来源（SRC-DALLAMAN-2007 只支撑 glucose 侧处置可分区的结构方向）。未来由具备运动与底物利用证据的模型替换。range 是工程调参范围，不是人体测量范围"
+    },
+    {
+      "id": "muscleGlucose.maxUptakeRateGPerMin",
+      "unit": "g/min",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "肌肉在过剩量远大于半饱和、insulinRelative=1 时的最大摄糖速率的工程占位；不是实测骨骼肌葡萄糖摄取率、胰岛素刺激摄取或个体值，无登记来源。实际请求还按过剩量与半饱和比例、胰岛素响应缩放，到账量由 glucose 按序钳位。range 是工程调参范围，不是人体测量范围"
+    },
+    {
+      "id": "muscleGlucose.halfMaxExcessG",
+      "unit": "g",
+      "value": 20,
+      "status": "design",
+      "range": [0.1, 500],
+      "source": null,
+      "note": "摄糖请求达到最大速率一半时的超基线葡萄糖质量（g）的工程占位；不是实测半饱和常数、Km、剂量反应参数或临床值，无登记来源。range 排除 0 以免除零，是工程调参范围"
+    },
+    {
+      "id": "muscleGlucose.insulinSensitivity",
+      "unit": "1",
+      "value": 1.0,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "肌肉对相对胰岛素信号的敏感度：请求乘以 1 + insulinSensitivity × (insulinRelative − 1)；1.0 表示与相对信号同比例，0 表示不敏感。不是胰岛素敏感性指数、钳夹实验值或受体亲和力，无登记来源。range 是工程调参范围，不是人体测量范围"
     }
   ]
 }
