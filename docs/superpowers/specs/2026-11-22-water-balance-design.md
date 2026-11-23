@@ -1,6 +1,6 @@
 # M3 首段：饮水吸收、体液、肾脏与主动排尿设计
 
-> **历史提示：** 本设计形成时 `brainNotify` 只读饥饿/饱满；尿意提醒的当前实现见 [`2026-11-22-urinary-notification-design.md`](./2026-11-22-urinary-notification-design.md)。后续碳水—血糖薄切片新增 `glucose`，胰腺与肾糖又相继接入，该阶段根清单为 15 部位，见 [`2026-11-22-carbohydrate-glucose-design.md`](./2026-11-22-carbohydrate-glucose-design.md)、[`2026-11-22-pancreas-insulin-design.md`](./2026-11-22-pancreas-insulin-design.md) 与 [`2026-11-23-renal-glucose-design.md`](./2026-11-23-renal-glucose-design.md)。活动—皮肤出汗薄切片随后接入 `physicalActivity` 与 `skin`，`bodyFluid` 增加 `skin.sweatVolumeMl` 第二出口；当前根清单为 17 部位、19 份参数文件、7 部位硬 transfer 闭包，见 [`2026-11-23-activity-sweat-design.md`](./2026-11-23-activity-sweat-design.md)。本文件的 12 部位正文、单出口方程与验收记录保持当时口径，不按后续薄切片改写。
+> **历史提示：** 本设计形成时 `brainNotify` 只读饥饿/饱满；尿意提醒的当前实现见 [`2026-11-22-urinary-notification-design.md`](./2026-11-22-urinary-notification-design.md)。后续碳水—血糖薄切片新增 `glucose`，胰腺与肾糖又相继接入，该阶段根清单为 15 部位，见 [`2026-11-22-carbohydrate-glucose-design.md`](./2026-11-22-carbohydrate-glucose-design.md)、[`2026-11-22-pancreas-insulin-design.md`](./2026-11-22-pancreas-insulin-design.md) 与 [`2026-11-23-renal-glucose-design.md`](./2026-11-23-renal-glucose-design.md)。活动—皮肤出汗薄切片随后接入 `physicalActivity` 与 `skin`，`bodyFluid` 增加 `skin.sweatVolumeMl` 第二出口，当时为 17 部位、19 份参数文件、7 部位硬 transfer 闭包；运动相关呼吸失水薄切片又接入 `lungs`，`bodyFluid` 增加 `lungs.respiratoryWaterLossMl` 第三出口，当时根清单为 18 部位、20 份参数文件、8 部位硬 transfer 闭包，分别见 [`2026-11-23-activity-sweat-design.md`](./2026-11-23-activity-sweat-design.md) 与 [`2026-11-23-respiratory-water-loss-design.md`](./2026-11-23-respiratory-water-loss-design.md)；骨骼肌摄糖薄切片又接入 `muscleGlucose`，当前根清单为 19 部位、21 份参数文件、9 部位闭包，见 [`2026-11-23-muscle-glucose-uptake-design.md`](./2026-11-23-muscle-glucose-uptake-design.md)。本文件的 12 部位正文、单出口方程与验收记录保持当时口径，不按后续薄切片改写。
 
 **状态：** 设计已确认。Tasks 1–9 的脚本、参数、证据笔记、定向测试、根清单接入与现状文档已落地；Task 10 的真实 DSH 会话验收已完成（2026-11-22，见 §9）；Task 11 的多轮水账本补测与当时 12 部位的逐轮性能基线已完成（2026-11-22，见 §8）；Task 12 的论文可比数据对照已记录（见 §7，2026-11-22），但只支持探索性判断，所有新参数仍为 `design`，没有拟合或独立验证，且大负荷利尿仍不匹配、口咽解渴支路未建，不能写成整体符合论文。实施计划见 [`2026-11-22-water-balance.md`](../plans/2026-11-22-water-balance.md)。本设计最初只覆盖饮水到主动排尿；2026-11-22 后续合并了膀胱过度充盈非自主排空与 `interoception.discomfort`（默认根清单，见 [`2026-11-22-overflow-discomfort-design.md`](./2026-11-22-overflow-discomfort-design.md)），以及可选的 DI 样多尿变体（独立清单/存档，默认身体不变，见 [`2026-11-22-di-insipidus-proxy-design.md`](./2026-11-22-di-insipidus-proxy-design.md)）。§3.5 已按非自主排空扩写；§8 的 Task 11 性能与 §9 的 Task 10 会话都是这些功能加入前的历史记录，不代表当前 HEAD。本设计不覆盖 M3 的睡眠部分（该部分调研后暂缓，未实现）。
 
@@ -96,7 +96,7 @@ transfer bodyFluid → bladder: U
 
 肠吸收水在同一 transfer 阶段加入，不能用来支付本轮 `U`。`waterDeficit` 是本轮轮初水量的读出，下一轮才反映本轮吸收/产尿。
 
-> **后续提示：** 活动—皮肤出汗薄切片在 `bodyFluid` 增加 `skin.sweatVolumeMl` 第二出口，肾尿与汗液合计不超过轮初水；本段保留当时的单出口设计口径，当前实现见 [`2026-11-23-activity-sweat-design.md`](./2026-11-23-activity-sweat-design.md) §5。
+> **后续提示：** 活动—皮肤出汗薄切片在 `bodyFluid` 增加 `skin.sweatVolumeMl` 第二出口；运动相关呼吸失水薄切片再加入 `lungs.respiratoryWaterLossMl` 第三出口，当前按肾→肺→汗的工程顺序分配轮初水，三路合计不超过轮初水。本段保留当时的单出口设计口径，当前实现见 [`2026-11-23-activity-sweat-design.md`](./2026-11-23-activity-sweat-design.md) §5 与 [`2026-11-23-respiratory-water-loss-design.md`](./2026-11-23-respiratory-water-loss-design.md)「水转移与时序」。
 
 肾脏不持有或转移水，只计算下一轮请求：
 

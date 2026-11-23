@@ -10,7 +10,14 @@ import {
 } from '../organs/human-organs/brain/interoception.ts';
 import { loadParameters } from '../lib/parameters.js';
 
-const BASELINE = { hunger: 50, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 0 };
+const BASELINE = {
+  hunger: 50,
+  fullness: 0,
+  thirst: 50,
+  urinaryUrgency: 0,
+  discomfort: 0,
+  sexualArousalMm: 0,
+};
 const parametersUrl = new URL('../organs/human-organs/brain/interoception.parameters.json', import.meta.url);
 const parameterValues = loadParameters(parametersUrl);
 const parameterFile = JSON.parse(readFileSync(parametersUrl, 'utf8'));
@@ -22,6 +29,8 @@ function round(inputs = {}) {
     duodenum: inputs.duodenum,
     hypothalamusThirst: inputs.thirst,
     bladder: inputs.bladder,
+    uterus: inputs.uterus,
+    sexualResponse: inputs.sexualResponse,
   };
   let written;
   heartbeat({
@@ -43,6 +52,7 @@ test('interoception exports the organ module contract', () => {
     thirst: { unit: 'mm', mode: 'absolute' },
     urinaryUrgency: { unit: 'mm', mode: 'absolute' },
     discomfort: { unit: 'mm', mode: 'absolute' },
+    sexualArousalMm: { unit: 'mm', mode: 'absolute' },
   });
   assert.deepEqual(initialState, BASELINE);
 });
@@ -80,28 +90,28 @@ test('the discomfort onset is a 70 mm design parameter with no source', () => {
 test('ghrelin at half the fasting baseline lowers hunger and raises fullness', () => {
   assert.deepEqual(
     round({ ghrelin: { relativeConcentration: 0.5 } }),
-    { hunger: 25, fullness: 25, thirst: 50, urinaryUrgency: 0, discomfort: 0 },
+    { hunger: 25, fullness: 25, thirst: 50, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0 },
   );
 });
 
 test('full mechanical input raises fullness and lowers hunger', () => {
   assert.deepEqual(
     round({ sensory: { mechanical: 1 } }),
-    { hunger: 30, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100 },
+    { hunger: 30, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0 },
   );
 });
 
 test('nutrient exposure at 10 kcal/min saturates fullness and clamps hunger at zero', () => {
   assert.deepEqual(
     round({ duodenum: { nutrientExposure: 10 } }),
-    { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100 },
+    { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0 },
   );
 });
 
 test('thirst passes through from the hypothalamic drive and clamps to 0-100 mm', () => {
   assert.deepEqual(
     round({ thirst: { thirst: 20 } }),
-    { hunger: 50, fullness: 0, thirst: 20, urinaryUrgency: 0, discomfort: 0 },
+    { hunger: 50, fullness: 0, thirst: 20, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0 },
   );
   assert.equal(round({ thirst: { thirst: -5 } }).thirst, 0);
   assert.equal(round({ thirst: { thirst: 250 } }).thirst, 100);
@@ -139,6 +149,101 @@ test('each feeling at 85 mm yields 50 discomfort', () => {
   assert.equal(round({ bladder: { volumeMl: 348.5 } }).discomfort, 50);
 });
 
+test('uterine cramps enter discomfort as the fifth channel', () => {
+  assert.deepEqual(
+    round({ uterus: { crampMm: 85 } }),
+    { hunger: 50, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 50, sexualArousalMm: 0 },
+  );
+  assert.equal(round({ uterus: { crampMm: 70 } }).discomfort, 0);
+  assert.equal(round({ uterus: { crampMm: 100 } }).discomfort, 100);
+  assert.equal(round({ uterus: { crampMm: -20 } }).discomfort, 0);
+  assert.equal(round({ uterus: { crampMm: 250 } }).discomfort, 100);
+  assert.equal(round({ thirst: { thirst: 100 }, uterus: { crampMm: 85 } }).discomfort, 100);
+});
+
+test('missing, NaN or non-finite crampMm counts as zero', () => {
+  for (const uterus of [
+    {},
+    { crampMm: Number.NaN },
+    { crampMm: Number.POSITIVE_INFINITY },
+    { crampMm: Number.NEGATIVE_INFINITY },
+  ]) {
+    assert.deepEqual(round({ uterus }), BASELINE);
+  }
+});
+
+test('the fifth channel is inert without a uterus part', () => {
+  assert.deepEqual(round(), round({ uterus: { crampMm: 0 } }));
+  assert.deepEqual(
+    round({ thirst: { thirst: 85 } }),
+    round({ thirst: { thirst: 85 }, uterus: { crampMm: 0 } }),
+  );
+  assert.deepEqual(round({ uterus: undefined }), BASELINE);
+});
+
+test('sexual arousal is a 0-100 mm readout with a zero baseline', () => {
+  assert.deepEqual(fields.sexualArousalMm, { unit: 'mm', mode: 'absolute' });
+  assert.equal(initialState.sexualArousalMm, 0);
+  assert.equal(round().sexualArousalMm, 0);
+});
+
+test('sexualResponse arousalMm passes through as sexualArousalMm', () => {
+  assert.deepEqual(
+    round({ sexualResponse: { arousalMm: 72 } }),
+    { ...BASELINE, sexualArousalMm: 72 },
+  );
+  assert.equal(round({ sexualResponse: { arousalMm: 0 } }).sexualArousalMm, 0);
+});
+
+test('missing, missing field, NaN or non-finite sexual arousal counts as zero', () => {
+  for (const sexualResponse of [
+    undefined,
+    {},
+    { arousalMm: Number.NaN },
+    { arousalMm: Number.POSITIVE_INFINITY },
+    { arousalMm: Number.NEGATIVE_INFINITY },
+  ]) {
+    assert.deepEqual(round({ sexualResponse }), BASELINE);
+  }
+});
+
+test('sexual arousal clamps to 0-100 and never enters discomfort', () => {
+  assert.equal(round({ sexualResponse: { arousalMm: -5 } }).sexualArousalMm, 0);
+  assert.equal(round({ sexualResponse: { arousalMm: 250 } }).sexualArousalMm, 100);
+  for (const arousalMm of [72, 85, 100]) {
+    const next = round({ sexualResponse: { arousalMm } });
+    assert.equal(next.sexualArousalMm, arousalMm);
+    assert.equal(next.discomfort, 0);
+  }
+});
+
+test('sexual arousal leaves the legacy five channels point-identical', () => {
+  const withoutSexual = round({
+    thirst: { thirst: 85 },
+    bladder: { volumeMl: 205 },
+    uterus: { crampMm: 85 },
+  });
+  const withSexual = round({
+    thirst: { thirst: 85 },
+    bladder: { volumeMl: 205 },
+    uterus: { crampMm: 85 },
+    sexualResponse: { arousalMm: 100 },
+  });
+  assert.deepEqual(withoutSexual, {
+    hunger: 50,
+    fullness: 0,
+    thirst: 85,
+    urinaryUrgency: 50,
+    discomfort: 50,
+    sexualArousalMm: 0,
+  });
+  assert.deepEqual(
+    { ...withSexual, sexualArousalMm: withoutSexual.sexualArousalMm },
+    withoutSexual,
+  );
+  assert.equal(withSexual.sexualArousalMm, 100);
+});
+
 test('discomfort takes the strongest feeling instead of summing them', () => {
   const allAt85 = round({
     sensory: { mechanical: 1 },
@@ -149,7 +254,7 @@ test('discomfort takes the strongest feeling instead of summing them', () => {
   });
   assert.deepEqual(
     allAt85,
-    { hunger: 85, fullness: 85, thirst: 85, urinaryUrgency: 85, discomfort: 50 },
+    { hunger: 85, fullness: 85, thirst: 85, urinaryUrgency: 85, discomfort: 50, sexualArousalMm: 0 },
   );
 
   const oneAt100 = round({
@@ -161,14 +266,14 @@ test('discomfort takes the strongest feeling instead of summing them', () => {
   });
   assert.deepEqual(
     oneAt100,
-    { hunger: 85, fullness: 85, thirst: 100, urinaryUrgency: 85, discomfort: 100 },
+    { hunger: 85, fullness: 85, thirst: 100, urinaryUrgency: 85, discomfort: 100, sexualArousalMm: 0 },
   );
 });
 
 test('thirst and bladder readings leave hunger and fullness untouched', () => {
   assert.deepEqual(
     round({ thirst: { thirst: 0 }, bladder: { volumeMl: 410 } }),
-    { hunger: 50, fullness: 0, thirst: 0, urinaryUrgency: 100, discomfort: 100 },
+    { hunger: 50, fullness: 0, thirst: 0, urinaryUrgency: 100, discomfort: 100, sexualArousalMm: 0 },
   );
 });
 
@@ -195,7 +300,7 @@ test('negative inputs clamp to zero before the gains', () => {
       ghrelin: { relativeConcentration: -2 },
       duodenum: { nutrientExposure: -3 },
     }),
-    { hunger: 0, fullness: 50, thirst: 50, urinaryUrgency: 0, discomfort: 0 },
+    { hunger: 0, fullness: 50, thirst: 50, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0 },
   );
 });
 
@@ -210,16 +315,17 @@ test('oversized inputs clamp outputs to the 0-100 band and stay finite', () => {
     round({ duodenum: { nutrientExposure: 1e9 } }),
   ];
   const overflow = round({ duodenum: { nutrientExposure: Number.MAX_VALUE } });
-  assert.deepEqual(cases[0], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100 });
-  assert.deepEqual(cases[1], { hunger: 100, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 100 });
-  assert.deepEqual(cases[2], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100 });
-  assert.deepEqual(overflow, { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100 });
+  assert.deepEqual(cases[0], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0 });
+  assert.deepEqual(cases[1], { hunger: 100, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0 });
+  assert.deepEqual(cases[2], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0 });
+  assert.deepEqual(overflow, { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0 });
   for (const next of [...cases, overflow]) {
     assert.ok(Number.isFinite(next.hunger));
     assert.ok(Number.isFinite(next.fullness));
     assert.ok(Number.isFinite(next.thirst));
     assert.ok(Number.isFinite(next.urinaryUrgency));
     assert.ok(Number.isFinite(next.discomfort));
+    assert.ok(Number.isFinite(next.sexualArousalMm));
   }
 });
 

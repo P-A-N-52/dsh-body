@@ -1,8 +1,11 @@
 /*
  * 部位 `interoception`：把胃壁机械感受、胃饥饿素和十二指肠营养暴露汇成
  * 0–100 mm VAS 代理的饥饿（hunger）与饱满（fullness），并转出下丘脑口渴驱动
- * （thirst）与膀胱充盈的尿意代理（urinaryUrgency），再由四者超出舒适区的强度取最大值
- * 得到不适代理（discomfort）。本脚本只产出体感，不发送通知，也不读自己的上一轮状态。
+ * （thirst）、膀胱充盈的尿意代理（urinaryUrgency）与子宫痉挛的痛经代理
+ * （uterus.crampMm），再由五路超出舒适区的强度取最大值得到不适代理（discomfort）。
+ * `uterus` 与 `sexualResponse` 是可选部位的软读：未加载时按 0，根清单行为逐点不变；
+ * 其中 `sexualResponse.arousalMm` 只转成体感读数 `sexualArousalMm`，不参与 `discomfort`，
+ * 也不触发通知。本脚本只产出体感，不发送通知，也不读自己的上一轮状态。
  *
  * 来源（笔记路径、原文定位、支撑什么、不能推出什么）
  * - SRC-CUMMINGS-2001 / cummings-2001：`organs/human-organs/stomach/references/notes/cummings-2001.md`，
@@ -47,15 +50,23 @@
  * - 输出钳到 [0, 100]；三路输入的线性叠加不是论文方程，也没有交互项、阈值或饱和。
  *   非有限读数先在输入侧回落到缺失默认值；合成结果只对 NaN 回落对应基线，±Infinity 由
  *   [0, 100] 钳位截到边界，状态不写出 NaN 或 Infinity。
- * - `discomfort` 是本轮四个已有感受超过 `interoception.discomfort.onsetMm`（`design`，默认
+ * - `discomfort` 是本轮五路感受超过 `interoception.discomfort.onsetMm`（`design`，默认
  *   70 mm）后的超出强度取最大值：
  *   `excess(x) = clamp(100 × (x − onsetMm) / (100 − onsetMm), 0, 100)`，
- *   `discomfort = max(excess(hunger), excess(fullness), excess(thirst), excess(urinaryUrgency))`。
- *   它是“当前最强的不适感受”代理，不是疼痛评分、情绪、疾病严重度或四感受总分；没有来源把
- *   70 mm 或该斜率标定到主观不适，取最大值也只是为了避免没有依据的相加。不读自身历史，
- *   不产生动作或通知，也没有新增历史状态。
- * - 只读轮初快照，同一轮摄入下一轮才反映；不建模恶心、腹胀、疼痛、过度饱满、餐食成分
- *   与个体差异；不调用 io.notify。
+ *   `discomfort = max(excess(hunger), excess(fullness), excess(thirst),
+ *   excess(urinaryUrgency), excess(uterineCramp))`，其中
+ *   `uterineCramp = clamp(finiteOr(uterus.crampMm, 0), 0, 100)`。`uterus` 是可选部位：
+ *   未加载或 `crampMm` 缺失、NaN、非有限时按 0（沿用 `finiteOr` 惯例），根清单行为不变；
+ *   `crampMm` 由子宫脚本按 `design` 参数产出，本脚本不核对来源，也不把它当作疼痛测量。
+ *   它是“当前最强的不适感受”代理，不是疼痛评分、情绪、疾病严重度或五感受总分；没有
+ *   来源把 70 mm 或该斜率标定到主观不适，取最大值也只是为了避免没有依据的相加。不读
+ *   自身历史，不产生动作或通知，也没有新增历史状态。
+ * - `sexualArousalMm = clamp(finiteOr(sexualResponse.arousalMm, 0), 0, 100)` 是性反应
+ *   部位的软读，只作为 0–100 mm 体感读数写入状态：`sexualResponse` 未加载、字段缺失、
+ *   NaN 或非有限时按 0；它不参与 `discomfort`，也不产生动作或通知。
+ * - 只读轮初快照，同一轮摄入下一轮才反映；不建模恶心、腹胀、疼痛本身（只把
+ *   `uterus.crampMm` 痉挛代理并入 discomfort）、过度饱满、餐食成分与个体差异；
+ *   不调用 io.notify。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
@@ -68,6 +79,7 @@ type InteroceptionState = {
   thirst: number;
   urinaryUrgency: number;
   discomfort: number;
+  sexualArousalMm: number;
 };
 
 type SensoryReading = {
@@ -90,12 +102,22 @@ type BladderReading = {
   volumeMl?: number;
 };
 
+type UterusReading = {
+  crampMm?: number;
+};
+
+type SexualResponseReading = {
+  arousalMm?: number;
+};
+
 type IO = {
   read(id: 'stomachSensory'): Readonly<SensoryReading> | undefined;
   read(id: 'stomachGhrelin'): Readonly<GhrelinReading> | undefined;
   read(id: 'duodenum'): Readonly<DuodenumReading> | undefined;
   read(id: 'hypothalamusThirst'): Readonly<ThirstReading> | undefined;
   read(id: 'bladder'): Readonly<BladderReading> | undefined;
+  read(id: 'uterus'): Readonly<UterusReading> | undefined;
+  read(id: 'sexualResponse'): Readonly<SexualResponseReading> | undefined;
   write(next: InteroceptionState): void;
 };
 
@@ -121,6 +143,7 @@ export const initialState: InteroceptionState = {
   thirst: thirstFallbackMm,
   urinaryUrgency: 0,
   discomfort: 0,
+  sexualArousalMm: 0,
 };
 
 export const fields = {
@@ -129,6 +152,7 @@ export const fields = {
   thirst: { unit: 'mm', mode: 'absolute' },
   urinaryUrgency: { unit: 'mm', mode: 'absolute' },
   discomfort: { unit: 'mm', mode: 'absolute' },
+  sexualArousalMm: { unit: 'mm', mode: 'absolute' },
 };
 
 function finiteOr(value: number | undefined, fallback: number): number {
@@ -174,12 +198,15 @@ export function heartbeat(io: IO): void {
     (100 * bladderVolume) / urinaryUrgencyReferenceVolumeMl,
     0,
   );
+  const uterineCramp = clamp(finiteOr(io.read('uterus')?.crampMm, 0), 0, 100);
+  const sexualArousalMm = clamp(finiteOr(io.read('sexualResponse')?.arousalMm, 0), 0, 100);
   const discomfort = Math.max(
     excessOverOnset(hunger, discomfortOnsetMm),
     excessOverOnset(fullness, discomfortOnsetMm),
     excessOverOnset(thirst, discomfortOnsetMm),
     excessOverOnset(urinaryUrgency, discomfortOnsetMm),
+    excessOverOnset(uterineCramp, discomfortOnsetMm),
   );
 
-  io.write({ hunger, fullness, thirst, urinaryUrgency, discomfort });
+  io.write({ hunger, fullness, thirst, urinaryUrgency, discomfort, sexualArousalMm });
 }

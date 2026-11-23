@@ -28,9 +28,10 @@ function validateExercise(args) {
 
 function validateAction(args) {
   if (args.type === 'urinate') return null;
-  if (args.type === 'exercise') return validateExercise(args);
+  if (args.type === 'orgasm') return null;
+  if (args.type === 'exercise' || args.type === 'sex') return validateExercise(args);
   if (args.type !== 'drink' && args.type !== 'eat') {
-    return 'type must be drink, eat, urinate, or exercise';
+    return 'type must be drink, eat, urinate, exercise, sex, or orgasm';
   }
   if (!isFiniteNumber(args.volumeMl) || args.volumeMl <= 0) {
     return 'volumeMl must be a finite number greater than 0';
@@ -64,13 +65,13 @@ export function createBodyTools(gateway) {
   return {
     body_act: {
       name: 'body_act',
-      description: 'Submit a structured body action (drink, eat, urinate, or exercise) to the Gateway. '
+      description: 'Submit a structured body action (drink, eat, urinate, exercise, sex, or orgasm) to the Gateway. '
         + 'A 202 queued receipt only means the action is queued; it takes effect in a later heartbeat, '
         + 'so read body_state afterwards. Retrying the same session and tool call reuses the same action id.',
       parameters: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['drink', 'eat', 'urinate', 'exercise'] },
+          type: { type: 'string', enum: ['drink', 'eat', 'urinate', 'exercise', 'sex', 'orgasm'] },
           volumeMl: { type: 'number', description: 'Intake volume in milliliters.' },
           energyKcal: { type: 'number', description: 'Intake energy in kilocalories.' },
           carbohydrateG: {
@@ -80,11 +81,11 @@ export function createBodyTools(gateway) {
           mealKind: { type: 'string', enum: mealKinds },
           durationMin: {
             type: 'number',
-            description: 'Exercise duration in minutes when type is exercise; intake duration otherwise.',
+            description: 'Exercise or sex duration in minutes when type is exercise or sex; intake duration otherwise.',
           },
           intensity: {
             type: 'number',
-            description: 'Relative exercise intensity, greater than 0 and at most 1.',
+            description: 'Relative exercise or sex intensity, greater than 0 and at most 1.',
           },
         },
         required: ['type'],

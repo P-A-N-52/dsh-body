@@ -22,8 +22,11 @@ const partIds = [
   'interoception',
   'kidney',
   'kidneyGlucose',
+  'lungs',
+  'muscleGlucose',
   'pancreasEndocrine',
   'physicalActivity',
+  'sexualResponse',
   'skin',
   'smallIntestine',
   'stomach',
@@ -192,7 +195,15 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
     involuntaryVoidedMl: 0,
   });
   assert.deepEqual(loaded.physicalActivity, { remainingExerciseMin: 0, intensity: 0 });
+  assert.deepEqual(loaded.sexualResponse, {
+    arousalMm: 0,
+    phase: 'rest',
+    remainingSexMin: 0,
+    sexIntensity: 0,
+    lastOrgasmAtSimMin: null,
+  });
   assert.deepEqual(loaded.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
+  assert.deepEqual(loaded.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
 
   await gateway.tick();
   const after = gateway.getState().parts;

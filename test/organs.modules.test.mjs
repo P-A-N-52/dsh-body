@@ -20,7 +20,10 @@ const organModules = [
   ['interoception', 'interoception', '../organs/human-organs/brain/interoception.ts'],
   ['brain notify', 'brainNotify', '../organs/human-organs/brain/notify.ts'],
   ['skeletal muscle activity', 'physicalActivity', '../organs/human-organs/skeletal-muscle/activity.ts'],
+  ['skeletal muscle glucose uptake', 'muscleGlucose', '../organs/human-organs/skeletal-muscle/glucose-uptake.ts'],
+  ['sexual response', 'sexualResponse', '../organs/human-organs/sexual-response/response.ts'],
   ['skin sweat', 'skin', '../organs/human-organs/skin/sweat.ts'],
+  ['lungs respiratory water loss', 'lungs', '../organs/human-organs/lungs/respiratory-water-loss.ts'],
   ['hypothalamus ADH central DI', 'hypothalamusAdh', '../organs/human-organs/brain/hypothalamus-adh-di-central.ts'],
   ['kidney central DI', 'kidney', '../organs/human-organs/kidney/urine-production-di-central.ts'],
   ['kidney nephrogenic DI', 'kidney', '../organs/human-organs/kidney/urine-production-di-nephrogenic.ts'],
@@ -37,15 +40,18 @@ for (const [label, expectedId, modulePath] of organModules) {
   });
 }
 
-test('the root manifest lists seventeen scripts with activity and skin sweat', () => {
+test('the root manifest lists twenty scripts with activity, sweat, lung water loss and sexual response', () => {
   const manifest = JSON.parse(readFileSync(new URL('../body-modules.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.scripts.length, 17);
+  assert.equal(manifest.scripts.length, 20);
   assert.ok(manifest.scripts.includes('./organs/human-organs/stomach/hydration.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-compartments/glucose/glucose.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/pancreas/insulin.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/kidney/glucose-excretion.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/skeletal-muscle/activity.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/skeletal-muscle/glucose-uptake.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/sexual-response/response.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/skin/sweat.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/lungs/respiratory-water-loss.ts'));
   assert.equal(manifest.scripts.includes('./organs/human-organs/stomach/motility.ts'), false);
 });
 

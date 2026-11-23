@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "main": "./index.js",
-  "files": ["index.js", "gateway.js", "gateway/", "json-safe.js", "tools.js", "notifications.js", "body-modules.json", "organs/", "lib/", "startup/", "cordis.patch.yml"],
+  "files": ["index.js", "gateway.js", "gateway/", "json-safe.js", "tools.js", "notifications.js", "body-modules.json", "body-modules.female.json", "organs/", "lib/", "startup/", "cordis.patch.yml"],
   "scripts": { "test": "node --test" },
   "engines": { "node": ">=22.18" },
   "dsh": {

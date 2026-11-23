@@ -12,7 +12,7 @@
 
 ## 项目与事实来源
 
-`dsh-body` 是 DSH 插件：在宿主进程中运行虚拟身体 Gateway，维护仿真时钟、动作队列和身体存档。运行脚本在 `organs/**`；`systems/` 仅保存 legacy 资料，不是运行层级。
+`dsh-body` 是 DSH 插件：在宿主进程中运行虚拟身体 Gateway，维护仿真时钟、动作队列和身体存档。运行脚本在 `organs/**`。
 
 现状判断顺序：**代码（必要时对照测试）> `docs/gateway-and-scripts.md` > 已批准设计 > 计划文档**。
 

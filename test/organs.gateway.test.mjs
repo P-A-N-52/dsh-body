@@ -9,7 +9,7 @@ import { checkpoint } from '../test-support/harness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the root manifest loads all seventeen body parts', async (t) => {
+test('the root manifest loads all twenty body parts', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-'));
   const statePath = join(dir, 'body-state.json');
   writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
@@ -33,7 +33,12 @@ test('the root manifest loads all seventeen body parts', async (t) => {
   assert.deepEqual(capabilities.eat, ['stomach', 'stomachGhrelin']);
   assert.deepEqual(capabilities.urinate, ['bladder']);
   assert.deepEqual(capabilities.exercise, ['physicalActivity']);
-  assert.deepEqual(Object.keys(capabilities).sort(), ['drink', 'eat', 'exercise', 'urinate']);
+  assert.deepEqual(capabilities.sex, ['physicalActivity', 'sexualResponse']);
+  assert.deepEqual(capabilities.orgasm, ['sexualResponse']);
+  assert.deepEqual(
+    Object.keys(capabilities).sort(),
+    ['drink', 'eat', 'exercise', 'orgasm', 'sex', 'urinate'],
+  );
 
   const response = await fetch(`http://127.0.0.1:${info.port}/actions`, {
     method: 'POST',
@@ -55,8 +60,11 @@ test('the root manifest loads all seventeen body parts', async (t) => {
     'interoception',
     'kidney',
     'kidneyGlucose',
+    'lungs',
+    'muscleGlucose',
     'pancreasEndocrine',
     'physicalActivity',
+    'sexualResponse',
     'skin',
     'smallIntestine',
     'stomach',
@@ -81,10 +89,20 @@ test('the root manifest loads all seventeen body parts', async (t) => {
   assert.equal(first.parts.hypothalamusThirst.thirst, 50);
   assert.equal(first.parts.kidney.urineProductionRequestMl, 1);
   assert.deepEqual(first.parts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
+  assert.deepEqual(first.parts.muscleGlucose, { uptakeG: 0, glycogenG: 0, glycogenConsumedG: 0 });
   assert.deepEqual(first.parts.pancreasEndocrine, { insulinRelative: 1 });
   assert.equal(first.parts.bladder.volumeMl, 0);
   assert.deepEqual(first.parts.physicalActivity, { remainingExerciseMin: 0, intensity: 0 });
+  assert.deepEqual(first.parts.sexualResponse, {
+    arousalMm: 0,
+    phase: 'rest',
+    remainingSexMin: 0,
+    sexIntensity: 0,
+    lastOrgasmAtSimMin: null,
+  });
+  assert.equal(first.parts.interoception.sexualArousalMm, 0);
   assert.deepEqual(first.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
+  assert.deepEqual(first.parts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
   assert.equal(first.parts.brainNotify.lastSessionId, null);
   assert.deepEqual(first.parts.brainNotify.sessions, {});
 
@@ -100,6 +118,7 @@ test('the root manifest loads all seventeen body parts', async (t) => {
   assert.ok(second.parts.interoception.fullness > 0);
   assert.ok(second.parts.interoception.hunger < 50);
   assert.deepEqual(second.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
+  assert.deepEqual(second.parts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
 });
 
 test('the root manifest fails to start when the skin transfer target is missing', async (t) => {
@@ -133,5 +152,73 @@ test('the root manifest fails to start when the skin transfer target is missing'
   await assert.rejects(
     gateway.ready,
     /transferOut target "skin\.sweatVolumeMl" is not declared/,
+  );
+});
+
+test('the root manifest fails to start when the lungs transfer target is missing', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-no-lungs-'));
+  const statePath = join(dir, 'body-state.json');
+  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
+  const rootManifest = JSON.parse(readFileSync(join(root, 'body-modules.json'), 'utf8'));
+  const manifestPath = join(dir, 'body-modules.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    ...rootManifest,
+    startupScripts: rootManifest.startupScripts.map((path) => relative(dir, join(root, path))),
+    scripts: rootManifest.scripts
+      .filter((path) => !path.includes('/lungs/'))
+      .map((path) => relative(dir, join(root, path))),
+  }));
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  const gateway = startGateway({
+    manifestPath,
+    statePath,
+    port: 0,
+    autoTick: false,
+    now: () => 0,
+  });
+  t.after(async () => {
+    await gateway.stop();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  await assert.rejects(
+    gateway.ready,
+    /transferOut target "lungs\.respiratoryWaterLossMl" is not declared/,
+  );
+});
+
+test('the root manifest fails to start when the muscle glucose transfer target is missing', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-no-muscle-glucose-'));
+  const statePath = join(dir, 'body-state.json');
+  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
+  const rootManifest = JSON.parse(readFileSync(join(root, 'body-modules.json'), 'utf8'));
+  const manifestPath = join(dir, 'body-modules.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    ...rootManifest,
+    startupScripts: rootManifest.startupScripts.map((path) => relative(dir, join(root, path))),
+    scripts: rootManifest.scripts
+      .filter((path) => !path.includes('/skeletal-muscle/glucose-uptake'))
+      .map((path) => relative(dir, join(root, path))),
+  }));
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  const gateway = startGateway({
+    manifestPath,
+    statePath,
+    port: 0,
+    autoTick: false,
+    now: () => 0,
+  });
+  t.after(async () => {
+    await gateway.stop();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  await assert.rejects(
+    gateway.ready,
+    /transferOut target "muscleGlucose\.uptakeG" is not declared/,
   );
 });

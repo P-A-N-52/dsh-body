@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "owner": "muscleGlucose",
+  "parameters": [
+    {
+      "id": "muscleGlucose.glycogenUseRateGPerMin",
+      "unit": "g/min",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "intensity=1 时每分钟运动消耗肌糖原的工程占位速率，不是实测肌糖原分解率；不区分运动类型、MET、强度非线性或个体差异，无登记来源（SRC-DALLAMAN-2007 只支撑 glucose 侧处置可分区的结构方向）。未来由具备运动与底物利用证据的模型替换。range 是工程调参范围，不是人体测量范围"
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 
 ## 模块与存档
 
-- **按器官组织，不按系统搭运行层。** 新器官脚本放 `organs/human-organs/<organ>/`，在该器官的 `README.md` 记录脚本、部位 ID、字段、单位与未建模项。把脚本路径加入 [`body-modules.json`](body-modules.json) 的 `scripts`；路径相对清单所在目录。`systems/` 只保留未迁移的历史资料。
+- **按器官组织，不按系统搭运行层。** 新器官脚本放 `organs/human-organs/<organ>/`，在该器官的 `README.md` 记录脚本、部位 ID、字段、单位与未建模项。把脚本路径加入 [`body-modules.json`](body-modules.json) 的 `scripts`；路径相对清单所在目录。
 - **遵循模块契约。** 使用 ESM 具名导出：`id` 是唯一且稳定的 camelCase 部位键，`heartbeat(io)` 是轮次入口，`fields` 必须导出（只用 `io.write` 时可为 `{}`）。`initialState` 只补缺失初值；`actionTypes` 用于登记能力，不会过滤 `io.actions`。脚本自行按动作类型、字段和单位判断。Node.js ≥ 22.18；相对导入带扩展名，TypeScript 只用 Node 能直接擦除的类型语法。
 - **同一轮读同一份快照。** 用 `io.dt`、`io.simulatedSeconds`、`io.wallTimeMs` 处理时间，不自行读墙钟推进。`io.write` 接收本部位完整的下一状态，不是补丁；状态须可保存为 JSON，不写 `undefined`、`NaN` 或 `Infinity`。跨部位的增量或转移必须遵守 [`fields` 操作约定](docs/gateway-operations.md)，统一在轮末校验、结算。
 - **清单和存档分开。** `body-modules.json` 是开发者编辑的脚本清单；`body-state.json` 由 Gateway 维护，一具身体一份。暂停或恢复时先停 Gateway，只修改实际 `statePath` 存档顶层的 `active`，再启动。不要覆盖存档或在运行中修改它；`activeBatch` 不是开关。

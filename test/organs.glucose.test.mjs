@@ -32,6 +32,20 @@ const kidneyGlucoseStub = {
   },
 };
 
+const muscleGlucoseStub = {
+  id: 'muscleGlucose',
+  initialState: { uptakeG: 0, glycogenG: 0, glycogenConsumedG: 0 },
+  fields: {
+    uptakeG: {
+      unit: 'g',
+      mode: 'absolute',
+      transferIn: ['glucose.glucoseMassG'],
+    },
+    glycogenG: { unit: 'g', mode: 'absolute' },
+    glycogenConsumedG: { unit: 'g', mode: 'absolute' },
+  },
+};
+
 function snapshotFor(state, { insulin, request, withPancreas = true, withKidney = true } = {}) {
   const parts = { glucose: state };
   if (withPancreas) {
@@ -67,6 +81,15 @@ function renalTransferG(transfers) {
     .reduce((sum, [, , , , amount]) => sum + amount, 0);
 }
 
+function muscleTransferG(transfers) {
+  return transfers
+    .filter(([fromPart, fromField, toPart, toField]) => fromPart === 'glucose'
+      && fromField === 'glucoseMassG'
+      && toPart === 'muscleGlucose'
+      && toField === 'uptakeG')
+    .reduce((sum, [, , , , amount]) => sum + amount, 0);
+}
+
 function registry() {
   return createFieldRegistry([
     {
@@ -81,18 +104,20 @@ function registry() {
       },
     },
     kidneyGlucoseStub,
+    muscleGlucoseStub,
     { id, initialState, fields },
   ]);
 }
 
-function applyRound({ state, insulin = 1, request = 0, kidneyRequestAfter = 0, inflowG = 0 }) {
-  const { written, transfers } = round(state, { insulin, request });
+function applyRound({ state, insulin = 1, request = 0, kidneyRequestAfter = 0, inflowG = 0, dt = 60 }) {
+  const { written, transfers } = round(state, { insulin, request, dt });
   const writtenBeforeTransfer = structuredClone(written);
   const next = applyOperations({
     registry: registry(),
     snapshotParts: {
       glucose: state,
       kidneyGlucose: { excretionRequestG: request, excretedGlucoseG: 0 },
+      muscleGlucose: { uptakeG: 0, glycogenG: 0, glycogenConsumedG: 0 },
       smallIntestine: { carbohydrateG: inflowG },
     },
     writes: {
@@ -132,7 +157,7 @@ test('glucose exports the compartment contract and starts at the 90 mg/dL baseli
       unit: 'g',
       mode: 'absolute',
       transferIn: ['smallIntestine.carbohydrateG'],
-      transferOut: ['kidneyGlucose.excretedGlucoseG'],
+      transferOut: ['kidneyGlucose.excretedGlucoseG', 'muscleGlucose.uptakeG'],
     },
     concentrationMgDl: { unit: 'mg/dL', mode: 'absolute' },
     disposedGlucoseG: { unit: 'g', mode: 'absolute' },
@@ -154,6 +179,18 @@ test('a hydrated body without kidney glucose fails on the glucose transfer targe
     { id: stomachHydration.id, initialState: stomachHydration.initialState, fields: stomachHydration.fields },
     { id: smallIntestine.id, initialState: smallIntestine.initialState, fields: smallIntestine.fields },
     { id: bodyFluid.id, initialState: bodyFluid.initialState, fields: bodyFluid.fields },
+    {
+      id: 'lungs',
+      initialState: { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 },
+      fields: {
+        respiratoryWaterLossRequestMl: { unit: 'mL', mode: 'absolute' },
+        respiratoryWaterLossMl: {
+          unit: 'mL',
+          mode: 'absolute',
+          transferIn: ['bodyFluid.waterVolumeMl'],
+        },
+      },
+    },
     { id: skin.id, initialState: skin.initialState, fields: skin.fields },
     { id, initialState, fields },
     { id: bladder.id, initialState: bladder.initialState, fields: bladder.fields },
@@ -175,6 +212,36 @@ test('a hydrated body without kidney glucose fails on the glucose transfer targe
   );
 });
 
+test('a glucose registry without muscle glucose fails on the muscle transfer target', () => {
+  const modules = [
+    {
+      id: 'smallIntestine',
+      initialState: { carbohydrateG: 0 },
+      fields: {
+        carbohydrateG: {
+          unit: 'g',
+          mode: 'absolute',
+          transferOut: ['glucose.glucoseMassG'],
+        },
+      },
+    },
+    kidneyGlucoseStub,
+    { id, initialState, fields },
+  ];
+  assert.throws(
+    () => createFieldRegistry(modules),
+    (error) => {
+      assert.match(error.message, /muscleGlucose\.uptakeG/);
+      assert.equal(
+        error.message.includes('kidneyGlucose'),
+        false,
+        'the complete kidney pair must not be reported as missing',
+      );
+      return true;
+    },
+  );
+});
+
 test('I=1 exactly reproduces the original 60 minute apparent disposal', () => {
   const cases = [
     { massG: baselineMassG, dt: 60, excessG: 0 },
@@ -184,19 +251,63 @@ test('I=1 exactly reproduces the original 60 minute apparent disposal', () => {
   ];
   for (const { massG, dt, excessG } of cases) {
     const label = `${massG} g over ${dt} s`;
-    const { written } = round(
-      { glucoseMassG: massG, concentrationMgDl: 0, disposedGlucoseG: 0 },
-      { dt, insulin: 1 },
-    );
-    const expectedDisposedG = excessG * (1 - 2 ** (-(dt / 60) / disposalHalfTimeMin));
+    const { written, transfers, next } = applyRound({
+      state: { glucoseMassG: massG, concentrationMgDl: 0, disposedGlucoseG: 0 },
+      dt,
+    });
+    const totalDisposalG = excessG * (1 - 2 ** (-(dt / 60) / disposalHalfTimeMin));
+    const disposedG = totalDisposalG * 0.25;
+    const muscleUptakeG = totalDisposalG * 0.75;
     assert.equal(
       written.concentrationMgDl,
       massG * 1000 / distributionVolumeDl,
       `concentration at ${label}`,
     );
-    assert.equal(written.disposedGlucoseG, expectedDisposedG, `disposed at ${label}`);
-    assert.equal(written.glucoseMassG, massG - expectedDisposedG, `mass at ${label}`);
+    assert.ok(
+      Math.abs(written.disposedGlucoseG - disposedG) < 1e-12,
+      `residual disposed at ${label}`,
+    );
+    assert.equal(
+      written.glucoseMassG,
+      massG - totalDisposalG + muscleUptakeG,
+      `pre-transfer mass at ${label}`,
+    );
+    assert.equal(muscleTransferG(transfers), muscleUptakeG, `muscle uptake at ${label}`);
+    // W = M_after + U 再由 Gateway 减回 U；W 跨 binade 时允许 1 ulp（< 1e-12 g）。
+    assert.ok(
+      Math.abs(next.glucose.glucoseMassG - (massG - totalDisposalG)) < 1e-12,
+      `post-transfer mass at ${label}`,
+    );
   }
+});
+
+test('committed mass stays within one ulp of the old trajectory across binades', () => {
+  // 审查实测跨 binade 的两个质量：W = M_after + U 的加法舍入使 W − U 与 M_after 差 1 ulp。
+  for (const massG of [32.06819103443802, 22.30529217920229]) {
+    const totalDisposalG = (massG - baselineMassG)
+      * (1 - 2 ** (-1 / disposalHalfTimeMin));
+    const { written, transfers, next } = applyRound({
+      state: { glucoseMassG: massG, concentrationMgDl: 0, disposedGlucoseG: 0 },
+    });
+    assert.ok(
+      Math.abs(next.glucose.glucoseMassG - (massG - totalDisposalG)) < 1e-12,
+      `${massG} g committed mass`,
+    );
+    assert.ok(
+      Math.abs(written.disposedGlucoseG + muscleTransferG(transfers) - totalDisposalG) < 1e-12,
+      `${massG} g disposal ledger`,
+    );
+  }
+});
+
+test('a two-minute round keeps the muscle share at 75% of total disposal and within it', () => {
+  const state = { glucoseMassG: baselineMassG + 30, concentrationMgDl: 0, disposedGlucoseG: 0 };
+  const { written, transfers } = round(state, { dt: 120, insulin: 1 });
+  const totalDisposalG = 30 * (1 - 2 ** (-2 / disposalHalfTimeMin));
+  const muscleUptakeG = muscleTransferG(transfers);
+  assert.equal(written.disposedGlucoseG + muscleUptakeG, totalDisposalG);
+  assert.equal(muscleUptakeG, totalDisposalG * 0.75);
+  assert.ok(muscleUptakeG <= totalDisposalG);
 });
 
 test('insulin relative signal scales disposal without touching baseline or low mass', () => {
@@ -209,9 +320,9 @@ test('insulin relative signal scales disposal without touching baseline or low m
   const d1 = disposedAt(1);
   const d2 = disposedAt(2);
 
-  assert.ok(Math.abs(d2 - 30 * (1 - 2 ** (-2 / disposalHalfTimeMin))) < 1e-12);
-  assert.ok(Math.abs(d1 - 30 * (1 - 2 ** (-1 / disposalHalfTimeMin))) < 1e-12);
-  assert.ok(Math.abs(d05 - 30 * (1 - 2 ** (-0.5 / disposalHalfTimeMin))) < 1e-12);
+  assert.ok(Math.abs(d2 - 30 * (1 - 2 ** (-2 / disposalHalfTimeMin)) * 0.25) < 1e-12);
+  assert.ok(Math.abs(d1 - 30 * (1 - 2 ** (-1 / disposalHalfTimeMin)) * 0.25) < 1e-12);
+  assert.ok(Math.abs(d05 - 30 * (1 - 2 ** (-0.5 / disposalHalfTimeMin)) * 0.25) < 1e-12);
   assert.equal(d0, 0);
   assert.ok(d2 > d1, `${d2} > ${d1}`);
   assert.ok(d1 > d05, `${d1} > ${d05}`);
@@ -254,8 +365,11 @@ test('missing pancreas falls back to I=1 while invalid signals fail the round', 
 test('missing kidney glucose means no transfer while invalid requests fail the round', () => {
   const state = { glucoseMassG: 42.69, concentrationMgDl: 0, disposedGlucoseG: 0 };
   const { written, transfers } = round(state, { withKidney: false });
+  const totalDisposalG = 30 * (1 - 2 ** (-1 / disposalHalfTimeMin));
   assert.equal(renalTransferG(transfers), 0);
-  assert.equal(written.disposedGlucoseG, 30 * (1 - 2 ** (-1 / disposalHalfTimeMin)));
+  assert.equal(written.disposedGlucoseG, totalDisposalG * 0.25);
+  assert.equal(written.glucoseMassG, 42.69 - totalDisposalG + totalDisposalG * 0.75);
+  assert.equal(muscleTransferG(transfers), totalDisposalG * 0.75);
 
   for (const request of [Number.NaN, -1, Number.POSITIVE_INFINITY, '1']) {
     assert.throws(
@@ -268,23 +382,30 @@ test('missing kidney glucose means no transfer while invalid requests fail the r
 
 test('a round-start renal request is settled after non-renal disposal and clamped to the remaining mass', () => {
   const startMassG = baselineMassG + 30;
-  const expectedDisposedG = 30 * (1 - 2 ** (-1 / disposalHalfTimeMin));
-  const afterDisposalG = startMassG - expectedDisposedG;
+  const totalDisposalG = 30 * (1 - 2 ** (-1 / disposalHalfTimeMin));
+  const disposedG = totalDisposalG * 0.25;
+  const muscleUptakeG = totalDisposalG * 0.75;
+  const afterDisposalG = startMassG - totalDisposalG;
   const state = { glucoseMassG: startMassG, concentrationMgDl: 0, disposedGlucoseG: 0 };
 
   const { written, transfers, next } = applyRound({ state, request: 100 });
 
-  assert.ok(Math.abs(written.disposedGlucoseG - expectedDisposedG) < 1e-12);
-  assert.ok(Math.abs(written.glucoseMassG - afterDisposalG) < 1e-12);
+  assert.ok(Math.abs(written.disposedGlucoseG - disposedG) < 1e-12);
+  assert.ok(
+    Math.abs(written.glucoseMassG - (startMassG - totalDisposalG + muscleUptakeG)) < 1e-12,
+  );
   assert.ok(Math.abs(renalTransferG(transfers) - afterDisposalG) < 1e-12);
+  assert.ok(Math.abs(muscleTransferG(transfers) - muscleUptakeG) < 1e-12);
   assert.ok(Math.abs(next.glucose.glucoseMassG) < 1e-12);
-  assert.ok(Math.abs(next.glucose.disposedGlucoseG - expectedDisposedG) < 1e-12);
+  assert.ok(Math.abs(next.glucose.disposedGlucoseG - disposedG) < 1e-12);
   assert.ok(Math.abs(next.kidneyGlucose.excretedGlucoseG - afterDisposalG) < 1e-12);
+  assert.ok(Math.abs(next.muscleGlucose.uptakeG - muscleUptakeG) < 1e-12);
   assert.ok(
     Math.abs(
       next.glucose.glucoseMassG
         + next.kidneyGlucose.excretedGlucoseG
         + next.glucose.disposedGlucoseG
+        + next.muscleGlucose.uptakeG
         - startMassG,
     ) < 1e-9,
   );
@@ -293,21 +414,26 @@ test('a round-start renal request is settled after non-renal disposal and clampe
 test('a same-round intestinal inflow cannot pay the round-start renal request', () => {
   const startMassG = baselineMassG + 1;
   const inflowG = 10;
-  const expectedDisposedG = 1 * (1 - 2 ** (-1 / disposalHalfTimeMin));
-  const afterDisposalG = startMassG - expectedDisposedG;
+  const totalDisposalG = 1 * (1 - 2 ** (-1 / disposalHalfTimeMin));
+  const disposedG = totalDisposalG * 0.25;
+  const muscleUptakeG = totalDisposalG * 0.75;
+  const afterDisposalG = startMassG - totalDisposalG;
   const state = { glucoseMassG: startMassG, concentrationMgDl: 0, disposedGlucoseG: 0 };
 
   const { transfers, next } = applyRound({ state, request: 20, inflowG });
 
   assert.ok(Math.abs(renalTransferG(transfers) - afterDisposalG) < 1e-12);
+  assert.ok(Math.abs(muscleTransferG(transfers) - muscleUptakeG) < 1e-12);
   assert.ok(Math.abs(next.glucose.glucoseMassG - inflowG) < 1e-12);
-  assert.ok(Math.abs(next.glucose.disposedGlucoseG - expectedDisposedG) < 1e-12);
+  assert.ok(Math.abs(next.glucose.disposedGlucoseG - disposedG) < 1e-12);
   assert.ok(Math.abs(next.kidneyGlucose.excretedGlucoseG - afterDisposalG) < 1e-12);
+  assert.ok(Math.abs(next.muscleGlucose.uptakeG - muscleUptakeG) < 1e-12);
   assert.ok(
     Math.abs(
       next.glucose.glucoseMassG
         + next.kidneyGlucose.excretedGlucoseG
         + next.glucose.disposedGlucoseG
+        + next.muscleGlucose.uptakeG
         - (startMassG + inflowG),
     ) < 1e-9,
   );
@@ -354,6 +480,7 @@ test('same-round intestine inflow lands after write, so concentration rises only
   const fieldRegistry = createFieldRegistry([
     smallIntestine,
     kidneyGlucoseStub,
+    muscleGlucoseStub,
     { id, initialState, fields },
   ]);
 
@@ -390,21 +517,24 @@ test('same-round intestine inflow lands after write, so concentration rises only
   assert.ok(
     Math.abs(later.written.concentrationMgDl - ((baselineMassG + 10) * 1000 / distributionVolumeDl)) < 1e-9,
   );
-  const expectedDisposedG = 10 * (1 - 2 ** (-1 / disposalHalfTimeMin));
-  assert.ok(Math.abs(later.written.disposedGlucoseG - expectedDisposedG) < 1e-12);
-  assert.ok(Math.abs(later.written.glucoseMassG - (baselineMassG + 10 - expectedDisposedG)) < 1e-12);
+  const totalDisposalG = 10 * (1 - 2 ** (-1 / disposalHalfTimeMin));
+  const disposedG = totalDisposalG * 0.25;
+  assert.ok(Math.abs(later.written.disposedGlucoseG - disposedG) < 1e-12);
+  assert.ok(Math.abs(later.written.glucoseMassG - (baselineMassG + 10 - disposedG)) < 1e-12);
+  assert.ok(Math.abs(muscleTransferG(later.transfers) - totalDisposalG * 0.75) < 1e-12);
 });
 
-test('disposed mass plus remaining above-baseline mass conserves the initial excess', () => {
+test('disposed mass plus muscle uptake plus remaining above-baseline mass conserves the initial excess', () => {
   let state = { glucoseMassG: baselineMassG + 30, concentrationMgDl: 90, disposedGlucoseG: 0 };
-  let disposedG = 0;
+  let accountedG = 0;
   for (let index = 0; index < 200; index++) {
-    const { written } = round(state);
-    disposedG += written.disposedGlucoseG;
-    state = written;
+    const { written, transfers } = round(state);
+    const muscleUptakeG = muscleTransferG(transfers);
+    accountedG += written.disposedGlucoseG + muscleUptakeG;
+    state = { ...written, glucoseMassG: written.glucoseMassG - muscleUptakeG };
     assert.ok(state.glucoseMassG >= baselineMassG - 1e-9, `round ${index + 1} fell below baseline`);
   }
-  assert.ok(Math.abs((state.glucoseMassG - baselineMassG) + disposedG - 30) < 1e-6);
+  assert.ok(Math.abs((state.glucoseMassG - baselineMassG) + accountedG - 30) < 1e-6);
 });
 
 test('glucose output is finite and JSON-safe', () => {

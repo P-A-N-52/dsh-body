@@ -1,0 +1,180 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { startGateway } from '../gateway.js';
+import { checkpoint } from '../test-support/harness.mjs';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const femaleManifestPath = join(root, 'body-modules.female.json');
+const initialBodyWaterMl = 30000;
+
+function silence(t) {
+  for (const method of ['log', 'error', 'warn']) {
+    try {
+      t.mock.method(console, method, () => {});
+    } catch {
+      // A previous gateway in the same test already mocked this method.
+    }
+  }
+}
+
+function boot(statePath) {
+  return startGateway({
+    manifestPath: femaleManifestPath,
+    statePath,
+    port: 0,
+    autoTick: false,
+    now: () => 0,
+  });
+}
+
+async function startBody(t, { parts = {} } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-reproductive-'));
+  const statePath = join(dir, 'body-state.json');
+  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts })));
+  const gateway = boot(statePath);
+  t.after(async () => {
+    await gateway.stop();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  await gateway.ready;
+  return { gateway, statePath, dir };
+}
+
+function queuedWaterMl(stomach) {
+  return stomach.mealQueue.reduce((sum, meal) => sum + (meal.remainingWaterMl ?? 0), 0);
+}
+
+function accumulate(accumulator, parts) {
+  accumulator.voidedMl += parts.bladder.voidedMl;
+  accumulator.sweatMl += parts.skin.sweatVolumeMl;
+  accumulator.lungsMl += parts.lungs.respiratoryWaterLossMl;
+  accumulator.bleedingMl += parts.uterus.bleedingMl;
+}
+
+function waterLedgerMl(parts, accumulator) {
+  return parts.stomach.waterVolumeMl
+    + queuedWaterMl(parts.stomach)
+    + parts.smallIntestine.waterVolumeMl
+    + (parts.bodyFluid.waterVolumeMl - initialBodyWaterMl)
+    + parts.bladder.volumeMl
+    + accumulator.voidedMl
+    + accumulator.sweatMl
+    + accumulator.lungsMl
+    + accumulator.bleedingMl;
+}
+
+function emptyAccumulator() {
+  return { voidedMl: 0, sweatMl: 0, lungsMl: 0, bleedingMl: 0 };
+}
+
+test('the female manifest boots 22 parts and pays menses into the water ledger', async (t) => {
+  silence(t);
+  const { gateway } = await startBody(t, { parts: { ovaries: { cycleDay: 0 } } });
+  const booted = gateway.getState().parts;
+  assert.equal(Object.keys(booted).length, 22);
+  assert.ok(booted.ovaries, 'ovaries must be loaded');
+  assert.ok(booted.uterus, 'uterus must be loaded');
+  assert.ok(booted.sexualResponse, 'sexualResponse must be loaded');
+  assert.equal(booted.ovaries.cycleDay, 0);
+  assert.deepEqual(booted.uterus, {
+    endometriumRelative: 0.1,
+    crampMm: 0,
+    bleedingRequestMl: 0,
+    bleedingMl: 0,
+  });
+
+  const accumulator = emptyAccumulator();
+  const bleedingRounds = [];
+  const discomfortRounds = [];
+
+  for (let round = 1; round <= 5; round++) {
+    await gateway.tick();
+    const parts = gateway.getState().parts;
+    assert.ok(parts.uterus.crampMm > 0, `round ${round}: cramp inside menses`);
+    assert.ok(parts.uterus.bleedingRequestMl > 0, `round ${round}: bleeding request inside menses`);
+    if (parts.uterus.bleedingMl > 0) bleedingRounds.push(round);
+    if (parts.interoception.discomfort > 0) discomfortRounds.push(round);
+    accumulate(accumulator, parts);
+    const ledgerMl = waterLedgerMl(parts, accumulator);
+    assert.ok(Math.abs(ledgerMl) <= 1e-6, `round ${round}: water ledger ${ledgerMl}`);
+  }
+
+  assert.deepEqual(bleedingRounds, [2, 3, 4, 5], 'round one writes the request, the next round pays it');
+  assert.deepEqual(discomfortRounds, [2, 3, 4, 5], 'discomfort reads the previous round cramp');
+  assert.ok(accumulator.bleedingMl > 0);
+  assert.ok(
+    Math.abs(waterLedgerMl(gateway.getState().parts, accumulator)) <= 1e-6,
+    'the ledger must still include every paid bleed',
+  );
+});
+
+test('a non-menses seed keeps bleeding, cramps and requests at zero', async (t) => {
+  silence(t);
+  const { gateway } = await startBody(t, { parts: { ovaries: { cycleDay: 10 } } });
+  const accumulator = emptyAccumulator();
+
+  for (let round = 1; round <= 4; round++) {
+    await gateway.tick();
+    const parts = gateway.getState().parts;
+    assert.equal(parts.uterus.crampMm, 0, `round ${round}: cramp`);
+    assert.equal(parts.uterus.bleedingRequestMl, 0, `round ${round}: bleeding request`);
+    assert.equal(parts.uterus.bleedingMl, 0, `round ${round}: bleeding`);
+    accumulate(accumulator, parts);
+    const ledgerMl = waterLedgerMl(parts, accumulator);
+    assert.ok(Math.abs(ledgerMl) <= 1e-6, `round ${round}: water ledger ${ledgerMl}`);
+  }
+
+  assert.equal(accumulator.bleedingMl, 0);
+});
+
+test('a restart on the same state path continues the cycle and pays the pending bleed', async (t) => {
+  silence(t);
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-reproductive-restart-'));
+  const statePath = join(dir, 'body-state.json');
+  writeFileSync(statePath, JSON.stringify(checkpoint({
+    wallTimeMs: 0,
+    simulatedSeconds: 0,
+    parts: { ovaries: { cycleDay: 0 } },
+  })));
+  let gateway = boot(statePath);
+  t.after(async () => {
+    await gateway.stop();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  await gateway.ready;
+
+  const accumulator = emptyAccumulator();
+  for (let round = 1; round <= 3; round++) {
+    await gateway.tick();
+    accumulate(accumulator, gateway.getState().parts);
+  }
+
+  const beforeRestart = gateway.getState();
+  const pendingRequestMl = beforeRestart.parts.uterus.bleedingRequestMl;
+  const cycleDayBefore = beforeRestart.parts.ovaries.cycleDay;
+  assert.ok(pendingRequestMl > 0, 'the last round must leave a pending bleeding request');
+  assert.ok(beforeRestart.parts.uterus.bleedingMl > 0, 'a previous request must already be paid');
+  await gateway.stop();
+
+  gateway = boot(statePath);
+  await gateway.ready;
+  const restored = gateway.getState();
+  assert.equal(restored.simulatedSeconds, beforeRestart.simulatedSeconds);
+  assert.deepEqual(restored.parts, beforeRestart.parts);
+  assert.equal(restored.parts.ovaries.cycleDay, cycleDayBefore);
+
+  await gateway.tick();
+  const after = gateway.getState().parts;
+  accumulate(accumulator, after);
+  assert.ok(
+    Math.abs(after.uterus.bleedingMl - pendingRequestMl) <= 1e-12,
+    `the pending request ${pendingRequestMl} must be paid after restart, got ${after.uterus.bleedingMl}`,
+  );
+  assert.ok(after.ovaries.cycleDay > cycleDayBefore, 'the cycle must continue after restart');
+  const ledgerMl = waterLedgerMl(after, accumulator);
+  assert.ok(Math.abs(ledgerMl) <= 1e-6, `after restart water ledger ${ledgerMl}`);
+});

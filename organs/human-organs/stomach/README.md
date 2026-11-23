@@ -13,7 +13,7 @@
 | `ghrelin.ts` | `stomachGhrelin` | `relativeConcentration`、`minutesSinceEnergyIntake` | 自己的轮初状态 `stomachGhrelin`；`io.actions` 里含能量的 `eat` / `drink` | `ghrelin.parameters.json` |
 | `gastric-sensory.ts` | `stomachSensory` | `mechanical` | `stomach.volumeMl` | `gastric-sensory.parameters.json` |
 
-`motility-core.ts` 不是模块，不导出 `id`；它是两个入口共用的解析、队列与排空方程。`motility.ts` 用 `trackWater: false`、`trackCarbohydrate: false` 调用核心，输出形状与历史一致，可单独加载且不需要小肠或膀胱；`hydration.ts` 同时开启水与碳水跟踪，必须与 `smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose` 及 [`skin`](../skin/README.md) 同时加载；这七个部位构成完整硬 transfer 闭包，缺任一个都会因 transfer 字段配对校验拒绝启动。
+`motility-core.ts` 不是模块，不导出 `id`；它是两个入口共用的解析、队列与排空方程。`motility.ts` 用 `trackWater: false`、`trackCarbohydrate: false` 调用核心，输出形状与历史一致，可单独加载且不需要小肠或膀胱；`hydration.ts` 同时开启水与碳水跟踪，必须与 `smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose`、[`skin`](../skin/README.md) 及 [`lungs`](../lungs/README.md)（运动相关呼吸失水出口）同时加载；这八个部位构成完整硬 transfer 闭包，缺任一个都会因 transfer 字段配对校验拒绝启动。
 
 参数文件与脚本同目录，模块在 import 时经 `lib/parameters.js` 只读加载；参数是证据默认值，不做运行中热切换。
 

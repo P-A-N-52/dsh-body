@@ -25,9 +25,13 @@ function exercise(intensity, durationMin) {
   return { type: 'exercise', intensity, durationMin };
 }
 
+function sex(intensity, durationMin) {
+  return { type: 'sex', intensity, durationMin };
+}
+
 test('physicalActivity exports the activity module contract', () => {
   assert.equal(id, 'physicalActivity');
-  assert.deepEqual(actionTypes, ['exercise']);
+  assert.deepEqual(actionTypes, ['exercise', 'sex']);
   assert.deepEqual(fields, {
     remainingExerciseMin: { unit: 'min', mode: 'absolute' },
     intensity: { unit: '1', mode: 'absolute' },
@@ -103,42 +107,99 @@ test('a valid exercise replaces the remaining activity and the last valid action
   }
 });
 
-test('invalid exercise fields leave the decremented activity unchanged', () => {
-  const state = { remainingExerciseMin: 12, intensity: 0.4 };
-  const invalid = [
-    ['missing intensity', { type: 'exercise', durationMin: 30 }],
-    ['missing duration', { type: 'exercise', intensity: 1 }],
-    ['zero intensity', exercise(0, 30)],
-    ['negative intensity', exercise(-0.1, 30)],
-    ['intensity above one', exercise(1.0001, 30)],
-    ['NaN intensity', exercise(Number.NaN, 30)],
-    ['positive infinite intensity', exercise(Number.POSITIVE_INFINITY, 30)],
-    ['negative infinite intensity', exercise(Number.NEGATIVE_INFINITY, 30)],
-    ['string intensity', exercise('1', 30)],
-    ['zero duration', exercise(1, 0)],
-    ['negative duration', exercise(1, -1)],
-    ['NaN duration', exercise(1, Number.NaN)],
-    ['positive infinite duration', exercise(1, Number.POSITIVE_INFINITY)],
-    ['negative infinite duration', exercise(1, Number.NEGATIVE_INFINITY)],
-    ['string duration', exercise(1, '30')],
+test('a valid sex action replaces the remaining activity exactly like exercise', () => {
+  const state = { remainingExerciseMin: 5, intensity: 0.5 };
+  const cases = [
+    { label: 'replace instead of adding', payload: { intensity: 0.8, durationMin: 30 } },
+    { label: 'fractional duration', payload: { intensity: 1, durationMin: 0.5 } },
+    { label: 'low intensity', payload: { intensity: 0.01, durationMin: 2 } },
   ];
 
-  for (const [label, action] of invalid) {
-    const { written, writes } = round({ state, actions: [action] });
-    assert.equal(writes.length, 1, label);
-    assert.deepEqual(written, { remainingExerciseMin: 11, intensity: 0.4 }, label);
+  for (const { label, payload } of cases) {
+    const sexRound = round({ state, actions: [{ type: 'sex', ...payload }] });
+    const exerciseRound = round({ state, actions: [{ type: 'exercise', ...payload }] });
+    assert.deepEqual(sexRound.written, exerciseRound.written, label);
+    assert.deepEqual(
+      sexRound.written,
+      { remainingExerciseMin: payload.durationMin, intensity: payload.intensity },
+      label,
+    );
   }
 });
 
-test('an invalid exercise does not override an earlier valid one in the same round', () => {
-  const { written } = round({
-    state: { remainingExerciseMin: 12, intensity: 0.4 },
-    actions: [exercise(0.7, 15), exercise(0, 30)],
-  });
-  assert.deepEqual(written, { remainingExerciseMin: 15, intensity: 0.7 });
+test('with sex and exercise in the same round the last valid action wins', () => {
+  const state = { remainingExerciseMin: 5, intensity: 0.5 };
+  const cases = [
+    {
+      label: 'sex after exercise',
+      actions: [exercise(0.2, 10), sex(0.9, 20)],
+      expected: { remainingExerciseMin: 20, intensity: 0.9 },
+    },
+    {
+      label: 'exercise after sex',
+      actions: [sex(0.9, 20), exercise(0.2, 10)],
+      expected: { remainingExerciseMin: 10, intensity: 0.2 },
+    },
+    {
+      label: 'interleaved actions keep document order',
+      actions: [sex(0.4, 8), { type: 'drink', volumeMl: 240 }, exercise(0.6, 15), sex(0.7, 6)],
+      expected: { remainingExerciseMin: 6, intensity: 0.7 },
+    },
+  ];
+
+  for (const { label, actions, expected } of cases) {
+    assert.deepEqual(round({ state, actions }).written, expected, label);
+  }
 });
 
-test('non-exercise actions never change the activity', () => {
+test('invalid exercise or sex fields leave the decremented activity unchanged', () => {
+  const state = { remainingExerciseMin: 12, intensity: 0.4 };
+  const invalid = [
+    ['missing intensity', { durationMin: 30 }],
+    ['missing duration', { intensity: 1 }],
+    ['zero intensity', { intensity: 0, durationMin: 30 }],
+    ['negative intensity', { intensity: -0.1, durationMin: 30 }],
+    ['intensity above one', { intensity: 1.0001, durationMin: 30 }],
+    ['NaN intensity', { intensity: Number.NaN, durationMin: 30 }],
+    ['positive infinite intensity', { intensity: Number.POSITIVE_INFINITY, durationMin: 30 }],
+    ['negative infinite intensity', { intensity: Number.NEGATIVE_INFINITY, durationMin: 30 }],
+    ['string intensity', { intensity: '1', durationMin: 30 }],
+    ['zero duration', { intensity: 1, durationMin: 0 }],
+    ['negative duration', { intensity: 1, durationMin: -1 }],
+    ['NaN duration', { intensity: 1, durationMin: Number.NaN }],
+    ['positive infinite duration', { intensity: 1, durationMin: Number.POSITIVE_INFINITY }],
+    ['negative infinite duration', { intensity: 1, durationMin: Number.NEGATIVE_INFINITY }],
+    ['string duration', { intensity: 1, durationMin: '30' }],
+  ];
+
+  for (const type of ['exercise', 'sex']) {
+    for (const [label, payload] of invalid) {
+      const { written, writes } = round({ state, actions: [{ type, ...payload }] });
+      assert.equal(writes.length, 1, `${type}: ${label}`);
+      assert.deepEqual(written, { remainingExerciseMin: 11, intensity: 0.4 }, `${type}: ${label}`);
+    }
+  }
+});
+
+test('an invalid activity does not override an earlier valid one in the same round', () => {
+  const state = { remainingExerciseMin: 12, intensity: 0.4 };
+  const cases = [
+    ['invalid exercise after exercise', [exercise(0.7, 15), exercise(0, 30)]],
+    ['invalid sex after exercise', [exercise(0.7, 15), sex(0, 30)]],
+    ['invalid sex after sex', [sex(0.7, 15), sex(0, 30)]],
+    ['invalid exercise after sex', [sex(0.7, 15), exercise(1.5, 30)]],
+  ];
+
+  for (const [label, actions] of cases) {
+    assert.deepEqual(
+      round({ state, actions }).written,
+      { remainingExerciseMin: 15, intensity: 0.7 },
+      label,
+    );
+  }
+});
+
+test('actions other than exercise and sex never change the activity', () => {
   const state = { remainingExerciseMin: 12, intensity: 0.4 };
   const actions = [
     { type: 'drink', volumeMl: 240 },
@@ -157,7 +218,9 @@ test('activity output is finite and JSON-safe', () => {
     { label: 'saved state and fractional dt', options: { state: { remainingExerciseMin: 3.5, intensity: 0.25 }, dt: 90 } },
     { label: 'finished state', options: { state: { remainingExerciseMin: 0, intensity: 0 } } },
     { label: 'valid action', options: { actions: [exercise(1, 30)] } },
+    { label: 'valid sex action', options: { actions: [sex(0.8, 30)] } },
     { label: 'invalid action', options: { state: { remainingExerciseMin: 4, intensity: 0.5 }, actions: [exercise(0, 30)] } },
+    { label: 'invalid sex action', options: { state: { remainingExerciseMin: 4, intensity: 0.5 }, actions: [sex(0, 30)] } },
   ];
 
   for (const { label, options } of cases) {

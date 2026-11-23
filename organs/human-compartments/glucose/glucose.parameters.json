@@ -21,6 +21,15 @@
       "note": "血浆+快速平衡组织可及池按体重计的表观分布体积（Dalla Man 2007 p.1743 Table I 正常组平均模型常数）。不是 204 人直接实测均值，原文未报告 ± 类型或个体间离散度；仅作定义与量级锚点，未来由更完整分布模型替换。range 是工程调参范围"
     },
     {
+      "id": "glucose.muscleDisposalShare",
+      "unit": "1",
+      "value": 0.75,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "工程占位：高于基线质量的表观处置中改道进入骨骼肌的份额，不是引用值。骨骼肌是胰岛素介导处置的主要去向，但仓库没有登记来源，Dalla Man 2007 §III.C.3 只支撑胰岛素依赖/非依赖分区结构，不支撑该份额；未来由组织摄糖分区模型替换。range 是工程调参范围"
+    },
+    {
       "id": "glucose.baselineConcentrationMgDl",
       "unit": "mg/dL",
       "value": 90,

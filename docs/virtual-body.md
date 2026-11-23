@@ -26,18 +26,19 @@
 | 功能标签 | 消化、内分泌、感觉器等，只用于 README 分类 |
 | P0 | 胃（动力、饥饿素、机械感受）、十二指肠（营养暴露） |
 | P1（已完成） | 输入契约（`drink` 可带能量）、体感读出（`hunger` / `fullness` 与提醒）；不新增消化器官 |
-| M3 水链（已接入根清单） | 胃水子集、小肠水吸收、体液隔室、肾产尿请求、下丘脑 ADH / 口渴、膀胱储尿与主动排尿；随后合并了膀胱过度充盈非自主排空（轮初 >600 mL 自动排到排后余量，`voidedMl` 分主动/非自主）与 `interoception.discomfort`（四感受超 70 mm 取最大），均在默认根清单；可选中枢/肾性 DI 样多尿变体只在独立清单/存档，默认身体不变。水链完成时根清单为 12 个部位；碳水薄切片加入葡萄糖后为 13 个；胰腺与肾糖接入后为 15 个；活动—皮肤出汗薄切片接入后当前为 17 个，多轮水账本补测与当时 12 部位性能基线已完成（Task 11，早于上述后加功能，属历史基线），论文可比数据对照已记录（Task 12，大负荷利尿仍不匹配），Task 10 真实会话验收已完成（30 轮 A/B + 排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，早于上述后加功能）；后加功能由 M19 真实 DSH 会话补验（2026-11-22，33/33 verdicts：650 mL 无动作 → involuntary 650、同轮新尿 1 mL 留下、下一轮尿意/不适回落；正常/中枢/肾性请求约 1/4/4；证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）；650 mL 预置与预置会话的稳态 1 mL 请求是测试设定，不是模型输出；正常会话 sim 300 的 0.9998 mL 是模型输出；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴未验证 |
-| M2 碳水—血糖薄切片（已接入根清单） | `drink` / `eat.carbohydrateG` → 胃碳水与既有排空 → 小肠吸收 → `glucose` 可及池；`pancreasEndocrine` 相对信号缩放非肾表观清除，`kidneyGlucose` 按请求把 `glucoseMassG` 转成 `excretedGlucoseG`（g，不换尿水）。固定体重、表观分布体积、基础浓度、基线清除和肾糖锚点参数按 `design` / `prior` 标注。完整胰岛素浓度/分泌、肝糖、胰高血糖素与组织摄糖分区仍未实现；当前只有模块和真实 Gateway 离线验收，没有真实 DSH 或独立血糖曲线验证。 |
-| M4 活动—皮肤出汗薄切片（已接入根清单） | `exercise` → `physicalActivity` 剩余活动/强度 → `skin.sweatRequestMl` → `bodyFluid` 肾尿+汗液双出口 → `skin.sweatVolumeMl`；默认 25°C、`I=1`、30 min 累计 18 mL，无活动时请求与实际均为 0。口渴仍由既有 `waterDeficit → hypothalamusThirst → interoception` 按轮初快照读出，不自动饮水。完整 M4 的肌群负荷、疲劳、延迟酸痛与皮肤分区状态仍未实现；当前只有模块与真实 Gateway 集成测试，没有真实 DSH 会话或独立人体出汗数据。 |
+| M3 水链（已接入根清单） | 胃水子集、小肠水吸收、体液隔室、肾产尿请求、下丘脑 ADH / 口渴、膀胱储尿与主动排尿；随后合并了膀胱过度充盈非自主排空（轮初 >600 mL 自动排到排后余量，`voidedMl` 分主动/非自主）与 `interoception.discomfort`（根清单四感受超 70 mm 取最大；女性清单另有子宫痉挛第五路），均在默认根清单；可选中枢/肾性 DI 样多尿变体只在独立清单/存档，默认身体不变。水链完成时根清单为 12 个部位；碳水薄切片加入葡萄糖后为 13 个；胰腺与肾糖接入后为 15 个；活动—皮肤出汗薄切片接入后为 17 个；运动相关呼吸失水接入 `lungs` 后为 18 个，骨骼肌摄糖接入后为 19 个，性反应周期接入后当前为 20 个，多轮水账本补测与当时 12 部位性能基线已完成（Task 11，早于上述后加功能，属历史基线），论文可比数据对照已记录（Task 12，大负荷利尿仍不匹配），Task 10 真实会话验收已完成（30 轮 A/B + 排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，早于上述后加功能）；后加功能由 M19 真实 DSH 会话补验（2026-11-22，33/33 verdicts：650 mL 无动作 → involuntary 650、同轮新尿 1 mL 留下、下一轮尿意/不适回落；正常/中枢/肾性请求约 1/4/4；证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）；650 mL 预置与预置会话的稳态 1 mL 请求是测试设定，不是模型输出；正常会话 sim 300 的 0.9998 mL 是模型输出；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴未验证 |
+| M2 碳水—血糖薄切片（已接入根清单） | `drink` / `eat.carbohydrateG` → 胃碳水与既有排空 → 小肠吸收 → `glucose` 可及池；`pancreasEndocrine` 相对信号缩放超基线处置总量，`kidneyGlucose` 按请求把 `glucoseMassG` 转成 `excretedGlucoseG`（g，不换尿水）。固定体重、表观分布体积、基础浓度、基线清除和肾糖锚点参数按 `design` / `prior` 标注；M2 薄切片已含骨骼肌摄糖与肌糖原：`glucose.muscleDisposalShare` 把超基线处置总量 `D_total` 的固定份额经 transfer 转给 `muscleGlucose.uptakeG`，下一轮入账 `glycogenG`，运动时按强度消耗。完整胰岛素浓度/分泌、肝糖输出/肝糖原、胰高血糖素、脂肪组织分区、肌糖原容量与静息周转仍未实现；当前只有模块和真实 Gateway 离线验收，没有真实 DSH 或独立血糖曲线验证。 |
+| M4 活动—皮肤出汗与运动呼吸失水薄切片（已接入根清单） | `exercise` → `physicalActivity` 剩余活动/强度 → `skin.sweatRequestMl` 与 `lungs.respiratoryWaterLossRequestMl` → `bodyFluid` 肾尿+呼吸+汗液三出口 → `skin.sweatVolumeMl` 与 `lungs.respiratoryWaterLossMl`；默认 25°C、`I=1`、30 min 累计汗液 18 mL、运动相关呼吸失水 9 mL，无活动时请求与实际均为 0。0.3 mL/min 是 `design`，不是实测呼吸失水率或总呼吸失水。口渴仍由既有 `waterDeficit → hypothalamusThirst → interoception` 按轮初快照读出，不自动饮水。完整 M4 的肌群负荷、疲劳、延迟酸痛与皮肤分区状态仍未实现；呼吸侧只覆盖运动相关失水，静息/环境驱动的呼吸失水与完整肺模型未建；当前只有模块与真实 Gateway 集成测试，没有真实 DSH 会话、独立人体出汗或呼吸失水数据。`sex` 也走同一活动入口，性反应周期另见下文性行为小节。 |
+| 生殖薄切片（女性独立清单，已实现） | `ovaries` 周期钟 + E2/P4 相对量 → `uterus` 内膜/月经失水请求/痛经代理 → `body-water/water.female.ts` 第四出口 → `uterus.bleedingMl`；`uterus.crampMm` 另由 `interoception.discomfort` 第五路软读。女性清单 `body-modules.female.json` 为 22 部位、24 份参数文件，使用独立 `statePath`；根清单为 20 部位、22 份参数，不含卵巢/子宫，`water.ts` 三出口与 `brainNotify` 四类提醒不变。Bull 2019 只支撑周期/相位/出血天数（Natural Cycles 用户、厂商资助、仅排卵周期）；激素曲线、经量、痛经等为 `design`；未做真实 DSH、独立数据或临床验证。 |
 | 后续清单 | [`2026-11-20-organ-model-design.md`](./superpowers/specs/2026-11-20-organ-model-design.md) §6 |
 
-11 个系统名（运动、消化、呼吸、循环、泌尿、生殖、神经、内分泌、免疫、感觉器、被皮）只保留为功能标签，不再是目录或仿真层级。当前 P0/P1 的器官资料见 [`stomach`](../organs/human-organs/stomach/README.md)、[`duodenum`](../organs/human-organs/duodenum/README.md) 与 [`brain`](../organs/human-organs/brain/README.md)；活动—皮肤薄切片见 [`skeletal-muscle`](../organs/human-organs/skeletal-muscle/README.md) 与 [`skin`](../organs/human-organs/skin/README.md)；其余 `systems/*/` 只保留未迁移的 legacy 证据。
+11 个系统名（运动、消化、呼吸、循环、泌尿、生殖、神经、内分泌、免疫、感觉器、被皮）只保留为功能标签，不再是目录或仿真层级。当前 P0/P1 的器官资料见 [`stomach`](../organs/human-organs/stomach/README.md)、[`duodenum`](../organs/human-organs/duodenum/README.md) 与 [`brain`](../organs/human-organs/brain/README.md)；活动—皮肤与运动呼吸失水薄切片见 [`skeletal-muscle`](../organs/human-organs/skeletal-muscle/README.md)、[`skin`](../organs/human-organs/skin/README.md) 与 [`lungs`](../organs/human-organs/lungs/README.md)；生殖薄切片见 [`ovaries`](../organs/human-organs/ovaries/README.md) 与 [`uterus`](../organs/human-organs/uterus/README.md)；性反应周期薄切片见 [`sexual-response`](../organs/human-organs/sexual-response/README.md)。
 
 同一器官承担多个功能标签时，各脚本读取该器官的同一份状态。例如胰腺的消化酶分泌与胰岛的激素分泌属于同一器官目录，器官内的平滑肌随所属器官推进。 [NCI 内分泌腺与激素](https://training.seer.cancer.gov/anatomy/endocrine/glands/)
 
 ### 器官目录与共享身体状态
 
-每个器官的 `README.md` 记录要模拟的脚本、字段、调节方式、待查问题和证据入口。论文原文、逐篇摘记和从图表提取的数据放在该器官的 `references/` 下，P0/P1 的笔记在 `organs/human-organs/stomach/references/notes/`；共享登记簿和字段字典在 `organs/human-organs/references/`。脚本例如 `organs/human-organs/stomach/hydration.ts`、`organs/human-organs/stomach/ghrelin.ts`、`organs/human-organs/brain/interoception.ts`、`organs/human-organs/skeletal-muscle/activity.ts` 和 `organs/human-organs/skin/sweat.ts`，由根目录的 `body-modules.json` 逐条挂载；根清单现在挂载 17 条部位脚本（原 P0/P1 六条，胃入口换成 `hydration.ts`，加小肠、体液、葡萄糖隔室、胰腺、肾糖、两个下丘脑、肾、膀胱、活动与皮肤）。
+每个器官的 `README.md` 记录要模拟的脚本、字段、调节方式、待查问题和证据入口。论文原文、逐篇摘记和从图表提取的数据放在该器官的 `references/` 下，P0/P1 的笔记在 `organs/human-organs/stomach/references/notes/`；共享登记簿和字段字典在 `organs/human-organs/references/`。脚本例如 `organs/human-organs/stomach/hydration.ts`、`organs/human-organs/stomach/ghrelin.ts`、`organs/human-organs/brain/interoception.ts`、`organs/human-organs/skeletal-muscle/activity.ts`、`organs/human-organs/lungs/respiratory-water-loss.ts`、`organs/human-organs/skin/sweat.ts` 和 `organs/human-organs/sexual-response/response.ts`，由根目录的 `body-modules.json` 逐条挂载；根清单现在挂载 20 条部位脚本（原 P0/P1 六条，胃入口换成 `hydration.ts`，加小肠、体液、葡萄糖隔室、胰腺、肾糖、两个下丘脑、肾、膀胱、活动、肌摄糖、肺、皮肤与性反应周期）。[`body-modules.female.json`](../body-modules.female.json) 是独立的 22 部位清单（根 20 条 + `ovaries` + `uterus`，体液换成 `water.female.ts`），必须配独立 `statePath`，不改变根清单的 20 部位计数。
 
 运行时的公共池就是同一分钟的身体快照。`snapshot.simulatedSeconds` 给出仿真时刻，`snapshot.parts` 按模块 ID 保存当前值。每个量由一个模块写入，其他模块按需读取。例如胃内容量由 `stomach` 的 `hydration.ts` 维护，饥饿素相对浓度由 `stomachGhrelin` 的 `ghrelin.ts` 维护，`brain/interoception.ts` 读取胃充盈、饥饿素、十二指肠营养暴露、下丘脑口渴与膀胱体积后写 `interoception.hunger` / `fullness` / `thirst` / `urinaryUrgency`。Gateway 将所有部位一起写入一份 `body-state.json`，重启时也从同一分钟恢复。
 
@@ -59,7 +60,7 @@
 | 感觉器 | 触觉、冷热、疼痛和胃充盈的感知阈值，用对应感觉信号的量纲设置 | 眼、耳可单独设置。皮肤和内脏的感受器取所在组织的档位。 |
 | 被皮 | 分区表面温度基线（℃）、湿润度基线（0–1）、出汗响应倍率 | 按第 3 节的皮肤分区设置，可细到左右和前后 |
 
-基础参数随对应模块接入。P0/P1 已接胃排空、胃饥饿素、胃壁机械感受、十二指肠营养暴露时间常数和体感线性读出的参数；胃容量上限与充盈感知阈值仍是后续设计。`stomachSensory.referenceVolumeMl` 只是归一化机械感受用的工程参考量，不截断胃容量；`interoception` 的基线、增益与缺失默认值全部是 `design`，不是人体测量。
+基础参数随对应模块接入。P0/P1 已接胃排空、胃饥饿素、胃壁机械感受、十二指肠营养暴露时间常数和体感线性读出的参数；胃容量上限与充盈感知阈值仍是后续设计。`stomachSensory.referenceVolumeMl` 只是归一化机械感受用的工程参考量，不截断胃容量；`interoception` 的基线、增益与缺失默认值全部是 `design`，不是人体测量。呼吸栏的静息呼吸频率、潮气量与活动通气响应倍率仍是设计目标；当前 `lungs` 只按 `physicalActivity` 写运动相关呼吸失水请求，不读这些参数，也不建通气或血气状态。生殖栏同样是设计目标：当前没有 `presets/`、生理性别预设或 condition 概念；女性清单用 `ovaries/menstrual-cycle.parameters.json` 设置周期长度与起始周期日，用独立 `statePath` 选择身体。
 
 ### 全身与局部免疫等级
 
@@ -144,9 +145,9 @@ M6 接入基础病对身体参数的持续修正。M7 接入当前病况的触�
 
 ## 5. 身体 Gateway 与 DSH 接入
 
-目前 DSH 会话可发起进食、饮水、排尿与运动，胃排空、水链与活动—出汗链随心跳推进。M3 水链的主动排尿、膀胱充盈、过度充盈非自主排空、口渴、尿意与不适读出脚本已实现并接入根清单，Task 10 真实会话验收已完成（30 轮 A/B + 排尿重试/409，早于非自主排空与不适合并）；非自主排空、`discomfort` 与 DI 样变体已由 M19 真实 DSH 会话补验（2026-11-22，33/33 verdicts，证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴未验证。可选 DI 样多尿变体只在独立清单/存档中显式加载，默认身体不变。状态与模块清单见第 6 节。Gateway 在线且身体启用时，即使会话空闲也继续计时；暂停身体或 DSH 退出（含崩溃）时心跳停止，心跳停止期间新增的主动动作为零。
+目前 DSH 会话可发起进食、饮水、排尿、运动与性行为，胃排空、水链与活动—出汗链随心跳推进。M3 水链的主动排尿、膀胱充盈、过度充盈非自主排空、口渴、尿意与不适读出脚本已实现并接入根清单，Task 10 真实会话验收已完成（30 轮 A/B + 排尿重试/409，早于非自主排空与不适合并）；非自主排空、`discomfort` 与 DI 样变体已由 M19 真实 DSH 会话补验（2026-11-22，33/33 verdicts，证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴未验证。可选 DI 样多尿变体只在独立清单/存档中显式加载，默认身体不变。状态与模块清单见第 6 节。Gateway 在线且身体启用时，即使会话空闲也继续计时；暂停身体或 DSH 退出（含崩溃）时心跳停止，心跳停止期间新增的主动动作为零。
 
-当前插件已接入 Gateway 的启动与关闭，默认清单现在挂载 17 条部位脚本（原 P0/P1 六条，胃入口换成 `hydration.ts`，加小肠、体液、葡萄糖隔室、胰腺、肾糖、两个下丘脑、肾、膀胱、活动与皮肤）。启用时，自定义空清单下新动作仍会因为没有模块声明对应类型而返回 `422`；停用时新动作返回 `409`，见「启用、暂停与恢复」。这是有意的 fail-fast，已声明类型按 `actionTypes` 放行；未声明类型仍返回 `422`。M1 的真实 DSH 会话验收已完成；通知历史文件与模型已读确认仍未实现；食物估算仍是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
+当前插件已接入 Gateway 的启动与关闭，默认清单现在挂载 20 条部位脚本（原 P0/P1 六条，胃入口换成 `hydration.ts`，加小肠、体液、葡萄糖隔室、胰腺、肾糖、两个下丘脑、肾、膀胱、活动、肌摄糖、肺、皮肤与性反应周期）。启用时，自定义空清单下新动作仍会因为没有模块声明对应类型而返回 `422`；停用时新动作返回 `409`，见「启用、暂停与恢复」。这是有意的 fail-fast，已声明类型按 `actionTypes` 放行；未声明类型仍返回 `422`。M1 的真实 DSH 会话验收已完成；通知历史文件与模型已读确认仍未实现；食物估算仍是接下来的设计。[插件入口](../index.js) · [默认脚本清单](../body-modules.json)
 
 ### 加载插件
 
@@ -163,7 +164,7 @@ DSH 加载插件时启动 Gateway，退出或卸载插件时关闭监听、定�
 
 - `GET /state` 返回最近一次提交的 `simulatedSeconds` 和各部位状态 `parts`。
 - `POST /actions` 接收包含 `id` 和 `type` 的 JSON 动作，必须使用 `Content-Type: application/json`。启用时，有处理者的新动作返回 `202` 和 `{ id, type, status: "queued", effectiveAt }`；没有模块声明该类型则返回 `422`，且不写入存档。只要动作记录仍在，同 id、同载荷返回 `200` 和当前回执，同 id、不同载荷返回 `409`。
-- `GET /actions/:id` 返回动作记录和状态；`GET /capabilities` 按动作类型列出处理它的模块 ID，例如当前根清单启用后 `{ "drink": ["stomach", "stomachGhrelin"], "eat": ["stomach", "stomachGhrelin"], "urinate": ["bladder"], "exercise": ["physicalActivity"] }`（暂停时为空对象）；`GET /health` 返回本次启动实际采用的 `active`、仿真时钟、在途批次、连续失败次数和队列计数。
+- `GET /actions/:id` 返回动作记录和状态；`GET /capabilities` 按动作类型列出处理它的模块 ID，例如当前根清单启用后 `{ "drink": ["stomach", "stomachGhrelin"], "eat": ["stomach", "stomachGhrelin"], "urinate": ["bladder"], "exercise": ["physicalActivity"], "sex": ["physicalActivity", "sexualResponse"], "orgasm": ["sexualResponse"] }`（暂停时为空对象）；`GET /health` 返回本次启动实际采用的 `active`、仿真时钟、在途批次、连续失败次数和队列计数。
 - `GET /notifications` 返回待确认通知；`POST /notifications/ack` 提交 `{ "id": "…" }`，返回 `{ id, acked }`，未知 id 也返回 200 和 `acked: false`。
 
 HTTP 边界：请求体上限 64 KiB；非 JSON 的 POST 返回 `415`；`Host` 必须是 `127.0.0.1:<port>` 或 `localhost:<port>`，非 GET 的 `Origin` 只允许同源，否则返回 `403`；错误方法返回 `405`。存档默认上限 2 MiB，入队前会预留元数据空间，超过预算返回 `413`，不会把队列写坏；可用 `maxCheckpointBytes` 调整。当前不引入 token；同进程的 `body_act` 直接调用 Gateway 句柄，HTTP 只服务本地调试和未来的浏览器页。
@@ -284,12 +285,16 @@ Gateway 在线且身体启用时每 60 个现实秒调度一轮，每轮成功�
 - `drink`：`volumeMl` 必填且 `> 0`；`energyKcal` 可选、有限且 `>= 0`（缺省 0）；`carbohydrateG` 可选、有限且 `>= 0`（缺省 0）；`durationMin` 可选。固定按液体处理，`mealKind` 为 `liquid`。白水用 `energyKcal: 0` 或省略；可乐、果汁、牛奶等含能饮料填实际能量和已知的可消化碳水。
 - `eat`：`volumeMl`、`energyKcal >= 0`、`mealKind`（`liquid` / `solid` / `mixed`）必填；`carbohydrateG` 与 `durationMin` 可选，碳水规则同饮料。
 - `exercise`：`intensity` 必填、有限且 `0 < intensity <= 1`；`durationMin` 必填、有限且 `> 0`；不需要 `volumeMl`、`energyKcal`、`mealKind` 或 `carbohydrateG`。`intensity` 是模型内相对强度，不是 MET、心率、功率或能量消耗；非法强度/时长使整条动作无效，不进入动作队列。
+- `sex`：与 `exercise` 同一组字段和同一校验（`intensity` 有限且 `(0, 1]`、`durationMin` 有限且 `> 0`），不需要体积、能量、餐型或碳水，也没有伴侣、行为类型或内容字段；非法动作不改变状态。
+- `orgasm`：无载荷，只写 `{ type: "orgasm" }`；提交 `orgasm` 且轮初 `arousalMm >= 70` 时由 `sexualResponse` 记录释放，低于 70 被忽略、不因该动作改变状态；轮初 `arousalMm >= 95` 时无需动作也会强制释放。高潮由模型按轮初唤醒判定，调用方不能写状态。
 - `carbohydrateG` 的单位是克，表示可消化葡萄糖当量碳水，不是总碳水或纤维；非法值使整条摄入无效。`body_act` 已暴露该可选字段，`body_state` 的返回结构不变。
 - 胃动力只对 `eat` 的 `mealKind: "solid"` 分支按固餐小计单独排空，`drink`、`liquid`、`mixed` 仍走原算法，`mixed` 不拆分固液。其他成分比例、黏度、碳酸、甜味剂、温度不进入方程；不能从体积或能量反推碳水。
 
-Gateway 将动作原文和采用的数值随动作 ID 一起保存，工具重试、心跳和重启补算都复用已入账的估值。`stomach` 用采用的体积、能量和碳水更新对应存量；`interoception` 在下一轮读取胃充盈、饥饿素、十二指肠营养暴露、下丘脑口渴驱动与膀胱体积，计算 `hunger` / `fullness` / `thirst` / `urinaryUrgency` 与 `discomfort`。小肠吸收的碳水经 transfer 进入 `glucose`；胰腺相对信号和肾糖排泄已接入糖链，但血糖仍不改变体感或胃排空。
+Gateway 将动作原文和采用的数值随动作 ID 一起保存，工具重试、心跳和重启补算都复用已入账的估值。`stomach` 用采用的体积、能量和碳水更新对应存量；`interoception` 在下一轮读取胃充盈、饥饿素、十二指肠营养暴露、下丘脑口渴驱动、膀胱体积与可选的性反应周期唤醒，计算 `hunger` / `fullness` / `thirst` / `urinaryUrgency` / `discomfort` 与 `sexualArousalMm`；性唤醒只作独立读数，不进 `discomfort`。小肠吸收的碳水经 transfer 进入 `glucose`；胰腺相对信号和肾糖排泄已接入糖链，但血糖仍不改变体感或胃排空。
 
-`exercise` 由 `physicalActivity` 接收，只写 `remainingExerciseMin` 与 `intensity`，不直接扣水；`skin` 下一轮按轮初活动写 `sweatRequestMl`，`bodyFluid` 再下一轮按请求把实际汗液转入 `skin.sweatVolumeMl`。活动剩余时间与强度随存档保留，重启可续用；本切片不自动开始运动，也不自动饮水。具体时序和水账见下文「M4 活动—皮肤出汗薄切片」。
+`exercise` 与 `sex` 由 `physicalActivity` 接收，只写 `remainingExerciseMin` 与 `intensity`，不直接扣水；`skin` 与 `lungs` 下一轮按轮初活动分别写 `sweatRequestMl` 与运动相关 `respiratoryWaterLossRequestMl`，`bodyFluid` 再下一轮按肾→肺→汗顺序把实际失水转入 `skin.sweatVolumeMl` 与 `lungs.respiratoryWaterLossMl`。活动剩余时间与强度随存档保留，重启可续用；本切片不自动开始运动，也不自动饮水。具体时序和水账见下文「M4 活动—皮肤出汗与运动呼吸失水薄切片」。
+
+`sex` 与 `orgasm` 由 `sexualResponse` 接收，写自己的 `arousalMm` / `phase` / `remainingSexMin` / `sexIntensity` / `lastOrgasmAtSimMin`，不调用 `transfer`、不发通知；`interoception` 下一轮软读 `arousalMm` 写 `sexualArousalMm`。高潮由模型按轮初唤醒判定：轮初 ≥70 时 `orgasm` 动作可主动触发，轮初 ≥95 时无需动作强制释放，低于 70 的 `orgasm` 被忽略；事件轮 `sinceOrgasm = 0`，下一轮 `sinceOrgasm = dtMin`（60 s 轮下 1 min）进入不应期。LLM 只控制输入，`urinate` / `orgasm` 是少数允许主动触发的输出，分别有膀胱 >600 mL 非自主排空与唤醒 ≥95 强制释放兜底。六个参数全部 `design`、`source: null`，没有登记来源；不建激素、心率、受孕/妊娠、性欲/情绪、伴侣/性病/避孕或显性内容。完整说明见下文「性行为与性反应周期薄切片」。`brainNotify` 不读 `sexualArousalMm`，也不发相关提醒。
 
 ### 动作、查询与存档
 
@@ -306,11 +311,11 @@ Gateway 将动作原文和采用的数值随动作 ID 一起保存，工具重�
 体感与提醒在一次心跳内按以下顺序处理：
 
 1. 胃和饥饿素等生理脚本读取轮初快照。胃先计算过去一分钟的排空，再把轮末吃下的半块蛋糕计入胃内容量。
-2. Gateway 汇总各部位结果，形成尚待提交的轮末快照。`brain/interoception.ts` 用轮初的胃充盈、相对饥饿素、十二指肠营养暴露、下丘脑口渴驱动与膀胱体积更新 `hunger` / `fullness` / `thirst` / `urinaryUrgency`，并汇总 `discomfort`。
+2. Gateway 汇总各部位结果，形成尚待提交的轮末快照。`brain/interoception.ts` 用轮初的胃充盈、相对饥饿素、十二指肠营养暴露、下丘脑口渴驱动与膀胱体积更新 `hunger` / `fullness` / `thirst` / `urinaryUrgency`，并汇总 `discomfort`；可选软读 `sexualResponse.arousalMm` 写 `sexualArousalMm`（不进不适、不发通知）。
 3. `brain/notify.ts` 读上一轮的 `interoception.hunger` / `fullness` / `thirst` / `urinaryUrgency` 与 `bladder.voidedMl`，以及本轮原始动作中 `type: "urinate"` 的动作和 `sessionId`，按显著性、滞回、冷却和配额决定是否 `io.notify`。Gateway 将身体状态、体感和本轮通知一次提交；任一阶段失败就按原批次重算。
 4. `notifications.js` 每 1000 ms 轮询待确认通知：`context` 用 `agent.inject`，`wake` 用 `agent.followup`；投递成功后 ACK。
 
-**提醒不是每轮播报。** `brainNotify` 读轮初 `interoception.hunger` / `fullness` / `thirst` / `urinaryUrgency`、最近提交的 `bladder.voidedMl` 和本轮动作里的 `urinate`，在任一体感达到“明显”或“强”档位时提醒。饥饿、饱满、口渴与尿意的阈值都是 65/85 mm；用于门控的 `levels` 只记录 0/2/3，40–64 mm 的观测中间档按 0 计；缺失或非有限读数按饥饿 50、口渴 50、饱满 / 尿意 0 处理。每个信号单独记录滞回水位（`brainNotify.sessions.<sessionId>.levels = { hunger, fullness, thirst, urinary }`）：同一信号重复同一档，需先低于已提醒档让水位回落；升到比水位更高的档（如 2→3）可直接提醒。`lastKind` 记录最近一次实际提醒的信号（可为 `thirst`）；`lastLevel` 保留下降闩锁（提醒时置为发送档位，之后当前档位更低时下降，可为 1），并作为旧档迁移来源，不只是摘要。每轮最多一条：在尚未提醒到当前档位的候选中先取档位最高者，同档按 `urinary > thirst > fullness > hunger`；未被选中的信号不消耗水位。45 仿真分钟冷却、每小时 2 次、每天 6 次按会话共享，不按信号拆分。明显档位用 `context`（不唤醒），强档位用 `wake`（唤醒）；文本固定，不带膀胱数值、诊断结论或排尿指令。最近提交快照的 `bladder.voidedMl > 0` 或本轮动作含 `urinate` 时，只抑制尿意候选：该轮不产生尿意提醒且 `levels.urinary` 按 0 回落；饥饿、饱满、口渴等其他信号仍按各自水位参与选择，不受影响。口渴没有动作后抑制：`drink` 只在胃、小肠吸收后改变 `waterDeficit`，不会在动作轮把 `levels.thirst` 清零，也不自动饮水。旧会话缺少 `levels` 时按 `lastKind` / `lastLevel` 惰性迁移（`lastKind` 可为 `thirst`）；已有 `levels` 缺少 `thirst` 时只补 `thirst = 0`，其他信号水位不变。`brainNotify` 不调用 `urinate`、`drink` 或 `exercise`；`discomfort` 仍没有提醒通道。上述提醒参数的 `status` 都是 `design`，属于提醒 `policy`，不是人体测量、临床尿急界值或口渴阈值。模块仍读轮初快照；`notify` 在 `interoception` 之上再晚一轮，尿意提醒相对轮初膀胱变化为两轮（预置 410 mL 后第 1 轮只更新体感，第 2 轮才提醒），口渴链路多一级下丘脑→体感，预置一致的 `waterVolumeMl = 29650`、`waterDeficit = 0.7` 时第 3 轮才提醒强口渴。启动补算丢弃通知，但补算轮若触发提醒仍提交本节状态、消耗冷却与配额，恢复后同档可能不补发；这是既有限制，需另立独立设计。会话 A/B 的计数分开；当前只有最近一次动作的会话收到提醒。
+**提醒不是每轮播报。** `brainNotify` 读轮初 `interoception.hunger` / `fullness` / `thirst` / `urinaryUrgency`、最近提交的 `bladder.voidedMl` 和本轮动作里的 `urinate`，在任一体感达到“明显”或“强”档位时提醒。饥饿、饱满、口渴与尿意的阈值都是 65/85 mm；用于门控的 `levels` 只记录 0/2/3，40–64 mm 的观测中间档按 0 计；缺失或非有限读数按饥饿 50、口渴 50、饱满 / 尿意 0 处理。每个信号单独记录滞回水位（`brainNotify.sessions.<sessionId>.levels = { hunger, fullness, thirst, urinary }`）：同一信号重复同一档，需先低于已提醒档让水位回落；升到比水位更高的档（如 2→3）可直接提醒。`lastKind` 记录最近一次实际提醒的信号（可为 `thirst`）；`lastLevel` 保留下降闩锁（提醒时置为发送档位，之后当前档位更低时下降，可为 1），并作为旧档迁移来源，不只是摘要。每轮最多一条：在尚未提醒到当前档位的候选中先取档位最高者，同档按 `urinary > thirst > fullness > hunger`；未被选中的信号不消耗水位。45 仿真分钟冷却、每小时 2 次、每天 6 次按会话共享，不按信号拆分。明显档位用 `context`（不唤醒），强档位用 `wake`（唤醒）；文本固定，不带膀胱数值、诊断结论或排尿指令。最近提交快照的 `bladder.voidedMl > 0` 或本轮动作含 `urinate` 时，只抑制尿意候选：该轮不产生尿意提醒且 `levels.urinary` 按 0 回落；饥饿、饱满、口渴等其他信号仍按各自水位参与选择，不受影响。口渴没有动作后抑制：`drink` 只在胃、小肠吸收后改变 `waterDeficit`，不会在动作轮把 `levels.thirst` 清零，也不自动饮水。旧会话缺少 `levels` 时按 `lastKind` / `lastLevel` 惰性迁移（`lastKind` 可为 `thirst`）；已有 `levels` 缺少 `thirst` 时只补 `thirst = 0`，其他信号水位不变。`brainNotify` 不调用 `urinate`、`drink` 或 `exercise`；`discomfort` 仍没有提醒通道，`sexualArousalMm` 也不进入提醒。上述提醒参数的 `status` 都是 `design`，属于提醒 `policy`，不是人体测量、临床尿急界值或口渴阈值。模块仍读轮初快照；`notify` 在 `interoception` 之上再晚一轮，尿意提醒相对轮初膀胱变化为两轮（预置 410 mL 后第 1 轮只更新体感，第 2 轮才提醒），口渴链路多一级下丘脑→体感，预置一致的 `waterVolumeMl = 29650`、`waterDeficit = 0.7` 时第 3 轮才提醒强口渴。启动补算丢弃通知，但补算轮若触发提醒仍提交本节状态、消耗冷却与配额，恢复后同档可能不补发；这是既有限制，需另立独立设计。会话 A/B 的计数分开；当前只有最近一次动作的会话收到提醒。
 
 #### 投递与确认
 
@@ -325,7 +330,7 @@ Gateway 的 `GET /notifications` 返回待确认队列，目前最多保留 200 
 
 - `index.js` 通过 `ctx.tools.register` 注册 `body_act` 和 `body_state`，共用当前 DSH 进程里的 Gateway；工具随插件卸载自动注销。 [DSH 工具注册](https://deepseek-harness.github.io/deepseek-harness/en/reference/cookbook/extension-cookbook) · [DSH 生命周期](https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/core)
 - `body_act` 把结构化动作连同 `sessionId` 交给 Gateway；动作 id 由会话 ID 与工具 `callId` 稳定生成，重试复用同一回执。`body_state` 返回最近一轮的 `simulatedSeconds` 和 `parts`，可按部位过滤。202 queued 只表示入队，不表示已生效。
-- `brain/notify.ts` 为会话筛选提醒：饥饿、饱满、口渴或尿意达到明显档位用 `context`，强档位用 `wake`，同一会话共享冷却与每小时/每天次数上限；它不自动排尿、饮水或运动，是否调用 `urinate` / `drink` / `exercise` 仍由会话决定。SFW / NSFW 会话选择、按会话绑定不同身体与通知历史尚未实现。
+- `brain/notify.ts` 为会话筛选提醒：饥饿、饱满、口渴或尿意达到明显档位用 `context`，强档位用 `wake`，同一会话共享冷却与每小时/每天次数上限；它不自动排尿、饮水、运动或性行为，是否调用 `urinate` / `drink` / `exercise` / `sex` / `orgasm` 仍由会话决定。SFW / NSFW 会话选择、按会话绑定不同身体与通知历史尚未实现。
 
 ### 浏览器数据页
 
@@ -342,7 +347,7 @@ Gateway 的 `GET /notifications` 返回待确认队列，目前最多保留 200 
 
 每个里程碑在实际 DSH 实例里验收，通过后再接下一项。
 
-P1（已完成）覆盖“吃/喝 → 胃排空 → 十二指肠营养暴露 → 体感读出 → 会话提醒”的链：`interoception.hunger` / `fullness` 是代理读数，`brainNotify` 做显著性/滞回/冷却/配额，`body_act` / `body_state` 与通知投递已接入。胃动力在 `volumeMl` / `energyKcal` 总量内保存固餐小计 `solidVolumeMl` / `solidEnergyKcal`：只有 `eat` 的 `mealKind: "solid"` 按单独的固餐参考半时（68.7 min，标记固相半排空时间中位数）排空，`drink`、`liquid`、`mixed` 与旧存档中已经入胃的存量仍走原算法，旧档 `mealQueue` 里尚未释放的切片继续按各自 `mealKind` 入账，`body_act` / `body_state` 参数不变。体感仍经胃充盈、相对饥饿素与十二指肠营养暴露间接反映这些总量与通量：体感字段不变，数值会随分组后的总量与排出量变化；只有查询原始 `stomach` 部位或整身状态时才会看到两个固餐小计。M1 的真实 DSH 会话验收已完成；通知历史文件、模型已读确认与按会话绑定不同身体仍未实现。M3 水链首段已实现脚本、参数、定向测试与现状文档并接入根清单（Tasks 1–9）；多轮水账本补测与 Task 11 当时 12 部位逐轮性能基线已完成（Task 11，spec §8；早于非自主排尿、`discomfort` 与 DI 变体，属历史基线），论文可比数据对照已记录（Task 12，spec §7），但大负荷利尿仍不匹配、口咽解渴支路未建，不能写成整体符合论文；Task 10 真实 DSH 会话验收已完成（30 轮 A/B + 排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`；早于后加功能）；膀胱过度充盈非自主排空、`discomfort` 与 DI 样变体已实现并有定向测试，且由 M19 真实 DSH 会话补验（2026-11-22，33/33 verdicts，证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴未验证；睡眠与排便调研仍为 defer；M2 的碳水—血糖薄切片已另行批准并实现，后续又接入胰腺相对信号与肾糖质量排泄；M4 的活动—皮肤出汗薄切片已实现（`exercise` → `physicalActivity` → `skin.sweatRequestMl` → `bodyFluid` 双出口 → `skin.sweatVolumeMl`，默认 30 min 累计 18 mL，见下节）；完整 M2（含肝糖、胰高血糖素与组织摄糖分区）、完整 M4（肌群负荷/疲劳/延迟酸痛/皮肤分区）与 M5–M7 仍是设计目标。
+P1（已完成）覆盖“吃/喝 → 胃排空 → 十二指肠营养暴露 → 体感读出 → 会话提醒”的链：`interoception.hunger` / `fullness` 是代理读数，`brainNotify` 做显著性/滞回/冷却/配额，`body_act` / `body_state` 与通知投递已接入。胃动力在 `volumeMl` / `energyKcal` 总量内保存固餐小计 `solidVolumeMl` / `solidEnergyKcal`：只有 `eat` 的 `mealKind: "solid"` 按单独的固餐参考半时（68.7 min，标记固相半排空时间中位数）排空，`drink`、`liquid`、`mixed` 与旧存档中已经入胃的存量仍走原算法，旧档 `mealQueue` 里尚未释放的切片继续按各自 `mealKind` 入账，`body_act` / `body_state` 参数不变。体感仍经胃充盈、相对饥饿素与十二指肠营养暴露间接反映这些总量与通量：体感字段不变，数值会随分组后的总量与排出量变化；只有查询原始 `stomach` 部位或整身状态时才会看到两个固餐小计。M1 的真实 DSH 会话验收已完成；通知历史文件、模型已读确认与按会话绑定不同身体仍未实现。M3 水链首段已实现脚本、参数、定向测试与现状文档并接入根清单（Tasks 1–9）；多轮水账本补测与 Task 11 当时 12 部位逐轮性能基线已完成（Task 11，spec §8；早于非自主排尿、`discomfort` 与 DI 变体，属历史基线），论文可比数据对照已记录（Task 12，spec §7），但大负荷利尿仍不匹配、口咽解渴支路未建，不能写成整体符合论文；Task 10 真实 DSH 会话验收已完成（30 轮 A/B + 排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`；早于后加功能）；膀胱过度充盈非自主排空、`discomfort` 与 DI 样变体已实现并有定向测试，且由 M19 真实 DSH 会话补验（2026-11-22，33/33 verdicts，证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴未验证；睡眠与排便调研仍为 defer；M2 的碳水—血糖薄切片已另行批准并实现，后续又接入胰腺相对信号与肾糖质量排泄；M4 的活动—皮肤出汗与运动呼吸失水薄切片已实现（`exercise` → `physicalActivity` → `skin.sweatRequestMl` 与 `lungs.respiratoryWaterLossRequestMl` → `bodyFluid` 三出口 → `skin.sweatVolumeMl` 与 `lungs.respiratoryWaterLossMl`，默认 30 min 累计汗液 18 mL、运动相关呼吸失水 9 mL，见下节）；完整 M2（除已实现的骨骼肌摄糖与肌糖原薄切片外，仍含肝糖原、胰岛素浓度/分泌、胰高血糖素、脂肪组织分区与肌糖原容量/静息周转等）、完整 M4（肌群负荷/疲劳/延迟酸痛/皮肤分区）与 M5–M7 仍是设计目标。
 
 ### 首期优先完成（M1–M4）
 
@@ -351,36 +356,36 @@ M1 已完成；M1–M4 全部通过实机验收后，首期交付完成。首期
 | 里程碑 | 交付范围 | DSH 实机验收 |
 | --- | --- | --- |
 | M1 · 基础身体与进食 | Gateway 加载身体预设、免疫档位和脚本清单。胃动力、胃饥饿素与胃壁机械感受脚本从轮初快照计算进食、排空和信号变化。神经系统读取轮末结果，体感与身体状态一次提交。 | 核对自定义参数和部位档位。在会话 A 提交“吃了半块奶油蛋糕”并重试，从会话 B 观察共享体感，在存档中确认同一动作只入账一次且沿用原估值。核对生理脚本按清单顺序读取同一份轮初快照，执行期间提交的动作在下一轮生效。让一个脚本超时，核对整轮状态和通知作废，待处理动作保留，成功重试后推进 60 秒。观察会话空闲时的胃排空，停机两小时后再核对这次进食的消化进度和恢复时的饱腹感。 |
-| M2 · 餐后血糖 | **薄切片已实现：** `carbohydrateG` → 胃碳水 → 小肠吸收 → `glucose` 可及池质量/浓度代理，使用固定分布体积、基线和表观清除参数；`pancreasEndocrine` 相对信号缩放非肾表观清除，`kidneyGlucose` 按请求转出实际 g 质量，质量账含肾排泄。**完整目标仍未实现：** 肝糖输出、组织摄糖、胰岛素浓度/分泌、胰高血糖素和皮质醇调节。 [Dalla Man 等，图 2 和式 (1)、(13)、(18)](https://isbgroup.eu/files/Dalla%20Man%202007.pdf) | 已有当时 13 部位的 A/B、逐轮质量账、固体队列和吸收后重启测试，以及后续 15 部位的胰腺/肾糖集成测试；真实 DSH 会话、两种同碳水餐型、胰岛素状态和独立血糖曲线对照仍未验收。 |
+| M2 · 餐后血糖 | **薄切片已实现：** `carbohydrateG` → 胃碳水 → 小肠吸收 → `glucose` 可及池质量/浓度代理，使用固定分布体积、基线和表观清除参数；`pancreasEndocrine` 相对信号缩放超基线处置总量；固定份额经 transfer 进入 `muscleGlucose.uptakeG`，下一轮入账 `glycogenG`，运动时消耗；`kidneyGlucose` 按请求转出实际 g 质量；质量账含肾排泄、肌摄糖与肌糖原。**完整目标仍未实现：** 肝糖输出/肝糖原、脂肪组织分区、胰岛素浓度/分泌、胰高血糖素、皮质醇调节、肌糖原容量与静息周转。 [Dalla Man 等，图 2 和式 (1)、(13)、(18)](https://isbgroup.eu/files/Dalla%20Man%202007.pdf) | 已有当时 13 部位的 A/B、逐轮质量账、固体队列和吸收后重启测试，以及后续 15 部位的胰腺/肾糖集成测试；真实 DSH 会话、两种同碳水餐型、胰岛素状态和独立血糖曲线对照仍未验收。 |
 | M3 · 饮水与睡眠 | 水链首段（饮水吸收、ADH、肾请求、膀胱与主动排尿）的脚本、参数、定向测试与文档已实现并接入根清单（Tasks 1–9）；多轮水账本补测与 12 部位性能基线已完成（Task 11，历史基线），论文对照已记录（Task 12，大负荷利尿仍不匹配）；Task 10 真实 DSH 实机验收已完成（30 轮 A/B + 排尿重试/409）；膀胱非自主排空、`discomfort` 与 DI 样变体已实现并有定向测试，且由 M19 真实 DSH 会话补验（33/33 verdicts，2–5 轮短会话）；120 轮长时程、通知/重启、大负荷利尿与口咽解渴未验证；睡眠压力与褪黑素节律经调研后暂缓（defer），未实现。 | 水链的 Task 10 实机验收已完成：从同一起点比较饮水与不饮水，核对吸收、口渴、ADH、产尿与尿意，并验证 `urinate` 与同调用重试；M19 又用真实 DSH 会话补验了非自主排空、`discomfort` 与 DI 样变体（33/33 verdicts，只覆盖 2–5 轮短会话）；120 轮长时程、通知投递与重启补算仍待后续实机验收；睡眠已 defer，不在近期验收范围。 |
-| M4 · 活动与身体分区 | **薄切片已实现：** `body_act` 的 `exercise { intensity, durationMin }` → `physicalActivity` 剩余活动/强度 → `skin.sweatRequestMl` → `bodyFluid` 肾尿+汗液双出口 → `skin.sweatVolumeMl`；默认 25°C、`I=1`、30 min 累计 18 mL，无活动时 0，口渴沿用既有轮初快照，水账增加实际汗液，不自动饮水。**完整目标仍未实现：** 以左右小腿为第一组分区，接入肌群负荷、疲劳、延迟酸痛和同一区域的皮肤状态；METs、心率、体温调节、电解质与皮肤分区不在本切片。 | 已有活动/皮肤模块、双出口与真实 Gateway 水账测试；真实 DSH 会话、单侧离心活动对照、独立人体出汗数据与临床验证未做。 |
+| M4 · 活动与身体分区 | **薄切片已实现：** `body_act` 的 `exercise { intensity, durationMin }` → `physicalActivity` 剩余活动/强度 → `skin.sweatRequestMl` 与 `lungs.respiratoryWaterLossRequestMl` → `bodyFluid` 肾尿+呼吸+汗液三出口 → `skin.sweatVolumeMl` 与 `lungs.respiratoryWaterLossMl`；默认 25°C、`I=1`、30 min 累计汗液 18 mL、运动相关呼吸失水 9 mL，无活动时 0，口渴沿用既有轮初快照，水账增加实际汗液与呼吸失水，不自动饮水。**完整目标仍未实现：** 以左右小腿为第一组分区，接入肌群负荷、疲劳、延迟酸痛和同一区域的皮肤状态；呼吸侧只覆盖运动相关失水，静息/环境驱动的呼吸失水、通气量/潮气量/呼吸频率、血气与完整肺模型未建；METs、心率、体温调节、电解质与皮肤分区不在本切片。 | 已有活动/皮肤/肺模块、三出口与真实 Gateway 水账测试；真实 DSH 会话、单侧离心活动对照、独立人体出汗或呼吸失水数据与临床验证未做。 |
 
 ### M3 饮水与排尿：首段实现状态
 
-**脚本已实现并接入根清单（Tasks 1–9）；多轮水账本补测与 12 部位性能基线已完成（Task 11，历史基线），论文对照已记录（Task 12）；Task 10 真实 DSH 验收已完成（30 轮 A/B + 排尿重试/409）；后加的非自主排空、`discomfort` 与 DI 样变体由 M19 真实 DSH 会话补验（2026-11-22，33/33 verdicts，2–5 轮短会话）；120 轮长时程、通知/重启、大负荷利尿与口咽解渴仍未验证；Task 10/11 都早于后加功能合并。** 胃水链入口 `hydration.ts` 把 `drink` 的全部体积记为水，小肠 `water-absorption.ts` 吸收轮初肠水，`bodyFluid` 维护体液水与亏缺代理，`kidney` 只算下一轮产尿请求，下丘脑 `hypothalamus-adh.ts` / `hypothalamus-thirst.ts` 分开算 ADH 与口渴，`bladder` 储尿、结算主动 `urinate`，并在轮初体积严格大于 600 mL 且无 `urinate` 时非自主排空到排后余量；`interoception` 另输出 `discomfort`（饥饿、饱满、口渴、尿意超过 70 mm 的强度取最大值）。十二指肠脚本仍只计算营养暴露，不负责水吸收。
+**脚本已实现并接入根清单（Tasks 1–9）；多轮水账本补测与 12 部位性能基线已完成（Task 11，历史基线），论文对照已记录（Task 12）；Task 10 真实 DSH 验收已完成（30 轮 A/B + 排尿重试/409）；后加的非自主排空、`discomfort` 与 DI 样变体由 M19 真实 DSH 会话补验（2026-11-22，33/33 verdicts，2–5 轮短会话）；120 轮长时程、通知/重启、大负荷利尿与口咽解渴仍未验证；Task 10/11 都早于后加功能合并。** 胃水链入口 `hydration.ts` 把 `drink` 的全部体积记为水，小肠 `water-absorption.ts` 吸收轮初肠水，`bodyFluid` 维护体液水与亏缺代理，`kidney` 只算下一轮产尿请求，下丘脑 `hypothalamus-adh.ts` / `hypothalamus-thirst.ts` 分开算 ADH 与口渴，`bladder` 储尿、结算主动 `urinate`，并在轮初体积严格大于 600 mL 且无 `urinate` 时非自主排空到排后余量；`interoception` 另输出 `discomfort`（根清单为饥饿、饱满、口渴、尿意四路超过 70 mm 的强度取最大值；女性清单另有子宫痉挛第五路）。十二指肠脚本仍只计算营养暴露，不负责水吸收。
 
 首段打通一条可核对水量的链：**喝水 → 胃排空 → 小肠吸收 → 体液反馈 → ADH 调节肾脏产尿 → 膀胱充盈 → 主动排尿或过度充盈非自主排空**。口渴、尿意与不适是独立的读出信号。不用「喝完定时加尿量」代替肾脏反馈，也不要求第一段就覆盖完整的水盐与血压调节。
 
 | 功能标签 | 当前脚本 | 读写边界 |
 | --- | --- | --- |
 | 消化 | `stomach/hydration.ts`、`small-intestine/water-absorption.ts` | 胃只转出非固餐排出中的水 `emptiedWaterMl`；小肠只吸收轮初肠水。胃总内容量、`emptiedMl` 和 `emptiedKcal` 均不能充当饮水水量。 |
-| 体液隔室 | `human-compartments/body-water/water.ts` | 接收吸收水，按 `kidney.urineProductionRequestMl` 向膀胱转水；M4 薄切片另按轮初 `skin.sweatRequestMl` 向皮肤转实际汗液，见下节。已进入膀胱或皮肤的水不再算体液。只输出 `waterDeficit` 代理，不叫实测血浆渗透压。 |
+| 体液隔室 | `human-compartments/body-water/water.ts` | 接收吸收水，按 `kidney.urineProductionRequestMl` 向膀胱转水；M4 薄切片另按轮初 `lungs.respiratoryWaterLossRequestMl` 与 `skin.sweatRequestMl`，按肾→肺→汗的工程顺序向肺与皮肤转实际失水，见下节。已进入膀胱、肺或皮肤的水不再算体液。只输出 `waterDeficit` 代理，不叫实测血浆渗透压。 |
 | 神经内分泌（下丘脑） | `brain/hypothalamus-adh.ts` | 用 `bodyFluid.waterDeficit` 调相对 ADH 水平；`relativeConcentration` 不是 pmol/L。ADH 由下丘脑合成、由垂体后叶释放；肾脏是靶点，不是其来源。 |
 | 神经（下丘脑） | `brain/hypothalamus-thirst.ts` | 读同一亏缺，写 0–100 mm 口渴驱动；不写 ADH，不自动替会话喝水，首段不建吸收前口咽缓解。 |
 | 泌尿 | `kidney/urine-production.ts`、`bladder/storage.ts` | 肾只写下一轮请求，不转移水；体液所有者按轮初请求结算转移；膀胱储存已转入的尿量，`urinate` 结算轮初体积，轮初严格大于 600 mL 且无 `urinate` 时非自主排空到排后余量；两种排尿都不扣体液，也不另设储尿激素。600 mL 是 `design` 工程阈值，不是临床失禁模型。 |
-| 神经（体感） | `brain/interoception.ts` | 读出 `thirst`、`urinaryUrgency` 与 `discomfort`（四感受超过 70 mm 的强度取最大值）；`brainNotify` 读 `hunger` / `fullness` / `thirst` / `urinaryUrgency` 做四类提醒，不读不适，也不接管排尿、饮水或运动反射；是否 `urinate` / `drink` / `exercise` 仍由会话决定。 |
+| 神经（体感） | `brain/interoception.ts` | 读出 `thirst`、`urinaryUrgency`、`discomfort` 与 `sexualArousalMm`（不适为四感受超过 70 mm 的强度取最大值；女性清单另把 `uterus.crampMm` 作为第五路并入；性唤醒为独立软读，不进不适）；`brainNotify` 读 `hunger` / `fullness` / `thirst` / `urinaryUrgency` 做四类提醒，不读不适或性唤醒，也不接管排尿、饮水、运动或性行为反射；是否 `urinate` / `drink` / `exercise` / `sex` / `orgasm` 仍由会话决定。 |
 
 目录仍归器官；体液是隔室，放在 `organs/human-compartments/body-water/`；下丘脑的两种功能放在脑的同一区域下，分成两个脚本，系统名只做标签。睡眠节律另拆（调研已 defer），不把 `active: false` 当生理睡眠。本段也不建排便（结肠、直肠、便意调研已 defer），或肾素–血管紧张素–醛固酮系统（待接水盐、循环时再做）。DI 样变体是独立清单/存档中的可选入口，不是默认身体的一部分。
 
-**接入与验收。** 沿用两个会话工具：`body_act` 仍接受 `drink` / `eat` / 无份量参数的 `urinate`，并新增 `exercise`；M3 的验收只覆盖前三类，排出量由膀胱轮初存量决定；根清单已加载 `bladder`。`body_state` 按部位读取体感，包括 `discomfort` 与膀胱四个字段；提醒只由 `brainNotify` 在饥饿、饱满、口渴或尿意达到明显/强档时发出，不新增每轮上下文注入，也不自动排尿或饮水。过度充盈非自主排空由 600 mL 阈值触发，没有动作、回执或通知；它不是持续的自动排尿或失禁模型。水量用 `io.transfer` 配对提交，不跨量纲扣账；进膀胱时已扣除体液，排尿时不能再扣一次。旧档不猜历史饮水，不重置胃值；旧自定义清单仍可只加载原胃脚本 `motility.ts`。实机从同一起点比较饮水与不饮水，核对吸收、口渴、ADH、产尿及尿意的变化；再观察一次排尿及同调用重试，核对只计一次排出。多轮队列水恒等式已补测（Task 11），离线测试与真实 Gateway 测试已覆盖模块守恒、根清单集成，以及非自主排空、分项与 `discomfort`（`test/organs.bladder.test.mjs`、`test/organs.interoception.test.mjs`、`test/organs.water-gateway.test.mjs`）；Task 10 已用真实 DSH 会话完成 30 轮 A/B 与主动排尿重试/409，但早于非自主排尿与不适合并；M19 又在真实 DSH 会话中补验了 650 mL 非自主排空（同轮新尿留下、下一轮尿意/不适回落）、主动优先/重试/409 与 DI 三组清单（请求 1/4/4 mL，通知 0，33/33 verdicts；证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）。650 mL 预置与预置会话的稳态 1 mL 请求是测试设定，不是模型输出；DI 对照正常会话 sim 300 的 0.9998 mL 是模型输出。M19 只覆盖 2–5 轮短会话；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴仍未验证。
+**接入与验收。** 沿用两个会话工具：`body_act` 接受 `drink` / `eat` / 无份量参数的 `urinate`，以及 `exercise` / `sex` / 无载荷 `orgasm`；M3 的验收只覆盖前三类，排出量由膀胱轮初存量决定；根清单已加载 `bladder`。`body_state` 按部位读取体感，包括 `discomfort`、`sexualArousalMm`、`sexualResponse` 五个字段与膀胱四个字段；提醒只由 `brainNotify` 在饥饿、饱满、口渴或尿意达到明显/强档时发出，不新增每轮上下文注入，也不自动排尿或饮水。过度充盈非自主排空由 600 mL 阈值触发，没有动作、回执或通知；它不是持续的自动排尿或失禁模型。水量用 `io.transfer` 配对提交，不跨量纲扣账；进膀胱时已扣除体液，排尿时不能再扣一次。旧档不猜历史饮水，不重置胃值；旧自定义清单仍可只加载原胃脚本 `motility.ts`。实机从同一起点比较饮水与不饮水，核对吸收、口渴、ADH、产尿及尿意的变化；再观察一次排尿及同调用重试，核对只计一次排出。多轮队列水恒等式已补测（Task 11），离线测试与真实 Gateway 测试已覆盖模块守恒、根清单集成，以及非自主排空、分项与 `discomfort`（`test/organs.bladder.test.mjs`、`test/organs.interoception.test.mjs`、`test/organs.water-gateway.test.mjs`）；Task 10 已用真实 DSH 会话完成 30 轮 A/B 与主动排尿重试/409，但早于非自主排尿与不适合并；M19 又在真实 DSH 会话中补验了 650 mL 非自主排空（同轮新尿留下、下一轮尿意/不适回落）、主动优先/重试/409 与 DI 三组清单（请求 1/4/4 mL，通知 0，33/33 verdicts；证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）。650 mL 预置与预置会话的稳态 1 mL 请求是测试设定，不是模型输出；DI 对照正常会话 sim 300 的 0.9998 mL 是模型输出。M19 只覆盖 2–5 轮短会话；120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴仍未验证。
 
 **证据与参数状态。** 所有新参数都是 `design`，论文只支撑方向与时间尺度：Péronnet 2012 只给 D₂O 吸收的探索时间尺度，20 min 半时不是论文值；Ota 1994 主队列是 5 名甲减患者加 5 名正常对照，只支撑水负荷后 AVP 降、尿变稀的方向；Andersen 1990 只支撑肾反应可延迟；Figaro & Mack 1997 只支撑口咽解渴与持续补液可分开，首段不建该支路；De Wachter & Wyndaele 2003 目前只核对到摘要（15 名健康女学生，190/268/410 mL 是交接数值、原文表图待核），410 mL 只作尿意归一化锚点；ICS 术语只给“排前量 = 排出量 + 残余量”的记账关系，不规定正常残余量。600 mL 非自主阈值与 70 mm 不适起始值同样没有直接来源，都是 `design` 工程代理；`brainNotify` 的 65/85 mm 尿意阈值、`resetBelow=40 mm`、45 min 冷却与次数上限等提醒参数的 `status` 都是 `design`，属于 `policy`；其中 `resetBelow` 只区分观测 0/1 档，用于门控的 `levels` 只存 0/2/3、40–64 mm 的中间档按 0 计，同档重复需先低于已提醒档，升更高档可直接提醒。它们都不是人体排尿阈值或临床尿急界值；三篇 DI 综述只支撑机制方向与 >3 L/day 量级，4 mL/min 不是论文值。逐篇边界见各器官 README 与 [`references/`](../organs/human-organs/references/)。
 
-**未建：** 睡眠、排便、完整胰岛素/肝糖/胰高血糖素/组织分区糖代谢、血浆/尿渗透压、电解质、血容量/血压、RAAS、不感蒸发、口咽解渴、自动饮水；汗液只有显式运动薄切片，不建体温调节、汗液电解质或皮肤分区。过度充盈非自主排空已实现，但它只是 600 mL 阈值代理，不是持续漏尿、正常排尿反射或临床失禁模型。碳水—血糖薄切片、胰腺相对信号与肾糖质量排泄已实现；肾糖只是 g 质量汇，不产生尿水或尿糖浓度，不能当成完整 M2 糖代谢。
+**未建：** 睡眠、排便、完整胰岛素/肝糖原/胰高血糖素/脂肪组织分区糖代谢（骨骼肌摄糖与肌糖原薄切片已实现）、血浆/尿渗透压、电解质、血容量/血压、RAAS、静息/环境驱动的呼吸失水、皮肤不感蒸发、口咽解渴、自动饮水；汗液只有显式运动薄切片，不建体温调节、汗液电解质或皮肤分区；呼吸失水只有运动相关的薄切片，缺的是静息/环境驱动部分与完整肺模型（通气量、潮气量、呼吸频率、血气、气喘提醒），不是全部呼吸失水。过度充盈非自主排空已实现，但它只是 600 mL 阈值代理，不是持续漏尿、正常排尿反射或临床失禁模型。碳水—血糖薄切片、胰腺相对信号与肾糖质量排泄已实现；肾糖只是 g 质量汇，不产生尿水或尿糖浓度，不能当成完整 M2 糖代谢。性反应周期只有唤醒代理、体力活动入口与 `orgasm` 主动/强制释放，不建激素、心率/血压/通气、受孕/妊娠、性欲/情绪、伴侣/性病/避孕或任何显性内容。
 
-### M4 活动—皮肤出汗薄切片：当前实现
+### M4 活动—皮肤出汗与运动呼吸失水薄切片：当前实现
 
-当前链为 **`exercise` → `physicalActivity` → `skin.sweatRequestMl` → `bodyFluid` 双出口（肾尿 + 汗液）→ `skin.sweatVolumeMl`**。它只把显式运动变成可对账的体液失水；默认没有活动时不出汗，既有水账与口渴轨迹不变。
+当前链为 **`exercise` → `physicalActivity` → `skin.sweatRequestMl` 与 `lungs.respiratoryWaterLossRequestMl` → `bodyFluid` 三出口（肾尿 + 呼吸失水 + 汗液）→ `skin.sweatVolumeMl` 与 `lungs.respiratoryWaterLossMl`**。它只把显式运动变成可对账的体液失水；默认没有活动时不出汗、不产生运动相关呼吸失水，既有水账与口渴轨迹不变。
 
 `body_act` 的 `exercise` 载荷为 `{ type: "exercise", intensity, durationMin }`：
 
@@ -392,7 +397,8 @@ M1 已完成；M1–M4 全部通过实机验收后，首期交付完成。首期
 | --- | --- | --- |
 | `physicalActivity` / `skeletal-muscle/activity.ts` | `remainingExerciseMin` (min)、`intensity` (1) | 只读自己的轮初状态与本轮 `exercise`；先按 `io.dt` 递减，再取本轮最后一个合法动作替换，不累加时长；不扣水、不发通知 |
 | `skin` / `skin/sweat.ts` | `sweatRequestMl` (mL/下一轮)、`sweatVolumeMl` (mL/轮) | 只读轮初活动与固定环境参数；每轮先写请求并把实际汗液归 0，实际量只由 `bodyFluid` 的 transfer 增加；不持有体液水 |
-| `bodyFluid` / `human-compartments/body-water/water.ts` | `waterVolumeMl`、`waterDeficit` | 唯一从体液转出尿与汗的部位；读取轮初 `kidney.urineProductionRequestMl` 与 `skin.sweatRequestMl` |
+| `lungs` / `lungs/respiratory-water-loss.ts` | `respiratoryWaterLossRequestMl` (mL/下一轮)、`respiratoryWaterLossMl` (mL/轮) | 只读轮初 `physicalActivity`；每轮先写运动相关请求并把实际量归 0，实际量只由 `bodyFluid` 的 transfer 增加；不持有体液水，不含静息呼吸 |
+| `bodyFluid` / `human-compartments/body-water/water.ts` | `waterVolumeMl`、`waterDeficit` | 唯一从体液转出尿、呼吸失水与汗的部位；读取轮初 `kidney.urineProductionRequestMl`、`lungs.respiratoryWaterLossRequestMl` 与 `skin.sweatRequestMl` |
 
 出汗请求在 60 s 轮、默认环境 25°C、`I=1` 时为 0.6 mL；公式与参数：
 
@@ -404,57 +410,73 @@ sweatRequestMl = rate × dtMin
 
 `ambientTemperatureC = 25`、`referenceRateMlPerMin = 0.6`、`ambientGainPerC = 0.04`、`maxRateMlPerMin = 2` 全部为 `design`、`source: null`，位于 `skin/sweat.parameters.json`。它们不是人体出汗测量、体温调节或最大出汗率；`range` 只是工程调参范围。
 
-体液双出口按轮初水结算：
+运动相关呼吸失水请求在 60 s 轮、`I=1` 时为 0.3 mL；公式与参数：
+
+```text
+respiratoryWaterLossRequestMl = R > 0 ? 0.3 × I × dtMin : 0
+```
+
+`lungs.respiratoryWaterLoss.exerciseReferenceRateMlPerMin = 0.3` 为 `design`、`source: null`，位于 `lungs/respiratory-water-loss.parameters.json`；它只是 `intensity=1` 时的临时工程速率，不是实测呼吸失水率、总呼吸失水或通气量。`R` 是轮初活动剩余分钟，`dtMin = io.dt / 60`；活动部位缺失时请求为 0，字段缺失、非有限、剩余时间为负或强度越界时整轮失败。请求字段不计入实际失水。
+
+体液三出口按轮初水结算，顺序是工程 `policy`，不是人体优先级证据：
 
 ```text
 U_kidney = clamp(R_kidney, 0, W_start)
-U_sweat = clamp(R_sweat, 0, max(0, W_start − U_kidney))
+U_lung = clamp(R_lung, 0, max(0, W_start − U_kidney))
+U_sweat = clamp(R_sweat, 0, max(0, W_start − U_kidney − U_lung))
 write.waterVolumeMl = W_start
 transfer bodyFluid → bladder: U_kidney
+transfer bodyFluid → lungs: U_lung
 transfer bodyFluid → skin: U_sweat
 ```
 
-两路合计不超过轮初 `W_start`，小肠同轮流入不能支付本轮尿或汗；先 write 后两个 transfer，实际汗液只经 transfer 进入 `skin.sweatVolumeMl`。水账在既有恒等式上增加累计实际汗液：
+三路合计不超过轮初 `W_start`，小肠同轮流入不能支付本轮任一出口；先 write 后三个 transfer，实际呼吸失水与汗液只经 transfer 进入各自字段。水账在既有恒等式上增加累计实际呼吸失水与汗液：
 
 ```text
 胃水 + 队列水 + 小肠水 + (体液水 − 初始体液水)
-+ 膀胱尿 + 累计 voidedMl + 累计 skin.sweatVolumeMl
++ 膀胱尿 + 累计 voidedMl
++ 累计 skin.sweatVolumeMl + 累计 lungs.respiratoryWaterLossMl
 = 累计饮水
 ```
 
-`skin.sweatRequestMl` 不进水账；请求是意图，实际汗液受轮初可用水钳制。无活动时两项均为 0，恒等式与 M3 一致。
+`skin.sweatRequestMl` 与 `lungs.respiratoryWaterLossRequestMl` 都不进水账；请求是意图，实际通量受轮初可用水与支付顺序钳制。无活动时皮肤与肺的请求、实际四项均为 0，恒等式与 M3 一致。
 
-**默认时序。** 60 s 一轮、25°C、`I=1`、`durationMin=30`：第 1 轮活动状态更新，皮肤仍读旧活动、请求 0；第 2 轮皮肤写出 0.6 mL 请求，体液仍读旧请求；第 3 轮体液首次转出 0.6 mL 实际汗液。第 2–31 轮共 30 次请求、第 3–32 轮共 30 次转移，累计 18 mL；第 32 轮活动已归零，第 33 轮起请求与实际均为 0。18 mL 是模型内水账/时序核对，不是实测汗量。
+**默认时序。** 60 s 一轮、25°C、`I=1`、`durationMin=30`：第 1 轮活动状态更新，皮肤与肺仍读旧活动、请求 0；第 2 轮皮肤写出 0.6 mL 请求、肺写出 0.3 mL 请求，体液仍读旧请求；第 3 轮体液首次转出 0.6 mL 汗液与 0.3 mL 呼吸失水。第 2–31 轮共 30 次请求、第 3–32 轮共 30 次转移，累计汗液 18 mL、运动相关呼吸失水 9 mL；第 32 轮活动已归零，第 33 轮起请求与实际均为 0。18 mL 与 9 mL 都是模型内水账/时序核对，不是实测汗量或呼吸失水量。
 
-**口渴与旧档。** 体液下降后，口渴仍由既有 `waterDeficit → hypothalamusThirst → interoception` 按各自轮初快照逐轮读出；本切片不新增通知、不改阈值、不自动饮水。旧档只补 `physicalActivity = { remainingExerciseMin: 0, intensity: 0 }` 与 `skin = { sweatRequestMl: 0, sweatVolumeMl: 0 }`，不反推历史活动或出汗；已有体液、膀胱和饮水状态不重置。重启保留活动剩余时间/强度，已扣汗液不重复扣。
+**口渴与旧档。** 体液下降后，口渴仍由既有 `waterDeficit → hypothalamusThirst → interoception` 按各自轮初快照逐轮读出；本切片不新增通知、不改阈值、不自动饮水。旧档只补 `physicalActivity = { remainingExerciseMin: 0, intensity: 0 }`、`skin = { sweatRequestMl: 0, sweatVolumeMl: 0 }` 与 `lungs = { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 }`，不反推历史活动、出汗或呼吸失水；已有体液、膀胱和饮水状态不重置。重启保留活动剩余时间/强度，已扣汗液与呼吸失水不重复扣。
 
-**清单与依赖。** 根清单当前 17 个部位、19 份参数文件（3 份 DI 变体不随根清单加载）。7 部位硬 transfer 闭包为 `hydration.ts`（胃）、`smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose`、`skin`；缺 `skin` 时 `bodyFluid.waterVolumeMl` 的 `transferOut` 目标未声明，启动即失败。`physicalActivity` 只是 `skin` 的普通轮初读取，不构成 transfer 配对依赖。直接调用体液模块时缺皮肤请求按 0；完整 Gateway 清单不能用这个回退绕过 `skin` 配对。
+**清单与依赖。** 根清单当前 20 个部位、22 份参数文件（含 3 份不随根清单加载的 DI 变体）。9 部位硬 transfer 闭包为 `hydration.ts`（胃）、`smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose`、`muscleGlucose`、`skin`、`lungs`；缺 `skin`、`lungs` 或 `muscleGlucose` 时，相应 `transferOut` 目标未声明，启动即失败。`physicalActivity` 只是 `skin`、`lungs` 与 `muscleGlucose` 的普通轮初读取，不构成 transfer 配对依赖。直接调用体液模块时缺皮肤或肺请求按 0；完整 Gateway 清单不能用这个回退绕过 `skin` / `lungs` 配对。
 
-**验收状态。** 活动 8/8、皮肤 10/10 模块测试与真实 Gateway 水账测试通过；默认 30 min 累计 18 mL、无活动 golden 轨迹、旧档补零和重启用例均在 `test/organs.sweat-gateway.test.mjs` 等定向测试中覆盖。**未做：** 真实 DSH 会话、独立人体出汗数据或临床验证。
+**验收状态。** M4 切片验收时 `npm test` 418/418 通过；肺 8/8、活动 8/8、皮肤 10/10 模块测试与真实 Gateway 水账测试通过，覆盖三出口分配、默认 30 min 累计汗液 18 mL 与运动相关呼吸失水 9 mL、无活动 golden 轨迹、旧档补零和重启不重复扣（`test/organs.lungs.test.mjs`、`test/organs.body-water.test.mjs`、`test/organs.sweat-gateway.test.mjs` 等）。**未做：** 真实 DSH 会话、独立人体出汗/呼吸失水数据或临床验证。
 
-**未建模。** 不建 METs、热量/能量消耗、摄氧量、心率、血压、血气、肌糖原、乳酸、疲劳、睡眠、运动类型、姿势、核心/皮肤温度、体温调节、皮肤分区/湿润度、蒸发残余、汗液电解质、环境热应激、疾病或个体差异；`intensity` 只是模型内相对强度。汗液只以 mL 表示，不换算成 METs、热量、心率或代谢率。
+**未建模。** 肺只有运动相关呼吸失水请求—结算，不建静息呼吸、环境驱动的呼吸失水、通气量、潮气量、呼吸频率、气体交换、血气、呼吸力学、气喘或呼吸不适提醒，也不建完整肺模型；0.3 mL/min 不是实测呼吸失水率。其余不建 METs、热量/能量消耗、摄氧量、心率、血压、乳酸、疲劳、睡眠、运动类型、姿势、核心/皮肤温度、体温调节、皮肤分区/湿润度、蒸发残余、汗液电解质、环境热应激、疾病或个体差异；肌糖原只按 M2 薄切片的固定速率代理消耗，不由 `intensity` 换算 MET 或能量；`intensity` 只是模型内相对强度。汗液与呼吸失水只以 mL 表示，不换算成 METs、热量、心率、代谢率或通气量。
 
-设计见 [`2026-11-23-activity-sweat-design.md`](./superpowers/specs/2026-11-23-activity-sweat-design.md)；活动与皮肤字段细节见 [`skeletal-muscle`](../organs/human-organs/skeletal-muscle/README.md) 与 [`skin`](../organs/human-organs/skin/README.md)；体液双出口见 [`body-water`](../organs/human-compartments/body-water/README.md)。
+设计见 [`2026-11-23-activity-sweat-design.md`](./superpowers/specs/2026-11-23-activity-sweat-design.md) 与 [`2026-11-23-respiratory-water-loss-design.md`](./superpowers/specs/2026-11-23-respiratory-water-loss-design.md)；活动、皮肤与肺字段细节见 [`skeletal-muscle`](../organs/human-organs/skeletal-muscle/README.md)、[`skin`](../organs/human-organs/skin/README.md) 与 [`lungs`](../organs/human-organs/lungs/README.md)；体液三出口见 [`body-water`](../organs/human-compartments/body-water/README.md)。
 
 ### M2 碳水—血糖薄切片：当前实现
 
-当前链为 **`drink` / `eat.carbohydrateG` → 胃碳水记账 → 小肠吸收 → `glucose` 可及池 → 胰腺相对信号调节非肾表观清除；肾糖按请求把 `glucoseMassG` 转成 `kidneyGlucose.excretedGlucoseG`（g，不换尿水）**。`carbohydrateG` 是可选、有限、非负的克数，表示可消化葡萄糖当量碳水；缺省为 0，非法值使整条摄入无效，不能从体积或能量反推。
+当前链为 **`drink` / `eat.carbohydrateG` → 胃碳水记账 → 小肠吸收 → `glucose` 可及池 → 胰腺相对信号缩放超基线处置总量；其中请求份额 `U` 与肾糖 `X` 由 Gateway 按目标名排序结算（肾糖先、肌肉后），肌肉按肾糖后余额封顶 `U_paid`，下一轮入账肌糖原并在运动时消耗；肾糖按请求把 `glucoseMassG` 转成 `kidneyGlucose.excretedGlucoseG`（g，不换尿水）**。`carbohydrateG` 是可选、有限、非负的克数，表示可消化葡萄糖当量碳水；缺省为 0，非法值使整条摄入无效，不能从体积或能量反推。
 
-胃复用既有固/非固餐排空比例，小肠只吸收轮初碳水。三个 transfer 配对都以 g 为单位：
+胃复用既有固/非固餐排空比例，小肠只吸收轮初碳水。四个 transfer 配对都以 g 为单位：
 
 ```text
 stomach.carbohydrateG        → smallIntestine.carbohydrateG
 smallIntestine.carbohydrateG → glucose.glucoseMassG
 glucose.glucoseMassG         → kidneyGlucose.excretedGlucoseG
+glucose.glucoseMassG         → muscleGlucose.uptakeG
 ```
+
+transfer 图按 Gateway 的目标名排序列出；Gateway 按目标名排序结算（`gateway/operations.js:206`），与脚本调用顺序无关。
 
 胃总碳水由 Gateway 扣转移量，`solidCarbohydrateG` 是其中固餐子集并由胃脚本预先扣除本轮固体排空，不能重复加总或双扣。多轮队列保存碳水余量，旧档缺碳水按 0；legacy `motility.ts` 不保留碳水队列元数据。
 
-`glucose` 以 75 kg、`1.88 dL/kg`、90 mg/dL 和 60 min 基线表观清除半时作为固定边界，均为 `design`；60 min 是 `I = 1` 时的基线，胰腺接入后清除指数按轮初 `insulinRelative` 缩放。分布体积只借 Dalla Man 2007 的可及池定义与平均模型量级，不是血浆体积或个体实测；基线是初始量和清除下限，低于基线时不虚构肝糖补回。浓度按轮初质量计算：默认摄入第 1 轮入胃、第 2 轮胃排入小肠、第 3 轮首次吸收、第 4 轮才看到浓度读数上升；胰腺在第 4 轮仍读旧 90、第 5 轮写升高信号、第 6 轮葡萄糖才首次加快清除。
+`glucose` 以 75 kg、`1.88 dL/kg`、90 mg/dL 和 60 min 基线表观清除半时作为固定边界，均为 `design`；60 min 是 `I = 1` 时的基线，胰腺接入后清除指数按轮初 `insulinRelative` 缩放。分布体积只借 Dalla Man 2007 的可及池定义与平均模型量级，不是血浆体积或个体实测；基线是初始量和清除下限，低于基线时不虚构肝糖原补回。超基线处置总量 `D_total` 再按 `muscleDisposalShare = 0.75` 拆成请求份额 `U = D_total × share` 与残余 `D = D_total − U`；正常范围 `disposedGlucoseG + U_paid = D_total` 逐位成立，`U_paid` 是实际支付、正常等于 `U`，`U` 是同一处置总量的固定份额，不是额外 sink；肌肉实际到账 `U_paid`（定义见下段），`D` 写 `disposedGlucoseG`。`D_total` 本身不变，提交的 `glucoseMassG` 与旧轨迹一致到 ≤ 1 ulp（< `1e-12 g`），因为 `W = M_after + U` 可能跨二进制 binade；`concentrationMgDl` 仍由轮初质量计算；肾糖 `X` 仍按旧表达式 `min(max(0, R), M_after)` 钳位，逐位不变。仅测试注入的肾请求抽干池子时提交质量比旧轨迹多 1 ulp（见下段）。`disposedGlucoseG` 变为原值的 0.25 倍。浓度按轮初质量计算：默认摄入第 1 轮入胃、第 2 轮胃排入小肠、第 3 轮首次吸收、第 4 轮才看到浓度读数上升；胰腺在第 4 轮仍读旧 90、第 5 轮写升高信号、第 6 轮葡萄糖才首次加快处置。
 
-`pancreasEndocrine` 只写无量纲 `insulinRelative`（1 为基线），不是胰岛素浓度、分泌率、C-peptide 或实测值；0.02 增益、10 min 半时和 5 倍上限都是 `design`、`source: null`。`kidneyGlucose` 读取轮初浓度和 `io.dt`，写出下一轮 `excretionRequestG` 并把 `excretedGlucoseG` 每轮归 0；`glucose` 在非肾清除后按轮初请求结算 transfer，请求本身不进入质量账。肾糖阈值和滤过锚点来自 Dalla Man 2007 正常组 `k_e1 = 0.0005 min^-1`、`k_e2 = 339 mg/kg`（`prior`），1.88 dL/kg 与 75 kg 是重复配置的 `design`。肾糖只记 g 质量汇，不计算尿量、尿糖浓度或渗透性利尿。
+`pancreasEndocrine` 只写无量纲 `insulinRelative`（1 为基线），不是胰岛素浓度、分泌率、C-peptide 或实测值；0.02 增益、10 min 半时和 5 倍上限都是 `design`、`source: null`。`kidneyGlucose` 读取轮初浓度和 `io.dt`，写出下一轮 `excretionRequestG` 并把 `excretedGlucoseG` 每轮归 0；`glucose` 先 write 转移前质量 `W = M_after + U`，Gateway 按目标名排序（`gateway/operations.js:206`）：先结算肾糖 `X = min(max(0, R), M_after)`，肌肉再按余额封顶 `U_paid = min(U, W − X)`；正常 `U_paid = U`，提交后 `glucoseMassG` 与旧轨迹一致到 ≤ 1 ulp（< `1e-12 g`），`concentrationMgDl` 仍按轮初质量计算，肾糖 `X` 仍按旧表达式钳位、逐位不变。仅当测试注入的肾请求抽干池子（`X = M_after`）时，`U_paid` 因浮点误差少 1 ulp（< `1e-18 g`），提交质量比旧轨迹多 1 ulp、`disposedGlucoseG + U_paid` 比 `D_total` 少 1 ulp，但质量守恒仍精确；真实肾请求每轮远小于 `M_after`，不会触发。请求本身不进入质量账。肾糖阈值和滤过锚点来自 Dalla Man 2007 正常组 `k_e1 = 0.0005 min^-1`、`k_e2 = 339 mg/kg`（`prior`），1.88 dL/kg 与 75 kg 是重复配置的 `design`。肾糖只记 g 质量汇，不计算尿量、尿糖浓度或渗透性利尿。
 
-外源碳水质量账在原有各项上增加实际肾排泄：
+`muscleGlucose` 在第 N+1 轮把第 N 轮实际支付 `U_paid(N)` 入账 `glycogenG`，随后 `U_paid(N+1)` 到账；`exercise` / `sex` 动作第 1 轮进入 `physicalActivity`，第 2 轮肌肉开始按轮初活动消耗糖原，糖原不足时钳到可用量。`muscleGlucose` 不读葡萄糖或胰岛素，只有 `glucose → muscleGlucose` 的 transfer 配对。
+
+外源碳水质量账在原有各项上增加实际肾排泄、肌摄糖与肌糖原项：
 
 ```text
 累计摄入碳水
@@ -464,15 +486,62 @@ glucose.glucoseMassG         → kidneyGlucose.excretedGlucoseG
 + (glucose.glucoseMassG − B)
 + 累计 disposedGlucoseG
 + 累计 kidneyGlucose.excretedGlucoseG
++ muscleGlucose.glycogenG
++ muscleGlucose.uptakeG
++ 累计 muscleGlucose.glycogenConsumedG
 ```
 
-`disposedGlucoseG` 只表示非肾表观清除；`excretionRequestG` 不累计，只有实际 `excretedGlucoseG` 才从 `glucose.glucoseMassG` 转出并计入。完整水/碳水闭包必须同时包含 `hydration.ts`、`smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose`、`skin` 七部位（活动—出汗薄切片加入 `skin` 出口）；缺任一 transfer 配对在启动时报错。根清单当前 17 部位、19 份参数文件。
+`disposedGlucoseG` 只表示非肌、非肾残余清除；`excretionRequestG` 不累计，只有实际 `excretedGlucoseG` 才从 `glucose.glucoseMassG` 转出并计入。`muscleGlucose.glycogenG` 是已入账糖原存量，`uptakeG` 是实际支付 `U_paid`（正常等于请求 `U`），`glycogenConsumedG` 是每轮消耗通量、需累计；三者不能重复加总。正常范围 `disposedGlucoseG + U_paid = D_total` 逐位成立；仅测试注入的肾请求抽干池子时 `U_paid` 少 1 ulp（< `1e-18 g`），质量守恒仍精确。完整水/碳水闭包必须同时包含 `hydration.ts`、`smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose`、`muscleGlucose`、`skin`、`lungs` 九部位（活动—出汗薄切片加入 `skin`，运动相关呼吸失水加入 `lungs` 出口，肌摄糖加入 `muscleGlucose` 出口）；缺任一 transfer 配对在启动时报错。根清单当前 20 部位、22 份参数文件。
 
-模块和真实根清单 Gateway 测试覆盖同体积/能量 A/B、逐轮外源碳水质量账、三轮固体队列、非基线吸收后重启和旧档默认值；当时 13 部位验收记录保留，后续 15 部位集成测试覆盖胰腺 `I = 1` 基线、第 4/5/6 轮与肾糖跨阈后请求/结算；活动—出汗薄切片接入后当前根清单 17 部位，见上文 M4 节。真实 DSH 会话、长期曲线和独立生理数据对照未做。胰腺与肾糖读取血糖；体感或胃排空仍不读取血糖，四类通知也不含血糖。完整设计见 [`2026-11-22-carbohydrate-glucose-design.md`](./superpowers/specs/2026-11-22-carbohydrate-glucose-design.md)、[`2026-11-22-pancreas-insulin-design.md`](./superpowers/specs/2026-11-22-pancreas-insulin-design.md) 与 [`2026-11-23-renal-glucose-design.md`](./superpowers/specs/2026-11-23-renal-glucose-design.md)。
+模块和真实根清单 Gateway 测试覆盖同体积/能量 A/B、逐轮外源碳水质量账、三轮固体队列、非基线吸收后重启和旧档默认值；当时 13 部位验收记录保留，后续 15 部位集成测试覆盖胰腺 `I = 1` 基线、第 4/5/6 轮与肾糖跨阈后请求/结算；骨骼肌摄糖接入后根清单 19 部位，性反应周期接入后当前 20 部位；真实 Gateway 账本需覆盖肌摄糖、肌糖原与运动消耗，活动—出汗与运动呼吸失水薄切片见上文 M4 节。真实 DSH 会话、长期曲线和独立生理数据对照未做。胰腺与肾糖读取血糖；体感或胃排空仍不读取血糖，四类通知也不含血糖。完整设计见 [`2026-11-22-carbohydrate-glucose-design.md`](./superpowers/specs/2026-11-22-carbohydrate-glucose-design.md)、[`2026-11-22-pancreas-insulin-design.md`](./superpowers/specs/2026-11-22-pancreas-insulin-design.md)、[`2026-11-23-renal-glucose-design.md`](./superpowers/specs/2026-11-23-renal-glucose-design.md) 与 [`2026-11-23-muscle-glucose-uptake-design.md`](./superpowers/specs/2026-11-23-muscle-glucose-uptake-design.md)。
 
-**仍未实现：** 胰岛素浓度/分泌、胰高血糖素、肝糖输出、糖原、慢速组织隔室、组织摄糖分区、渗透性利尿、血糖对体感或胃排空的反馈，以及任何自动行为。
+**仍未实现：** 胰岛素浓度/分泌、胰高血糖素、肝糖输出/肝糖原、脂肪组织分区、肌糖原容量与静息周转、慢速组织隔室、渗透性利尿、血糖对体感或胃排空的反馈，以及任何自动行为。M2 薄切片已含骨骼肌摄糖与肌糖原（固定份额改道、下一轮入账、运动消耗），但没有胰岛素浓度、肝糖原或独立数据验证，不能当成完整 M2。
 
 **调研与后续重审。** 睡眠和排便的调研结论仍是暂缓。糖代谢调研最初也暂缓；用户随后明确“共享 JSON 状态交互即可分阶段交付，不要求行为闭环”，本轮因此只实现上述薄切片。调研和路线图的完整 M2 目标不因这次实现而视为全部批准或完成。
+
+### 生殖系统薄切片（女性独立清单）：当前实现
+
+当前链为 **`ovaries` 周期钟 → `uterus` 内膜/月经失水/痛经代理 → `body-water/water.female.ts` 第四出口 → `uterus.bleedingMl`；`uterus.crampMm` 另由 `interoception.discomfort` 第五路软读**。它只服务女性清单，不进入根清单。
+
+**当前实现。** `ovaries/menstrual-cycle.ts` 只读自身轮初状态与 `io.dt`，维护 `cycleDay`、`cycleLengthDays`、`phase` 与 `estradiolRelative` / `progesteroneRelative`：周期 29.3 天、卵泡期 16.9 天、黄体期参数 12.4 天；`cycleDay` 每轮推进 `dtMin / 1440` 并回卷。相位边界是 16.9 天与 17.9 天；1 天排卵带是 `design`，嵌在 Bull 的卵泡期 + 黄体期合计 29.3 天之内，所以 `luteal` 相位实际跨 11.4 天，`lutealLengthDays = 12.4` 只作激素曲线的黄体中期锚点，不是相位边界。E2/P4 曲线是 `design` 分段线性、峰值归一为 1，不是 `pg/mL` / `ng/mL`。
+
+`uterus/uterus.ts` 下一轮读轮初卵巢值与自身内膜，写 `endometriumRelative`（一阶趋近 `0.7 × E2 + 0.3 × P4`，半时 2 天）、`crampMm`（0–100 mm 代理，经期前段线性衰减）、`bleedingRequestMl`（经期按轮初内膜正比请求）与 `bleedingMl`（每轮 write 归 0，只由 transfer 增加）。女性清单缺 `uterus` 时启动报 `transferOut target "uterus.bleedingMl" is not declared`；无 `ovaries` 时子宫惰性，已加载但字段非法时整轮失败。
+
+`body-water/water.female.ts` 复用 `water-core.ts` 与 `water.parameters.json`，在肾 → 肺 → 汗之后追加第四出口，月经失水只能使用前三路后的轮初余量；水账在根清单恒等式上增加累计 `uterus.bleedingMl`。`interoception` 的第五路为 `excess(uterus.crampMm)` 并入 `discomfort` 的最大值，`uterus` 未加载或字段缺失时按 0；不新增字段、不产生通知，`brainNotify` 仍只读四类体感。
+
+**清单与计数。** 女性清单 [`body-modules.female.json`](../body-modules.female.json) 为 22 部位、24 份参数文件（根 20 部位 + `ovaries` + `uterus`，`water.ts` 换成 `water.female.ts`），必须使用独立 `statePath`。根清单 `body-modules.json` 为 20 部位、22 份参数，不含卵巢/子宫，`water.ts` 三出口与根清单全部测试语义不变；`package.json` 的 `files` 同时收录两份清单。这条切片不引入 `presets/`、生理性别预设或 condition 概念，选身体靠清单与存档。
+
+**参数与证据。** Bull 2019（`SRC-BULL-2019`，npj Digit Med 2019;2:83，PMID 31482137）只支撑周期 29.3 天、卵泡期 16.9 天、黄体期 12.4 天与自报出血天数 4.0 天的队列均值；队列为 Natural Cycles 用户、厂商资助、仅排卵周期，不是本身体的个体预测或独立验证。`uterus.mensesDays = 4.0` 为 `prior` / `SRC-BULL-2019`；`startCycleDay = 5`、E2/P4 曲线、50 mL/周期、85 mm 痛经峰值、2.5 天痉挛窗、2 天内膜半时与 0.7/0.3 权重全是 `design`、`source: null`。
+
+**未建模。** 不建性激素绝对浓度（`pg/mL`、`ng/mL`）、分泌/清除、HPO 轴、LH/FSH、排卵事件、黄体、受孕/着床/妊娠、避孕、子宫内膜毫米厚度/组织学、经血成分（血块、血红蛋白、铁）、凝血/纤溶、前列腺素、痛经机制与严重度分级、阴道/宫颈/外阴/乳腺解剖、PCOS/子宫内膜异位/围绝经期等病理，也不建男性生殖器官与睾酮。痛经只进 `discomfort` 第五路，没有痛经通知；根清单身体没有这些部位。
+
+**未验证。** 没有真实 DSH 会话、独立周期/经量/痛经/内膜数据、临床验证或 22 部位性能基线；离线 Gateway 测试只核对 22 部位启动、经期实际转移、`discomfort` 第五路、含出血的水账与重启接续。Bull 的队列均值不能当成个体预测或 `validated`。
+
+### 性行为与性反应周期薄切片：当前实现
+
+当前链为 **`sex { intensity, durationMin }` → `sexualResponse` 唤醒/反应周期；同一动作由 `physicalActivity` 计入体力活动 → `skin` / `lungs` / `muscleGlucose`；`orgasm` 动作（轮初 ≥70）或轮初 ≥95（无需动作）→ `sexualResponse` 释放；`interoception` 下一轮软读 `arousalMm` → `sexualArousalMm`**。`sexualResponse` 不是解剖器官，是性别中立的反应周期代理部位，目录仍放在 `organs/human-organs/sexual-response/`。
+
+**当前实现。** `body_act` 的 `type` 枚举增加 `sex` 与无载荷 `orgasm`。`sex` 的载荷与校验同 `exercise`：`intensity` 有限且 `(0, 1]`，`durationMin` 有限且 `> 0`；不需要体积、能量、餐型或碳水，也没有伴侣、行为类型或内容字段。`orgasm` 只写 `{ type: "orgasm" }`；`sexualResponse.actionTypes = ['sex', 'orgasm']`，`physicalActivity` 仍只接受 `exercise` / `sex`。LLM 只控制输入、不直接写身体状态；`urinate` 与 `orgasm` 是少数允许主动触发的输出，分别有膀胱 >600 mL 非自主排空与唤醒 ≥95 强制释放兜底。`sexualResponse` 的五个字段都是 `absolute`：
+
+| 字段 | 单位 | 含义 |
+| --- | --- | --- |
+| `arousalMm` | `mm` | 唤醒代理 0–100；不是生理测量 |
+| `phase` | `-` | `rest` / `excitement` / `plateau` / `orgasm` / `refractory` / `resolution` |
+| `remainingSexMin` | `min` | 剩余性活动分钟；先按 `io.dt` 递减，再由合法 `sex` 替换 |
+| `sexIntensity` | `1` | 模型内相对强度 0–1；不是 MET 或能量消耗 |
+| `lastOrgasmAtSimMin` | `min` | 最近一次主动或强制释放的仿真分钟；从未发生为 `null` |
+
+目标为 `100 × sexIntensity`；目标高于当前唤醒时用 5 min 半时上升，否则用 15 min 半时下降。释放只按轮初 `prev.arousalMm` 判定：本轮有 `orgasm` 动作且轮初 ≥`orgasmAllowedMm = 70`，或轮初 ≥`orgasmForcedMm = 95`（无需动作），就记一次 `lastOrgasmAtSimMin = simMin`；每轮最多一次。低于 70 的 `orgasm` 被忽略；本轮 `sex` 新推高的唤醒最早下一轮参与释放判定。事件轮 `sinceOrgasm = 0`、相位 `orgasm`；下一轮 `sinceOrgasm = dtMin`（60 s 轮下 1 min），进入 `refractoryMin = 20` 的不应期，目标为 0、唤醒下降。`orgasmDurationMin = 1`、相位 60 / 10 mm 分界与六个参数全部是 `design`、`source: null`，没有登记来源。
+
+两个消费者：`physicalActivity` 的 `actionTypes = ['exercise', 'sex']`，两类动作共用 `remainingExerciseMin` / `intensity` 与同一校验，最后一条合法动作替换；`skin` / `lungs` / `muscleGlucose` 下一轮按轮初活动沿用既有汗液、运动相关呼吸失水与糖原消耗链。`orgasm` 只由 `sexualResponse` 接收，不改变活动。`interoception` 下一轮软读 `sexualResponse.arousalMm` 写 `sexualArousalMm`（钳到 0–100）；未加载、缺失或非有限按 0。`sexualArousalMm` 只进 `body_state` / `GET /state`，不进 `discomfort`，`brainNotify` 不读它，也不发通知。
+
+动作轮 `sexualResponse` 与 `physicalActivity` 同时写各自状态；皮肤、肺、肌糖原与体感最早下一轮读到。旧档缺 `sexualResponse` 时补 `arousalMm = 0`、`phase = 'rest'`、两个 0 与 `lastOrgasmAtSimMin = null`，不反推历史；重启保留剩余活动、唤醒与高潮时间，`null` 保持 JSON-safe，不重复记录已发生的高潮；重启后轮初 ≥95 仍会强制释放，<70 的 `orgasm` 仍被忽略。加入本脚本后根清单为 20 部位、22 份参数文件，女性清单为 22 部位、24 份参数文件；根 9 部位、女性 10 部位硬 transfer 闭包不变，本部位不声明 transfer。
+
+**未建模。** 不建催产素、催乳素、内啡肽、睾酮/雌激素等激素，也不建心率、血压、呼吸频率、通气量、血流或独立的性反应自主神经通路；汗液与呼吸失水只复用 `physicalActivity`。不建受孕、着床、妊娠、生育力窗或避孕；不建性欲、动机、愉悦、情绪、亲密关系、伴侣、性传播感染或安全性行为；不建性别差异、个体差异、年龄/BMI/疾病影响、行为类型、体位、能量消耗/MET、临床性功能障碍或性反应周期测量。不描述、生成或要求任何显性内容、行为细节或解剖细节。`sexualArousalMm` 不进 `discomfort`，没有性唤醒、不适或高潮提醒；高潮由模型按轮初唤醒判定，LLM 只能提交无载荷 `orgasm` 请求，不能写 `phase` 或 `lastOrgasmAtSimMin`。
+
+**未验证。** 只有离线模块、`physicalActivity` / `interoception` 集成与真实 Gateway 测试覆盖动作校验、时序、JSON-safe 与读数；没有真实 DSH 会话、独立人体性反应数据、临床验证或 20 部位性能基线。六个参数全是工程假设，不能称 `validated`，也不能把模型相位或 70 / 95 mm 阈值当作人体测量或诊断标准。
+
+设计见 [`2026-11-23-sexual-response-design.md`](./superpowers/specs/2026-11-23-sexual-response-design.md)；部位契约见 [`sexual-response`](../organs/human-organs/sexual-response/README.md)。
 
 ### 后续里程碑（M5–M7）
 
@@ -494,7 +563,7 @@ glucose.glucoseMassG         → kidneyGlucose.excretedGlucoseG
 
 M1 的 Gateway 动作记录保存动作标识、类型、原始载荷、载荷指纹、状态、预定/实际生效时刻、批次、尝试次数和错误；`stomach` 在自己的 part 里保存 `mealQueue` 与 `lastIntakeAt`，作为餐食领域记录。两者分工明确：Gateway 负责幂等、调度和审计，模块负责生理语义。
 
-M1 的真实 DSH 会话验收已完成；通知历史文件、模型已读确认与按会话绑定不同身体仍未实现。M3 水链的 Task 10 已用真实会话核对：`urinate` 的 queued → applied、同 callId 重试只排一次、当轮新尿留下，以及饮水/不饮水对照中的口渴、ADH、肾请求与尿意方向；30 轮 A/B 与排尿链均通过。M19 又补验了非自主排空、`discomfort` 与 DI 样变体（33/33 verdicts，2–5 轮短会话）。上述 M1/M3/M19 验收都早于尿意/口渴提醒合并，不能当作这些通道的实机验收；尿意和口渴提醒目前只有离线单元测试与真实 Gateway 集成测试（`test/organs.brain-notify.test.mjs`、`test/organs.urinary-notify-gateway.test.mjs`、`test/organs.thirst-notify-gateway.test.mjs`），尚未做真实 DSH 会话验收。M4 活动—皮肤出汗薄切片目前也只有模块与真实 Gateway 集成测试，尚未做真实 DSH 会话、独立人体出汗数据或临床验证。离线守恒测试仍不能代替 120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴的验收。
+M1 的真实 DSH 会话验收已完成；通知历史文件、模型已读确认与按会话绑定不同身体仍未实现。M3 水链的 Task 10 已用真实会话核对：`urinate` 的 queued → applied、同 callId 重试只排一次、当轮新尿留下，以及饮水/不饮水对照中的口渴、ADH、肾请求与尿意方向；30 轮 A/B 与排尿链均通过。M19 又补验了非自主排空、`discomfort` 与 DI 样变体（33/33 verdicts，2–5 轮短会话）。上述 M1/M3/M19 验收都早于尿意/口渴提醒合并，不能当作这些通道的实机验收；尿意和口渴提醒目前只有离线单元测试与真实 Gateway 集成测试（`test/organs.brain-notify.test.mjs`、`test/organs.urinary-notify-gateway.test.mjs`、`test/organs.thirst-notify-gateway.test.mjs`），尚未做真实 DSH 会话验收。M4 活动—皮肤出汗与运动呼吸失水薄切片目前也只有模块与真实 Gateway 集成测试，尚未做真实 DSH 会话、独立人体出汗/呼吸失水数据或临床验证。离线守恒测试仍不能代替 120 轮长时程、通知/重启组合、大负荷利尿与口咽解渴的验收。
 
 ### Gateway 待验证的设计想法
 

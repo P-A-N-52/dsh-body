@@ -14,6 +14,7 @@ const rootManifestPath = join(root, 'body-modules.json');
 const initialBodyWaterMl = 30000;
 const normalAdhPath = './organs/human-organs/brain/hypothalamus-adh.ts';
 const normalKidneyPath = './organs/human-organs/kidney/urine-production.ts';
+const lungsPath = './organs/human-organs/lungs/respiratory-water-loss.ts';
 const centralAdhPath = './organs/human-organs/brain/hypothalamus-adh-di-central.ts';
 const centralKidneyPath = './organs/human-organs/kidney/urine-production-di-central.ts';
 const nephrogenicKidneyPath = './organs/human-organs/kidney/urine-production-di-nephrogenic.ts';
@@ -28,8 +29,11 @@ const partIds = [
   'interoception',
   'kidney',
   'kidneyGlucose',
+  'lungs',
+  'muscleGlucose',
   'pancreasEndocrine',
   'physicalActivity',
+  'sexualResponse',
   'skin',
   'smallIntestine',
   'stomach',
@@ -136,9 +140,10 @@ function snapshot(parts) {
 
 test('the root manifest keeps the normal water chain with no DI variant loaded', () => {
   const manifest = JSON.parse(readFileSync(rootManifestPath, 'utf8'));
-  assert.equal(manifest.scripts.length, 17);
+  assert.equal(manifest.scripts.length, 20);
   assert.ok(manifest.scripts.includes(normalAdhPath));
   assert.ok(manifest.scripts.includes(normalKidneyPath));
+  assert.ok(manifest.scripts.includes(lungsPath));
   for (const entry of manifest.scripts) {
     assert.equal(String(entry).includes('-di-'), false, `root manifest must not load ${entry}`);
   }
@@ -183,6 +188,8 @@ test('the default root manifest still produces the same ten rounds point by poin
     }
   }
   const finalParts = gateway.getState().parts;
+  assert.deepEqual(finalParts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
+  assert.deepEqual(finalParts.muscleGlucose, { uptakeG: 0, glycogenG: 0, glycogenConsumedG: 0 });
   assert.deepEqual(finalParts.pancreasEndocrine, { insulinRelative: 1 });
   assert.deepEqual(finalParts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
 });
@@ -197,6 +204,8 @@ test('a central DI manifest zeroes ADH and produces four mL per minute of urine'
     eat: ['stomach', 'stomachGhrelin'],
     urinate: ['bladder'],
     exercise: ['physicalActivity'],
+    sex: ['physicalActivity', 'sexualResponse'],
+    orgasm: ['sexualResponse'],
   });
 
   for (let round = 1; round <= 5; round++) {
@@ -313,7 +322,10 @@ test('body_act and body_state keep their shapes under a DI manifest', async (t) 
     swaps: { [normalAdhPath]: centralAdhPath, [normalKidneyPath]: centralKidneyPath },
   });
   assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_state']);
-  assert.deepEqual(tools.body_act.parameters.properties.type.enum, ['drink', 'eat', 'urinate', 'exercise']);
+  assert.deepEqual(
+    tools.body_act.parameters.properties.type.enum,
+    ['drink', 'eat', 'urinate', 'exercise', 'sex', 'orgasm'],
+  );
   assert.deepEqual(tools.body_act.output.schema.required, ['ok', 'statusCode', 'receipt']);
   assert.deepEqual(tools.body_state.output.schema.required, ['simulatedSeconds', 'parts']);
 

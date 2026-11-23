@@ -34,17 +34,39 @@
 
 ## 当前实现范围
 
-当前根清单已接入胃动力、相对饥饿素、胃壁机械感受代理、十二指肠营养暴露代理、水链六部位，以及饥饿／饱满／口渴／尿意／不适读出，和饥饿／饱满／口渴／尿意四类体感提醒。`body_act` 接收结构化 `drink` / `eat` / `urinate` / `exercise`，不负责从菜名推算容量、热量或活动代谢；饥饿／饱满／口渴／尿意／不适都是模型代理量，不是人体实测。M1 的真实 DSH 会话验收已完成；M3 水链的 Task 10 真实 DSH 会话验收也已完成（2026-11-22，30 轮 A/B 与排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，仓库外未入库）。后加的非自主排空、`discomfort` 与 DI 样变体由 M19 真实 DSH 会话补验（2026-11-22，33/33 verdicts：预置 650 mL 无动作 → `involuntaryVoidedMl = 650`、同轮新尿 1 mL 留下、下一轮尿意/不适回落；正常/中枢/肾性请求约 1/4/4 mL；证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）。650 mL 预置与预置会话的稳态 1 mL 请求是测试设定，不是模型输出；正常会话 sim 300 的 0.9998 mL 是模型输出。参数按登记分为 `design`、`prior` 和 `fitted_dev`，均不等于临床验证。
+根清单 `body-modules.json`（20 部位、22 份参数文件）：
 
-碳水—血糖及调节薄切片已接入同一身体存档：`drink` / `eat` 可显式携带有限且非负的 `carbohydrateG`（克，可消化葡萄糖当量），依次经胃碳水记账、既有固/非固餐排空、小肠吸收进入 `glucose` 隔室。隔室以固定 75 kg、`1.88 dL/kg` 表观分布体积、90 mg/dL 基线和 60 min 基线表观清除半时作为工程边界；`pancreasEndocrine` 的相对信号会缩放超基线非肾清除，基础信号 1 保持原公式。`kidneyGlucose` 在浓度超过 `339 / 1.88 ≈ 180.32 mg/dL` 后按下一轮请求把葡萄糖质量转入 `excretedGlucoseG`，只记 g，不换算尿水，实际排泄与非肾清除分别计入外源碳水质量账。模块与真实根清单 Gateway 测试覆盖 A/B、质量守恒、固体队列、餐后胰岛素/肾糖时序和吸收后重启；肝糖、胰高血糖素和组织分区仍未实现，也未做真实 DSH 会话或独立生理数据验证。
+| 器官 | 已实现功能 |
+| --- | --- |
+| 胃 | 固/液餐排空、碳水记账、相对饥饿素、胃壁机械感受 |
+| 十二指肠 | 近期营养暴露代理 |
+| 小肠 | 水与碳水一阶吸收 |
+| 骨骼肌 | 活动计时、肌糖原储存与运动消耗 |
+| 皮肤 | 活动相关汗液请求与实际汗量 |
+| 肺 | 运动相关呼吸失水 |
+| 胰腺 | 血糖驱动的相对胰岛素信号 |
+| 肾 | ADH 驱动产尿、肾糖质量排泄；可选中枢/肾性 DI 变体（独立清单） |
+| 膀胱 | 储尿、主动排尿、过度充盈非自主排空 |
+| 脑 | 下丘脑 ADH 与口渴、体感读出、四类体感提醒 |
+| 体液隔室 | 体液水与水分亏缺，按肾 → 肺 → 汗结算 |
+| 葡萄糖隔室 | 可及池质量与浓度代理，超基线处置分配肌肉、残余与肾糖 |
 
-活动—皮肤出汗薄切片已接入：`exercise { intensity, durationMin }` 先更新 `physicalActivity` 的剩余时间与相对强度，`skin` 再按活动和固定环境参数写 `sweatRequestMl`，`bodyFluid` 最后按轮初请求把水量转入 `skin.sweatVolumeMl`。肾尿与汗液两路合计不超过轮初体液，水账新增实际汗液项，口渴沿用既有读出。默认 25°C、intensity=1、30 min 的工程场景累计 18 mL；所有出汗参数均为 `design`，不表示 METs、实测代谢、体温或人体最大出汗率。当前根清单为 17 部位、19 份参数文件，完整硬 transfer 闭包为 7 部位。
+女性清单 `body-modules.female.json`（22 部位、24 份参数文件，独立存档）在此基础上增加：
 
-M3 水链首段的脚本、参数与证据笔记已实现：胃水子集入口 `hydration.ts`、小肠水吸收、体液隔室、肾产尿请求、下丘脑 ADH 与口渴双脚本、膀胱储尿与 `urinate` 动作；`interoception` 新增 `thirst` / `urinaryUrgency` / `discomfort`。膀胱在轮初体积严格大于 600 mL 且本轮无 `urinate` 时非自主排空到排后余量，`voidedMl` 拆成 `voluntaryVoidedMl` 与 `involuntaryVoidedMl` 两个分项；600 mL 与 70 mm 不适起始值都是 `design` 工程值，不是正常膀胱容量、临床失禁模型或疼痛评分。可选的中枢/肾性 DI 样多尿代理只在独立清单与独立存档中显式加载，默认根清单与正常参数不变，不是临床诊断。M3 首段当时没有新增工具、动作或通知，`brainNotify` 当时仍只读饥饿/饱满；尿意提醒是后续单独加入的。M3 水链完成时根清单为 12 个部位脚本；当前已扩展到 17 个部位；Task 10 真实 DSH 会话验收已完成（30 轮 A/B、同 sim 1800、方向符合 spec §6.2、账本误差 ≤`1e-6 mL`；排尿 queued→applied、250 mL 排出 + 同轮 1 mL 新尿留下、同 callId 重试 200 原 applied ID、异载荷 409）。Task 10 与 Task 11 都早于非自主排尿、不适与 DI 变体合并，不能代表当前版本的验收或性能。非自主排空、`discomfort` 与 DI 变体已由 M19 真实 DSH 会话补验（33/33 verdicts；650 mL → involuntary 650、同轮新尿 1 mL 留下、下一轮 urgency/discomfort 回落；主动优先与同 callId 200 原 ID、异载荷 409；正常/中枢/肾性请求约 1/4/4，通知 0）。650 mL 预置与预置会话的稳态 1 mL 请求是测试设定，不是模型输出；正常会话 sim 300 的 0.9998 mL 是模型输出。但它只覆盖 2–5 轮短会话；120 轮长时程、通知投递、重启补算、大负荷利尿和口咽解渴仍未验证，当前 HEAD 性能未重测。
+| 器官 | 已实现功能 |
+| --- | --- |
+| 卵巢 | 周期日与相位、雌二醇/孕酮相对量（周期长度取 Bull 2019） |
+| 子宫 | 内膜相对量、月经失水、痛经（并入 `discomfort`） |
 
-`brainNotify` 现在读轮初 `interoception.hunger` / `fullness` / `thirst` / `urinaryUrgency`、最近提交的 `bladder.voidedMl` 和本轮 `urinate`：四类信号都按 65 mm 明显、85 mm 强档；用于门控的 `levels` 只存 0/2/3（40–64 mm 按 0），同一信号重复同档要先低于已提醒档，升更高档可直接提醒。每个信号独立滞回，冷却与每小时/每天配额按会话共享，每轮最多一条，在候选里先取最高档，同档 `urinary > thirst > fullness > hunger`；`lastKind` 是最近提醒信号，`lastLevel` 保留下降闩锁并用于旧档迁移。最近提交的 `bladder.voidedMl > 0` 或本轮有 `urinate` 时只抑制尿意候选，其他信号仍可提醒。提醒文本固定，不带数值、诊断或动作指令；不自动排尿或饮水，口渴只能经饮水吸收后回落，`discomfort` 仍不提醒。预置一致缺水状态时口渴第 3 轮提醒，尿意则是第 2 轮。提醒参数都是 `design` / `policy`，不是人体测量或临床界值。离线单元测试和真实 Gateway 集成测试覆盖这些通道（`test/organs.brain-notify.test.mjs`、`test/organs.urinary-notify-gateway.test.mjs`、`test/organs.thirst-notify-gateway.test.mjs`），尚未做真实 DSH 会话验收；M1/M3/M19 的历史验收都不包含尿意或口渴提醒。
+完整部位与动作清单以 `body-modules.json`、`tools.js` 及各器官 README 为准。
 
-现在不是全身生理模拟器，也不支持按会话选择不同身体。`systems/` 中的系统目录是历史资料，不代表已有对应模拟。
+### Agent 行为
+
+- `body_act` 提交结构化动作：`drink`（体积、能量、碳水）、`eat`（另含餐型）、`urinate`、`exercise`（强度、时长）。动作进入队列，下一轮结算；同 ID 同载荷重试复用回执。
+- `body_state` 读取已提交的身体快照。
+- `brainNotify` 对饥饿、饱满、口渴、尿意按明显/强档投递提醒，带滞回、冷却与配额。
+- LLM 通过提交动作驱动身体，状态由器官脚本计算并整轮提交。
+- 参数分 `prior`（有登记文献支撑）与 `design`（工程假设）两类。M1、M3 水链与 M19 已做真实 DSH 会话验收，其余切片有离线单元与真实 Gateway 集成测试。
 
 ## 快速开始
 
@@ -75,9 +97,9 @@ dsh web
 | 入口 | 内容 |
 | --- | --- |
 | [`index.js`](index.js)、[`gateway/`](gateway/) | DSH 插件入口；本地 HTTP、动作队列、轮次结算和存档。 |
-| [`body-modules.json`](body-modules.json)、[`organs/human-organs/`](organs/human-organs/) | 脚本清单；[胃](organs/human-organs/stomach/README.md)、[十二指肠](organs/human-organs/duodenum/README.md)、[小肠](organs/human-organs/small-intestine/README.md)、[骨骼肌活动](organs/human-organs/skeletal-muscle/README.md)、[皮肤](organs/human-organs/skin/README.md)、[胰腺](organs/human-organs/pancreas/README.md)、[肾](organs/human-organs/kidney/README.md)、[膀胱](organs/human-organs/bladder/README.md)、[体感和提醒](organs/human-organs/brain/README.md)的模块、参数与证据；[体液隔室](organs/human-compartments/body-water/README.md)与[葡萄糖隔室](organs/human-compartments/glucose/README.md)是隔室而不是器官。 |
+| [`body-modules.json`](body-modules.json)、[`body-modules.female.json`](body-modules.female.json)、[`organs/human-organs/`](organs/human-organs/) | 脚本清单；[胃](organs/human-organs/stomach/README.md)、[十二指肠](organs/human-organs/duodenum/README.md)、[小肠](organs/human-organs/small-intestine/README.md)、[骨骼肌活动与肌糖原](organs/human-organs/skeletal-muscle/README.md)、[皮肤](organs/human-organs/skin/README.md)、[肺](organs/human-organs/lungs/README.md)、[胰腺](organs/human-organs/pancreas/README.md)、[肾](organs/human-organs/kidney/README.md)、[膀胱](organs/human-organs/bladder/README.md)、[卵巢](organs/human-organs/ovaries/README.md)、[子宫](organs/human-organs/uterus/README.md)、[体感和提醒](organs/human-organs/brain/README.md)的模块、参数与证据；[体液隔室](organs/human-compartments/body-water/README.md)与[葡萄糖隔室](organs/human-compartments/glucose/README.md)是隔室而不是器官。女性清单另用独立存档。 |
 | [`docs/gateway-and-scripts.md`](docs/gateway-and-scripts.md)、[`docs/gateway-operations.md`](docs/gateway-operations.md) | 当前接口、脚本接入，以及 `write` / `add` / `transfer` 的边界。 |
-| [`docs/superpowers/specs/`](docs/superpowers/specs/) | 已批准的设计文档：器官模型、固／液餐、水链、碳水—血糖、胰腺相对胰岛素、肾糖、口渴提醒、活动—皮肤出汗、过度充盈与不适、可选 DI 样代理。 |
+| [`docs/superpowers/specs/`](docs/superpowers/specs/) | 已批准的设计文档：器官模型、固／液餐、水链、碳水—血糖、胰腺相对胰岛素、肾糖、口渴提醒、活动—皮肤出汗、运动相关呼吸失水、过度充盈与不适、女性生殖周期、可选 DI 样代理。 |
 | [`docs/virtual-body.md`](docs/virtual-body.md) | 设计草案与路线图，设计目标不等于已实现功能。 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 开发与协作约定：脚本、参数、证据与提交。 |
 

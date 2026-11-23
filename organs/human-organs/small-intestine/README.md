@@ -4,9 +4,9 @@
 
 小肠目前只有一个部位写者 `water-absorption.ts`。它把轮初肠腔水和可消化碳水分别按一阶指数吸收：水转入 `bodyFluid`，碳水转入 `glucose`。文件名保留为水链时代的兼容路径，状态已经不只包含水。
 
-实现状态：脚本、参数与定向测试已在 `organs/human-organs/small-intestine/`，并已加入根清单（当前 17 个部位）。
+实现状态：脚本、参数与定向测试已在 `organs/human-organs/small-intestine/`，并已加入根清单（当前 19 个部位、21 份参数文件，含 3 份 DI 变体）。
 
-**清单依赖。** 水通道要求同时加载 `stomach/hydration.ts`、`bodyFluid`、`bladder` 与 [`skin`](../skin/README.md)：`bodyFluid.waterVolumeMl` 向膀胱和皮肤两个出口转水，`skin.sweatVolumeMl` 声明来自体液的 `transferIn`。碳水通道要求加载 `organs/human-compartments/glucose/glucose.ts`，而葡萄糖的肾糖输出又要求 `organs/human-organs/kidney/glucose-excretion.ts`。因此完整硬 transfer 闭包是 `hydration.ts`、`smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose`、`skin` 七个部位；沿用旧自定义清单、只加载小肠而缺少 `glucose`、`kidneyGlucose` 或 `skin` 时，启动会因 transfer 配对缺失而拒绝继续。旧 `stomach/motility.ts` 不含小肠，仍可独立加载。[`physicalActivity`](../skeletal-muscle/README.md) 只是 [`skin`](../skin/README.md) 的普通轮初读取，不是 transfer 配对依赖，也不在小肠的读写链上。
+**清单依赖。** 水通道要求同时加载 `stomach/hydration.ts`、`bodyFluid`、`bladder`、[`skin`](../skin/README.md) 与 [`lungs`](../lungs/README.md)：`bodyFluid.waterVolumeMl` 按肾→肺→汗的顺序向膀胱、肺和皮肤三个出口分配轮初水，`skin.sweatVolumeMl` 与 `lungs.respiratoryWaterLossMl` 分别声明来自体液的 `transferIn`。碳水通道要求加载 `organs/human-compartments/glucose/glucose.ts`，而葡萄糖的肾糖输出又要求 `organs/human-organs/kidney/glucose-excretion.ts`，肌摄糖输出要求 `muscleGlucose`。因此完整硬 transfer 闭包是 `hydration.ts`、`smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose`、`muscleGlucose`、`skin`、`lungs` 九个部位；沿用旧自定义清单、只加载小肠而缺少 `glucose`、`kidneyGlucose`、`muscleGlucose`、`skin` 或 `lungs` 时，启动会因 transfer 配对缺失而拒绝继续。旧 `stomach/motility.ts` 不含小肠，仍可独立加载。[`physicalActivity`](../skeletal-muscle/README.md) 只是 [`skin`](../skin/README.md)、[`lungs`](../lungs/README.md) 与 [`muscleGlucose`](../skeletal-muscle/README.md) 的普通轮初读取，不是 transfer 配对依赖，也不在小肠的读写链上。
 
 ## 1. 脚本与部位
 

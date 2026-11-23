@@ -2,6 +2,8 @@
 
 **状态：** 已实现并完成离线验收（2026-11-23）。用户授权自主推进有明确消费者的后续薄切片；具体动作、参数和边界为本轮设计决策。最终验证与未验收边界见 [`2026-11-23-activity-sweat.md`](../plans/2026-11-23-activity-sweat.md)。
 
+**后续提示（2026-11-23）：** 本文件的 17 部位、19 份参数文件、7 部位硬 transfer 闭包是当时口径。运动相关呼吸失水薄切片随后加入 `lungs`，`bodyFluid` 增加第三出口，当时为 18 部位、20 份参数文件、8 部位闭包，见 [`2026-11-23-respiratory-water-loss-design.md`](./2026-11-23-respiratory-water-loss-design.md)；骨骼肌摄糖薄切片又接入 `muscleGlucose`，`glucose.glucoseMassG` 增加第二出口，当前为 19 部位、21 份参数文件、9 部位闭包，见 [`2026-11-23-muscle-glucose-uptake-design.md`](./2026-11-23-muscle-glucose-uptake-design.md)；本文正文与 §7 验收记录保持当时口径。
+
 ## 1. 目标与取舍
 
 建立：

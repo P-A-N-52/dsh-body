@@ -216,6 +216,69 @@ test('body_act rejects invalid exercise intensity and duration without enqueuing
   assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).pendingActionIds, []);
 });
 
+test('body_act enqueues sex and orgasm and exposes both capabilities', async (t) => {
+  const { gateway, statePath, tools } = await startBody(t);
+
+  const sexResult = await tools.body_act.execute(
+    { type: 'sex', intensity: 0.8, durationMin: 30 },
+    fakeExec({ sessionId: 'session-sex', callId: 'sex-1' }),
+  );
+  assert.equal(sexResult.ok, true);
+  assert.equal(sexResult.statusCode, 202);
+  assert.equal(sexResult.receipt.type, 'sex');
+  assert.equal(sexResult.receipt.status, 'queued');
+
+  const orgasmResult = await tools.body_act.execute(
+    { type: 'orgasm' },
+    fakeExec({ sessionId: 'session-sex', callId: 'orgasm-1' }),
+  );
+  assert.equal(orgasmResult.ok, true);
+  assert.equal(orgasmResult.statusCode, 202);
+  assert.equal(orgasmResult.receipt.type, 'orgasm');
+
+  const queued = JSON.parse(readFileSync(statePath, 'utf8'));
+  assert.deepEqual(queued.actions[sexResult.receipt.id].action, {
+    type: 'sex',
+    intensity: 0.8,
+    durationMin: 30,
+    id: sexResult.receipt.id,
+    sessionId: 'session-sex',
+  });
+  assert.deepEqual(queued.actions[orgasmResult.receipt.id].action, {
+    type: 'orgasm',
+    id: orgasmResult.receipt.id,
+    sessionId: 'session-sex',
+  });
+  assert.deepEqual(gateway.getCapabilities().sex, ['physicalActivity', 'sexualResponse']);
+  assert.deepEqual(gateway.getCapabilities().orgasm, ['sexualResponse']);
+});
+
+test('body_act rejects invalid sex with the exercise validation without enqueuing', async (t) => {
+  const { statePath, tools } = await startBody(t);
+  const invalid = [
+    [{ type: 'sex', durationMin: 30 }, /intensity/, 'missing intensity'],
+    [{ type: 'sex', intensity: 0, durationMin: 30 }, /intensity/, 'zero intensity'],
+    [{ type: 'sex', intensity: 1.5, durationMin: 30 }, /intensity/, 'intensity above one'],
+    [{ type: 'sex', intensity: '1', durationMin: 30 }, /intensity/, 'string intensity'],
+    [{ type: 'sex', intensity: 1 }, /durationMin/, 'missing duration'],
+    [{ type: 'sex', intensity: 1, durationMin: 0 }, /durationMin/, 'zero duration'],
+    [{ type: 'sex', intensity: 1, durationMin: -1 }, /durationMin/, 'negative duration'],
+    [{ type: 'sex', intensity: 1, durationMin: Number.NaN }, /durationMin/, 'NaN duration'],
+  ];
+
+  for (const [args, pattern, label] of invalid) {
+    const result = await tools.body_act.execute(
+      args,
+      fakeExec({ sessionId: 'session-invalid-sex', callId: label }),
+    );
+    assert.equal(result.ok, false, label);
+    assert.equal(result.statusCode, 400, label);
+    assert.match(result.receipt.error, pattern, label);
+  }
+
+  assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).pendingActionIds, []);
+});
+
 test('body_act is idempotent for the same session and callId', async (t) => {
   const { gateway, statePath, tools } = await startBody(t);
   const exec = fakeExec();
@@ -241,7 +304,7 @@ test('body_state returns all parts or one part', async (t) => {
 
   const all = await tools.body_state.execute({}, fakeExec({ callId: 'call-2' }));
   assert.equal(all.simulatedSeconds, 60);
-  assert.equal(Object.keys(all.parts).length, 17);
+  assert.equal(Object.keys(all.parts).length, 20);
   for (const part of [
     'stomach',
     'stomachGhrelin',
@@ -249,6 +312,7 @@ test('body_state returns all parts or one part', async (t) => {
     'duodenum',
     'smallIntestine',
     'glucose',
+    'muscleGlucose',
     'pancreasEndocrine',
     'kidneyGlucose',
     'bodyFluid',
@@ -259,12 +323,23 @@ test('body_state returns all parts or one part', async (t) => {
     'interoception',
     'brainNotify',
     'physicalActivity',
+    'sexualResponse',
     'skin',
+    'lungs',
   ]) {
     assert.ok(Object.hasOwn(all.parts, part), `missing part ${part}`);
   }
   assert.deepEqual(all.parts.physicalActivity, { remainingExerciseMin: 0, intensity: 0 });
+  assert.deepEqual(all.parts.sexualResponse, {
+    arousalMm: 0,
+    phase: 'rest',
+    remainingSexMin: 0,
+    sexIntensity: 0,
+    lastOrgasmAtSimMin: null,
+  });
+  assert.equal(all.parts.interoception.sexualArousalMm, 0);
   assert.deepEqual(all.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
+  assert.deepEqual(all.parts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
   assert.deepEqual(all.parts.glucose, {
     glucoseMassG: 12.69,
     concentrationMgDl: 90,
@@ -400,10 +475,15 @@ test('tool definitions expose JSON Schema and register through ctx.effect', () =
   assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_state']);
 
   assert.deepEqual(tools.body_act.parameters.required, ['type']);
-  assert.deepEqual(tools.body_act.parameters.properties.type.enum, ['drink', 'eat', 'urinate', 'exercise']);
+  assert.deepEqual(
+    tools.body_act.parameters.properties.type.enum,
+    ['drink', 'eat', 'urinate', 'exercise', 'sex', 'orgasm'],
+  );
   assert.equal(tools.body_act.parameters.properties.intensity.type, 'number');
   assert.equal(tools.body_act.parameters.properties.durationMin.type, 'number');
   assert.match(tools.body_act.description, /exercise/);
+  assert.match(tools.body_act.description, /sex/);
+  assert.match(tools.body_act.description, /orgasm/);
   const carbohydrateG = tools.body_act.parameters.properties.carbohydrateG;
   assert.ok(carbohydrateG, 'body_act schema must expose carbohydrateG');
   assert.equal(carbohydrateG.type, 'number');

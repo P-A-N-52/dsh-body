@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "owner": "lungs",
+  "parameters": [
+    {
+      "id": "lungs.respiratoryWaterLoss.exerciseReferenceRateMlPerMin",
+      "unit": "mL/min",
+      "value": 0.3,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "intensity=1 时的临时工程呼吸失水速率，不是实测人体呼吸失水率、总呼吸失水或通气量；未来由具备环境条件与活动通气证据的通气/环境模型替换。range 是工程调参范围，不是人体失水率范围"
+    }
+  ]
+}

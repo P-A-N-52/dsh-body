@@ -59,17 +59,39 @@ const skinStub = {
   },
 };
 
+const lungsStub = {
+  id: 'lungs',
+  initialState: { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 },
+  fields: {
+    respiratoryWaterLossRequestMl: { unit: 'mL', mode: 'absolute' },
+    respiratoryWaterLossMl: {
+      unit: 'mL',
+      mode: 'absolute',
+      transferIn: ['bodyFluid.waterVolumeMl'],
+    },
+  },
+};
+
+const zeroLungs = { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 };
+
 function registry() {
   return createFieldRegistry([
     stomachStub,
     smallIntestineStub,
     bladderStub,
     skinStub,
+    lungsStub,
     { id, initialState, fields },
   ]);
 }
 
-function runHeartbeat({ fluid, kidney, skin, dt = 60 }) {
+function runHeartbeat({
+  fluid,
+  kidney,
+  skin,
+  lungs = zeroLungs,
+  dt = 60,
+}) {
   const transfers = [];
   let written;
   heartbeat({
@@ -77,6 +99,7 @@ function runHeartbeat({ fluid, kidney, skin, dt = 60 }) {
       if (partId === 'bodyFluid') return fluid;
       if (partId === 'kidney') return kidney;
       if (partId === 'skin') return skin;
+      if (partId === 'lungs') return lungs;
       return undefined;
     },
     actions: [],
@@ -92,6 +115,7 @@ function round({
   fluid,
   kidney,
   skin = { sweatRequestMl: 0, sweatVolumeMl: 0 },
+  lungs = zeroLungs,
   intestineInflowMl = 0,
   bladderVolumeMl = 0,
 }) {
@@ -103,8 +127,9 @@ function round({
     bodyFluid: fluid,
     kidney,
     skin: { sweatVolumeMl: 0, ...skin },
+    lungs: { ...zeroLungs, ...lungs },
   };
-  const { written, transfers } = runHeartbeat({ fluid, kidney, skin });
+  const { written, transfers } = runHeartbeat({ fluid, kidney, skin, lungs });
   const writtenSnapshot = structuredClone(written);
   const allTransfers = transfers.map(([fromPart, fromField, toPart, toField, amount]) => ({
     caller: id,
@@ -138,7 +163,7 @@ test('bodyFluid exports the compartment module contract', () => {
       unit: 'mL',
       mode: 'absolute',
       transferIn: ['smallIntestine.waterVolumeMl'],
-      transferOut: ['bladder.volumeMl', 'skin.sweatVolumeMl'],
+      transferOut: ['bladder.volumeMl', 'lungs.respiratoryWaterLossMl', 'skin.sweatVolumeMl'],
     },
     waterDeficit: { unit: '1', mode: 'absolute' },
   });
@@ -155,6 +180,7 @@ test('writes the round-start volume and pays the kidney request only from it', (
   assert.deepEqual(written, { waterVolumeMl: 30000, waterDeficit: 0 });
   assert.deepEqual(transfers, [
     ['bodyFluid', 'waterVolumeMl', 'bladder', 'volumeMl', 100],
+    ['bodyFluid', 'waterVolumeMl', 'lungs', 'respiratoryWaterLossMl', 0],
     ['bodyFluid', 'waterVolumeMl', 'skin', 'sweatVolumeMl', 0],
   ]);
   assert.equal(next.bodyFluid.waterVolumeMl, 30100);
@@ -203,12 +229,15 @@ test('kidney is paid first and sweat takes only the remaining round-start water'
   assert.deepEqual(written, { waterVolumeMl: 100, waterDeficit: 1 });
   assert.deepEqual(transfers, [
     ['bodyFluid', 'waterVolumeMl', 'bladder', 'volumeMl', 60],
+    ['bodyFluid', 'waterVolumeMl', 'lungs', 'respiratoryWaterLossMl', 0],
     ['bodyFluid', 'waterVolumeMl', 'skin', 'sweatVolumeMl', 40],
   ]);
   assert.equal(next.bodyFluid.waterVolumeMl, 0);
   assert.equal(next.bladder.volumeMl, 60);
   assert.equal(next.skin.sweatVolumeMl, 40);
-  assert.ok(next.bladder.volumeMl + next.skin.sweatVolumeMl <= 100);
+  assert.ok(
+    next.bladder.volumeMl + next.lungs.respiratoryWaterLossMl + next.skin.sweatVolumeMl <= 100,
+  );
 });
 
 test('sweat receives nothing when the kidney request already uses all round-start water', () => {
@@ -220,6 +249,7 @@ test('sweat receives nothing when the kidney request already uses all round-star
 
   assert.deepEqual(transfers, [
     ['bodyFluid', 'waterVolumeMl', 'bladder', 'volumeMl', 40],
+    ['bodyFluid', 'waterVolumeMl', 'lungs', 'respiratoryWaterLossMl', 0],
     ['bodyFluid', 'waterVolumeMl', 'skin', 'sweatVolumeMl', 0],
   ]);
   assert.equal(next.bodyFluid.waterVolumeMl, 0);
@@ -237,6 +267,7 @@ test('same-round intestine inflow cannot pay the sweat transfer', () => {
 
   assert.deepEqual(transfers, [
     ['bodyFluid', 'waterVolumeMl', 'bladder', 'volumeMl', 20],
+    ['bodyFluid', 'waterVolumeMl', 'lungs', 'respiratoryWaterLossMl', 0],
     ['bodyFluid', 'waterVolumeMl', 'skin', 'sweatVolumeMl', 10],
   ]);
   assert.equal(next.bodyFluid.waterVolumeMl, 100);
@@ -256,6 +287,107 @@ test('an actual sweat transfer does not overwrite the round-start request field'
   assert.equal(next.skin.sweatRequestMl, 0.6);
 });
 
+test('same-round intestine inflow cannot pay the lung transfer', () => {
+  const { transfers, next } = round({
+    fluid: { waterVolumeMl: 30, waterDeficit: 0 },
+    kidney: { urineProductionRequestMl: 10 },
+    lungs: { respiratoryWaterLossRequestMl: 30 },
+    skin: { sweatRequestMl: 10, sweatVolumeMl: 0 },
+    intestineInflowMl: 100,
+  });
+
+  assert.deepEqual(transfers, [
+    ['bodyFluid', 'waterVolumeMl', 'bladder', 'volumeMl', 10],
+    ['bodyFluid', 'waterVolumeMl', 'lungs', 'respiratoryWaterLossMl', 20],
+    ['bodyFluid', 'waterVolumeMl', 'skin', 'sweatVolumeMl', 0],
+  ]);
+  assert.equal(next.bodyFluid.waterVolumeMl, 100);
+  assert.equal(next.bladder.volumeMl, 10);
+  assert.equal(next.lungs.respiratoryWaterLossMl, 20);
+  assert.equal(next.skin.sweatVolumeMl, 0);
+  assert.equal(next.bodyFluid.waterDeficit, 1);
+});
+
+test('kidney, lung, then sweat only spend the round-start water between them', () => {
+  const { written, transfers, next } = round({
+    fluid: { waterVolumeMl: 100, waterDeficit: 0 },
+    kidney: { urineProductionRequestMl: 40 },
+    lungs: { respiratoryWaterLossRequestMl: 40 },
+    skin: { sweatRequestMl: 40, sweatVolumeMl: 0 },
+  });
+
+  assert.deepEqual(written, { waterVolumeMl: 100, waterDeficit: 1 });
+  assert.deepEqual(transfers, [
+    ['bodyFluid', 'waterVolumeMl', 'bladder', 'volumeMl', 40],
+    ['bodyFluid', 'waterVolumeMl', 'lungs', 'respiratoryWaterLossMl', 40],
+    ['bodyFluid', 'waterVolumeMl', 'skin', 'sweatVolumeMl', 20],
+  ]);
+  assert.equal(next.bodyFluid.waterVolumeMl, 0);
+  assert.equal(next.bladder.volumeMl, 40);
+  assert.equal(next.lungs.respiratoryWaterLossMl, 40);
+  assert.equal(next.skin.sweatVolumeMl, 20);
+  assert.equal(
+    next.bladder.volumeMl + next.lungs.respiratoryWaterLossMl + next.skin.sweatVolumeMl,
+    100,
+  );
+});
+
+test('lung request is clamped to the remainder and then sweat receives nothing', () => {
+  const { transfers, next } = round({
+    fluid: { waterVolumeMl: 50, waterDeficit: 0 },
+    kidney: { urineProductionRequestMl: 20 },
+    lungs: { respiratoryWaterLossRequestMl: 40 },
+    skin: { sweatRequestMl: 10, sweatVolumeMl: 0 },
+  });
+
+  assert.deepEqual(transfers, [
+    ['bodyFluid', 'waterVolumeMl', 'bladder', 'volumeMl', 20],
+    ['bodyFluid', 'waterVolumeMl', 'lungs', 'respiratoryWaterLossMl', 30],
+    ['bodyFluid', 'waterVolumeMl', 'skin', 'sweatVolumeMl', 0],
+  ]);
+  assert.equal(next.bodyFluid.waterVolumeMl, 0);
+  assert.equal(next.bladder.volumeMl, 20);
+  assert.equal(next.lungs.respiratoryWaterLossMl, 30);
+  assert.equal(next.skin.sweatVolumeMl, 0);
+});
+
+test('an actual lung transfer does not overwrite the round-start request field', () => {
+  const { next } = round({
+    fluid: { waterVolumeMl: 30000, waterDeficit: 0 },
+    kidney: { urineProductionRequestMl: 10 },
+    lungs: { respiratoryWaterLossRequestMl: 0.3, respiratoryWaterLossMl: 0 },
+  });
+
+  assert.equal(next.lungs.respiratoryWaterLossMl, 0.3);
+  assert.equal(next.lungs.respiratoryWaterLossRequestMl, 0.3);
+});
+
+test('a missing, negative, non-finite, or non-numeric lung request transfers nothing', () => {
+  const requests = [
+    {},
+    { respiratoryWaterLossRequestMl: -5 },
+    { respiratoryWaterLossRequestMl: Number.NaN },
+    { respiratoryWaterLossRequestMl: Number.POSITIVE_INFINITY },
+    { respiratoryWaterLossRequestMl: '0.3' },
+  ];
+  for (const lungs of requests) {
+    const { transfers, next } = round({
+      fluid: { waterVolumeMl: 30000, waterDeficit: 0 },
+      kidney: { urineProductionRequestMl: 10 },
+      lungs,
+      skin: { sweatRequestMl: 5, sweatVolumeMl: 0 },
+    });
+    assert.deepEqual(transfers, [
+      ['bodyFluid', 'waterVolumeMl', 'bladder', 'volumeMl', 10],
+      ['bodyFluid', 'waterVolumeMl', 'lungs', 'respiratoryWaterLossMl', 0],
+      ['bodyFluid', 'waterVolumeMl', 'skin', 'sweatVolumeMl', 5],
+    ]);
+    assert.equal(next.lungs.respiratoryWaterLossMl, 0);
+    assert.equal(next.skin.sweatVolumeMl, 5);
+    assert.equal(next.bodyFluid.waterVolumeMl, 29985);
+  }
+});
+
 test('a missing, negative, non-finite, or non-numeric sweat request transfers nothing', () => {
   const requests = [
     {},
@@ -272,6 +404,7 @@ test('a missing, negative, non-finite, or non-numeric sweat request transfers no
     });
     assert.equal(transfers[0][4], 10);
     assert.equal(transfers[1][4], 0);
+    assert.equal(transfers[2][4], 0);
     assert.equal(next.skin.sweatVolumeMl, 0);
     assert.equal(next.bodyFluid.waterVolumeMl, 29990);
   }
@@ -301,9 +434,10 @@ test('a missing or invalid kidney request transfers nothing', () => {
       fluid: { waterVolumeMl: 30000, waterDeficit: 0 },
       kidney,
     });
-    assert.equal(transfers.length, 2);
+    assert.equal(transfers.length, 3);
     assert.equal(transfers[0][4], 0);
     assert.equal(transfers[1][4], 0);
+    assert.equal(transfers[2][4], 0);
   }
 });
 
@@ -316,6 +450,7 @@ test('body water plus bladder is conserved over rounds without urination', () =>
     bodyFluid: { waterVolumeMl: 30000, waterDeficit: 0 },
     kidney: { urineProductionRequestMl: 0.7 },
     skin: { sweatRequestMl: 0, sweatVolumeMl: 0 },
+    lungs: { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 },
   };
   const initialTotal = parts.bodyFluid.waterVolumeMl + parts.bladder.volumeMl;
 

@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "owner": "ovaries",
+  "parameters": [
+    {
+      "id": "ovaries.cycleLengthDays",
+      "unit": "d",
+      "value": 29.3,
+      "status": "prior",
+      "range": [21, 40],
+      "source": "SRC-BULL-2019",
+      "note": "Bull 2019 Table 1–3 All cycles：612,613 个排卵周期的周期长度均值 29.3 ± 5.2 d；已用 organs/human-organs/ovaries/references/notes/bull-2019.md 核对。是 Natural Cycles app 用户队列均值（厂商资助、仅检出排卵的周期），不是本身体的个体预测或验证值。range 是工程调参范围，不是原文百分位"
+    },
+    {
+      "id": "ovaries.follicularLengthDays",
+      "unit": "d",
+      "value": 16.9,
+      "status": "prior",
+      "range": [10, 20],
+      "source": "SRC-BULL-2019",
+      "note": "Bull 2019 Table 1–3 All cycles：612,613 个排卵周期的卵泡期长度均值 16.9 ± 5.3 d（摘要 95% CI 10–30）；已用 organs/human-organs/ovaries/references/notes/bull-2019.md 核对。1 天 ovulatory 带是 design，嵌在 Bull 的 F+L = 29.3 d 内；该值只支撑相位长度量级，不支撑激素曲线形状。range 是工程调参范围，不是原文百分位"
+    },
+    {
+      "id": "ovaries.lutealLengthDays",
+      "unit": "d",
+      "value": 12.4,
+      "status": "prior",
+      "range": [9, 17],
+      "source": "SRC-BULL-2019",
+      "note": "Bull 2019 Table 1–3 All cycles：612,613 个排卵周期的黄体期长度均值 12.4 ± 2.4 d（摘要 95% CI 7–17）；已用 organs/human-organs/ovaries/references/notes/bull-2019.md 核对。它是激素曲线形状参数（黄体中期 = follicular + luteal/2）；1 天 ovulatory 带嵌在 F+L 内后，luteal 相位实际跨 11.4 d，见模块头注释。range 是工程调参范围，不是原文百分位"
+    },
+    {
+      "id": "ovaries.startCycleDay",
+      "unit": "d",
+      "value": 5,
+      "status": "design",
+      "range": [0, 29],
+      "source": null,
+      "note": "新身体起始周期日，选在经期外，避免首轮即痛经；不是测量值。range 是工程调参范围，取值应小于 cycleLengthDays"
+    },
+    {
+      "id": "ovaries.estradiolNadirRelative",
+      "unit": "1",
+      "value": 0.1,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "E2 相对量曲线的最低值（周期首日与周期末），不是 pg/mL 或实测浓度；整个曲线形状为 design"
+    },
+    {
+      "id": "ovaries.estradiolLutealBumpRelative",
+      "unit": "1",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "黄体中期的 E2 相对量次峰，不是实测浓度，也不是黄体期 E2 高于卵泡期的证据；整个曲线形状为 design"
+    },
+    {
+      "id": "ovaries.progesteroneBaselineRelative",
+      "unit": "1",
+      "value": 0.05,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "卵泡期与周期末的 P4 相对量基线，不是 ng/mL 或实测浓度；整个曲线形状为 design"
+    }
+  ]
+}
