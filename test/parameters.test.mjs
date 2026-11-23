@@ -10,15 +10,23 @@ const parametersFiles = [
   { label: 'organs/human-organs/stomach/ghrelin.parameters.json', url: new URL('../organs/human-organs/stomach/ghrelin.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/stomach/gastric-sensory.parameters.json', url: new URL('../organs/human-organs/stomach/gastric-sensory.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/brain/interoception.parameters.json', url: new URL('../organs/human-organs/brain/interoception.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/brain/thermoregulation.parameters.json', url: new URL('../organs/human-organs/brain/thermoregulation.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/brain/notify.parameters.json', url: new URL('../organs/human-organs/brain/notify.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/small-intestine/water-absorption.parameters.json', url: new URL('../organs/human-organs/small-intestine/water-absorption.parameters.json', import.meta.url) },
   { label: 'organs/human-compartments/body-water/water.parameters.json', url: new URL('../organs/human-compartments/body-water/water.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/heart/heart.parameters.json', url: new URL('../organs/human-organs/heart/heart.parameters.json', import.meta.url) },
+  { label: 'organs/human-compartments/blood/blood.parameters.json', url: new URL('../organs/human-compartments/blood/blood.parameters.json', import.meta.url) },
   { label: 'organs/human-compartments/blood-oxygen/oxygen.parameters.json', url: new URL('../organs/human-compartments/blood-oxygen/oxygen.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/skin/sweat.parameters.json', url: new URL('../organs/human-organs/skin/sweat.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/lungs/respiratory-water-loss.parameters.json', url: new URL('../organs/human-organs/lungs/respiratory-water-loss.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/lungs/ventilation.parameters.json', url: new URL('../organs/human-organs/lungs/ventilation.parameters.json', import.meta.url) },
   { label: 'organs/human-compartments/glucose/glucose.parameters.json', url: new URL('../organs/human-compartments/glucose/glucose.parameters.json', import.meta.url) },
+  { label: 'organs/human-compartments/calcium/calcium.parameters.json', url: new URL('../organs/human-compartments/calcium/calcium.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/parathyroid/parathyroid.parameters.json', url: new URL('../organs/human-organs/parathyroid/parathyroid.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/esophagus/esophagus.parameters.json', url: new URL('../organs/human-organs/esophagus/esophagus.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/colon/colon.parameters.json', url: new URL('../organs/human-organs/colon/colon.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/liver/glycogen.parameters.json', url: new URL('../organs/human-organs/liver/glycogen.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/kidney/gluconeogenesis.parameters.json', url: new URL('../organs/human-organs/kidney/gluconeogenesis.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/skeletal-muscle/glucose-uptake.parameters.json', url: new URL('../organs/human-organs/skeletal-muscle/glucose-uptake.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/pancreas/insulin.parameters.json', url: new URL('../organs/human-organs/pancreas/insulin.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/kidney/glucose-excretion.parameters.json', url: new URL('../organs/human-organs/kidney/glucose-excretion.parameters.json', import.meta.url) },
@@ -74,6 +82,22 @@ for (const { label, url } of parametersFiles) {
   });
 }
 
+test('small intestine declares the colon residue fraction as a design parameter', () => {
+  const data = readParameters(new URL(
+    '../organs/human-organs/small-intestine/water-absorption.parameters.json',
+    import.meta.url,
+  ));
+  const parameter = data.parameters.find(
+    (entry) => entry.id === 'smallIntestine.residueFraction',
+  );
+  assert.ok(parameter, 'smallIntestine.residueFraction must be declared');
+  assert.equal(parameter.unit, '1');
+  assert.equal(parameter.value, 0.05);
+  assert.equal(parameter.status, 'design');
+  assert.equal(parameter.source, null);
+  assert.deepEqual(parameter.range, [0, 1]);
+});
+
 test('small intestine declares a separate carbohydrate absorption half-time', () => {
   const data = readParameters(new URL(
     '../organs/human-organs/small-intestine/water-absorption.parameters.json',
@@ -120,8 +144,8 @@ test('glucose parameters keep the fixed design defaults', () => {
   assert.deepEqual(byId['glucose.residualDisposalHalfTimeMin'].range, [10, 300]);
 });
 
-test('the parameter inventory covers thirty-six files including blood oxygen, the endocrine axes, salivary glands, mammary glands and the male organs', () => {
-  assert.equal(parametersFiles.length, 36);
+test('the parameter inventory covers forty-four files including circulation, thermoregulation, blood oxygen, the endocrine axes, salivary glands, mammary glands, renal gluconeogenesis and the male organs', () => {
+  assert.equal(parametersFiles.length, 44);
   const labels = parametersFiles.map(({ label }) => label);
   assert.equal(
     labels.some((label) => label.includes('/skeletal-muscle/regions/')),
@@ -131,11 +155,19 @@ test('the parameter inventory covers thirty-six files including blood oxygen, th
   assert.ok(labels.includes('organs/human-organs/salivary-glands/saliva.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/pancreas/insulin.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/kidney/glucose-excretion.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/kidney/gluconeogenesis.parameters.json'));
+  assert.ok(labels.includes('organs/human-compartments/calcium/calcium.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/parathyroid/parathyroid.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/esophagus/esophagus.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/colon/colon.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/liver/glycogen.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/skin/sweat.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/lungs/respiratory-water-loss.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/lungs/ventilation.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/heart/heart.parameters.json'));
+  assert.ok(labels.includes('organs/human-compartments/blood/blood.parameters.json'));
   assert.ok(labels.includes('organs/human-compartments/blood-oxygen/oxygen.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/brain/thermoregulation.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/skeletal-muscle/glucose-uptake.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/ovaries/menstrual-cycle.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/uterus/uterus.parameters.json'));
@@ -148,6 +180,49 @@ test('the parameter inventory covers thirty-six files including blood oxygen, th
   assert.ok(labels.includes('organs/human-organs/thyroid/thyroid.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/adrenal/cortisol.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/pineal/melatonin.parameters.json'));
+});
+
+test('heart, blood and thermoregulation parameters are design defaults with no source', () => {
+  const expected = {
+    'organs/human-organs/heart/heart.parameters.json': {
+      'heart.restingHeartRatePerMin': [70, '1/min'],
+      'heart.maxHeartRatePerMin': [180, '1/min'],
+      'heart.restingStrokeVolumeMl': [70, 'mL'],
+      'heart.activityGain': [1.5, '1'],
+      'heart.catecholamineGain': [0.5, '1'],
+    },
+    'organs/human-compartments/blood/blood.parameters.json': {
+      'blood.referenceBloodVolumeMl': [5000, 'mL'],
+      'blood.baselineSystolicMmHg': [120, 'mmHg'],
+      'blood.baselineDiastolicMmHg': [80, 'mmHg'],
+      'blood.baselineGfrMlMin': [100, 'mL/min'],
+      'blood.oxygenContentPerPercentMlPerL': [2, 'mL/L/%'],
+    },
+    'organs/human-organs/brain/thermoregulation.parameters.json': {
+      'thermoregulation.setpointC': [37, '°C'],
+      'thermoregulation.ambientTemperatureC': [25, '°C'],
+      'thermoregulation.heatCapacityKcalPerC': [60, 'kcal/°C'],
+      'thermoregulation.metabolicFactor': [0.02, 'kcal/mL'],
+      'thermoregulation.shiveringGain': [2, 'kcal/(min·°C)'],
+      'thermoregulation.lossGain': [0.05, 'kcal/(min·°C)'],
+      'thermoregulation.evaporationKcalPerMl': [0.58, 'kcal/mL'],
+    },
+  };
+
+  for (const [label, parameters] of Object.entries(expected)) {
+    const data = readParameters(new URL(`../${label}`, import.meta.url));
+    const byId = Object.fromEntries(
+      data.parameters.map((parameter) => [parameter.id, parameter]),
+    );
+    assert.deepEqual(Object.keys(byId).sort(), Object.keys(parameters).sort(), label);
+    for (const [parameterId, [value, unit]] of Object.entries(parameters)) {
+      const parameter = byId[parameterId];
+      assert.equal(parameter.value, value, `${parameterId}: value`);
+      assert.equal(parameter.unit, unit, `${parameterId}: unit`);
+      assert.equal(parameter.status, 'design', `${parameterId}: status`);
+      assert.equal(parameter.source, null, `${parameterId}: source`);
+    }
+  }
 });
 
 test('endocrine parameters keep their design-only defaults', () => {
@@ -281,11 +356,14 @@ test('skin sweat parameters keep the design defaults and units', () => {
   ));
   const byId = Object.fromEntries(data.parameters.map((parameter) => [parameter.id, parameter]));
   assert.deepEqual(Object.keys(byId).sort(), [
+    'skin.heatGain',
     'skin.sweat.ambientGainPerC',
     'skin.sweat.ambientTemperatureC',
     'skin.sweat.maxRateMlPerMin',
     'skin.sweat.referenceRateMlPerMin',
   ]);
+  assert.equal(byId['skin.heatGain'].value, 1);
+  assert.equal(byId['skin.heatGain'].unit, '1/°C');
   assert.equal(byId['skin.sweat.ambientTemperatureC'].value, 25);
   assert.equal(byId['skin.sweat.ambientTemperatureC'].unit, '°C');
   assert.equal(byId['skin.sweat.referenceRateMlPerMin'].value, 0.6);
@@ -354,6 +432,7 @@ test('blood oxygen and lung ventilation parameters keep the design defaults', ()
     'lungsVentilation.inspiredO2Fraction',
     'lungsVentilation.maxRatePerMin',
     'lungsVentilation.maxVentilationMlMin',
+    'lungsVentilation.pantingGain',
     'lungsVentilation.restingRatePerMin',
     'lungsVentilation.restingTidalVolumeMl',
     'lungsVentilation.restingVentilationMlMin',
@@ -366,6 +445,7 @@ test('blood oxygen and lung ventilation parameters keep the design defaults', ()
     ['lungsVentilation.maxVentilationMlMin', 60000, 'mL/min'],
     ['lungsVentilation.inspiredO2Fraction', 0.21, '1'],
     ['lungsVentilation.deadSpaceFactor', 1.4, '1'],
+    ['lungsVentilation.pantingGain', 0.5, 'mL/(min·°C)'],
   ]) {
     const parameter = ventilationById[parameterId];
     assert.equal(parameter.value, value, `${parameterId}: value`);

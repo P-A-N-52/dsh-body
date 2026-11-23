@@ -6,7 +6,9 @@
  *
  * `glucoseMassG.transferOut` 只声明 `kidneyGlucose.excretedGlucoseG`、`liver.storageG` 与
  * `muscleGlucose.uptakeG`，因此任何包含本入口的清单都不需要 `mammaryGlands`；根清单只加载
- * 本入口。缺任一已声明出口目标的清单仍会在 `createFieldRegistry` 启动校验时报字段配对错误。
+ * 本入口。`glucoseMassG.transferIn` 除小肠碳水与肝糖原外还声明
+ * `kidneyGluconeogenesis.glucoseOutputG`，缺该部位或任一已声明出口目标的清单仍会在
+ * `createFieldRegistry` 启动校验时报字段配对错误。
  * 轮初肾糖请求缺失（未加载 `kidneyGlucose`）按 0；`liver` 与 `muscleGlucose` 是必需汇，
  * 缺部位时 `heartbeat` 抛错。本入口复用 `glucose.parameters.json`，不新增参数文件。
  */

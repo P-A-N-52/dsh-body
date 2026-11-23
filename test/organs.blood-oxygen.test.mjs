@@ -31,7 +31,7 @@ function assertClose(actual, expected, label, tolerance = 1e-9) {
   );
 }
 
-function round({ activity, duodenum, lungsVentilation, thyroid } = {}) {
+function round({ activity, duodenum, lungsVentilation, thyroid, blood } = {}) {
   const writes = [];
   heartbeat({
     read: (partId) => {
@@ -39,6 +39,7 @@ function round({ activity, duodenum, lungsVentilation, thyroid } = {}) {
       if (partId === 'duodenum') return duodenum;
       if (partId === 'lungsVentilation') return lungsVentilation;
       if (partId === 'thyroid') return thyroid;
+      if (partId === 'blood') return blood;
       return undefined;
     },
     actions: [],
@@ -49,7 +50,11 @@ function round({ activity, duodenum, lungsVentilation, thyroid } = {}) {
   return { written: writes.at(-1), writes };
 }
 
-function expectUpstreamError({ activity, duodenum, lungsVentilation, thyroid }, label) {  const writes = [];
+function expectUpstreamError(
+  { activity, duodenum, lungsVentilation, thyroid, blood },
+  label,
+) {
+  const writes = [];
   assert.throws(
     () => heartbeat({
       read: (partId) => {
@@ -57,6 +62,7 @@ function expectUpstreamError({ activity, duodenum, lungsVentilation, thyroid }, 
         if (partId === 'duodenum') return duodenum;
         if (partId === 'lungsVentilation') return lungsVentilation;
         if (partId === 'thyroid') return thyroid;
+        if (partId === 'blood') return blood;
         return undefined;
       },
       actions: [],
@@ -280,6 +286,93 @@ test('capacity below demand produces a proportional deficit and SpO2 drop', () =
   assert.equal(starved.spo2Percent, 0);
 });
 
+test('a lagged low delivery readout does not desaturate at activity start', () => {
+  const active = round({
+    activity: { remainingExerciseMin: 10, intensity: 1 },
+    blood: {
+      oxygenDeliveryMlMin: 970,
+      maxOxygenDeliveryMlPerMin: 3666.6,
+    },
+  }).written;
+  assert.deepEqual(active, {
+    oxygenConsumptionMlMin: 1250,
+    oxygenSupplyMlMin: 1250,
+    spo2Percent: 97,
+    oxygenDeficit: 0,
+  });
+
+  const withVentilation = round({
+    activity: { remainingExerciseMin: 10, intensity: 1 },
+    lungsVentilation: { alveolarO2CapacityMlMin: 9000 },
+    blood: {
+      oxygenDeliveryMlMin: 970,
+      maxOxygenDeliveryMlPerMin: 3666.6,
+    },
+  }).written;
+  assert.deepEqual(withVentilation, active);
+});
+
+test('maximum oxygen delivery caps supply as a third limit', () => {
+  const half = round({ blood: { maxOxygenDeliveryMlPerMin: 125 } }).written;
+  assert.deepEqual(half, {
+    oxygenConsumptionMlMin: 250,
+    oxygenSupplyMlMin: 125,
+    spo2Percent: 48.5,
+    oxygenDeficit: 0.5,
+  });
+
+  const starved = round({ blood: { maxOxygenDeliveryMlPerMin: 0 } }).written;
+  assert.equal(starved.oxygenSupplyMlMin, 0);
+  assert.equal(starved.oxygenDeficit, 1);
+  assert.equal(starved.spo2Percent, 0);
+
+  const ample = round({ blood: { maxOxygenDeliveryMlPerMin: 9000 } }).written;
+  assert.deepEqual(ample, BASELINE);
+
+  const active = round({
+    activity: { remainingExerciseMin: 10, intensity: 1 },
+    blood: { maxOxygenDeliveryMlPerMin: 900 },
+  }).written;
+  assert.equal(active.oxygenSupplyMlMin, 900);
+  assert.equal(active.oxygenDeficit, 0.28);
+  assertClose(active.spo2Percent, 69.84, 'circulation-limited SpO2');
+});
+
+test('the tightest of ventilation and circulation caps the supply', () => {
+  const ventilationTight = round({
+    activity: { remainingExerciseMin: 10, intensity: 1 },
+    lungsVentilation: { alveolarO2CapacityMlMin: 1000 },
+    blood: { maxOxygenDeliveryMlPerMin: 2000 },
+  }).written;
+  assert.equal(ventilationTight.oxygenSupplyMlMin, 1000);
+  assertClose(ventilationTight.oxygenDeficit, 0.2, 'ventilation-limited deficit');
+  assertClose(ventilationTight.spo2Percent, 77.6, 'ventilation-limited SpO2');
+
+  const circulationTight = round({
+    activity: { remainingExerciseMin: 10, intensity: 1 },
+    lungsVentilation: { alveolarO2CapacityMlMin: 5000 },
+    blood: { maxOxygenDeliveryMlPerMin: 250 },
+  }).written;
+  assert.equal(circulationTight.oxygenSupplyMlMin, 250);
+  assertClose(circulationTight.oxygenDeficit, 0.8, 'circulation-limited deficit');
+  assertClose(circulationTight.spo2Percent, 19.4, 'circulation-limited SpO2');
+});
+
+test('a missing blood part keeps the ventilation-only cap', () => {
+  const cappedByLungs = round({
+    activity: { remainingExerciseMin: 10, intensity: 1 },
+    lungsVentilation: { alveolarO2CapacityMlMin: 900 },
+  }).written;
+  assert.equal(cappedByLungs.oxygenSupplyMlMin, 900);
+  assert.equal(cappedByLungs.oxygenDeficit, 0.28);
+
+  const uncapped = round({
+    activity: { remainingExerciseMin: 10, intensity: 1 },
+  }).written;
+  assert.equal(uncapped.oxygenSupplyMlMin, 1250);
+  assert.equal(uncapped.spo2Percent, 97);
+});
+
 test('zero demand is a balanced edge and never produces NaN', () => {
   assert.deepEqual(balanceOxygen(0, 0), { oxygenDeficit: 0, spo2Percent: 97 });
   assert.deepEqual(balanceOxygen(0, 100), { oxygenDeficit: 0, spo2Percent: 97 });
@@ -346,6 +439,26 @@ test('invalid loaded upstream fields fail the round without writing', () => {
   for (const [label, thyroid] of invalidThyroid) {
     expectUpstreamError({ thyroid }, label);
   }
+
+  const invalidBlood = [
+    ['empty blood', {}],
+    ['old delivery readout without capacity', {
+      oxygenDeliveryMlMin: 970,
+      cardiacOutputMlMin: 5000,
+      spo2Percent: 97,
+    }],
+    ['NaN capacity', { maxOxygenDeliveryMlPerMin: Number.NaN }],
+    ['infinite capacity', { maxOxygenDeliveryMlPerMin: Number.POSITIVE_INFINITY }],
+    ['negative infinity capacity', { maxOxygenDeliveryMlPerMin: Number.NEGATIVE_INFINITY }],
+    ['negative capacity', { maxOxygenDeliveryMlPerMin: -1 }],
+    ['non-numeric capacity', { maxOxygenDeliveryMlPerMin: '900' }],
+    ['null capacity', { maxOxygenDeliveryMlPerMin: null }],
+    ['null blood', null],
+    ['non-object blood', 42],
+  ];
+  for (const [label, blood] of invalidBlood) {
+    expectUpstreamError({ blood }, label);
+  }
 });
 
 test('blood oxygen output is finite and JSON-safe', () => {
@@ -369,6 +482,13 @@ test('blood oxygen output is finite and JSON-safe', () => {
       {
         activity: { remainingExerciseMin: 0.5, intensity: 1 },
         lungsVentilation: { alveolarO2CapacityMlMin: 900 },
+      },
+    ],
+    [
+      'circulation below active demand',
+      {
+        activity: { remainingExerciseMin: 0.5, intensity: 1 },
+        blood: { maxOxygenDeliveryMlPerMin: 400 },
       },
     ],
   ];

@@ -48,4 +48,7 @@
 
 ## 交付记录
 
-（Task 3 填写）
+- **已实现：** `thermoregulation` 核心温度积分落地并加入三份清单；`skin` 按核心温度放大出汗请求，`lungsVentilation` 叠加喘息项，`interoception` 新增 `heatMm` / `coldMm`。真实 Gateway 测试见 `test/organs.thermoregulation-gateway.test.mjs`，覆盖活动升温与出汗增加、预置热档降温、预置冷档寒战回温、重启接续。
+- **已验证：** `thermoregulation` 模块测试与 `test/organs.thermoregulation-gateway.test.mjs` 通过；`skin`、`lungsVentilation`、`interoception` 既有测试按新接口更新后通过。当前共享工作区同时有其他并行切片，完整 `npm test` 受其他切片未完成的 transfer 清单影响，不能作为本切片单独结论。
+- **实现偏差：** 当前 `design` 系数下静息产热高于 37°C 的梯度散热，核心温度会缓慢上升；活动时出汗会增大散热、压低升温速率，但默认参数下不能把温度拉回设定点。预置热档只有同时带有蒸发汗液时才会在首轮降温。该行为已写入 README 与 `brain` / `skin` 文档，未改参数冒充人体体温曲线。
+- **仍未实现/未验证：** 实测体温曲线、皮肤分区温度、血管舒缩、寒战做功细节、发热/低温症、湿度/风速、真实 DSH 会话、临床验证与性能基线。

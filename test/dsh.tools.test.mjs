@@ -129,6 +129,27 @@ test('body_act rejects invalid carbohydrateG without enqueuing', async (t) => {
   assert.equal(gateway.getState().parts.stomach.volumeMl, 0);
 });
 
+test('body_act enqueues defecate without a payload and exposes the colon capability', async (t) => {
+  const { gateway, statePath, tools } = await startBody(t);
+  const exec = fakeExec({ sessionId: 'session-bowel', callId: 'defecate-1' });
+
+  const result = await tools.body_act.execute({ type: 'defecate' }, exec);
+  assert.equal(result.ok, true);
+  assert.equal(result.statusCode, 202);
+  assert.equal(result.receipt.id, actionId('session-bowel', 'defecate-1'));
+  assert.equal(result.receipt.type, 'defecate');
+  assert.equal(result.receipt.status, 'queued');
+
+  const queued = JSON.parse(readFileSync(statePath, 'utf8'));
+  assert.deepEqual(queued.pendingActionIds, [result.receipt.id]);
+  assert.deepEqual(queued.actions[result.receipt.id].action, {
+    type: 'defecate',
+    id: result.receipt.id,
+    sessionId: 'session-bowel',
+  });
+  assert.deepEqual(gateway.getCapabilities().defecate, ['colon']);
+});
+
 test('body_act rejects invalid fields and missing sessions before enqueue', async (t) => {
   const { gateway, statePath, tools } = await startBody(t);
   const invalid = [
@@ -304,21 +325,26 @@ test('body_state returns all parts or one part', async (t) => {
 
   const all = await tools.body_state.execute({}, fakeExec({ callId: 'call-2' }));
   assert.equal(all.simulatedSeconds, 60);
-  assert.equal(Object.keys(all.parts).length, 32);
+  assert.equal(Object.keys(all.parts).length, 38);
   for (const part of [
+    'esophagus',
     'stomach',
     'stomachGhrelin',
     'stomachSensory',
     'duodenum',
     'salivaryGlands',
     'smallIntestine',
+    'colon',
     'glucose',
     'liver',
+    'heart',
+    'blood',
     'muscleGlucose',
     'muscleHead',
     'muscleLimbs',
     'muscleTrunk',
     'pancreasEndocrine',
+    'kidneyGluconeogenesis',
     'kidneyGlucose',
     'bodyFluid',
     'hypothalamusAdh',
@@ -331,6 +357,7 @@ test('body_state returns all parts or one part', async (t) => {
     'kidney',
     'bladder',
     'interoception',
+    'thermoregulation',
     'brainNotify',
     'physicalActivity',
     'sexualResponse',
@@ -351,6 +378,26 @@ test('body_state returns all parts or one part', async (t) => {
   });
   assert.equal(all.parts.interoception.sexualArousalMm, 0);
   assert.equal(all.parts.interoception.libidoMm, 0);
+  assert.equal(all.parts.interoception.heatMm, 0);
+  assert.equal(all.parts.interoception.coldMm, 0);
+  assert.deepEqual(all.parts.heart, {
+    heartRatePerMin: 70,
+    strokeVolumeMl: 70,
+    cardiacOutputMlMin: 4900,
+  });
+  assert.deepEqual(all.parts.blood, {
+    bloodVolumeMl: 5000,
+    cardiacOutputMlMin: 4900,
+    systolicMmHg: 120 * (4900 / 5000) ** 0.5,
+    diastolicMmHg: 80 * (4900 / 5000) ** 0.3,
+    oxygenDeliveryMlMin: 4900 * (97 * 2) / 1000,
+    maxOxygenDeliveryMlPerMin: 3666.6,
+    gfrMlMin: 100,
+  });
+  assert.ok(
+    all.parts.thermoregulation.coreTemperatureC > 37,
+    'basal heat production warms the core above the setpoint in the first model round',
+  );
   assert.deepEqual(all.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
   assert.deepEqual(all.parts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
   assert.deepEqual(all.parts.bloodOxygen, {
@@ -399,6 +446,7 @@ test('body_state returns all parts or one part', async (t) => {
     }, region);
   }
   assert.deepEqual(all.parts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
+  assert.deepEqual(all.parts.kidneyGluconeogenesis, { glucoseOutputG: 0 });
   assert.ok(all.parts.stomach.volumeMl > 0);
 
   const one = await tools.body_state.execute({ part: 'stomach' }, fakeExec({ callId: 'call-3' }));
@@ -530,7 +578,7 @@ test('tool definitions expose JSON Schema and register through ctx.effect', () =
   assert.deepEqual(tools.body_act.parameters.required, ['type']);
   assert.deepEqual(
     tools.body_act.parameters.properties.type.enum,
-    ['drink', 'eat', 'urinate', 'exercise', 'sex', 'orgasm'],
+    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'sex', 'orgasm'],
   );
   assert.equal(tools.body_act.parameters.properties.intensity.type, 'number');
   assert.equal(tools.body_act.parameters.properties.durationMin.type, 'number');
@@ -544,6 +592,7 @@ test('tool definitions expose JSON Schema and register through ctx.effect', () =
   assert.match(carbohydrateG.description, /digestible|可消化/i);
   assert.match(carbohydrateG.description, /glucose|葡萄糖/i);
   assert.match(tools.body_act.description, /urinate/);
+  assert.match(tools.body_act.description, /defecate/);
   assert.equal(tools.body_act.parameters.additionalProperties, true);
   assert.deepEqual(tools.body_act.output.schema.required, ['ok', 'statusCode', 'receipt']);
   assert.equal(tools.body_act.output.schema.additionalProperties, false);

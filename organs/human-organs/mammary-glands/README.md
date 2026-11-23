@@ -4,7 +4,7 @@
 
 `mammaryGlands` 是乳腺泌乳的薄切片：按轮初垂体相对催乳素写出下一轮乳汁水与乳糖请求，并把“产奶多于实际泌乳”的未排空量累积成 0–100 mm 胀奶代理。它不建婴儿、吸吮动作、哺乳行为或乳汁成分；本切片只把乳汁的水接到体液、把乳糖能量接到血糖，并让 `fullnessMm` 进入体感不适。
 
-实现状态：脚本 `milk.ts`、参数 `milk.parameters.json`、单元测试与真实 Gateway 测试已落地；女性清单当前为 32 部位、34 份参数文件，新增 `mammaryGlands` 与 `milk.parameters.json`。全部参数 `design`、`source: null`，没有实测泌乳率、乳汁乳糖浓度或胀奶量表；未做真实 DSH 会话、独立人体数据或临床验证。
+实现状态：脚本 `milk.ts`、参数 `milk.parameters.json`、单元测试与真实 Gateway 测试已落地；女性清单当前为 35 部位、34 份参数文件，新增 `mammaryGlands` 与 `milk.parameters.json`。全部参数 `design`、`source: null`，没有实测泌乳率、乳汁乳糖浓度或胀奶量表；未做真实 DSH 会话、独立人体数据或临床验证。
 
 ## 1. 脚本与读写关系
 
@@ -90,7 +90,7 @@ glucose.glucoseMassG    → mammaryGlands.lactoseG      （glucose.female.ts 末
 - 女性清单缺 `mammaryGlands` 时，`createFieldRegistry` 启动报 `transferOut target "mammaryGlands.milkMl" is not declared`（`water.female.ts` 先于 `glucose.female.ts` 校验）；即使先通过水体校验，`glucose.female.ts` 也会因 `mammaryGlands.lactoseG` 失败。
 - 根清单 `body-modules.json` 不含 `mammary-glands/`，使用 `water.ts` 与 `glucose.ts`；根清单的 `glucoseMassG.transferOut` 只声明肾糖、肝储存与肌摄糖，不因乳腺或乳糖汇被强制要求乳腺部位。
 - 硬 transfer 闭包：根清单仍为 10 部位，女性清单因 `uterus` 与 `mammaryGlands` 为 12 部位（`water.female.ts` 的第五出口 + `glucose.female.ts` 的乳糖汇）。乳腺本身只接收两笔 transfer，不再向外转出。
-- 参数文件计数：根清单 29 部位、31 份参数；女性清单 32 部位、34 份。新增的一份就是 `milk.parameters.json`；`pituitary.prolactinRelative` 复用既有 `pituitary.parameters.json`，不新增参数。
+- 参数文件计数：根清单 32 部位、31 份参数；女性清单 35 部位、34 份。新增的一份就是 `milk.parameters.json`；`pituitary.prolactinRelative` 复用既有 `pituitary.parameters.json`，不新增参数。
 
 ## 6. 证据入口与边界
 

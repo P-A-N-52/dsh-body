@@ -9,7 +9,7 @@ import { checkpoint } from '../test-support/harness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the root manifest loads all thirty-two body parts', async (t) => {
+test('the root manifest loads all thirty-eight body parts', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-'));
   const statePath = join(dir, 'body-state.json');
   writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
@@ -29,15 +29,16 @@ test('the root manifest loads all thirty-two body parts', async (t) => {
   const info = await gateway.ready;
 
   const capabilities = await (await fetch(`http://127.0.0.1:${info.port}/capabilities`)).json();
-  assert.deepEqual(capabilities.drink, ['stomach', 'stomachGhrelin', 'salivaryGlands']);
-  assert.deepEqual(capabilities.eat, ['stomach', 'stomachGhrelin', 'salivaryGlands']);
+  assert.deepEqual(capabilities.drink, ['esophagus', 'stomach', 'stomachGhrelin', 'salivaryGlands']);
+  assert.deepEqual(capabilities.eat, ['esophagus', 'stomach', 'stomachGhrelin', 'salivaryGlands']);
   assert.deepEqual(capabilities.urinate, ['bladder']);
+  assert.deepEqual(capabilities.defecate, ['colon']);
   assert.deepEqual(capabilities.exercise, ['physicalActivity']);
   assert.deepEqual(capabilities.sex, ['physicalActivity', 'sexualResponse']);
   assert.deepEqual(capabilities.orgasm, ['sexualResponse']);
   assert.deepEqual(
     Object.keys(capabilities).sort(),
-    ['drink', 'eat', 'exercise', 'orgasm', 'sex', 'urinate'],
+    ['defecate', 'drink', 'eat', 'exercise', 'orgasm', 'sex', 'urinate'],
   );
 
   const response = await fetch(`http://127.0.0.1:${info.port}/actions`, {
@@ -52,16 +53,21 @@ test('the root manifest loads all thirty-two body parts', async (t) => {
   assert.deepEqual(Object.keys(first.parts).sort(), [
     'adrenal',
     'bladder',
+    'blood',
     'bloodOxygen',
     'bodyFluid',
     'brainNotify',
+    'colon',
     'duodenum',
+    'esophagus',
     'glucose',
+    'heart',
     'hypothalamusAdh',
     'hypothalamusEndocrine',
     'hypothalamusThirst',
     'interoception',
     'kidney',
+    'kidneyGluconeogenesis',
     'kidneyGlucose',
     'liver',
     'lungs',
@@ -81,11 +87,23 @@ test('the root manifest loads all thirty-two body parts', async (t) => {
     'stomach',
     'stomachGhrelin',
     'stomachSensory',
+    'thermoregulation',
     'thyroid',
   ]);
   assert.equal(first.parts.stomach.volumeMl, 330);
   assert.equal(first.parts.stomach.waterVolumeMl, 330);
   assert.equal(first.parts.stomach.emptiedWaterMl, 0);
+  assert.equal(first.parts.esophagus.bolusVolumeMl, 330);
+  assert.equal(first.parts.esophagus.transitMin, 0.2);
+  assert.ok(Math.abs(first.parts.esophagus.chokingMm - 16) < 1e-12);
+  assert.deepEqual(first.parts.colon, {
+    residueWaterMl: 0,
+    stoolG: 0.01,
+    defecatedG: 0,
+    reclaimedWaterMl: 0,
+    bowelUrgencyMm: 0.005,
+  });
+  assert.equal(first.parts.interoception.bowelUrgencyMm, 0);
   assert.equal(first.parts.smallIntestine.waterVolumeMl, 0);
   assert.ok(first.parts.stomach.energyKcal > 0);
   assert.ok(first.parts.stomachGhrelin.relativeConcentration < 1);
@@ -95,12 +113,35 @@ test('the root manifest loads all thirty-two body parts', async (t) => {
   assert.ok(Number.isFinite(first.parts.interoception.fullness));
   assert.equal(first.parts.interoception.thirst, 50);
   assert.ok(Number.isFinite(first.parts.interoception.urinaryUrgency));
+  assert.deepEqual(first.parts.heart, {
+    heartRatePerMin: 70,
+    strokeVolumeMl: 70,
+    cardiacOutputMlMin: 4900,
+  });
+  assert.deepEqual(first.parts.blood, {
+    bloodVolumeMl: 5000,
+    cardiacOutputMlMin: 4900,
+    systolicMmHg: 120 * (4900 / 5000) ** 0.5,
+    diastolicMmHg: 80 * (4900 / 5000) ** 0.3,
+    oxygenDeliveryMlMin: 4900 * (97 * 2) / 1000,
+    maxOxygenDeliveryMlPerMin: 3666.6,
+    gfrMlMin: 100,
+  });
+  assert.ok(
+    Math.abs(
+      first.parts.thermoregulation.coreTemperatureC
+        - (37 + (0.02 * 250 - 0.05 * 12) / 60),
+    ) < 1e-12,
+  );
+  assert.equal(first.parts.interoception.heatMm, 0);
+  assert.equal(first.parts.interoception.coldMm, 0);
   assert.equal(first.parts.bodyFluid.waterVolumeMl, 30000);
   assert.equal(first.parts.bodyFluid.waterDeficit, 0);
   assert.equal(first.parts.hypothalamusAdh.relativeConcentration, 1);
   assert.equal(first.parts.hypothalamusThirst.thirst, 50);
   assert.equal(first.parts.kidney.urineProductionRequestMl, 1);
   assert.deepEqual(first.parts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
+  assert.deepEqual(first.parts.kidneyGluconeogenesis, { glucoseOutputG: 0 });
   assert.deepEqual(first.parts.muscleGlucose, {
     uptakeG: 0,
     uptakeRequestG: 0,
@@ -180,6 +221,7 @@ test('the root manifest loads all thirty-two body parts', async (t) => {
   assert.ok(second.parts.stomach.volumeMl < first.parts.stomach.volumeMl);
   assert.ok(second.parts.stomach.emptiedWaterMl > 0);
   assert.ok(second.parts.smallIntestine.waterVolumeMl > 0);
+  assert.deepEqual(second.parts.esophagus, { bolusVolumeMl: 0, transitMin: 0, chokingMm: 0 });
   assert.ok(second.parts.bodyFluid.waterVolumeMl < 30000);
   assert.equal(second.parts.bladder.volumeMl, 1);
   assert.equal(second.parts.hypothalamusThirst.thirst, 50);

@@ -25,7 +25,7 @@ const smallIntestineStub = {
       unit: 'mL',
       mode: 'absolute',
       transferIn: ['stomach.waterVolumeMl'],
-      transferOut: ['bodyFluid.waterVolumeMl'],
+      transferOut: ['bodyFluid.waterVolumeMl', 'colon.residueWaterMl'],
     },
   },
 };
@@ -106,8 +106,25 @@ const mammaryGlandsStub = {
 const zeroLungs = { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 };
 const zeroSkin = { sweatRequestMl: 0, sweatVolumeMl: 0 };
 
+const colonStub = {
+  id: 'colon',
+  initialState: { residueWaterMl: 0, reclaimedWaterMl: 0 },
+  fields: {
+    residueWaterMl: {
+      unit: 'mL',
+      mode: 'absolute',
+      transferIn: ['smallIntestine.waterVolumeMl'],
+    },
+    reclaimedWaterMl: {
+      unit: 'mL',
+      mode: 'absolute',
+      transferOut: ['bodyFluid.waterVolumeMl'],
+    },
+  },
+};
+
 function registryFor(module, { withUterus, withMammary }) {
-  const parts = [stomachStub, smallIntestineStub, bladderStub, skinStub, lungsStub];
+  const parts = [stomachStub, smallIntestineStub, bladderStub, skinStub, lungsStub, colonStub];
   if (withUterus) parts.push(uterusStub);
   if (withMammary) parts.push(mammaryGlandsStub);
   parts.push({ id: module.id, initialState: module.initialState, fields: module.fields });
@@ -216,7 +233,7 @@ test('the female body fluid variant keeps the base contract and appends the uter
     waterVolumeMl: {
       unit: 'mL',
       mode: 'absolute',
-      transferIn: ['smallIntestine.waterVolumeMl'],
+      transferIn: ['smallIntestine.waterVolumeMl', 'colon.reclaimedWaterMl'],
       transferOut: [
         'bladder.volumeMl',
         'lungs.respiratoryWaterLossMl',

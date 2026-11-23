@@ -4,19 +4,19 @@
 
 `lungs` 目录有两个独立部位。`lungs`（`respiratory-water-loss.ts`）持有两个 mL 字段：按轮初 `physicalActivity` 计算下一轮的运动相关呼吸失水请求，以及本轮由 `bodyFluid` 实际转入的通量。`lungsVentilation`（`ventilation.ts`）按轮初 `bloodOxygen.oxygenConsumptionMlMin` 自动调节每分通气量与呼吸频率，并写出肺泡氧供给。两个部位不共享状态、不互相 `transfer`，也不写其他部位；同目录只是解剖归类。`lungs` 仍只覆盖运动相关呼吸失水，不建静息呼吸失水；`lungsVentilation` 是供—需平衡的通气代理，不是血气、呼吸力学或完整通气控制模型。LLM 不控制呼吸，没有通气动作。
 
-**状态口径。** 当前实现（2026-11-23）：两个脚本与参数都在 `organs/human-organs/lungs/`，均已加入根清单；加入血氧切片后根清单为 22 个部位、24 份参数文件（含 3 份不随根清单加载的 DI 变体），女性清单为 24 部位、26 份，硬 transfer 闭包仍为 9 个部位（女性 10 个）。肺失水模块的 8/8 与完整 `npm test` 418/418 是加入血氧切片前的历史结果，不代表当前 HEAD；加入 `lungsVentilation` 后的模块与真实 Gateway 离线测试需在合并后统一重跑。历史验收：活动—出汗切片当时为 17 部位、19 份参数，M3/M19 的真实 DSH 验收不覆盖肺；本切片未做真实 DSH 会话。设计目标：失水速率未来由具备环境条件与活动通气证据的通气/环境模型替换；`lungsVentilation` 目前只有固定 `design` 参数的自动调节，没有静息/环境驱动的呼吸失水、血气、呼吸力学或气促通知。
+**状态口径。** 当前实现（2026-11-24）：两个脚本与参数都在 `organs/human-organs/lungs/`，均已加入根清单；加入循环与体温切片后根清单为 36 个部位、35 份参数文件（含 3 份不随根清单加载的 DI 变体），女性清单为 39 部位、38 份，男性清单 38 部位、37 份，硬 transfer 闭包不变。肺失水模块的 8/8 与完整 `npm test` 418/418 是加入血氧切片前的历史结果，不代表当前 HEAD；加入 `lungsVentilation` 后的模块与真实 Gateway 离线测试需在合并后统一重跑。历史验收：活动—出汗切片当时为 17 部位、19 份参数，M3/M19 的真实 DSH 验收不覆盖肺；本切片未做真实 DSH 会话。设计目标：失水速率未来由具备环境条件与活动通气证据的通气/环境模型替换；`lungsVentilation` 目前只有固定 `design` 参数的自动调节，没有静息/环境驱动的呼吸失水、血气、呼吸力学或气促通知。
 
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
 | `respiratory-water-loss.ts` | `lungs` | `respiratoryWaterLossRequestMl`、`respiratoryWaterLossMl` | 轮初 `physicalActivity.remainingExerciseMin` / `intensity`；`io.dt`；同目录参数 | `respiratory-water-loss.parameters.json` |
-| `ventilation.ts` | `lungsVentilation` | `tidalVolumeMl`、`respiratoryRatePerMin`、`ventilationMlMin`、`alveolarO2MlMin` | 轮初 `bloodOxygen.oxygenConsumptionMlMin`；同目录参数 | `ventilation.parameters.json` |
+| `ventilation.ts` | `lungsVentilation` | `tidalVolumeMl`、`respiratoryRatePerMin`、`ventilationMlMin`、`alveolarO2MlMin` | 轮初 `bloodOxygen.oxygenConsumptionMlMin`；轮初 `thermoregulation.coreTemperatureC`（可选）；同目录参数 | `ventilation.parameters.json` |
 
 - 两个脚本的 `actionTypes = []`；无动作、无通知、无直接 `transfer`，不写其他部位。
 - 参数文件与脚本同目录，模块在 import 时经 `lib/parameters.js` 只读加载；参数是工程默认值，不做运行中热切换。
 - `lungs` 的唯一真实消费者是 `bodyFluid`：它下一轮读取请求字段并把水转入 `respiratoryWaterLossMl`。`physicalActivity` 只是普通轮初读取，不是 transfer 配对依赖。
-- `lungsVentilation` 的消费者是 `bloodOxygen`：下一轮读取 `alveolarO2MlMin` 作为肺泡氧供给；本部位不读血氧的 SpO2 或缺口。气促读数由 `interoception` 读 `bloodOxygen.oxygenDeficit`，不直接读通气。
+- `lungsVentilation` 的消费者是 `bloodOxygen`：下一轮读取 `alveolarO2CapacityMlMin` 作为通气能力上限；本部位不读血氧的 SpO2 或缺口。气促读数由 `interoception` 读 `bloodOxygen.oxygenDeficit`，不直接读通气。
 
 ## 2. 字段与单位
 
@@ -63,10 +63,11 @@ write.respiratoryWaterLossMl = 0
 
 ### 自动通气方程
 
-设轮初需氧为 `D`（`mL/min`）：
+设轮初需氧为 `D`（`mL/min`）、轮初核心温度为 `C`（`thermoregulation` 未加载时无喘息项）：
 
 ```text
-targetVentilation = D × deadSpaceFactor / inspiredO2Fraction
+panting = pantingGain × max(0, C − 37)
+targetVentilation = D × deadSpaceFactor / inspiredO2Fraction + panting
 ventilationMlMin = clamp(targetVentilation, restingVentilationMlMin, maxVentilationMlMin)
 respiratoryRatePerMin = clamp(ventilationMlMin / restingTidalVolumeMl,
                               restingRatePerMin, maxRatePerMin)
@@ -78,7 +79,7 @@ alveolarO2MlMin = ventilationMlMin × inspiredO2Fraction / deadSpaceFactor
 - 需氧上升时目标通气与频率上升；`D = 2000` 时通气约 13333 mL/min、频率约 26.7 次/min、供给 2000 mL/min。
 - **触顶：** `maxVentilationMlMin = 60000` 后通气与肺泡供给封顶，默认参数下肺泡供给上限为 `60000 × 0.21 / 1.4 = 9000 mL/min`；需氧继续升高时由 `bloodOxygen` 计算缺口，通气本身不会突破上限。
 - **频率读数：** `respiratoryRatePerMin` 是通气量除以固定潮气量后再单独钳位的读数。触顶时通气量已是 60000 mL/min，而频率上限 40 次/min 只限制读数，因此 `ventilationMlMin` 与 `tidalVolumeMl × respiratoryRatePerMin` 不再相等；这是固定潮气量近似，不是呼吸力学。
-- `bloodOxygen` 未加载时按基础需氧 250 mL/min 回退；已加载但字段缺失、非有限或为负时抛错，本轮不写状态。合法的 `oxygenConsumptionMlMin = 0` 按 0 处理，不产生 `NaN`。
+- `bloodOxygen` 未加载时按基础需氧 250 mL/min 回退；已加载但字段缺失、非有限或为负时抛错，本轮不写状态。合法的 `oxygenConsumptionMlMin = 0` 按 0 处理，不产生 `NaN`。`thermoregulation` 未加载时喘息项为 0；已加载但 `coreTemperatureC` 缺失、非有限或非对象时抛错，本轮不写状态。37°C 与 `thermoregulation.setpointC` 的默认值一致，本部位只维护 `pantingGain` 一个参数。
 
 同目录参数（`owner: lungsVentilation`）：
 
@@ -91,8 +92,9 @@ alveolarO2MlMin = ventilationMlMin × inspiredO2Fraction / deadSpaceFactor
 | `lungsVentilation.maxVentilationMlMin` | 60000 | `mL/min` | `design` | `source: null`；每分通气量上限，触顶后肺泡氧供给封顶，不是实测最大通气量 |
 | `lungsVentilation.inspiredO2Fraction` | 0.21 | `1` | `design` | `source: null`；吸入氧分数，室内空气量级，不是环境测量，也不建模高原或吸氧 |
 | `lungsVentilation.deadSpaceFactor` | 1.4 | `1` | `design` | `source: null`；需氧到通气量的死腔与氧提取折算系数，不是解剖死腔或氧提取测量 |
+| `lungsVentilation.pantingGain` | 0.5 | `mL/(min·°C)` | `design` | `source: null`；核心温度每高于 37°C 1°C 叠加到通气目标的喘息增益；工程假设，不是实测体温—通气斜率或喘息模型 |
 
-七个参数的 `range` 都是工程调参范围，全部 `design`、`source: null`，没有独立数据验证，不能称 `validated`。
+八个参数的 `range` 都是工程调参范围，全部 `design`、`source: null`，没有独立数据验证，不能称 `validated`。
 
 ## 4. 读写边界与真实消费者
 
@@ -105,9 +107,9 @@ alveolarO2MlMin = ventilationMlMin × inspiredO2Fraction / deadSpaceFactor
 ### `lungsVentilation` 的读写边界
 
 - 唯一上游是轮初 `bloodOxygen.oxygenConsumptionMlMin`；不读自己的上一轮状态，也不读 `lungs` 的水量字段。
-- 唯一消费者是下一轮的 `bloodOxygen`：它读取 `alveolarO2MlMin` 作为供给。`interoception` 不直接读通气，而是读 `bloodOxygen.oxygenDeficit`。
+- 唯一消费者是下一轮的 `bloodOxygen`：它读取 `alveolarO2CapacityMlMin` 作为通气能力上限，再与 `blood.maxOxygenDeliveryMlPerMin` 取较紧者。`interoception` 不直接读通气，而是读 `bloodOxygen.oxygenDeficit`。
 - 不调用 `transfer`、不发通知、不接受动作；呼吸是身体自动调节，LLM 只能通过活动、进食等上游行为间接改变需氧。
-- `bloodOxygen` 未加载或为 `null` 时按基础需氧 250 mL/min 回退；已加载但字段缺失、非有限或为负时抛错，本轮不写状态。合法的 `oxygenConsumptionMlMin = 0` 按 0 处理。
+- `bloodOxygen` 未加载或为 `null` 时按基础需氧 250 mL/min 回退；已加载但字段缺失、非有限或为负时抛错，本轮不写状态。合法的 `oxygenConsumptionMlMin = 0` 按 0 处理。`thermoregulation` 未加载时喘息项为 0；已加载但字段缺失、非有限或非对象时同样抛错。
 - 与 `lungs` 只是同目录的两个部位：`lungs` 管运动相关失水，`lungsVentilation` 管通气与肺泡供氧，互不写字段。
 
 ## 5. 请求与实际时序
@@ -137,15 +139,15 @@ alveolarO2MlMin = ventilationMlMin × inspiredO2Fraction / deadSpaceFactor
 
 | 轮次 | `bloodOxygen` 需氧 / 供给（SpO2） | `lungsVentilation` 轮初需氧 → 通气 / 频率 / 肺泡供给 |
 | ---: | --- | --- |
-| 1 | 250 / 900（97%） | 250 → 6000 / 12 / 900 |
-| 2 | 1250 / 900（约 69.8%） | 250 → 6000 / 12 / 900 |
-| 3 | 1250 / 900（约 69.8%） | 1250 → 约 8333 / 16.7 / 1250 |
-| 4 | 1250 / 1250（97%） | 1250 → 约 8333 / 16.7 / 1250 |
+| 1 | 300 / 300（97%） | 300 → 6000 / 12 / 900 |
+| 2 | 1300 / 1300（97%） | 300 → 6000 / 12 / 900 |
+| 3 | 1300 / 1300（97%） | 1300 → 约 8666.7 / 17.3 / 1300 |
+| 4 | 1300 / 1300（97%） | 1300 → 约 8666.7 / 17.3 / 1300 |
 
-- 第 1 轮动作在轮末进入 `physicalActivity`；第 2 轮血氧先读到活动，通气仍读第 1 轮的基础需氧。
-- 通气在第 3 轮才按新需氧上调，血氧再晚一轮读到新供给；第 2–3 轮的短时缺口是双重一轮滞后，不是人体去饱和时程，也不代表通气触顶。
-- 活动结束后需氧先回落，通气再晚一轮回到静息；血氧会短暂读到上一轮的高供给，不产生缺口。
-- 只有需氧持续超过通气上限（默认约 9000 mL/min 肺泡供给）时，缺口才持续存在；本表是模型内算例。
+- 第 1 轮动作在轮末进入 `physicalActivity`；第 2 轮血氧先读到活动，通气仍读第 1 轮的 300 mL/min 基础需氧。
+- 通气在第 3 轮才按新需氧上调；`bloodOxygen` 用的是轮初通气能力上限（9000 mL/min），不是上一轮实际肺泡供给，所以 SpO2 从第 1 轮起保持 97%，没有旧版双重滞后造成的短时缺口。
+- 活动结束后需氧先回落，通气再晚一轮回到静息；血氧仍按能力上限判断，不产生额外缺口。
+- 只有需氧持续超过通气能力上限（默认约 9000 mL/min 肺泡供给）或循环能力上限时，缺口才持续存在；本表是模型内算例，表中通气含体温调节的喘息项。
 
 ## 6. 异常、旧档与重启
 

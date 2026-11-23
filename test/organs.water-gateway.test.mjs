@@ -14,16 +14,21 @@ const initialBodyWaterMl = 30000;
 const partIds = [
   'adrenal',
   'bladder',
+  'blood',
   'bloodOxygen',
   'bodyFluid',
   'brainNotify',
+  'colon',
   'duodenum',
+  'esophagus',
   'glucose',
+  'heart',
   'hypothalamusAdh',
   'hypothalamusEndocrine',
   'hypothalamusThirst',
   'interoception',
   'kidney',
+  'kidneyGluconeogenesis',
   'kidneyGlucose',
   'liver',
   'lungs',
@@ -43,6 +48,7 @@ const partIds = [
   'stomach',
   'stomachGhrelin',
   'stomachSensory',
+  'thermoregulation',
   'thyroid',
 ];
 
@@ -86,9 +92,14 @@ async function startBody(t, { parts = {} } = {}) {
 function waterTotal(parts, initialMl = initialBodyWaterMl, cumulativeSweatMl = 0) {
   return parts.stomach.waterVolumeMl
     + parts.smallIntestine.waterVolumeMl
+    + colonResidueMl(parts)
     + (parts.bodyFluid.waterVolumeMl - initialMl)
     + parts.bladder.volumeMl
     + cumulativeSweatMl;
+}
+
+function colonResidueMl(parts) {
+  return parts.colon?.residueWaterMl ?? 0;
 }
 
 function queuedWaterMl(stomach) {
@@ -99,6 +110,7 @@ function waterLedgerMl(parts, cumulativeVoidedMl, initialMl = initialBodyWaterMl
   return parts.stomach.waterVolumeMl
     + queuedWaterMl(parts.stomach)
     + parts.smallIntestine.waterVolumeMl
+    + colonResidueMl(parts)
     + (parts.bodyFluid.waterVolumeMl - initialMl)
     + parts.bladder.volumeMl
     + cumulativeVoidedMl
@@ -352,6 +364,7 @@ test('a 3-round drink keeps its pending queue water in the ledger every round', 
     const ledgerMl = parts.stomach.waterVolumeMl
       + queueWaterMl
       + parts.smallIntestine.waterVolumeMl
+      + colonResidueMl(parts)
       + (parts.bodyFluid.waterVolumeMl - initialBodyWaterMl)
       + parts.bladder.volumeMl
       + cumulativeVoidedMl;
@@ -586,14 +599,22 @@ test('a non-zero urinate keeps the drink ledger and leaves the same-round urine'
           + parts.stomach.emptiedWaterMl) <= 1e-9,
         `round ${round}: only normal emptying left the stomach`,
       );
+      const residueMl = 0.05 * Math.max(
+        0,
+        voidBefore.smallIntestine.waterVolumeMl - parts.smallIntestine.absorbedWaterMl,
+      );
+      const reclaimedMl = Math.min(
+        voidBefore.colon.residueWaterMl * 0.001,
+        voidBefore.colon.residueWaterMl,
+      );
       assert.ok(
         Math.abs(parts.smallIntestine.waterVolumeMl - voidBefore.smallIntestine.waterVolumeMl
-          - (parts.stomach.emptiedWaterMl - parts.smallIntestine.absorbedWaterMl)) <= 1e-9,
+          - (parts.stomach.emptiedWaterMl - parts.smallIntestine.absorbedWaterMl - residueMl)) <= 1e-9,
         `round ${round}: only the normal chain changed the intestine`,
       );
       assert.ok(
         Math.abs(parts.bodyFluid.waterVolumeMl - voidBefore.bodyFluid.waterVolumeMl
-          + newUrineMl - parts.smallIntestine.absorbedWaterMl) <= 1e-9,
+          + newUrineMl - parts.smallIntestine.absorbedWaterMl - reclaimedMl) <= 1e-9,
         `round ${round}: body fluid only lost the kidney request`,
       );
       assert.ok(
@@ -610,9 +631,13 @@ test('a non-zero urinate keeps the drink ledger and leaves the same-round urine'
         retryBefore.bodyFluid.waterVolumeMl,
       );
       assert.equal(parts.bladder.volumeMl, retryBefore.bladder.volumeMl + newUrineMl);
+      const reclaimedMl = Math.min(
+        retryBefore.colon.residueWaterMl * 0.001,
+        retryBefore.colon.residueWaterMl,
+      );
       assert.ok(
         Math.abs(parts.bodyFluid.waterVolumeMl - retryBefore.bodyFluid.waterVolumeMl
-          + newUrineMl - parts.smallIntestine.absorbedWaterMl) <= 1e-9,
+          + newUrineMl - parts.smallIntestine.absorbedWaterMl - reclaimedMl) <= 1e-9,
         `round ${round}: retry did not drain body fluid`,
       );
       assert.equal(cumulativeVoidedMl, voidBefore.bladder.volumeMl);

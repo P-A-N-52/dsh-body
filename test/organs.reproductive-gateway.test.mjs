@@ -73,11 +73,11 @@ function emptyAccumulator() {
   return { voidedMl: 0, sweatMl: 0, lungsMl: 0, bleedingMl: 0, milkMl: 0 };
 }
 
-test('the female manifest boots 35 parts and pays menses and milk into the water ledger', async (t) => {
+test('the female manifest boots 41 parts and pays menses and milk into the water ledger', async (t) => {
   silence(t);
   const { gateway } = await startBody(t, { parts: { ovaries: { cycleDay: 0 } } });
   const booted = gateway.getState().parts;
-  assert.equal(Object.keys(booted).length, 35);
+  assert.equal(Object.keys(booted).length, 41);
   assert.ok(booted.ovaries, 'ovaries must be loaded');
   assert.ok(booted.uterus, 'uterus must be loaded');
   assert.ok(booted.liver, 'liver must be loaded');

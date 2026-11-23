@@ -29,7 +29,7 @@ const smallIntestineStub = {
       unit: 'mL',
       mode: 'absolute',
       transferIn: ['stomach.waterVolumeMl'],
-      transferOut: ['bodyFluid.waterVolumeMl'],
+      transferOut: ['bodyFluid.waterVolumeMl', 'colon.residueWaterMl'],
     },
   },
 };
@@ -72,6 +72,23 @@ const lungsStub = {
   },
 };
 
+const colonStub = {
+  id: 'colon',
+  initialState: { residueWaterMl: 0, reclaimedWaterMl: 0 },
+  fields: {
+    residueWaterMl: {
+      unit: 'mL',
+      mode: 'absolute',
+      transferIn: ['smallIntestine.waterVolumeMl'],
+    },
+    reclaimedWaterMl: {
+      unit: 'mL',
+      mode: 'absolute',
+      transferOut: ['bodyFluid.waterVolumeMl'],
+    },
+  },
+};
+
 const zeroLungs = { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 };
 
 function registry() {
@@ -81,6 +98,7 @@ function registry() {
     bladderStub,
     skinStub,
     lungsStub,
+    colonStub,
     { id, initialState, fields },
   ]);
 }
@@ -162,12 +180,38 @@ test('bodyFluid exports the compartment module contract', () => {
     waterVolumeMl: {
       unit: 'mL',
       mode: 'absolute',
-      transferIn: ['smallIntestine.waterVolumeMl'],
+      transferIn: ['smallIntestine.waterVolumeMl', 'colon.reclaimedWaterMl'],
       transferOut: ['bladder.volumeMl', 'lungs.respiratoryWaterLossMl', 'skin.sweatVolumeMl'],
     },
     waterDeficit: { unit: '1', mode: 'absolute' },
   });
   assert.deepEqual(initialState, { waterVolumeMl: 30000, waterDeficit: 0 });
+});
+
+test('colon reclaimed water is an inflow, not an outlet', () => {
+  const { written } = runHeartbeat({
+    fluid: { waterVolumeMl: 30000, waterDeficit: 0 },
+    kidney: { urineProductionRequestMl: 0 },
+    skin: { sweatRequestMl: 0, sweatVolumeMl: 0 },
+  });
+  const next = applyOperations({
+    registry: registry(),
+    snapshotParts: {
+      colon: { residueWaterMl: 0, reclaimedWaterMl: 65 },
+      bodyFluid: { waterVolumeMl: 30000, waterDeficit: 0 },
+    },
+    writes: { bodyFluid: written },
+    transfers: [{
+      caller: 'colon',
+      fromPart: 'colon',
+      fromField: 'reclaimedWaterMl',
+      toPart: 'bodyFluid',
+      toField: 'waterVolumeMl',
+      amount: 65,
+    }],
+  });
+  assert.equal(next.bodyFluid.waterVolumeMl, 30065);
+  assert.equal(next.colon.reclaimedWaterMl, 0);
 });
 
 test('writes the round-start volume and pays the kidney request only from it', () => {

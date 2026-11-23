@@ -109,7 +109,11 @@ test('sex raises arousal, feeds interoception and pays sweat, lung water and reg
     'round 2 reads the round 1 arousal',
   );
   assert.equal(parts.physicalActivity.remainingExerciseMin, 29, 'sex is counted as activity');
-  assert.equal(parts.skin.sweatRequestMl, 0.6);
+  assertClose(
+    parts.skin.sweatRequestMl,
+    0.6 * (1 + (0.02 * 250 - 0.05 * 12) / 60),
+    'the heat factor scales the baseline request',
+  );
   assert.equal(parts.lungs.respiratoryWaterLossRequestMl, 0.3);
   for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
     assert.equal(parts[region].glycogenConsumedG, 0.5, region);
@@ -187,7 +191,7 @@ test('the female manifest loads sexualResponse and releases on orgasm', async (t
     parts: { sexualResponse: arousalState(80) },
   });
 
-  assert.equal(Object.keys(gateway.getState().parts).length, 35);
+  assert.equal(Object.keys(gateway.getState().parts).length, 41);
   assert.ok(gateway.getState().parts.liver, 'liver must be loaded');
   assert.ok(gateway.getState().parts.muscleHead, 'muscleHead must be loaded');
   assert.ok(gateway.getState().parts.muscleTrunk, 'muscleTrunk must be loaded');

@@ -96,9 +96,16 @@ function expectedExcretionRequestG(concentrationMgDl, dtSeconds = 60) {
   return Math.max(0, concentrationMgDl * 1.88 - 339) * 0.0005 * 75 * dtMin / 1000;
 }
 
+function renalOutputG(parts) {
+  const concentrationMgDl = parts.glucose?.concentrationMgDl ?? baselineConcentrationMgDl;
+  const glucagonRelative = parts.pancreasEndocrine?.glucagonRelative ?? 1;
+  const active = concentrationMgDl < baselineConcentrationMgDl || glucagonRelative > 1;
+  return active ? Math.min(0.3 * glucagonRelative, 0.3) : 0;
+}
+
 function glucosePoolLedgerG(
   parts,
-  { disposedG, excretedG, muscleConsumedG },
+  { disposedG, excretedG, muscleConsumedG, kidneyOutputG = 0 },
   initialGlucoseMassG,
   initialGlycogenG,
 ) {
@@ -112,13 +119,15 @@ function glucosePoolLedgerG(
     + excretedG
     + muscleConsumedG
     - initialGlucoseMassG
-    - initialGlycogenG;
+    - initialGlycogenG
+    - kidneyOutputG;
 }
 
 function waterLedgerMl(parts, cumulativeVoidedMl, initialMl) {
   return parts.stomach.waterVolumeMl
     + parts.stomach.mealQueue.reduce((sum, meal) => sum + (meal.remainingWaterMl ?? 0), 0)
     + parts.smallIntestine.waterVolumeMl
+    + (parts.colon?.residueWaterMl ?? 0)
     + (parts.bodyFluid.waterVolumeMl - initialMl)
     + parts.bladder.volumeMl
     + cumulativeVoidedMl;
@@ -703,12 +712,14 @@ test('a preseeded low glucose save with liver glycogen refills toward baseline a
       pancreasEndocrine: { insulinRelative: 1, glucagonRelative: 1 },
     },
   });
-  const cumulative = { disposedG: 0, excretedG: 0, muscleConsumedG: 0 };
+  const cumulative = { disposedG: 0, excretedG: 0, muscleConsumedG: 0, kidneyOutputG: 0 };
   let previousMassG = initialGlucoseMassG;
   let previousConcentrationMgDl = initialConcentrationMgDl;
   let previousGlycogenG = initialGlycogenG;
 
   for (let round = 1; round <= 30; round++) {
+    const before = gateway.getState().parts;
+    cumulative.kidneyOutputG += renalOutputG(before);
     await gateway.tick();
     const parts = gateway.getState().parts;
     const releaseG = parts.liver.outputG;
@@ -758,7 +769,7 @@ test('a preseeded low glucose save with liver glycogen refills toward baseline a
   assert.ok(previousGlycogenG < initialGlycogenG, 'liver glycogen must be spent');
 });
 
-test('a low glucose save without liver glycogen gets no refill', async (t) => {
+test('a low glucose save without liver glycogen is refilled by kidney gluconeogenesis', async (t) => {
   silence(t);
   const initialGlucoseMassG = 6;
   const initialConcentrationMgDl = initialGlucoseMassG * 1000 / distributionVolumeDl;
@@ -778,18 +789,25 @@ test('a low glucose save without liver glycogen gets no refill', async (t) => {
       pancreasEndocrine: { insulinRelative: 1, glucagonRelative: 1 },
     },
   });
-  const cumulative = { disposedG: 0, excretedG: 0, muscleConsumedG: 0 };
+  const cumulative = { disposedG: 0, excretedG: 0, muscleConsumedG: 0, kidneyOutputG: 0 };
+  let previousMassG = initialGlucoseMassG;
 
   for (let round = 1; round <= 20; round++) {
+    const before = gateway.getState().parts;
+    const expectedOutputG = renalOutputG(before);
+    assert.equal(expectedOutputG, 0.3, `round ${round}: low glucose must drive the maximum rate`);
     await gateway.tick();
     const parts = gateway.getState().parts;
     assert.equal(parts.liver.outputG, 0, `round ${round}: empty liver must not release`);
     assert.equal(parts.liver.glycogenG, 0, `round ${round}: glycogen must stay empty`);
-    assert.equal(parts.glucose.glucoseMassG, initialGlucoseMassG, `round ${round}: no refill`);
-    assert.equal(
-      parts.glucose.concentrationMgDl,
-      initialConcentrationMgDl,
-      `round ${round}: concentration must not move without a source`,
+    assert.deepEqual(
+      parts.kidneyGluconeogenesis,
+      { glucoseOutputG: 0 },
+      `round ${round}: the transfer must drain the kidney output field`,
+    );
+    assert.ok(
+      Math.abs(parts.glucose.glucoseMassG - (previousMassG + expectedOutputG)) <= 1e-12,
+      `round ${round}: kidney output must be the only source`,
     );
     if (round === 1) {
       assert.ok(parts.pancreasEndocrine.glucagonRelative > 1, 'glucagon still rises without glycogen');
@@ -797,9 +815,17 @@ test('a low glucose save without liver glycogen gets no refill', async (t) => {
     cumulative.disposedG += parts.glucose.disposedGlucoseG;
     cumulative.excretedG += parts.kidneyGlucose.excretedGlucoseG;
     cumulative.muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
+    cumulative.kidneyOutputG += expectedOutputG;
     const ledgerG = glucosePoolLedgerG(parts, cumulative, initialGlucoseMassG, 0);
     assert.ok(Math.abs(ledgerG) <= ledgerToleranceG, `round ${round}: ledger ${ledgerG}`);
+    previousMassG = parts.glucose.glucoseMassG;
   }
+
+  assert.ok(previousMassG > initialGlucoseMassG, 'the kidney must refill the glucose pool');
+  assert.ok(
+    gateway.getState().parts.glucose.concentrationMgDl > initialConcentrationMgDl,
+    'concentration must rise with the refilled mass',
+  );
 });
 
 test('the root manifest fails to start when the liver transfer declarations are missing', async (t) => {

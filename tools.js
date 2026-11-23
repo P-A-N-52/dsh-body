@@ -1,5 +1,5 @@
 /*
- * DSH 会话工具：`body_act` 把结构化摄入或排尿动作提交给 Gateway，`body_state` 读取最近一次提交的快照。
+ * DSH 会话工具：`body_act` 把结构化摄入、排尿或排便动作提交给 Gateway，`body_state` 读取最近一次提交的快照。
  * 动作 id 由会话 ID 与工具调用 ID 稳定生成，同一调用重试复用同一个 id。
  * 回执里的 202 queued 只表示入队；动作在后续轮次提交后才反映到 `body_state`。
  */
@@ -28,10 +28,11 @@ function validateExercise(args) {
 
 function validateAction(args) {
   if (args.type === 'urinate') return null;
+  if (args.type === 'defecate') return null;
   if (args.type === 'orgasm') return null;
   if (args.type === 'exercise' || args.type === 'sex') return validateExercise(args);
   if (args.type !== 'drink' && args.type !== 'eat') {
-    return 'type must be drink, eat, urinate, exercise, sex, or orgasm';
+    return 'type must be drink, eat, urinate, defecate, exercise, sex, or orgasm';
   }
   if (!isFiniteNumber(args.volumeMl) || args.volumeMl <= 0) {
     return 'volumeMl must be a finite number greater than 0';
@@ -65,13 +66,13 @@ export function createBodyTools(gateway) {
   return {
     body_act: {
       name: 'body_act',
-      description: 'Submit a structured body action (drink, eat, urinate, exercise, sex, or orgasm) to the Gateway. '
+      description: 'Submit a structured body action (drink, eat, urinate, defecate, exercise, sex, or orgasm) to the Gateway. '
         + 'A 202 queued receipt only means the action is queued; it takes effect in a later heartbeat, '
         + 'so read body_state afterwards. Retrying the same session and tool call reuses the same action id.',
       parameters: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['drink', 'eat', 'urinate', 'exercise', 'sex', 'orgasm'] },
+          type: { type: 'string', enum: ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'sex', 'orgasm'] },
           volumeMl: { type: 'number', description: 'Intake volume in milliliters.' },
           energyKcal: { type: 'number', description: 'Intake energy in kilocalories.' },
           carbohydrateG: {

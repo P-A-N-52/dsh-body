@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "owner": "calcium",
+  "parameters": [
+    {
+      "id": "calcium.referenceMgDl",
+      "unit": "mg/dL",
+      "value": 9.5,
+      "status": "design",
+      "range": [8, 11],
+      "source": null,
+      "note": "血钙参考值与旧档缺字段时的初值，工程占位；不是人群正常值、个体基线或实验室参考区间，也不做白蛋白校正。未来由具备血钙证据的模型替换。range 是工程调参范围"
+    },
+    {
+      "id": "calcium.boneStoreInitialG",
+      "unit": "g",
+      "value": 100,
+      "status": "design",
+      "range": [1, 300],
+      "source": null,
+      "note": "骨钙库初始量，工程占位；不是骨钙总量、骨密度或可交换钙池测量。未来由具备骨钙池证据的模型替换。range 是工程调参范围"
+    },
+    {
+      "id": "calcium.boneCapacityG",
+      "unit": "g",
+      "value": 200,
+      "status": "design",
+      "range": [1, 500],
+      "source": null,
+      "note": "骨钙库容量上限，工程占位；只用于钳位，不是骨钙饱和、骨密度或骨折风险阈值。未来由具备骨钙容量证据的模型替换。range 是工程调参范围"
+    },
+    {
+      "id": "calcium.boneReleaseRateGPerMin",
+      "unit": "g/min",
+      "value": 0.0004,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "PTH 相对值每高于 1 一个单位时骨钙释放的速率，工程占位；不是破骨细胞活性、骨吸收标志物或实测钙流率。未来由具备 PTH-骨钙释放证据的模型替换。range 是工程调参范围"
+    },
+    {
+      "id": "calcium.boneDepositRateGPerMin",
+      "unit": "g/min",
+      "value": 0.0004,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "PTH 相对值每低于 1 一个单位时骨钙沉积的速率，工程占位；不是成骨细胞活性、骨形成标志物或实测钙流率。未来由具备 PTH-骨钙沉积证据的模型替换。range 是工程调参范围"
+    },
+    {
+      "id": "calcium.calciumExcretionPerMlG",
+      "unit": "g/mL",
+      "value": 0.000001,
+      "status": "design",
+      "range": [0, 0.001],
+      "source": null,
+      "note": "每毫升肾小球滤过对应的钙排泄质量，工程占位；在 PTH 相对值低于 1 时按 max(0, 1 − pthRelative) 缩放，1 及以上为 0，作为 PTH 促进肾小管钙重吸收的 design 代理；不是肾钙排泄分数、肌酐清除率或实测尿钙。未建模肾小管重吸收的分子机制与分段，未来由具备肾钙处理证据的模型替换。range 是工程调参范围"
+    },
+    {
+      "id": "calcium.distributionVolumeDl",
+      "unit": "dL",
+      "value": 140,
+      "status": "design",
+      "range": [10, 500],
+      "source": null,
+      "note": "血钙表观分布体积，工程占位；不是血浆容量、细胞外液体积或示踪稀释实测。浓度积分沿用本切片的 / distributionVolumeDl / 1000 口径，不是标准量纲换算。未来由具备钙分布证据的模型替换。range 是工程调参范围"
+    }
+  ]
+}

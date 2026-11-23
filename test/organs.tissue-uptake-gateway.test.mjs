@@ -81,11 +81,19 @@ function carbohydrateLedgerG(parts, cumulative) {
     + parts.liver.storageG;
 }
 
-// 逐轮池质量账：轮初入账的小肠吸收 + 肝释放 − 残余清除 − 肾糖 − 肝储存到账 − 肌摄糖到账。
-function assertPoolBalance(previousMassG, parts, label) {
+function renalOutputG(parts) {
+  const concentrationMgDl = parts.glucose?.concentrationMgDl ?? baselineConcentrationMgDl;
+  const glucagonRelative = parts.pancreasEndocrine?.glucagonRelative ?? 1;
+  const active = concentrationMgDl < baselineConcentrationMgDl || glucagonRelative > 1;
+  return active ? Math.min(0.3 * glucagonRelative, 0.3) : 0;
+}
+
+// 逐轮池质量账：轮初入账的小肠吸收 + 肝释放 + 肾糖异生 − 残余清除 − 肾糖 − 肝储存到账 − 肌摄糖到账。
+function assertPoolBalance(previousMassG, parts, label, kidneyOutputG = 0) {
   const expectedG = previousMassG
     + parts.smallIntestine.absorbedCarbohydrateG
     + parts.liver.outputG
+    + kidneyOutputG
     - parts.glucose.disposedGlucoseG
     - parts.kidneyGlucose.excretedGlucoseG
     - parts.liver.storageG
@@ -133,6 +141,7 @@ test('a carb meal produces an emergent rise-then-fall trajectory with a per-roun
   let sawLiverStorage = false;
 
   for (let round = 1; round <= 240; round++) {
+    const before = gateway.getState().parts;
     await gateway.tick();
     const parts = gateway.getState().parts;
     const label = `round ${round}`;
@@ -147,7 +156,7 @@ test('a carb meal produces an emergent rise-then-fall trajectory with a per-roun
       Math.abs(carbohydrateLedgerG(parts, cumulative) - 60) <= ledgerToleranceG,
       `${label}: carbohydrate ledger ${carbohydrateLedgerG(parts, cumulative)}`,
     );
-    assertPoolBalance(previousMassG, parts, label);
+    assertPoolBalance(previousMassG, parts, label, renalOutputG(before));
     if (parts.glucose.concentrationMgDl > peakMgDl) {
       peakMgDl = parts.glucose.concentrationMgDl;
       peakRound = round;
@@ -234,7 +243,7 @@ test('high insulin raises muscle uptake more than liver storage (1.0 vs 0.5 sens
   );
 });
 
-test('low glucose releases only from the liver and never from muscle', async (t) => {
+test('low glucose releases from the liver and kidney and never from muscle', async (t) => {
   const startMassG = 6;
   const { gateway } = await startBody(t, {
     parts: {
@@ -255,18 +264,29 @@ test('low glucose releases only from the liver and never from muscle', async (t)
 
   let previousMassG = startMassG;
   for (let round = 1; round <= 5; round++) {
+    const before = gateway.getState().parts;
+    const expectedKidneyOutputG = renalOutputG(before);
+    assert.equal(expectedKidneyOutputG, 0.3, `round ${round}: kidney must produce`);
     await gateway.tick();
     const parts = gateway.getState().parts;
     assert.ok(parts.liver.outputG > 0, `round ${round}: liver must release`);
     assert.equal(parts.glucose.disposedGlucoseG, 0, `round ${round}: below-baseline residual`);
-    assert.equal(parts.kidneyGlucose.excretedGlucoseG, 0, `round ${round}: renal transfer`);
+    assert.equal(parts.kidneyGlucose.excretedGlucoseG, 0, `round ${round}: renal glucose transfer`);
+    assert.deepEqual(
+      parts.kidneyGluconeogenesis,
+      { glucoseOutputG: 0 },
+      `round ${round}: the kidney output field must be drained`,
+    );
     assert.equal(parts.muscleGlucose.uptakeRequestG, 0, `round ${round}: muscle request`);
     assert.equal(parts.muscleGlucose.uptakeG, 0, `round ${round}: muscle uptake`);
     assert.equal(parts.liver.storageG, 0, `round ${round}: liver storage`);
     assert.equal(parts.liver.storageRequestG, 0, `round ${round}: liver storage request`);
     assert.ok(
-      Math.abs(parts.glucose.glucoseMassG - (previousMassG + parts.liver.outputG)) <= 1e-12,
-      `round ${round}: the only source must be the liver release`,
+      Math.abs(
+        parts.glucose.glucoseMassG
+          - (previousMassG + parts.liver.outputG + expectedKidneyOutputG),
+      ) <= 1e-12,
+      `round ${round}: the sources must be the liver release and kidney output`,
     );
     previousMassG = parts.glucose.glucoseMassG;
   }

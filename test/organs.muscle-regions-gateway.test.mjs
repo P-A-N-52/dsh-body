@@ -179,25 +179,35 @@ test('an amputee manifest without muscleLimbs boots and normalizes over the rema
   const { gateway } = await startBody(t, {
     manifestPath,
     dir,
-    parts: { muscleGlucose: { uptakeG: 1, uptakeRequestG: 0 } },
+    parts: {
+      muscleGlucose: {
+        uptakeG: 1,
+        uptakeRequestG: 0,
+        glycogenG: 100,
+        glycogenConsumedG: 0,
+      },
+    },
   });
 
   const booted = gateway.getState().parts;
-  assert.equal(Object.keys(booted).length, 31);
+  assert.equal(Object.keys(booted).length, 37);
   assert.ok(booted.muscleHead, 'muscleHead must be loaded');
   assert.ok(booted.muscleTrunk, 'muscleTrunk must be loaded');
   assert.equal(Object.hasOwn(booted, 'muscleLimbs'), false);
 
   await gateway.tick();
   const handedOff = gateway.getState().parts;
-  assertClose(handedOff.muscleHead.uptakeG, 0.1, 'head renormalized to 0.1');
-  assertClose(handedOff.muscleTrunk.uptakeG, 0.9, 'trunk renormalized to 0.9');
+  assertClose(handedOff.muscleHead.glycogenG, 10, 'head stock renormalized to 0.1');
+  assertClose(handedOff.muscleTrunk.glycogenG, 90, 'trunk stock renormalized to 0.9');
+  assertClose(handedOff.muscleHead.uptakeG, 0.1, 'head uptake renormalized to 0.1');
+  assertClose(handedOff.muscleTrunk.uptakeG, 0.9, 'trunk uptake renormalized to 0.9');
   assert.equal(handedOff.muscleGlucose.uptakeG, 0);
+  assert.equal(Object.hasOwn(handedOff.muscleGlucose, 'glycogenG'), false);
 
   await gateway.tick();
   const booked = gateway.getState().parts;
-  assertClose(booked.muscleHead.glycogenG, 0.1, 'head books its share');
-  assertClose(booked.muscleTrunk.glycogenG, 0.9, 'trunk books its share');
+  assertClose(booked.muscleHead.glycogenG, 10.1, 'head books its share');
+  assertClose(booked.muscleTrunk.glycogenG, 90.9, 'trunk books its share');
 });
 
 test('restarting from a committed state continues regional booking and consumption', async (t) => {

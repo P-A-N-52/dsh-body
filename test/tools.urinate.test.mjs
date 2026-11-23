@@ -90,7 +90,7 @@ test('the tool schema lists urinate and keeps the other tool and payload shape',
   assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_state']);
   assert.deepEqual(
     tools.body_act.parameters.properties.type.enum,
-    ['drink', 'eat', 'urinate', 'exercise', 'sex', 'orgasm'],
+    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'sex', 'orgasm'],
   );
   assert.deepEqual(tools.body_act.parameters.required, ['type']);
   assert.equal(tools.body_act.parameters.additionalProperties, true);

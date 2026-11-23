@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "owner": "parathyroid",
+  "parameters": [
+    {
+      "id": "parathyroid.referenceCalciumMgDl",
+      "unit": "mg/dL",
+      "value": 9.5,
+      "status": "design",
+      "range": [8, 11],
+      "source": null,
+      "note": "PTH 目标的血钙参考值，工程占位；不是人群血钙正常值、个体基线或实验室参考区间，也不区分白蛋白校正。未来由具备钙稳态证据的模型替换。range 是工程调参范围"
+    },
+    {
+      "id": "parathyroid.pthGain",
+      "unit": "1",
+      "value": 0.5,
+      "status": "design",
+      "range": [0.1, 2],
+      "source": null,
+      "note": "血钙每偏离参考值 1 mg/dL 时 PTH 相对目标的斜率，工程占位；不是钙感受受体敏感性、PTH 分泌曲线或实测拟合。未来由具备 PTH-血钙剂量反应证据的模型替换。range 是工程调参范围"
+    }
+  ]
+}

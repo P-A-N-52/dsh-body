@@ -27,15 +27,23 @@
  *   子宫请求只表示上一轮快照的月经失水请求，不是瞬时经血流率；乳腺请求只表示上一轮快照的
  *   乳汁水请求，不是实测泌乳率或婴儿需求。
  * - `io.write` 交回的是**转出前**的 `W_start`；Gateway 在 transfer 阶段才扣各出口并加入小肠
- *   同轮转入。因此本轮请求只能由轮初水支付，当轮肠流入不能支付本轮转出。
+ *   与结肠同轮转入。因此本轮请求只能由轮初水支付，当轮肠流入不能支付本轮转出。
  * - 直接模块调用缺少出口来源部位或请求字段非有限、为负时按 0；Gateway 中每个 `transferOut`
  *   目标都必须由对应部位声明，缺任一出口目标的清单会在启动时失败。
+ * - `waterVolumeMl.transferIn` 声明 `smallIntestine.waterVolumeMl` 与 `colon.reclaimedWaterMl`；
+ *   后者是结肠残渣水的回收回流（不是外部支出），由结肠作为源字段唯一写者发 transfer。清单
+ *   有 `bodyFluid` 却没有 `colon` 时，启动校验会因该配对失败；没有小肠残渣生产者的清单里，
+ *   结肠回收量为 0，体液轨迹不变。
  * - 旧行为：新出口请求为 0 时只发 0 额 transfer，既有出口的水量与其他轨迹保持不变。
  *
- * 水账：胃水 + 队列水 + 小肠水 + (体液水 − 初始体液水) + 膀胱尿 + 累计 voidedMl
+ * 水账：胃水 + 队列水 + 小肠水 + 结肠残渣水（`colon.residueWaterMl`）
+ *   + (体液水 − 初始体液水) + 膀胱尿 + 累计 voidedMl
  *   + 累计 `skin.sweatVolumeMl` + 累计 `lungs.respiratoryWaterLossMl` = 累计饮水；
- *   女性变体再加累计 `uterus.bleedingMl` 与累计 `mammaryGlands.milkMl` 两项。请求字段不计入
- *   实际失水，只有逐轮转移量进入水账。
+ *   女性变体再加累计 `uterus.bleedingMl` 与累计 `mammaryGlands.milkMl` 两项。结肠回收水
+ *   （`colon.reclaimedWaterMl → bodyFluid.waterVolumeMl`）是残渣水池到体液的**内部回流**，
+ *   不是新的外部支出或第二次摄入：它让结肠残渣水同量减少、体液水同量增加，所以只在结肠
+ *   残渣水项里体现，不另加一条外部流入；`reclaimedWaterMl` 提交后为 0，不是可累计读数。
+ *   请求字段不计入实际失水，只有逐轮转移量进入水账。
  *
  * 不能推出：`waterDeficit` 是归一化代理，不是血浆渗透压、血容量、口渴或尿意评分；各出口是
  * 请求量而不是瞬时尿流率、呼吸失水率、出汗率、经血流率或泌乳率。不建血浆/尿渗、电解质、
@@ -106,7 +114,7 @@ export function createBodyWater(outlets: readonly WaterOutlet[]): BodyWaterModul
     waterVolumeMl: {
       unit: 'mL',
       mode: 'absolute',
-      transferIn: ['smallIntestine.waterVolumeMl'],
+      transferIn: ['smallIntestine.waterVolumeMl', 'colon.reclaimedWaterMl'],
       transferOut: outlets.map((outlet) => `${outlet.toPart}.${outlet.toField}`),
     },
     waterDeficit: { unit: '1', mode: 'absolute' },

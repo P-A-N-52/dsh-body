@@ -219,7 +219,11 @@ test('restarting on the same statePath continues the supply and demand chain', a
   assert.equal(before.parts.bloodOxygen.oxygenConsumptionMlMin, 1300);
   assert.equal(before.parts.bloodOxygen.oxygenSupplyMlMin, 1300);
   assert.equal(before.parts.bloodOxygen.spo2Percent, 97);
-  assert.equal(before.parts.lungsVentilation.ventilationMlMin, 8666.666666666666);
+  assert.ok(
+    before.parts.lungsVentilation.ventilationMlMin > 8666.6
+      && before.parts.lungsVentilation.ventilationMlMin < 8668,
+    `thermoregulation adds a small panting term: ${before.parts.lungsVentilation.ventilationMlMin}`,
+  );
   await gateway.stop();
 
   gateway = await body.start();

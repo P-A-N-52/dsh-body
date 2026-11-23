@@ -13,9 +13,13 @@
  * 请求公式（R > 0；R = 0 或活动缺失时请求 0）：
  *   temperatureFactor = max(0, 1 + ambientGainPerC × (T − 25))
  *   rate = min(maxRateMlPerMin, referenceRateMlPerMin × I × temperatureFactor)
- *   sweatRequestMl = rate × dtMin
- * 只读取轮初 `physicalActivity`；本轮新入队的活动下一轮才影响请求。活动部位存在但字段缺失、
- * 非有限、为负，或 intensity > 1 时抛错，不写状态。不建皮肤分区、温度、湿润度或蒸发残余。
+ *   heatFactor = 1 + heatGain × max(0, coreTemperatureC − 37)
+ *   sweatRequestMl = rate × dtMin × heatFactor
+ * 只读取轮初 `physicalActivity` 与轮初 `thermoregulation`；本轮新入队的活动下一轮才影响请求。
+ * `thermoregulation` 未加载时 heatFactor = 1；已加载但 `coreTemperatureC` 缺失、非有限或
+ * 非对象时抛错，不写状态。37°C 与 `thermoregulation.setpointC` 的设计默认值一致，皮肤侧
+ * 只用 `heatGain` 一个参数，不复制设定点参数。活动部位存在但字段缺失、非有限、为负，或
+ * intensity > 1 时抛错，不写状态。不建皮肤分区、温度、湿润度或蒸发残余。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
@@ -30,6 +34,10 @@ type SkinState = {
 type ActivityReading = {
   remainingExerciseMin?: unknown;
   intensity?: unknown;
+};
+
+type ThermoregulationReading = {
+  coreTemperatureC?: unknown;
 };
 
 export const initialState: SkinState = {
@@ -49,6 +57,7 @@ export const fields = {
 type IO = {
   read(partId: 'skin'): Readonly<SkinState> | undefined;
   read(partId: 'physicalActivity'): Readonly<ActivityReading> | undefined;
+  read(partId: 'thermoregulation'): Readonly<ThermoregulationReading> | null | undefined;
   readonly dt: number;
   write(next: SkinState): void;
 };
@@ -58,14 +67,17 @@ const referenceRateMlPerMin = requireParameter(parameters, 'skin.sweat.reference
 const ambientGainPerC = requireParameter(parameters, 'skin.sweat.ambientGainPerC');
 const maxRateMlPerMin = requireParameter(parameters, 'skin.sweat.maxRateMlPerMin');
 const ambientTemperatureC = requireParameter(parameters, 'skin.sweat.ambientTemperatureC');
+const heatGain = requireParameter(parameters, 'skin.heatGain');
 
 const referenceTemperatureC = 25;
+const thermoregulationSetpointC = 37;
 
 type SweatRequestInput = {
   remainingExerciseMin: number;
   intensity: number;
   dtMin: number;
   ambientTemperatureC: number;
+  coreTemperatureC?: number;
 };
 
 export function sweatRequestMl({
@@ -73,6 +85,7 @@ export function sweatRequestMl({
   intensity,
   dtMin,
   ambientTemperatureC: temperatureC,
+  coreTemperatureC = thermoregulationSetpointC,
 }: SweatRequestInput): number {
   if (!(remainingExerciseMin > 0)) return 0;
   const temperatureFactor = Math.max(0, 1 + ambientGainPerC * (temperatureC - referenceTemperatureC));
@@ -80,7 +93,8 @@ export function sweatRequestMl({
     maxRateMlPerMin,
     referenceRateMlPerMin * intensity * temperatureFactor,
   );
-  return rateMlPerMin * dtMin;
+  const heatFactor = 1 + heatGain * Math.max(0, coreTemperatureC - thermoregulationSetpointC);
+  return rateMlPerMin * dtMin * heatFactor;
 }
 
 function requireFinite(value: unknown, name: string): number {
@@ -107,14 +121,31 @@ function readActivity(io: IO): { remainingExerciseMin: number; intensity: number
   return { remainingExerciseMin, intensity };
 }
 
+function readCoreTemperatureC(io: IO): number {
+  const thermoregulation = io.read('thermoregulation');
+  if (thermoregulation === undefined || thermoregulation === null) {
+    return thermoregulationSetpointC;
+  }
+  if (typeof thermoregulation !== 'object') {
+    throw new Error('skin: thermoregulation must be an object');
+  }
+  const coreTemperatureC = thermoregulation.coreTemperatureC;
+  if (typeof coreTemperatureC !== 'number' || !Number.isFinite(coreTemperatureC)) {
+    throw new Error('skin: thermoregulation.coreTemperatureC must be a finite number');
+  }
+  return coreTemperatureC;
+}
+
 export function heartbeat(io: IO): void {
   const activity = readActivity(io);
+  const coreTemperatureC = readCoreTemperatureC(io);
   const requestMl = activity
     ? sweatRequestMl({
         remainingExerciseMin: activity.remainingExerciseMin,
         intensity: activity.intensity,
         dtMin: io.dt / 60,
         ambientTemperatureC,
+        coreTemperatureC,
       })
     : 0;
 

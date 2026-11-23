@@ -33,6 +33,19 @@
  * 扣除吸收量。胃同轮转入的水和碳水在 transfer 阶段才加入肠池，下一轮才参与吸收，因此不会
  * 放大本轮的吸收量。旧存档没有 `waterVolumeMl` / `carbohydrateG` 时按 0 读取。
  *
+ * 结肠残渣出口（design，见 docs/superpowers/specs/2026-11-24-bowel-design.md）：水字段的
+ * `transferOut` 同时声明 `bodyFluid.waterVolumeMl` 与 `colon.residueWaterMl`，分别与体液的
+ * `transferIn` 和结肠的 `transferIn` 配对；`colon` 必须加载，否则启动校验失败。本轮未吸收的
+ * 轮初肠水按 `smallIntestine.residueFraction = 0.05`（同目录参数文件，`design`、`source: null`）
+ * 转入结肠：
+ *   unabsorbedMl = max(0, waterVolumeMl − absorbedWaterMl)
+ *   residueMl = clamp(residueFraction, 0, 1) × unabsorbedMl
+ * 吸收量仍按上方一阶公式与反馈因子计算，不因残渣出口改变；转入结肠的是“未吸收部分”的固定
+ * 比例，不是每日排空量、粪便水实测值或吸收分数。残渣与吸收量之和不超过轮初肠水，因此同轮
+ * 两个 transfer 不会透支源字段。结肠在下一轮才回收其中一部分回流 `bodyFluid`；本轮回收量
+ * 按结肠轮初残渣计算，不参与本轮小肠吸收。`colon` 未加载时直接调用本模块不报错，但完整清单
+ * 启动会因 `transferOut` 目标未声明而失败。
+ *
  * 吸收反馈（design，见 docs/superpowers/specs/2026-11-24-digestive-feedback-design.md）：
  *   waterFactor = 1 − waterAbsorptionDehydrationFactor × clamp(bodyFluid.waterDeficit, 0, 1)
  *   carbFactor  = 1 + carbAbsorptionInsulinGain × (pancreasEndocrine.insulinRelative − 1)
@@ -70,7 +83,7 @@ export const fields = {
     unit: 'mL',
     mode: 'absolute',
     transferIn: ['stomach.waterVolumeMl'],
-    transferOut: ['bodyFluid.waterVolumeMl'],
+    transferOut: ['bodyFluid.waterVolumeMl', 'colon.residueWaterMl'],
   },
   absorbedWaterMl: { unit: 'mL', mode: 'absolute' },
   carbohydrateG: {
@@ -110,6 +123,13 @@ type IO = {
   ): void;
   transfer(
     fromPart: 'smallIntestine',
+    fromField: 'waterVolumeMl',
+    toPart: 'colon',
+    toField: 'residueWaterMl',
+    amount: number,
+  ): void;
+  transfer(
+    fromPart: 'smallIntestine',
     fromField: 'carbohydrateG',
     toPart: 'glucose',
     toField: 'glucoseMassG',
@@ -119,6 +139,7 @@ type IO = {
 
 const parameters = loadParameters(new URL('./water-absorption.parameters.json', import.meta.url));
 const halfTimeMin = requireParameter(parameters, 'smallIntestine.absorption.halfTimeMin');
+const residueFraction = requireParameter(parameters, 'smallIntestine.residueFraction');
 const carbohydrateHalfTimeMin = requireParameter(
   parameters,
   'smallIntestine.carbohydrateAbsorption.halfTimeMin',
@@ -194,6 +215,8 @@ export function heartbeat(io: IO): void {
 
   const absorbedWaterMl = absorbedFrom(waterVolumeMl, dtMin, halfTimeMin) * waterFactor;
   const absorbedCarbohydrateG = absorbedFrom(carbohydrateG, dtMin, carbohydrateHalfTimeMin) * carbFactor;
+  const residueWaterMl = clamp(residueFraction, 0, 1)
+    * Math.max(0, waterVolumeMl - absorbedWaterMl);
 
   io.write({
     waterVolumeMl,
@@ -202,5 +225,6 @@ export function heartbeat(io: IO): void {
     absorbedCarbohydrateG,
   });
   io.transfer(id, 'waterVolumeMl', 'bodyFluid', 'waterVolumeMl', absorbedWaterMl);
+  io.transfer(id, 'waterVolumeMl', 'colon', 'residueWaterMl', residueWaterMl);
   io.transfer(id, 'carbohydrateG', 'glucose', 'glucoseMassG', absorbedCarbohydrateG);
 }

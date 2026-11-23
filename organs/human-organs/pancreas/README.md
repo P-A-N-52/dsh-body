@@ -4,7 +4,7 @@
 
 `pancreasEndocrine` 读取轮初血浆葡萄糖浓度代理，写入两个无量纲的相对信号：高血糖侧 `insulinRelative`，低血糖侧 `glucagonRelative`。`insulinRelative` 由各摄糖部位各自使用：骨骼肌按敏感度 1.0、肝按 0.5 把相对信号换算成自己的摄糖请求；`glucagonRelative` 只由肝用于放大肝糖原释放。葡萄糖隔室自身的残余清除与胰岛素信号无关。它位于 `organs/human-organs/pancreas/`，只实现 `glucose.concentrationMgDl → pancreasEndocrine.insulinRelative → muscleGlucose / liver 摄糖请求` 与 `glucose.concentrationMgDl → pancreasEndocrine.glucagonRelative → liver 释放` 两条工程薄切片，不是胰岛素/胰高血糖素浓度、分泌率、C-peptide 或完整血糖—激素模型。
 
-实现状态：胰腺脚本、参数与模块契约测试已落地；葡萄糖浓度、肌肉/肝摄糖请求与肝糖原释放的耦合、根清单注册均已接入，当前根清单为 23 个部位、25 份参数文件（女性清单 25 个部位、27 份，含 3 份 DI 变体）。`muscleGlucose` 与 `liver` 各自读取 `insulinRelative` 并用自己的敏感度计算请求；`liver` 另读 `glucagonRelative`；`glucose` 不再读本信号。尚未做真实 DSH 会话验收或独立生理数据验证。
+实现状态：胰腺脚本、参数与模块契约测试已落地；葡萄糖浓度、肌肉/肝摄糖请求与肝糖原释放的耦合、根清单注册均已接入，当前根清单为 32 个部位、31 份参数文件（女性清单 35 个部位、34 份，男性清单 34 个部位、33 份，含 3 份 DI 变体）。`muscleGlucose` 与 `liver` 各自读取 `insulinRelative` 并用自己的敏感度计算请求；`liver` 另读 `glucagonRelative`；`glucose` 不再读本信号。尚未做真实 DSH 会话验收或独立生理数据验证。
 
 ## 1. 脚本与读写关系
 

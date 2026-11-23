@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { loadParameters } from '../lib/parameters.js';
 import {
   actionTypes as adhActionTypes,
   fields as adhFields,
@@ -24,11 +26,12 @@ import {
 
 const APPROACH = 1 - Math.exp(-0.1);
 
-function adhRound(previous, deficit) {
+function adhRound(previous, deficit, blood) {
   let written;
   adhHeartbeat({
     read: (partId) => {
       if (partId === 'hypothalamusAdh') return previous;
+      if (partId === 'blood') return blood;
       if (partId === 'bodyFluid') return deficit === undefined ? undefined : { waterDeficit: deficit };
       throw new Error(`unexpected read: ${partId}`);
     },
@@ -107,7 +110,11 @@ test('missing or non-finite water deficit defaults to 0', () => {
   for (const reading of [undefined, {}, { waterDeficit: Number.NaN }]) {
     let adhWritten;
     adhHeartbeat({
-      read: (partId) => (partId === 'hypothalamusAdh' ? adhInitialState : reading),
+      read: (partId) => {
+        if (partId === 'hypothalamusAdh') return adhInitialState;
+        if (partId === 'blood') return undefined;
+        return reading;
+      },
       actions: [],
       dt: 60,
       simulatedSeconds: 60,
@@ -147,6 +154,92 @@ test('ADH target and thirst respect their declared bounds', () => {
   assert.deepEqual(thirstRound(5), { thirst: 100 });
 });
 
+test('the volume gain parameter is a design default with no source', () => {
+  const url = new URL(
+    '../organs/human-organs/brain/hypothalamus-adh.parameters.json',
+    import.meta.url,
+  );
+  const data = JSON.parse(readFileSync(url, 'utf8'));
+  const gain = data.parameters.find((parameter) => parameter.id === 'hypothalamusAdh.volumeGain');
+  assert.ok(gain, 'hypothalamusAdh.volumeGain must be declared');
+  assert.equal(gain.value, 0.5);
+  assert.equal(gain.status, 'design');
+  assert.equal(gain.source, null);
+  assert.equal(loadParameters(url)['hypothalamusAdh.volumeGain'], 0.5);
+});
+
+test('a low blood volume raises the ADH target by volumeGain × (1 − volume / 5000)', () => {
+  const atReference = adhRound(adhInitialState, 0, { bloodVolumeMl: 5000 });
+  assert.deepEqual(atReference, { relativeConcentration: 1 });
+
+  const cases = [
+    [4000, 0.5 * 0.2],
+    [2500, 0.5 * 0.5],
+    [1000, 0.5 * 0.8],
+    [6000, 0.5 * -0.2],
+  ];
+  for (const [bloodVolumeMl, term] of cases) {
+    const next = adhRound(adhInitialState, 0, { bloodVolumeMl });
+    assert.ok(
+      Math.abs(next.relativeConcentration - (1 + APPROACH * term)) < 1e-12,
+      `${bloodVolumeMl} mL: ${next.relativeConcentration} != ${1 + APPROACH * term}`,
+    );
+  }
+});
+
+test('a missing blood part leaves the water-deficit target unchanged', () => {
+  assert.deepEqual(adhRound(adhInitialState, 0), { relativeConcentration: 1 });
+  assert.deepEqual(
+    adhRound(adhInitialState, 1),
+    adhRound(adhInitialState, 1, { bloodVolumeMl: 5000 }),
+  );
+});
+
+test('the volume term adds to the water-deficit target before the bounds clamp', () => {
+  const combined = adhRound(adhInitialState, 1, { bloodVolumeMl: 4000 });
+  assert.ok(Math.abs(combined.relativeConcentration - (1 + APPROACH * 1.1)) < 1e-12);
+
+  const clampedHigh = adhRound(adhInitialState, 5, { bloodVolumeMl: 1000 });
+  assert.ok(Math.abs(clampedHigh.relativeConcentration - (1 + APPROACH * (3 - 1))) < 1e-12);
+
+  const clampedLow = adhRound(adhInitialState, -5, { bloodVolumeMl: 20000 });
+  assert.ok(Math.abs(clampedLow.relativeConcentration - (1 + APPROACH * (0 - 1))) < 1e-12);
+});
+
+test('an invalid loaded blood reading fails the ADH round without writing', () => {
+  const invalid = [
+    ['empty blood', {}],
+    ['missing volume', { cardiacOutputMlMin: 4900 }],
+    ['NaN volume', { bloodVolumeMl: Number.NaN }],
+    ['infinite volume', { bloodVolumeMl: Number.POSITIVE_INFINITY }],
+    ['negative volume', { bloodVolumeMl: -1 }],
+    ['non-numeric volume', { bloodVolumeMl: '5000' }],
+    ['null volume', { bloodVolumeMl: null }],
+    ['null blood', null],
+    ['non-object blood', 42],
+  ];
+  for (const [label, blood] of invalid) {
+    const writes = [];
+    assert.throws(
+      () => adhHeartbeat({
+        read: (partId) => {
+          if (partId === 'hypothalamusAdh') return adhInitialState;
+          if (partId === 'blood') return blood;
+          return { waterDeficit: 0 };
+        },
+        actions: [],
+        dt: 60,
+        simulatedSeconds: 60,
+        write: (next) => { writes.push(next); },
+        notify: () => { throw new Error('ADH must not notify'); },
+      }),
+      Error,
+      label,
+    );
+    assert.equal(writes.length, 0, `${label}: the round must not write`);
+  }
+});
+
 test('the two scripts only write their own part and never act or notify', () => {
   const actions = [{ type: 'drink', volumeMl: 240, energyKcal: 0, sessionId: 'session-a' }];
   const notifications = [];
@@ -154,7 +247,11 @@ test('the two scripts only write their own part and never act or notify', () => 
   let adhWritten;
   adhHeartbeat({
     read: (partId) => {
-      assert.ok(partId === 'hypothalamusAdh' || partId === 'bodyFluid', `unexpected read: ${partId}`);
+      assert.ok(
+        partId === 'hypothalamusAdh' || partId === 'bodyFluid' || partId === 'blood',
+        `unexpected read: ${partId}`,
+      );
+      if (partId === 'blood') return { bloodVolumeMl: 5000 };
       return partId === 'bodyFluid' ? { waterDeficit: -0.5 } : adhInitialState;
     },
     actions,

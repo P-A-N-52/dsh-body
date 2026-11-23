@@ -34,12 +34,12 @@ pthRelative = pthTarget + (prevPth − pthTarget) × 2^(−dtMin / 15)
 ```text
 release = pthRelative > 1 ? min(boneReleaseRateGPerMin × (pthRelative − 1) × dtMin, boneStoreG) : 0
 deposit = pthRelative < 1 ? boneDepositRateGPerMin × (1 − pthRelative) × dtMin : 0
-excretion = blood.gfrMlMin × calciumExcretionPerMlG × dtMin
+excretion = blood.gfrMlMin × calciumExcretionPerMlG × max(0, 1 − pthRelative) × dtMin
 boneStoreG = clamp(boneStoreG − release + deposit, 0, boneCapacityG)
 mgDl = clamp(prev.mgDl + (release − deposit − excretion) / distributionVolumeDl / 1000, 0, 20)
 ```
 
-参数（`calcium.parameters.json`，均 design/null）：`calcium.referenceMgDl = 9.5`、`boneStoreInitialG = 100`、`boneCapacityG = 200`、`boneReleaseRateGPerMin = 0.01`、`boneDepositRateGPerMin = 0.01`、`calciumExcretionPerMlG = 0.0001`、`distributionVolumeDl = 140`。
+参数（`calcium.parameters.json`，均 design/null）：`calcium.referenceMgDl = 9.5`、`boneStoreInitialG = 100`、`boneCapacityG = 200`、`boneReleaseRateGPerMin = 0.0004`、`boneDepositRateGPerMin = 0.0004`、`calciumExcretionPerMlG = 0.000001`、`distributionVolumeDl = 140`。
 
 `blood` 未加载时按 `gfr = 100`；`parathyroid` 未加载时 PTH 按 1。`interoception` 新增 `hypocalcemiaMm = clamp(50 × (9.5 − bloodCalcium.mgDl), 0, 100)` 与 `hypercalcemiaMm = clamp(50 × (bloodCalcium.mgDl − 9.5), 0, 100)`（`bloodCalcium` 未加载按 0）。
 

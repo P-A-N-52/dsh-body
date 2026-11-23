@@ -7,14 +7,20 @@
  *   demand = basalDemand
  *          + activityGainMlMin × intensity（轮初 remainingExerciseMin > 0 时）
  *          + digestionGain × nutrientExposure × basalMlMin
- *   capacity = lungsVentilation.alveolarO2CapacityMlMin（通气能力上限，未加载时按 demand 全额供给）
+ *   capacity = min(lungsVentilation.alveolarO2CapacityMlMin（通气能力上限）,
+ *                  blood.maxOxygenDeliveryMlPerMin（循环最大氧输送能力）)
+ *              未加载的选项不参与 min；两者都未加载时按 demand 全额供给
  *   supply = min(demand, capacity)
  *   deficit = demand > 0 ? clamp((demand − supply) / demand, 0, 1) : 0
  *   spo2Percent = baselineSpo2Percent × (1 − deficit)
  *
- * SpO2 由需求与通气能力上限决定，不由上一轮实际通气量决定：自动调节假定在一轮之内跟上
+ * SpO2 由需求与能力上限决定，不由上一轮实际通气量决定：自动调节假定在一轮之内跟上
  * 需求，只有需求超过能力才去饱和。若用上一轮实际供氧算 SpO2，活动首轮会出现假性缺口。
  * `lungsVentilation.alveolarO2MlMin` 只是实际供氧读数，本脚本不读。
+ * `blood.maxOxygenDeliveryMlPerMin` 是 `blood` 按最大驱动与轮初 SpO2 算出的循环能力
+ * 上限，与当前心输出无关；`blood.oxygenDeliveryMlMin` 是含一轮滞后的实际氧输送读数，
+ * 本脚本不读，避免活动首轮用上一轮静息心输出判定去饱和。`blood` 未加载时退回只用通气
+ * 能力上限，与接入前行为一致；已加载但能力字段缺失、非有限或为负时抛错使本轮失败。
  *
  * 输出只反映本轮供需，不累计历史氧债，也不做质量守恒账；不调用 transfer。
  * 消费者：`lungsVentilation` 读 `oxygenConsumptionMlMin` 自动调通气（身体调节，不是 LLM 呼吸
@@ -27,8 +33,8 @@
  * 证据：无直接人体来源。250 mL/min 静息氧耗量级、intensity=1 时 1000 mL/min 的附加氧耗、
  * 0.1 的餐后产热占基础氧耗比例、0.8 + 0.4 × T4 的缩放曲线与 97% 基线 SpO2 全部是 `design`、
  * `source: null`（同目录 `oxygen.parameters.json`），不是人体测量、血气、血红蛋白或心肺功能
- * 模型。不建 PaO2/PaCO2、氧合曲线、心输出量、CO2、高原/病理缺氧、通气动作或气促通知；
- * 不能称 validated。
+ * 模型。不建 PaO2/PaCO2、氧合曲线、CO2、高原/病理缺氧、通气动作或气促通知；心输出与氧
+ * 输送由 `blood` 以 `design` 常数给出，本脚本不据此声明循环生理。不能称 validated。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
@@ -59,6 +65,10 @@ type ThyroidReading = {
   thyroxineRelative?: unknown;
 };
 
+type BloodReading = {
+  maxOxygenDeliveryMlPerMin?: unknown;
+};
+
 const parameters = loadParameters(new URL('./oxygen.parameters.json', import.meta.url));
 const basalMlMin = requireParameter(parameters, 'bloodOxygen.basalMlMin');
 const activityGainMlMin = requireParameter(parameters, 'bloodOxygen.activityGainMlMin');
@@ -84,6 +94,7 @@ type IO = {
   read(id: 'duodenum'): Readonly<DuodenumReading> | undefined;
   read(id: 'lungsVentilation'): Readonly<LungsVentilationReading> | undefined;
   read(id: 'thyroid'): Readonly<ThyroidReading> | undefined;
+  read(id: 'blood'): Readonly<BloodReading> | undefined;
   write(next: BloodOxygenState): void;
 };
 
@@ -184,6 +195,26 @@ function readThyroxineRelative(
   return thyroxineRelative;
 }
 
+function readMaxOxygenDelivery(
+  blood: Readonly<BloodReading> | undefined,
+): number | undefined {
+  if (blood === undefined) return undefined;
+  if (typeof blood !== 'object' || blood === null) {
+    throw new Error('bloodOxygen: blood must be an object');
+  }
+  const maxOxygenDeliveryMlPerMin = blood.maxOxygenDeliveryMlPerMin;
+  if (
+    typeof maxOxygenDeliveryMlPerMin !== 'number'
+    || !Number.isFinite(maxOxygenDeliveryMlPerMin)
+    || maxOxygenDeliveryMlPerMin < 0
+  ) {
+    throw new Error(
+      'bloodOxygen: blood.maxOxygenDeliveryMlPerMin must be a finite non-negative number',
+    );
+  }
+  return maxOxygenDeliveryMlPerMin;
+}
+
 export function heartbeat(io: IO): void {
   const activity = readActivity(io.read('physicalActivity'));
   const nutrientExposure = readNutrientExposure(io.read('duodenum'));
@@ -200,7 +231,11 @@ export function heartbeat(io: IO): void {
     + digestionGain * nutrientExposure * basalMlMin;
 
   const alveolarCapacityMlMin = readAlveolarCapacity(io.read('lungsVentilation'));
-  const capacityMlMin = alveolarCapacityMlMin ?? demandMlMin;
+  const maxOxygenDeliveryMlPerMin = readMaxOxygenDelivery(io.read('blood'));
+  const capacityMlMin = Math.min(
+    alveolarCapacityMlMin ?? demandMlMin,
+    maxOxygenDeliveryMlPerMin ?? demandMlMin,
+  );
   const supplyMlMin = Math.min(demandMlMin, capacityMlMin);
   const { oxygenDeficit, spo2Percent } = balanceOxygen(demandMlMin, supplyMlMin);
 

@@ -21,16 +21,21 @@ const nephrogenicKidneyPath = './organs/human-organs/kidney/urine-production-di-
 const partIds = [
   'adrenal',
   'bladder',
+  'blood',
   'bloodOxygen',
   'bodyFluid',
   'brainNotify',
+  'colon',
   'duodenum',
+  'esophagus',
   'glucose',
+  'heart',
   'hypothalamusAdh',
   'hypothalamusEndocrine',
   'hypothalamusThirst',
   'interoception',
   'kidney',
+  'kidneyGluconeogenesis',
   'kidneyGlucose',
   'liver',
   'lungs',
@@ -50,6 +55,7 @@ const partIds = [
   'stomach',
   'stomachGhrelin',
   'stomachSensory',
+  'thermoregulation',
   'thyroid',
 ];
 
@@ -127,6 +133,7 @@ async function startBody(t, { swaps = {}, parts = {}, statePath } = {}) {
 function waterTotal(parts) {
   return parts.stomach.waterVolumeMl
     + parts.smallIntestine.waterVolumeMl
+    + (parts.colon?.residueWaterMl ?? 0)
     + (parts.bodyFluid.waterVolumeMl - initialBodyWaterMl)
     + parts.bladder.volumeMl;
 }
@@ -152,7 +159,7 @@ function snapshot(parts) {
 
 test('the root manifest keeps the normal water chain with no DI variant loaded', () => {
   const manifest = JSON.parse(readFileSync(rootManifestPath, 'utf8'));
-  assert.equal(manifest.scripts.length, 32);
+  assert.equal(manifest.scripts.length, 38);
   assert.ok(manifest.scripts.includes(normalAdhPath));
   assert.ok(manifest.scripts.includes(normalKidneyPath));
   assert.ok(manifest.scripts.includes(lungsPath));
@@ -166,6 +173,7 @@ test('the normal ADH and kidney parameter files keep their design defaults', () 
   assert.deepEqual(adh, {
     'hypothalamusAdh.timeConstantMin': 10,
     'hypothalamusAdh.deficitGain': 1,
+    'hypothalamusAdh.volumeGain': 0.5,
     'hypothalamusAdh.relativeMinimum': 0,
     'hypothalamusAdh.relativeMaximum': 3,
   });
@@ -222,8 +230,9 @@ test('a central DI manifest zeroes ADH and produces four mL per minute of urine'
     swaps: { [normalAdhPath]: centralAdhPath, [normalKidneyPath]: centralKidneyPath },
   });
   assert.deepEqual(gateway.getCapabilities(), {
-    drink: ['stomach', 'stomachGhrelin', 'salivaryGlands'],
-    eat: ['stomach', 'stomachGhrelin', 'salivaryGlands'],
+    drink: ['esophagus', 'stomach', 'stomachGhrelin', 'salivaryGlands'],
+    eat: ['esophagus', 'stomach', 'stomachGhrelin', 'salivaryGlands'],
+    defecate: ['colon'],
     urinate: ['bladder'],
     exercise: ['physicalActivity'],
     sex: ['physicalActivity', 'sexualResponse'],
@@ -346,7 +355,7 @@ test('body_act and body_state keep their shapes under a DI manifest', async (t) 
   assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_state']);
   assert.deepEqual(
     tools.body_act.parameters.properties.type.enum,
-    ['drink', 'eat', 'urinate', 'exercise', 'sex', 'orgasm'],
+    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'sex', 'orgasm'],
   );
   assert.deepEqual(tools.body_act.output.schema.required, ['ok', 'statusCode', 'receipt']);
   assert.deepEqual(tools.body_state.output.schema.required, ['simulatedSeconds', 'parts']);

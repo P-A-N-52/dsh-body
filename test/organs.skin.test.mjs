@@ -17,13 +17,20 @@ const parametersUrl = new URL(
   import.meta.url,
 );
 
-function round({ state, activity, dt = 60, simulatedSeconds = 60 } = {}) {
+function round({
+  state,
+  activity,
+  thermoregulation,
+  dt = 60,
+  simulatedSeconds = 60,
+} = {}) {
   const writes = [];
   const transfers = [];
   heartbeat({
     read: (partId) => {
       if (partId === 'skin') return state;
       if (partId === 'physicalActivity') return activity;
+      if (partId === 'thermoregulation') return thermoregulation;
       return undefined;
     },
     actions: [],
@@ -46,11 +53,15 @@ function assertClose(actual, expected, label, tolerance = 1e-12) {
   );
 }
 
-function expectSweatError(activity, label) {
+function expectSweatError(activity, label, thermoregulation) {
   const writes = [];
   assert.throws(
     () => heartbeat({
-      read: (partId) => (partId === 'physicalActivity' ? activity : undefined),
+      read: (partId) => {
+        if (partId === 'physicalActivity') return activity;
+        if (partId === 'thermoregulation') return thermoregulation;
+        return undefined;
+      },
       actions: [],
       dt: 60,
       simulatedSeconds: 60,
@@ -89,6 +100,7 @@ test('skin sweat parameters are design defaults with no measurements', () => {
     data.parameters.map((parameter) => [parameter.id, parameter]),
   );
   assert.deepEqual(Object.keys(byId).sort(), [
+    'skin.heatGain',
     'skin.sweat.ambientGainPerC',
     'skin.sweat.ambientTemperatureC',
     'skin.sweat.maxRateMlPerMin',
@@ -100,6 +112,7 @@ test('skin sweat parameters are design defaults with no measurements', () => {
     ['skin.sweat.referenceRateMlPerMin', 0.6, 'mL/min'],
     ['skin.sweat.ambientGainPerC', 0.04, '1/°C'],
     ['skin.sweat.maxRateMlPerMin', 2, 'mL/min'],
+    ['skin.heatGain', 1, '1/°C'],
   ];
   for (const [parameterId, value, unit] of expected) {
     assert.equal(byId[parameterId].value, value, parameterId);
@@ -113,6 +126,7 @@ test('skin sweat parameters are design defaults with no measurements', () => {
     'skin.sweat.referenceRateMlPerMin': 0.6,
     'skin.sweat.ambientGainPerC': 0.04,
     'skin.sweat.maxRateMlPerMin': 2,
+    'skin.heatGain': 1,
   });
 });
 
@@ -163,6 +177,28 @@ test('the request follows the design intensity, temperature, cap and dt', () => 
       input: { remainingExerciseMin: 10, intensity: 1, dtMin: 1, ambientTemperatureC: -25 },
       expected: 0,
     },
+    {
+      label: 'a 38 C core temperature doubles the request',
+      input: {
+        remainingExerciseMin: 10,
+        intensity: 1,
+        dtMin: 1,
+        ambientTemperatureC: 25,
+        coreTemperatureC: 38,
+      },
+      expected: 1.2,
+    },
+    {
+      label: 'a core temperature below the setpoint does not reduce the request',
+      input: {
+        remainingExerciseMin: 10,
+        intensity: 1,
+        dtMin: 1,
+        ambientTemperatureC: 25,
+        coreTemperatureC: 35,
+      },
+      expected: 0.6,
+    },
   ];
 
   for (const { label, input, expected } of cases) {
@@ -187,6 +223,57 @@ test('25 C and intensity 1 request 0.6 mL in a 60 s round', () => {
 
   const half = round({ activity: active(10, 0.5), dt: 60 }).written;
   assertClose(half.sweatRequestMl, 0.3, 'half intensity');
+});
+
+test('a hot core temperature multiplies the sweat request, cold does not', () => {
+  const atSetpoint = round({
+    activity: active(),
+    thermoregulation: { coreTemperatureC: 37 },
+  }).written;
+  const hot = round({
+    activity: active(),
+    thermoregulation: { coreTemperatureC: 38 },
+  }).written;
+  const hotter = round({
+    activity: active(),
+    thermoregulation: { coreTemperatureC: 39 },
+  }).written;
+  const cold = round({
+    activity: active(),
+    thermoregulation: { coreTemperatureC: 35 },
+  }).written;
+
+  assertClose(atSetpoint.sweatRequestMl, 0.6, 'at the setpoint');
+  assertClose(hot.sweatRequestMl, 1.2, 'one degree above the setpoint');
+  assertClose(hotter.sweatRequestMl, 1.8, 'two degrees above the setpoint');
+  assertClose(cold.sweatRequestMl, 0.6, 'below the setpoint has no reduction');
+});
+
+test('missing thermoregulation keeps the unmultiplied request', () => {
+  const missing = round({ activity: active() }).written;
+  const explicit = round({
+    activity: active(),
+    thermoregulation: { coreTemperatureC: 37 },
+  }).written;
+  assert.deepEqual(missing, explicit);
+  assertClose(missing.sweatRequestMl, 0.6, 'missing thermoregulation');
+});
+
+test('a loaded thermoregulation with an invalid core temperature fails without writing', () => {
+  const invalid = [
+    ['empty part', {}],
+    ['missing temperature', { setpointC: 37 }],
+    ['null temperature', { coreTemperatureC: null }],
+    ['NaN temperature', { coreTemperatureC: Number.NaN }],
+    ['positive infinite temperature', { coreTemperatureC: Number.POSITIVE_INFINITY }],
+    ['negative infinite temperature', { coreTemperatureC: Number.NEGATIVE_INFINITY }],
+    ['string temperature', { coreTemperatureC: '38' }],
+    ['non-object part', 42],
+  ];
+
+  for (const [label, thermoregulation] of invalid) {
+    expectSweatError(active(), label, thermoregulation);
+  }
 });
 
 test('the request scales with io.dt and not simulatedSeconds', () => {

@@ -64,6 +64,15 @@
       "range": [1, 3],
       "source": null,
       "note": "需氧到通气量的死腔与氧提取折算系数；工程假设，不是解剖死腔或氧提取测量"
+    },
+    {
+      "id": "lungsVentilation.pantingGain",
+      "unit": "mL/(min·°C)",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "核心温度每高于设定点 37°C 1°C 时叠加到通气目标的喘息增益；工程假设，不是实测体温—通气斜率或喘息模型"
     }
   ]
 }

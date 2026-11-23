@@ -53,6 +53,9 @@
 - [ ] Step 2: 文档（区域机制、聚合分配、旧档迁移、独臂变体用法、未建模：疲劳/延迟酸痛/左右分区/绝对肌量/MET）。
 - [ ] Step 3: `npm test` 与 `git diff --check`。
 
-## 交付记录
+## 交付记录（2026-11-24）
 
-（Task 4 填写）
+- **已实现：** `muscleGlucose` 由单一糖原库改为聚合分配器：按 `head 0.05 / trunk 0.45 / limbs 0.50` 把摄糖经 transfer 分配给 `muscleHead` / `muscleTrunk` / `muscleLimbs`（存在区域归一）。三个区域各自持有糖原并按轮初 `physicalActivity` 以 `0.5 g/min × intensity × dtMin` 消耗（`regions/region-core.ts` 共享逻辑）。`glucose-uptake.no-limbs.ts` 为独臂变体（缺 `muscleLimbs`，份额按剩余区域归一）。旧档总量按份额迁移到区域初值，在途 `uptakeG` 保留。根清单 32 部位 / 34 参数、女性 34 / 36。
+- **已验证：** 聚合与区域单元 21/21；真实 Gateway：各区域糖原按份额上升、运动消耗发生在各区域、总量与旧单部位一致、独臂变体可用、旧档按份额迁移、重启接续。`npm test` 772/772。
+- **仍未实现/未验证：** 肌群疲劳/延迟酸痛、左右小腿与皮肤分区、绝对肌量、MET、独立生理数据、真实 DSH 会话、32 部位性能。
+- **工作区：** 与男性生殖、消化反馈合入本地提交 `c134fd0`。

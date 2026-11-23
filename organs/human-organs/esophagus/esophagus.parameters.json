@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "owner": "esophagus",
+  "parameters": [
+    {
+      "id": "esophagus.bolusTransitMin",
+      "unit": "min",
+      "value": 0.2,
+      "status": "design",
+      "range": [0.05, 5],
+      "source": null,
+      "note": "食团在食管的工程转运时延，不是实测食管转运时间或吞咽分期；60 s 轮长下正常一轮后剩余转运即为 0。range 是工程调参范围，不是人体百分位"
+    },
+    {
+      "id": "esophagus.chokeGain",
+      "unit": "mm/1",
+      "value": 50,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "食团超过参考体积后每 1 倍参考体积产生的呛咳代理毫米数；线性斜率是工程假设，不是误吸概率、吞咽造影或临床呛咳评分"
+    },
+    {
+      "id": "esophagus.referenceBolusMl",
+      "unit": "mL",
+      "value": 250,
+      "status": "design",
+      "range": [50, 1000],
+      "source": null,
+      "note": "呛咳风险起算的参考食团体积；250 mL 是工程锚点，不是安全吞咽量、食管容量或人体测量。食团不超过该体积时 chokingMm 为 0；range 是工程调参范围"
+    }
+  ]
+}

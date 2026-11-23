@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "owner": "thermoregulation",
+  "parameters": [
+    {
+      "id": "thermoregulation.setpointC",
+      "unit": "°C",
+      "value": 37,
+      "status": "design",
+      "range": [35, 39],
+      "source": null,
+      "note": "核心温度设定点工程默认值；只作为出汗、寒战、喘息与冷热读数的参考点，不是实测体温调定点或个体测量"
+    },
+    {
+      "id": "thermoregulation.ambientTemperatureC",
+      "unit": "°C",
+      "value": 25,
+      "status": "design",
+      "range": [-50, 60],
+      "source": null,
+      "note": "默认环境温度工程假设，不是实测环境温度；只用于辐射对流散热项，未来由环境状态替换"
+    },
+    {
+      "id": "thermoregulation.heatCapacityKcalPerC",
+      "unit": "kcal/°C",
+      "value": 60,
+      "status": "design",
+      "range": [10, 300],
+      "source": null,
+      "note": "身体有效热容工程假设，用于把净热量换算成核心温度变化；不是人体量热测量，也不建组织分区热容"
+    },
+    {
+      "id": "thermoregulation.metabolicFactor",
+      "unit": "kcal/mL",
+      "value": 0.02,
+      "status": "design",
+      "range": [0.001, 0.05],
+      "source": null,
+      "note": "每 mL/min 氧耗对应产热的工程系数（kcal/min 每 mL/min），不是间接测热法测量、呼吸商或代谢底物模型"
+    },
+    {
+      "id": "thermoregulation.shiveringGain",
+      "unit": "kcal/(min·°C)",
+      "value": 2,
+      "status": "design",
+      "range": [0, 10],
+      "source": null,
+      "note": "核心温度每低于设定点 1°C 的寒战产热增益；工程假设，不是实测寒战产热、肌肉做功或最大寒战能力"
+    },
+    {
+      "id": "thermoregulation.lossGain",
+      "unit": "kcal/(min·°C)",
+      "value": 0.05,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": null,
+      "note": "核心温度与环境温度每差 1°C 的辐射对流散热增益；工程假设，不建模皮肤血流、血管舒缩、湿度或风速"
+    },
+    {
+      "id": "thermoregulation.evaporationKcalPerMl",
+      "unit": "kcal/mL",
+      "value": 0.58,
+      "status": "design",
+      "range": [0.1, 1],
+      "source": null,
+      "note": "每 mL 汗液蒸发的潜热工程近似；只作用于轮初 skin.sweatVolumeMl，不是实测汗液蒸发效率或环境蒸发模型"
+    }
+  ]
+}

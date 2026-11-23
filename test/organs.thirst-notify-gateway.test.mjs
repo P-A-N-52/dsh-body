@@ -13,7 +13,7 @@ const rootManifestPath = join(root, 'body-modules.json');
 const sessionId = 'thirst-session';
 const initialBodyWaterMl = 29650;
 const initialWaterDeficit = 0.7;
-const drinkMl = 1000;
+const drinkMl = 2000;
 const thirstMarkedMm = 65;
 const thirstStrongMm = 85;
 const resetBelowMm = 40;
@@ -80,6 +80,7 @@ function waterLedgerMl(parts, cumulativeVoidedMl) {
   return parts.stomach.waterVolumeMl
     + queuedWaterMl(parts.stomach)
     + parts.smallIntestine.waterVolumeMl
+    + (parts.colon?.residueWaterMl ?? 0)
     + (parts.bodyFluid.waterVolumeMl - initialBodyWaterMl)
     + parts.bladder.volumeMl
     + cumulativeVoidedMl;
@@ -144,7 +145,7 @@ test('thirst needs three rounds to wake and the body never drinks on its own', a
   });
 });
 
-test('an explicit 1000 mL drink lowers thirst through the water chain without zeroing on the action round', async (t) => {
+test('an explicit 2000 mL drink lowers thirst through the water chain without zeroing on the action round', async (t) => {
   silence(t);
   const { gateway, tools } = await startBody(t);
 
@@ -162,7 +163,7 @@ test('an explicit 1000 mL drink lowers thirst through the water chain without ze
 
   const queued = await tools.body_act.execute(
     { type: 'drink', volumeMl: drinkMl },
-    fakeExec({ callId: 'drink-1000' }),
+    fakeExec({ callId: 'drink-2000' }),
   );
   assert.equal(queued.ok, true);
   assert.equal(queued.statusCode, 202);

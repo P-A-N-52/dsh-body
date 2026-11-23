@@ -21,6 +21,15 @@
       "note": "waterDeficit 每变化 1 个单位的目标相对水平斜率；设计值"
     },
     {
+      "id": "hypothalamusAdh.volumeGain",
+      "unit": "1/1",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "血容量每低于参考值一个相对单位追加的目标相对水平；目标加 volumeGain × (1 − bloodVolumeMl / 5000)。设计值，不是血容量—AVP 剂量反应或人体测量"
+    },
+    {
       "id": "hypothalamusAdh.relativeMinimum",
       "unit": "1",
       "value": 0,

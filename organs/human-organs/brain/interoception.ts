@@ -3,15 +3,19 @@
  * 0–100 mm VAS 代理的饥饿（hunger）与饱满（fullness），并转出下丘脑口渴驱动
  * （thirst）、膀胱充盈的尿意代理（urinaryUrgency）、子宫痉挛的痛经代理
  * （uterus.crampMm）、性反应兴奋体感（sexualArousalMm）、血氧气促代理（dyspneaMm）、
- * 口腔干燥代理（dryMouthMm）与性欲代理（libidoMm），再由六路超出舒适区的强度取最大值
- * 得到不适代理（discomfort，第六路是乳腺胀奶 `mammaryGlands.fullnessMm`）；另把轮初
+ * 口腔干燥代理（dryMouthMm）、性欲代理（libidoMm）与便意代理（bowelUrgencyMm），再由七路超出舒适区的强度取最大值
+ * 得到不适代理（discomfort，第六路是乳腺胀奶 `mammaryGlands.fullnessMm`，第七路是食管
+ * 呛咳风险 `esophagus.chokingMm`）；另把轮初
  * HPA 皮质醇与松果体褪黑素的相对量转成压力（stressMm）和困倦（sleepinessMm）两个
- * 0–100 mm 读数。
+ * 0–100 mm 读数，把轮初核心温度转成热不适（heatMm）与冷不适（coldMm）两个读数，
+ * 把轮初血钙转成低钙（hypocalcemiaMm）与高钙（hypercalcemiaMm）两个读数。
  * `uterus`、`mammaryGlands`、`sexualResponse`、`bloodOxygen`、`adrenal`、`pineal`、
- * `salivaryGlands` 与 `testes` 都是可选部位的软读：未加载时按 0，根清单行为逐点不变；
- * 其中 `sexualResponse.arousalMm`、`dyspneaMm`、`dryMouthMm` 与 `libidoMm` 只作独立
- * 体感读数，不参与 `discomfort`，也不触发通知。本脚本只产出体感，不发送通知，也不读
- * 自己的上一轮状态。
+ * `salivaryGlands`、`testes`、`thermoregulation`、`bloodCalcium`、`esophagus` 与 `colon` 都是
+ * 可选部位的软读：
+ * 未加载时按 0，根清单行为逐点不变；其中 `sexualResponse.arousalMm`、`dyspneaMm`、
+ * `dryMouthMm`、`libidoMm`、`bowelUrgencyMm`、`heatMm`、`coldMm`、`hypocalcemiaMm` 与
+ * `hypercalcemiaMm` 只作独立体感读数，不参与 `discomfort`，也不触发通知。本脚本只产出体感，不发送通知，
+ * 也不读自己的上一轮状态。
  *
  * 来源（笔记路径、原文定位、支撑什么、不能推出什么）
  * - SRC-CUMMINGS-2001 / cummings-2001：`organs/human-organs/stomach/references/notes/cummings-2001.md`，
@@ -56,17 +60,20 @@
  * - 输出钳到 [0, 100]；三路输入的线性叠加不是论文方程，也没有交互项、阈值或饱和。
  *   非有限读数先在输入侧回落到缺失默认值；合成结果只对 NaN 回落对应基线，±Infinity 由
  *   [0, 100] 钳位截到边界，状态不写出 NaN 或 Infinity。
- * - `discomfort` 是本轮六路感受超过 `interoception.discomfort.onsetMm`（`design`，默认
+ * - `discomfort` 是本轮七路感受超过 `interoception.discomfort.onsetMm`（`design`，默认
  *   70 mm）后的超出强度取最大值：
  *   `excess(x) = clamp(100 × (x − onsetMm) / (100 − onsetMm), 0, 100)`，
  *   `discomfort = max(excess(hunger), excess(fullness), excess(thirst),
- *   excess(urinaryUrgency), excess(uterineCramp), excess(mammaryFullness))`，其中
+ *   excess(urinaryUrgency), excess(uterineCramp), excess(mammaryFullness),
+ *   excess(esophagealChoking))`，其中
  *   `uterineCramp = clamp(finiteOr(uterus.crampMm, 0), 0, 100)`，
- *   `mammaryFullness = clamp(finiteOr(mammaryGlands.fullnessMm, 0), 0, 100)`。`uterus` 与
- *   `mammaryGlands` 都是可选部位：未加载或字段缺失、NaN、非有限时按 0（沿用 `finiteOr`
- *   惯例），根清单行为不变；`crampMm` 由子宫脚本、`fullnessMm` 由乳腺脚本按 `design`
- *   参数产出，本脚本不核对来源，也不把它们当作疼痛或乳腺压力测量。
- *   它是“当前最强的不适感受”代理，不是疼痛评分、情绪、疾病严重度或六感受总分；没有
+ *   `mammaryFullness = clamp(finiteOr(mammaryGlands.fullnessMm, 0), 0, 100)`，
+ *   `esophagealChoking = clamp(finiteOr(esophagus.chokingMm, 0), 0, 100)`。`uterus`、
+ *   `mammaryGlands` 与 `esophagus` 都是可选部位：未加载或字段缺失、NaN、非有限时按 0
+ *   （沿用 `finiteOr` 惯例），根清单行为不变；`crampMm` 由子宫脚本、`fullnessMm` 由乳腺
+ *   脚本、`chokingMm` 由食管脚本按 `design` 参数产出，本脚本不核对来源，也不把它们当作
+ *   疼痛、乳腺压力或临床呛咳风险测量。
+ *   它是“当前最强的不适感受”代理，不是疼痛评分、情绪、疾病严重度或七感受总分；没有
  *   来源把 70 mm 或该斜率标定到主观不适，取最大值也只是为了避免没有依据的相加。不读
  *   自身历史，不产生动作或通知，也没有新增历史状态。
  * - `sexualArousalMm = clamp(finiteOr(sexualResponse.arousalMm, 0), 0, 100)` 是性反应
@@ -92,6 +99,24 @@
  *   `testes` 未加载、字段缺失、NaN 或非有限时按 0.5（即读数 0）。它只是 0–100 mm
  *   读数，不参与 `discomfort`，也不产生动作或通知；相对值 1 的工程基线对应 50 mm，
  *   没有来源把该斜率标定到主观性欲。
+ * - `bowelUrgencyMm = clamp(100 × colon.stoolG / 200, 0, 100)` 是结肠粪便量的软读
+ *   （`design` 口径，不是直肠压力、肛门直肠测压阈值或临床便意评分）：只读轮初
+ *   `colon.stoolG`，200 g 是与 `colon.referenceStoolG` 一致的工程参考量；`colon` 未加载、
+ *   字段缺失、NaN 或非有限时按 0，负值也按 0。它只是 0–100 mm 读数，不参与 `discomfort`，
+ *   也不产生动作或通知；`defecate` 由会话显式触发，没有自动排便反射。
+ * - `heatMm = clamp(50 × (coreTemperatureC − 37), 0, 100)` 与
+ *   `coldMm = clamp(50 × (37 − coreTemperatureC), 0, 100)` 是 `thermoregulation` 的软读
+ *   （`design` 口径，不是体温测量或冷热感觉量表）：只读轮初 `coreTemperatureC`；部位未
+ *   加载、字段缺失、NaN 或非有限时按 0。50 mm/°C 与 37°C 设定点是工程常量，与
+ *   `thermoregulation.setpointC` 的默认值一致；两个读数不参与 `discomfort`，也不产生动作
+ *   或通知。不建皮肤温度、血管舒缩、发热/低温症或体温感觉分级。
+ * - `hypocalcemiaMm = clamp(50 × (9.5 − bloodCalcium.mgDl), 0, 100)` 与
+ *   `hypercalcemiaMm = clamp(50 × (bloodCalcium.mgDl − 9.5), 0, 100)` 是 `bloodCalcium`
+ *   的软读（`design` 口径，不是麻木/痉挛/临床高钙症状量表）：只读轮初 `mgDl`；部位未
+ *   加载、字段缺失、NaN 或非有限时按参考值 9.5 处理，两个读数都为 0。50 mm/(mg/dL) 与
+ *   9.5 mg/dL 是工程常量，与 `parathyroid.referenceCalciumMgDl` 和
+ *   `calcium.referenceMgDl` 的默认值一致；两个读数不参与 `discomfort`，也不产生动作或
+ *   通知。不建真实钙感受、神经肌肉兴奋性或心电图改变。
  * - 只读轮初快照，同一轮摄入下一轮才反映；不建模恶心、腹胀、疼痛本身（只把
  *   `uterus.crampMm` 痉挛代理并入 discomfort）、过度饱满、餐食成分与个体差异；
  *   不调用 io.notify。
@@ -113,6 +138,11 @@ type InteroceptionState = {
   sleepinessMm: number;
   dryMouthMm: number;
   libidoMm: number;
+  bowelUrgencyMm: number;
+  heatMm: number;
+  coldMm: number;
+  hypocalcemiaMm: number;
+  hypercalcemiaMm: number;
 };
 
 type SensoryReading = {
@@ -167,6 +197,22 @@ type TestesReading = {
   testosteroneRelative?: number;
 };
 
+type ThermoregulationReading = {
+  coreTemperatureC?: number;
+};
+
+type BloodCalciumReading = {
+  mgDl?: number;
+};
+
+type EsophagusReading = {
+  chokingMm?: number;
+};
+
+type ColonReading = {
+  stoolG?: number;
+};
+
 type IO = {
   read(id: 'stomachSensory'): Readonly<SensoryReading> | undefined;
   read(id: 'stomachGhrelin'): Readonly<GhrelinReading> | undefined;
@@ -181,6 +227,10 @@ type IO = {
   read(id: 'pineal'): Readonly<PinealReading> | undefined;
   read(id: 'salivaryGlands'): Readonly<SalivaryGlandsReading> | undefined;
   read(id: 'testes'): Readonly<TestesReading> | undefined;
+  read(id: 'thermoregulation'): Readonly<ThermoregulationReading> | null | undefined;
+  read(id: 'bloodCalcium'): Readonly<BloodCalciumReading> | null | undefined;
+  read(id: 'esophagus'): Readonly<EsophagusReading> | null | undefined;
+  read(id: 'colon'): Readonly<ColonReading> | null | undefined;
   write(next: InteroceptionState): void;
 };
 
@@ -200,6 +250,12 @@ const urinaryUrgencyReferenceVolumeMl = requireParameter(
 );
 const discomfortOnsetMm = requireParameter(parameters, 'interoception.discomfort.onsetMm');
 
+const thermoregulationSetpointC = 37;
+const temperatureReadoutGainMmPerC = 50;
+const calciumReferenceMgDl = 9.5;
+const calciumReadoutGainMmPerMgDl = 50;
+const bowelUrgencyReferenceStoolG = 200;
+
 export const initialState: InteroceptionState = {
   hunger: hungerBaseline,
   fullness: fullnessBaseline,
@@ -212,6 +268,11 @@ export const initialState: InteroceptionState = {
   sleepinessMm: 0,
   dryMouthMm: 0,
   libidoMm: 0,
+  bowelUrgencyMm: 0,
+  heatMm: 0,
+  coldMm: 0,
+  hypocalcemiaMm: 0,
+  hypercalcemiaMm: 0,
 };
 
 export const fields = {
@@ -226,6 +287,11 @@ export const fields = {
   sleepinessMm: { unit: 'mm', mode: 'absolute' },
   dryMouthMm: { unit: 'mm', mode: 'absolute' },
   libidoMm: { unit: 'mm', mode: 'absolute' },
+  bowelUrgencyMm: { unit: 'mm', mode: 'absolute' },
+  heatMm: { unit: 'mm', mode: 'absolute' },
+  coldMm: { unit: 'mm', mode: 'absolute' },
+  hypocalcemiaMm: { unit: 'mm', mode: 'absolute' },
+  hypercalcemiaMm: { unit: 'mm', mode: 'absolute' },
 };
 
 function finiteOr(value: number | undefined, fallback: number): number {
@@ -273,6 +339,7 @@ export function heartbeat(io: IO): void {
   );
   const uterineCramp = clamp(finiteOr(io.read('uterus')?.crampMm, 0), 0, 100);
   const mammaryFullness = clamp(finiteOr(io.read('mammaryGlands')?.fullnessMm, 0), 0, 100);
+  const esophagealChoking = clamp(finiteOr(io.read('esophagus')?.chokingMm, 0), 0, 100);
   const sexualArousalMm = clamp(finiteOr(io.read('sexualResponse')?.arousalMm, 0), 0, 100);
   const oxygenDeficit = finiteOr(io.read('bloodOxygen')?.oxygenDeficit, 0);
   const dyspneaMm = clamp(100 * oxygenDeficit, 0, 100);
@@ -286,6 +353,40 @@ export function heartbeat(io: IO): void {
     : 0;
   const testosteroneRelative = finiteOr(io.read('testes')?.testosteroneRelative, 0.5);
   const libidoMm = clamp(100 * (testosteroneRelative - 0.5), 0, 100);
+  const stoolG = Math.max(0, finiteOr(io.read('colon')?.stoolG, 0));
+  const bowelUrgencyMm = clamp(
+    (100 * stoolG) / bowelUrgencyReferenceStoolG,
+    0,
+    100,
+  );
+  const coreTemperatureC = finiteOr(
+    io.read('thermoregulation')?.coreTemperatureC,
+    thermoregulationSetpointC,
+  );
+  const heatMm = clamp(
+    temperatureReadoutGainMmPerC * (coreTemperatureC - thermoregulationSetpointC),
+    0,
+    100,
+  );
+  const coldMm = clamp(
+    temperatureReadoutGainMmPerC * (thermoregulationSetpointC - coreTemperatureC),
+    0,
+    100,
+  );
+  const bloodCalciumMgDl = finiteOr(
+    io.read('bloodCalcium')?.mgDl,
+    calciumReferenceMgDl,
+  );
+  const hypocalcemiaMm = clamp(
+    calciumReadoutGainMmPerMgDl * (calciumReferenceMgDl - bloodCalciumMgDl),
+    0,
+    100,
+  );
+  const hypercalcemiaMm = clamp(
+    calciumReadoutGainMmPerMgDl * (bloodCalciumMgDl - calciumReferenceMgDl),
+    0,
+    100,
+  );
   const discomfort = Math.max(
     excessOverOnset(hunger, discomfortOnsetMm),
     excessOverOnset(fullness, discomfortOnsetMm),
@@ -293,6 +394,7 @@ export function heartbeat(io: IO): void {
     excessOverOnset(urinaryUrgency, discomfortOnsetMm),
     excessOverOnset(uterineCramp, discomfortOnsetMm),
     excessOverOnset(mammaryFullness, discomfortOnsetMm),
+    excessOverOnset(esophagealChoking, discomfortOnsetMm),
   );
 
   io.write({
@@ -307,5 +409,10 @@ export function heartbeat(io: IO): void {
     sleepinessMm,
     dryMouthMm,
     libidoMm,
+    bowelUrgencyMm,
+    heatMm,
+    coldMm,
+    hypocalcemiaMm,
+    hypercalcemiaMm,
   });
 }

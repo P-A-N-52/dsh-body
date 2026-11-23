@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "owner": "colon",
+  "parameters": [
+    {
+      "id": "colon.reclamationRatePerMin",
+      "unit": "1/min",
+      "value": 0.001,
+      "status": "design",
+      "range": [0, 0.05],
+      "source": null,
+      "note": "每仿真分钟回收轮初残渣水的比例；0.001 是工程假设，不是结肠吸水率或转运时间的人体测量。回收量 min(残渣 × 该值 × dtMin, 残渣)，转回 bodyFluid.waterVolumeMl；range 是工程调参范围，不是人体百分位"
+    },
+    {
+      "id": "colon.stoolFormationGPerMin",
+      "unit": "g/min",
+      "value": 0.01,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "非排便轮每仿真分钟形成的粪便质量；0.01 g/min 是工程假设，不是粪便形成率或每日粪便量的实测值。排便轮不累加本轮形成，只排出轮初粪便；range 是工程调参范围"
+    },
+    {
+      "id": "colon.referenceStoolG",
+      "unit": "g",
+      "value": 200,
+      "status": "design",
+      "range": [10, 1000],
+      "source": null,
+      "note": "便意代理的归一化参考粪便量；100 × stoolG / 该值并钳到 0–100 mm。200 g 是工程锚点，不是直肠充盈阈值、肛门直肠测压值或临床便意评分；range 是工程调参范围"
+    }
+  ]
+}

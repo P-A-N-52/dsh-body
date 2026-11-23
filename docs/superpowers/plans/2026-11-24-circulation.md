@@ -57,4 +57,7 @@
 
 ## 交付记录
 
-（Task 4 填写）
+- **已实现：** `heart` 心率/搏出量/心输出与 `blood` 血容量/血压/氧输送/滤过代理落地并加入根、女性、男性清单；`bloodOxygen` 增加循环能力上限，`kidney` 产尿请求按 `gfr/100` 缩放，`hypothalamusAdh` 增加血容量项。真实 Gateway 测试见 `test/organs.circulation-gateway.test.mjs`，覆盖活动升心率/心输出/氧输送且 SpO2 保持、低血容量降 GFR/尿量并升 ADH、低输出心去饱和、重启接续。
+- **已验证：** `heart` / `blood` 模块测试与 `test/organs.circulation-gateway.test.mjs` 通过；`bloodOxygen`、`kidney`、`hypothalamusAdh` 既有测试按新接口更新后通过。当前共享工作区同时有肾糖异生等并行切片，完整 `npm test` 受其他切片未完成的 transfer 清单影响，不能作为本切片单独结论。
+- **实现偏差：** `blood` 增加 `maxOxygenDeliveryMlPerMin` 作为 `bloodOxygen` 的能力上限，而不是用含一轮滞后的 `oxygenDeliveryMlMin`；这样活动首轮不会因上一轮静息心输出假性去饱和。能力上限随轮初 SpO2 缩放，是工程近似，未被生理数据验证。
+- **仍未实现/未验证：** 实测心率/血压/心输出/氧输送/GFR、血管分区与微循环、血红蛋白/血气、失血/输血动力学、血压调节反射、临床验证、真实 DSH 会话与性能基线。

@@ -296,7 +296,7 @@ test('restarting on the same state path continues the liver release', async (t) 
     'the restarted release must keep refilling glucose',
   );
   assert.ok(
-    after.pancreasEndocrine.glucagonRelative >= beforeRestart.parts.pancreasEndocrine.glucagonRelative,
-    'the restarted pancreas must continue its glucagon signal',
+    after.pancreasEndocrine.glucagonRelative > 1,
+    'the restarted pancreas must keep glucagon above baseline while glucose is still below baseline',
   );
 });

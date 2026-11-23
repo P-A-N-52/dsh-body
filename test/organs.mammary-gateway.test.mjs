@@ -89,7 +89,7 @@ test('seeded prolactin drives milk, the lactose sink and mammary discomfort in t
   await gateway.ready;
 
   const booted = gateway.getState().parts;
-  assert.equal(Object.keys(booted).length, 35);
+  assert.equal(Object.keys(booted).length, 41);
   assert.ok(booted.mammaryGlands, 'the female manifest must load mammaryGlands');
   assert.equal(booted.pituitary.prolactinRelative, 3);
   assert.equal(booted.mammaryGlands.fullnessMm, 68);
@@ -141,7 +141,7 @@ test('the root manifest has no mammary part and still boots with the three-sink 
   await gateway.ready;
 
   const parts = gateway.getState().parts;
-  assert.equal(Object.keys(parts).length, 32);
+  assert.equal(Object.keys(parts).length, 38);
   assert.equal(Object.hasOwn(parts, 'mammaryGlands'), false);
   assert.equal(parts.pituitary.prolactinRelative, 1);
 

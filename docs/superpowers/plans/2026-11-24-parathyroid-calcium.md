@@ -35,7 +35,7 @@
 **Files:** Create `organs/human-compartments/calcium/calcium.ts` + `calcium.parameters.json`、`test/organs.blood-calcium.test.mjs`
 - [ ] Step 1: 失败测试（PTH 高时骨钙释放增加、PTH 低时沉积增加、GFR 改变影响排泄、骨钙库钳 0–200、缺部位回退、非法上游抛错、JSON-safe）。
 - [ ] Step 2: 运行预期失败。
-- [ ] Step 3: 实现（`release = 0.01 × (pth − 1) × dtMin`（pth > 1）、`deposit = 0.01 × (1 − pth) × dtMin`（pth < 1）、`excretion = gfr × 0.0001 × dtMin`、`mgDl` 按分布体积积分）。
+- [ ] Step 3: 实现（`release = 0.0004 × (pth − 1) × dtMin`（pth > 1）、`deposit = 0.0004 × (1 − pth) × dtMin`（pth < 1）、`excretion = gfr × 0.000001 × max(0, 1 − pthRelative) × dtMin`、`mgDl` 按分布体积积分）。
 - [ ] Step 4: 参数文件（`calcium.referenceMgDl = 9.5`、`boneStoreInitialG = 100`、`boneCapacityG = 200`、`boneReleaseRateGPerMin = 0.01`、`boneDepositRateGPerMin = 0.01`、`calciumExcretionPerMlG = 0.0001`、`distributionVolumeDl = 140`）。
 - [ ] Step 5: 运行预期通过。
 

@@ -8,11 +8,15 @@ import {
   initialState,
 } from '../organs/human-organs/kidney/urine-production.ts';
 
-function runHeartbeat({ adh, dt = 60 }) {
+function runHeartbeat({ adh, blood, dt = 60 }) {
   const transfers = [];
   let written;
   heartbeat({
-    read: (partId) => (partId === 'hypothalamusAdh' ? adh : undefined),
+    read: (partId) => {
+      if (partId === 'hypothalamusAdh') return adh;
+      if (partId === 'blood') return blood;
+      return undefined;
+    },
     actions: [],
     dt,
     simulatedSeconds: 60,
@@ -69,6 +73,79 @@ test('the kidney writes only its own request and never transfers water', () => {
   const { written, transfers } = runHeartbeat({ adh: { relativeConcentration: 1 } });
   assert.deepEqual(Object.keys(written), ['urineProductionRequestMl']);
   assert.deepEqual(transfers, []);
+});
+
+test('blood GFR scales the request against the 100 mL/min baseline', () => {
+  const cases = [
+    [100, 1],
+    [120, 1.2],
+    [60, 0.6],
+    [50, 0.5],
+    [0, 0],
+  ];
+  for (const [gfrMlMin, expected] of cases) {
+    const { written } = runHeartbeat({
+      adh: { relativeConcentration: 1 },
+      blood: { gfrMlMin },
+    });
+    assert.equal(written.urineProductionRequestMl, expected, `GFR ${gfrMlMin}`);
+  }
+
+  const lowVolume = runHeartbeat({
+    adh: { relativeConcentration: 1 },
+    blood: { bloodVolumeMl: 3000, gfrMlMin: 60 },
+  }).written;
+  assert.equal(
+    lowVolume.urineProductionRequestMl,
+    0.6,
+    'a volume loss that halves GFR to 60 cuts the request to 60%',
+  );
+
+  const diluted = runHeartbeat({
+    adh: { relativeConcentration: 0.5 },
+    blood: { gfrMlMin: 50 },
+  }).written;
+  assert.equal(diluted.urineProductionRequestMl, 0.75, 'the ADH rate stays orthogonal');
+});
+
+test('a missing blood part leaves the request at the ADH-only baseline', () => {
+  const request = runHeartbeat({
+    adh: { relativeConcentration: 2 },
+  }).written;
+  assert.equal(request.urineProductionRequestMl, 0.25);
+});
+
+test('an invalid loaded blood reading fails the round without writing', () => {
+  const invalid = [
+    ['empty blood', {}],
+    ['missing GFR', { bloodVolumeMl: 5000 }],
+    ['NaN GFR', { gfrMlMin: Number.NaN }],
+    ['infinite GFR', { gfrMlMin: Number.POSITIVE_INFINITY }],
+    ['negative GFR', { gfrMlMin: -1 }],
+    ['non-numeric GFR', { gfrMlMin: '100' }],
+    ['null GFR', { gfrMlMin: null }],
+    ['null blood', null],
+    ['non-object blood', 42],
+  ];
+  for (const [label, blood] of invalid) {
+    const writes = [];
+    assert.throws(
+      () => heartbeat({
+        read: (partId) => {
+          if (partId === 'hypothalamusAdh') return { relativeConcentration: 1 };
+          if (partId === 'blood') return blood;
+          return undefined;
+        },
+        actions: [],
+        dt: 60,
+        simulatedSeconds: 60,
+        write: (next) => { writes.push(next); },
+      }),
+      Error,
+      label,
+    );
+    assert.equal(writes.length, 0, `${label}: the round must not write`);
+  }
 });
 
 async function variantContract(modulePath) {

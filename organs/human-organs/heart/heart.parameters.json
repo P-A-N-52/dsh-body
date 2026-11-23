@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "owner": "heart",
+  "parameters": [
+    {
+      "id": "heart.restingHeartRatePerMin",
+      "unit": "1/min",
+      "value": 70,
+      "status": "design",
+      "range": [40, 100],
+      "source": null,
+      "note": "静息心率工程占位；来自模型内设计基线，不是实测心率、个体基线或运动生理测量。drive 的下限也用它。未来由具备证据的心率模型替换。range 只是工程调参范围"
+    },
+    {
+      "id": "heart.maxHeartRatePerMin",
+      "unit": "1/min",
+      "value": 180,
+      "status": "design",
+      "range": [120, 220],
+      "source": null,
+      "note": "模型内心率上限，用于钳制 70 × drive；不是实测最大心率、年龄预测最大心率或运动试验结果，也不由 220−年龄 推出。range 只是工程调参范围"
+    },
+    {
+      "id": "heart.restingStrokeVolumeMl",
+      "unit": "mL",
+      "value": 70,
+      "status": "design",
+      "range": [40, 120],
+      "source": null,
+      "note": "静息每搏量工程占位；初始心输出 70 × 70 = 4900 mL/min。不是超声、热稀释或运动血流动力学测量，也不区分性别、体型或训练状态。range 只是工程调参范围"
+    },
+    {
+      "id": "heart.activityGain",
+      "unit": "1",
+      "value": 1.5,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "轮初 remainingExerciseMin > 0 时 activity intensity 对 drive 的增益：intensity=1 使 drive +1.5。模型内相对强度，不是 MET、%VO2max 或心率储备的剂量反应。range 只是工程调参范围"
+    },
+    {
+      "id": "heart.catecholamineGain",
+      "unit": "1",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "轮初 adrenal.cortisolRelative 相对基线的偏离对 drive 的增益：皮质醇 2 使 drive +0.5。只借用皮质醇作为交感/应激代理，不是肾上腺素、去甲肾上腺素浓度或受体剂量反应。range 只是工程调参范围"
+    }
+  ]
+}

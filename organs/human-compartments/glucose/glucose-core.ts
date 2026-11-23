@@ -58,15 +58,19 @@
  * - 已加载汇但请求字段缺失、非有限或为负时抛错使本轮失败，且不写状态、不发起 transfer。
  *   合法 0 请求有效（例如肝满或低血糖），不是缺失。
  * - 低于基线时本核心不自行生成质量：`liver` 按胰高血糖素信号发起
- *   `liver.glycogenG → glucose.glucoseMassG`，经本字段的 transferIn 入账；释放量受肝糖原
- *   存量限制，存量耗尽时血糖照常下降，浓度在下一轮体现。同轮小肠新流入不能支付本轮请求。
+ *   `liver.glycogenG → glucose.glucoseMassG`，`kidneyGluconeogenesis` 按低血糖/高胰高血糖素
+ *   信号发起 `kidneyGluconeogenesis.glucoseOutputG → glucose.glucoseMassG`，两者都经本字段的
+ *   transferIn 入账；肝释放量受肝糖原存量限制，存量耗尽时血糖照常下降，肾产糖只有速率与
+ *   每轮上限、没有存量上限，浓度都在下一轮体现。同轮小肠新流入不能支付本轮请求。
  * - 旧存档缺 `excessMassG` 时由轮初质量现算（每轮 write 都重算，不读旧值）；缺
  *   `glucoseMassG` 时按基础质量初始化；负值按 0 读取，不产生负质量或负清除。
  *
  * 入口契约：本核心不导出 `id` / `actionTypes` / `initialState` 值；`createGlucose(sinks)` 接受
  * 按结算顺序排列的汇配置（请求部位/字段、transfer 目标、是否必需），返回该入口的
  * `initialState`、`fields` 与 `heartbeat`。`glucoseMassG.transferOut` 由汇配置生成，因此根清单
- * 只声明三汇，女性变体末位多一条 `mammaryGlands.lactoseG`。
+ * 只声明三汇，女性变体末位多一条 `mammaryGlands.lactoseG`；`transferIn` 固定声明
+ * 小肠碳水、肝糖原与肾糖异生产糖三个来源，与各来源的 `transferOut` 逐对校验，缺
+ * `kidneyGluconeogenesis` 的清单启动即报未声明来源。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
@@ -151,7 +155,11 @@ export function createGlucose(sinks: readonly GlucoseSink[]): GlucoseModule {
     glucoseMassG: {
       unit: 'g',
       mode: 'absolute',
-      transferIn: ['smallIntestine.carbohydrateG', 'liver.glycogenG'],
+      transferIn: [
+        'smallIntestine.carbohydrateG',
+        'liver.glycogenG',
+        'kidneyGluconeogenesis.glucoseOutputG',
+      ],
       transferOut: sinks.map((sink) => `${sink.toPart}.${sink.toField}`),
     },
     concentrationMgDl: { unit: 'mg/dL', mode: 'absolute' },

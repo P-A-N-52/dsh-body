@@ -22,6 +22,11 @@ const BASELINE = {
   sleepinessMm: 0,
   dryMouthMm: 0,
   libidoMm: 0,
+  bowelUrgencyMm: 0,
+  heatMm: 0,
+  coldMm: 0,
+  hypocalcemiaMm: 0,
+  hypercalcemiaMm: 0,
 };
 const parametersUrl = new URL('../organs/human-organs/brain/interoception.parameters.json', import.meta.url);
 const parameterValues = loadParameters(parametersUrl);
@@ -42,6 +47,10 @@ function round(inputs = {}) {
     salivaryGlands: inputs.salivaryGlands,
     mammaryGlands: inputs.mammaryGlands,
     testes: inputs.testes,
+    thermoregulation: inputs.thermoregulation,
+    bloodCalcium: inputs.bloodCalcium,
+    esophagus: inputs.esophagus,
+    colon: inputs.colon,
   };
   let written;
   heartbeat({
@@ -76,6 +85,11 @@ test('interoception exports the organ module contract', () => {
     sleepinessMm: { unit: 'mm', mode: 'absolute' },
     dryMouthMm: { unit: 'mm', mode: 'absolute' },
     libidoMm: { unit: 'mm', mode: 'absolute' },
+    bowelUrgencyMm: { unit: 'mm', mode: 'absolute' },
+    heatMm: { unit: 'mm', mode: 'absolute' },
+    coldMm: { unit: 'mm', mode: 'absolute' },
+    hypocalcemiaMm: { unit: 'mm', mode: 'absolute' },
+    hypercalcemiaMm: { unit: 'mm', mode: 'absolute' },
   });
   assert.deepEqual(initialState, BASELINE);
 });
@@ -113,28 +127,28 @@ test('the discomfort onset is a 70 mm design parameter with no source', () => {
 test('ghrelin at half the fasting baseline lowers hunger and raises fullness', () => {
   assert.deepEqual(
     round({ ghrelin: { relativeConcentration: 0.5 } }),
-    { hunger: 25, fullness: 25, thirst: 50, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 },
+    { hunger: 25, fullness: 25, thirst: 50, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
   );
 });
 
 test('full mechanical input raises fullness and lowers hunger', () => {
   assert.deepEqual(
     round({ sensory: { mechanical: 1 } }),
-    { hunger: 30, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 },
+    { hunger: 30, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
   );
 });
 
 test('nutrient exposure at 10 kcal/min saturates fullness and clamps hunger at zero', () => {
   assert.deepEqual(
     round({ duodenum: { nutrientExposure: 10 } }),
-    { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 },
+    { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
   );
 });
 
 test('thirst passes through from the hypothalamic drive and clamps to 0-100 mm', () => {
   assert.deepEqual(
     round({ thirst: { thirst: 20 } }),
-    { hunger: 50, fullness: 0, thirst: 20, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 },
+    { hunger: 50, fullness: 0, thirst: 20, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
   );
   assert.equal(round({ thirst: { thirst: -5 } }).thirst, 0);
   assert.equal(round({ thirst: { thirst: 250 } }).thirst, 100);
@@ -175,7 +189,7 @@ test('each feeling at 85 mm yields 50 discomfort', () => {
 test('uterine cramps enter discomfort as the fifth channel', () => {
   assert.deepEqual(
     round({ uterus: { crampMm: 85 } }),
-    { hunger: 50, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 50, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 },
+    { hunger: 50, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 50, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
   );
   assert.equal(round({ uterus: { crampMm: 70 } }).discomfort, 0);
   assert.equal(round({ uterus: { crampMm: 100 } }).discomfort, 100);
@@ -202,6 +216,27 @@ test('the fifth channel is inert without a uterus part', () => {
     round({ thirst: { thirst: 85 }, uterus: { crampMm: 0 } }),
   );
   assert.deepEqual(round({ uterus: undefined }), BASELINE);
+});
+
+test('esophageal choking enters discomfort as a soft read', () => {
+  assert.equal(round({ esophagus: { chokingMm: 85 } }).discomfort, 50);
+  assert.equal(round({ esophagus: { chokingMm: 70 } }).discomfort, 0);
+  assert.equal(round({ esophagus: { chokingMm: 100 } }).discomfort, 100);
+  assert.equal(round({ esophagus: { chokingMm: -20 } }).discomfort, 0);
+  assert.equal(round({ esophagus: { chokingMm: 250 } }).discomfort, 100);
+  assert.equal(round({ thirst: { thirst: 100 }, esophagus: { chokingMm: 85 } }).discomfort, 100);
+});
+
+test('missing, NaN or non-finite chokingMm counts as zero', () => {
+  for (const esophagus of [
+    undefined,
+    {},
+    { chokingMm: Number.NaN },
+    { chokingMm: Number.POSITIVE_INFINITY },
+    { chokingMm: Number.NEGATIVE_INFINITY },
+  ]) {
+    assert.deepEqual(round({ esophagus }), BASELINE);
+  }
 });
 
 test('mammary fullness enters discomfort as the sixth channel', () => {
@@ -302,6 +337,11 @@ test('sexual arousal leaves the legacy five channels point-identical', () => {
     sleepinessMm: 0,
     dryMouthMm: 0,
     libidoMm: 0,
+    bowelUrgencyMm: 0,
+    heatMm: 0,
+    coldMm: 0,
+    hypocalcemiaMm: 0,
+    hypercalcemiaMm: 0,
   });
   assert.deepEqual(
     { ...withSexual, sexualArousalMm: withoutSexual.sexualArousalMm },
@@ -387,7 +427,7 @@ test('dyspnea is a readout: other readings and discomfort stay point-identical',
   });
   assert.equal(withDeficit.dyspneaMm, 100);
   assert.equal(withDeficit.discomfort, baseline.discomfort);
-  assert.deepEqual({ ...withDeficit, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 }, baseline);
+  assert.deepEqual({ ...withDeficit, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 }, baseline);
 });
 
 test('discomfort takes the strongest feeling instead of summing them', () => {
@@ -400,7 +440,7 @@ test('discomfort takes the strongest feeling instead of summing them', () => {
   });
   assert.deepEqual(
     allAt85,
-    { hunger: 85, fullness: 85, thirst: 85, urinaryUrgency: 85, discomfort: 50, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 },
+    { hunger: 85, fullness: 85, thirst: 85, urinaryUrgency: 85, discomfort: 50, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
   );
 
   const oneAt100 = round({
@@ -412,15 +452,81 @@ test('discomfort takes the strongest feeling instead of summing them', () => {
   });
   assert.deepEqual(
     oneAt100,
-    { hunger: 85, fullness: 85, thirst: 100, urinaryUrgency: 85, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 },
+    { hunger: 85, fullness: 85, thirst: 100, urinaryUrgency: 85, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
   );
 });
 
 test('thirst and bladder readings leave hunger and fullness untouched', () => {
   assert.deepEqual(
     round({ thirst: { thirst: 0 }, bladder: { volumeMl: 410 } }),
-    { hunger: 50, fullness: 0, thirst: 0, urinaryUrgency: 100, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 },
+    { hunger: 50, fullness: 0, thirst: 0, urinaryUrgency: 100, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
   );
+});
+
+test('core temperature drives heat and cold readouts with a zero baseline', () => {
+  assert.deepEqual(fields.heatMm, { unit: 'mm', mode: 'absolute' });
+  assert.deepEqual(fields.coldMm, { unit: 'mm', mode: 'absolute' });
+  assert.equal(initialState.heatMm, 0);
+  assert.equal(initialState.coldMm, 0);
+  assert.equal(round().heatMm, 0);
+  assert.equal(round().coldMm, 0);
+});
+
+test('hot core temperatures raise heatMm and clamp at 100', () => {
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 37 } }).heatMm, 0);
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 38 } }).heatMm, 50);
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 38.5 } }).heatMm, 75);
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 39 } }).heatMm, 100);
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 40 } }).heatMm, 100);
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 36 } }).heatMm, 0);
+});
+
+test('cold core temperatures raise coldMm and clamp at 100', () => {
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 37 } }).coldMm, 0);
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 36 } }).coldMm, 50);
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 35.5 } }).coldMm, 75);
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 35 } }).coldMm, 100);
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 30 } }).coldMm, 100);
+  assert.equal(round({ thermoregulation: { coreTemperatureC: 38 } }).coldMm, 0);
+});
+
+test('missing or invalid thermoregulation counts as zero heat and cold', () => {
+  for (const thermoregulation of [
+    undefined,
+    null,
+    {},
+    { coreTemperatureC: null },
+    { coreTemperatureC: Number.NaN },
+    { coreTemperatureC: Number.POSITIVE_INFINITY },
+    { coreTemperatureC: Number.NEGATIVE_INFINITY },
+    { coreTemperatureC: '38' },
+    42,
+  ]) {
+    const next = round({ thermoregulation });
+    assert.equal(next.heatMm, 0, String(thermoregulation));
+    assert.equal(next.coldMm, 0, String(thermoregulation));
+    assert.deepEqual(next, BASELINE);
+  }
+});
+
+test('heat and cold are readouts: discomfort and other readings stay point-identical', () => {
+  const baseline = round({ thirst: { thirst: 85 }, bladder: { volumeMl: 205 } });
+  const hot = round({
+    thirst: { thirst: 85 },
+    bladder: { volumeMl: 205 },
+    thermoregulation: { coreTemperatureC: 40 },
+  });
+  const cold = round({
+    thirst: { thirst: 85 },
+    bladder: { volumeMl: 205 },
+    thermoregulation: { coreTemperatureC: 34 },
+  });
+  assert.equal(hot.heatMm, 100);
+  assert.equal(cold.coldMm, 100);
+  assert.equal(hot.discomfort, baseline.discomfort);
+  assert.equal(cold.discomfort, baseline.discomfort);
+  assert.deepEqual({ ...hot, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 }, baseline);
+  assert.deepEqual({ ...cold, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 }, baseline);
 });
 
 test('does not read its own previous state', () => {
@@ -446,7 +552,7 @@ test('negative inputs clamp to zero before the gains', () => {
       ghrelin: { relativeConcentration: -2 },
       duodenum: { nutrientExposure: -3 },
     }),
-    { hunger: 0, fullness: 50, thirst: 50, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 },
+    { hunger: 0, fullness: 50, thirst: 50, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
   );
 });
 
@@ -461,10 +567,10 @@ test('oversized inputs clamp outputs to the 0-100 band and stay finite', () => {
     round({ duodenum: { nutrientExposure: 1e9 } }),
   ];
   const overflow = round({ duodenum: { nutrientExposure: Number.MAX_VALUE } });
-  assert.deepEqual(cases[0], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 });
-  assert.deepEqual(cases[1], { hunger: 100, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 });
-  assert.deepEqual(cases[2], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 });
-  assert.deepEqual(overflow, { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 });
+  assert.deepEqual(cases[0], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 });
+  assert.deepEqual(cases[1], { hunger: 100, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 });
+  assert.deepEqual(cases[2], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 });
+  assert.deepEqual(overflow, { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 });
   for (const next of [...cases, overflow]) {
     assert.ok(Number.isFinite(next.hunger));
     assert.ok(Number.isFinite(next.fullness));
@@ -571,7 +677,7 @@ test('stress and sleepiness are readouts: other readings and discomfort stay poi
   assertClose(withAxes.sleepinessMm, 100, 'sleepiness at the melatonin peak');
   assert.equal(withAxes.discomfort, baseline.discomfort);
   assert.deepEqual(
-    { ...withAxes, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0 },
+    { ...withAxes, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
     baseline,
   );
 });
@@ -615,4 +721,109 @@ test('dry mouth is a readout: other readings and discomfort stay point-identical
     { ...withDryMouth, dryMouthMm: baseline.dryMouthMm },
     baseline,
   );
+});
+
+test('colon stool mass drives bowel urgency and clamps to 0-100 mm', () => {
+  assert.deepEqual(fields.bowelUrgencyMm, { unit: 'mm', mode: 'absolute' });
+  assert.equal(initialState.bowelUrgencyMm, 0);
+  assert.equal(round().bowelUrgencyMm, 0);
+  assert.equal(round({ colon: { stoolG: 0 } }).bowelUrgencyMm, 0);
+  assert.equal(round({ colon: { stoolG: 100 } }).bowelUrgencyMm, 50);
+  assert.equal(round({ colon: { stoolG: 200 } }).bowelUrgencyMm, 100);
+  assert.equal(round({ colon: { stoolG: 400 } }).bowelUrgencyMm, 100);
+  assert.equal(round({ colon: { stoolG: -20 } }).bowelUrgencyMm, 0);
+});
+
+test('missing, missing field, NaN or non-finite stool mass counts as zero bowel urgency', () => {
+  for (const colon of [
+    undefined,
+    {},
+    { stoolG: Number.NaN },
+    { stoolG: Number.POSITIVE_INFINITY },
+    { stoolG: Number.NEGATIVE_INFINITY },
+    { stoolG: '100' },
+  ]) {
+    assert.equal(round({ colon }).bowelUrgencyMm, 0, String(colon));
+  }
+});
+
+test('bowel urgency is a readout: other readings and discomfort stay point-identical', () => {
+  const baseline = round({ thirst: { thirst: 85 }, bladder: { volumeMl: 205 } });
+  const withBowelUrgency = round({
+    thirst: { thirst: 85 },
+    bladder: { volumeMl: 205 },
+    colon: { stoolG: 200 },
+  });
+  assert.equal(withBowelUrgency.bowelUrgencyMm, 100);
+  assert.equal(withBowelUrgency.discomfort, baseline.discomfort);
+  assert.deepEqual(
+    { ...withBowelUrgency, bowelUrgencyMm: baseline.bowelUrgencyMm },
+    baseline,
+  );
+});
+
+test('blood calcium drives hypocalcemia and hypercalcemia readouts with a zero baseline', () => {
+  assert.deepEqual(fields.hypocalcemiaMm, { unit: 'mm', mode: 'absolute' });
+  assert.deepEqual(fields.hypercalcemiaMm, { unit: 'mm', mode: 'absolute' });
+  assert.equal(initialState.hypocalcemiaMm, 0);
+  assert.equal(initialState.hypercalcemiaMm, 0);
+  assert.equal(round().hypocalcemiaMm, 0);
+  assert.equal(round().hypercalcemiaMm, 0);
+  assert.equal(round({ bloodCalcium: { mgDl: 9.5 } }).hypocalcemiaMm, 0);
+  assert.equal(round({ bloodCalcium: { mgDl: 9.5 } }).hypercalcemiaMm, 0);
+});
+
+test('low blood calcium raises hypocalcemiaMm and clamps at 100', () => {
+  assert.equal(round({ bloodCalcium: { mgDl: 9 } }).hypocalcemiaMm, 25);
+  assert.equal(round({ bloodCalcium: { mgDl: 8 } }).hypocalcemiaMm, 75);
+  assert.equal(round({ bloodCalcium: { mgDl: 7.5 } }).hypocalcemiaMm, 100);
+  assert.equal(round({ bloodCalcium: { mgDl: 5 } }).hypocalcemiaMm, 100);
+  assert.equal(round({ bloodCalcium: { mgDl: 8 } }).hypercalcemiaMm, 0);
+});
+
+test('high blood calcium raises hypercalcemiaMm and clamps at 100', () => {
+  assert.equal(round({ bloodCalcium: { mgDl: 10 } }).hypercalcemiaMm, 25);
+  assert.equal(round({ bloodCalcium: { mgDl: 11 } }).hypercalcemiaMm, 75);
+  assert.equal(round({ bloodCalcium: { mgDl: 11.5 } }).hypercalcemiaMm, 100);
+  assert.equal(round({ bloodCalcium: { mgDl: 14 } }).hypercalcemiaMm, 100);
+  assert.equal(round({ bloodCalcium: { mgDl: 11 } }).hypocalcemiaMm, 0);
+});
+
+test('missing, missing field, NaN or non-finite blood calcium counts as zero readouts', () => {
+  for (const bloodCalcium of [
+    undefined,
+    null,
+    {},
+    { mgDl: null },
+    { mgDl: Number.NaN },
+    { mgDl: Number.POSITIVE_INFINITY },
+    { mgDl: Number.NEGATIVE_INFINITY },
+    { mgDl: '8' },
+    42,
+  ]) {
+    const next = round({ bloodCalcium });
+    assert.equal(next.hypocalcemiaMm, 0, String(bloodCalcium));
+    assert.equal(next.hypercalcemiaMm, 0, String(bloodCalcium));
+    assert.deepEqual(next, BASELINE);
+  }
+});
+
+test('calcium readouts do not enter discomfort and other readings stay point-identical', () => {
+  const baseline = round({ thirst: { thirst: 85 }, bladder: { volumeMl: 205 } });
+  const low = round({
+    thirst: { thirst: 85 },
+    bladder: { volumeMl: 205 },
+    bloodCalcium: { mgDl: 8 },
+  });
+  const high = round({
+    thirst: { thirst: 85 },
+    bladder: { volumeMl: 205 },
+    bloodCalcium: { mgDl: 11 },
+  });
+  assert.equal(low.hypocalcemiaMm, 75);
+  assert.equal(high.hypercalcemiaMm, 75);
+  assert.equal(low.discomfort, baseline.discomfort);
+  assert.equal(high.discomfort, baseline.discomfort);
+  assert.deepEqual({ ...low, hypocalcemiaMm: 0, hypercalcemiaMm: 0 }, baseline);
+  assert.deepEqual({ ...high, hypocalcemiaMm: 0, hypercalcemiaMm: 0 }, baseline);
 });

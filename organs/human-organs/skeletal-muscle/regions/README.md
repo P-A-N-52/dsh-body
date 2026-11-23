@@ -67,7 +67,7 @@ amount(region) = uptakeG × weight(region) / Σ(已加载区域 weight)
 1. 各区域在自己的第一轮读该总量，并按**已加载区域**的份额重新归一后把份额并入本轮 `glycogenG`；例如三区域齐全时头/躯干/四肢分别得到 5% / 45% / 50%。
 2. `muscleGlucose` 聚合器第一次 `write` 只写 `uptakeG` / `uptakeRequestG`，不再保留旧总量；旧 `glycogenConsumedG` 也一并丢弃，不反推历史消耗。
 3. 旧档的在途 `uptakeG` 不参与迁移，仍由聚合器在重启后的第一轮按份额 transfer 给区域，区域下一轮入账。总量与在途量都保留，不重复计。
-4. 迁移只读旧 `muscleGlucose.glycogenG`，不写聚合器或兄弟区域；旧总量缺失、非有限或为负时抛错使本轮失败，不用 0 掩盖异常。
+4. 迁移只读旧 `muscleGlucose.glycogenG`，不写聚合器或兄弟区域；旧总量存在但非有限或为负时抛错使本轮失败，不用 0 掩盖异常。
 
 重启保留已提交的区域 `uptakeG`、`glycogenG`、`glycogenConsumedG` 和 `muscleGlucose.uptakeRequestG`；上一轮在途量在重启后的正常时序里只入账一次。
 

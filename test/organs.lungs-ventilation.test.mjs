@@ -16,10 +16,14 @@ const parametersUrl = new URL(
   import.meta.url,
 );
 
-function round(bloodOxygen) {
+function round(bloodOxygen, thermoregulation) {
   const writes = [];
   heartbeat({
-    read: (partId) => (partId === 'bloodOxygen' ? bloodOxygen : undefined),
+    read: (partId) => {
+      if (partId === 'bloodOxygen') return bloodOxygen;
+      if (partId === 'thermoregulation') return thermoregulation;
+      return undefined;
+    },
     write: (next) => { writes.push(next); },
   });
   return { written: writes[writes.length - 1], writes };
@@ -91,6 +95,7 @@ test('the ventilation parameters are design defaults with no source', () => {
     'lungsVentilation.maxVentilationMlMin': { value: 60000, unit: 'mL/min' },
     'lungsVentilation.inspiredO2Fraction': { value: 0.21, unit: '1' },
     'lungsVentilation.deadSpaceFactor': { value: 1.4, unit: '1' },
+    'lungsVentilation.pantingGain': { value: 0.5, unit: 'mL/(min·°C)' },
   };
   assert.deepEqual(
     data.parameters.map((parameter) => parameter.id),
@@ -150,6 +155,67 @@ test('rising demand raises ventilation and respiratory rate above resting', () =
   assert.ok(high.ventilationMlMin > low.ventilationMlMin);
   assert.ok(high.respiratoryRatePerMin > low.respiratoryRatePerMin);
   assert.ok(high.alveolarO2MlMin > low.alveolarO2MlMin);
+});
+
+test('a hot core temperature adds the panting term to the ventilation target', () => {
+  const atSetpoint = round(demand(1200), { coreTemperatureC: 37 }).written;
+  const hot = round(demand(1200), { coreTemperatureC: 38 }).written;
+  const hotter = round(demand(1200), { coreTemperatureC: 40 }).written;
+  const cold = round(demand(1200), { coreTemperatureC: 36 }).written;
+
+  assertClose(atSetpoint.ventilationMlMin, 8000, 'at the setpoint');
+  assertClose(hot.ventilationMlMin, 8000.5, 'one degree above the setpoint');
+  assertClose(hot.respiratoryRatePerMin, 16.001, 'rate follows the panting target');
+  assertClose(hot.alveolarO2MlMin, 1200.075, 'alveolar oxygen follows ventilation');
+  assertClose(hotter.ventilationMlMin, 8001.5, 'three degrees above the setpoint');
+  assertClose(cold.ventilationMlMin, 8000, 'below the setpoint adds no panting');
+});
+
+test('the panting term is added before the resting and maximum clamps', () => {
+  const belowResting = round(demand(250), { coreTemperatureC: 40 }).written;
+  assert.equal(belowResting.ventilationMlMin, 6000);
+
+  const capped = round(demand(8999), { coreTemperatureC: 200 }).written;
+  assert.equal(capped.ventilationMlMin, 60000);
+  assert.equal(capped.respiratoryRatePerMin, 40);
+});
+
+test('missing thermoregulation adds no panting term', () => {
+  assert.deepEqual(round(demand(1200)).written, round(demand(1200), null).written);
+  assert.deepEqual(
+    round(demand(1200)).written,
+    round(demand(1200), { coreTemperatureC: 37 }).written,
+  );
+});
+
+test('a loaded thermoregulation with an invalid core temperature fails without writing', () => {
+  const invalid = [
+    ['empty part', {}],
+    ['missing temperature', { setpointC: 37 }],
+    ['null temperature', { coreTemperatureC: null }],
+    ['NaN temperature', { coreTemperatureC: Number.NaN }],
+    ['positive infinite temperature', { coreTemperatureC: Number.POSITIVE_INFINITY }],
+    ['negative infinite temperature', { coreTemperatureC: Number.NEGATIVE_INFINITY }],
+    ['string temperature', { coreTemperatureC: '38' }],
+    ['non-object part', 42],
+  ];
+
+  for (const [label, thermoregulation] of invalid) {
+    const writes = [];
+    assert.throws(
+      () => heartbeat({
+        read: (partId) => {
+          if (partId === 'bloodOxygen') return demand(1200);
+          if (partId === 'thermoregulation') return thermoregulation;
+          return undefined;
+        },
+        write: (next) => { writes.push(next); },
+      }),
+      Error,
+      label,
+    );
+    assert.equal(writes.length, 0, `${label}: the round must not write`);
+  }
 });
 
 test('hitting maxVentilationMlMin caps alveolar oxygen supply', () => {

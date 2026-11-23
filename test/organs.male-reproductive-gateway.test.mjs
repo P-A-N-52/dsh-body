@@ -66,11 +66,11 @@ function assertClose(actual, expected, label, tolerance = 1e-12) {
   );
 }
 
-test('the male manifest boots thirty-four parts with testes and epididymis', async (t) => {
+test('the male manifest boots forty parts with testes and epididymis', async (t) => {
   const { gateway } = await startBody(t);
   const parts = gateway.getState().parts;
 
-  assert.equal(Object.keys(parts).length, 34);
+  assert.equal(Object.keys(parts).length, 40);
   assert.deepEqual(parts.testes, { testosteroneRelative: 1 });
   assert.deepEqual(parts.epididymis, { spermStorageMl: 0, ejaculatedMl: 0 });
   assert.ok(parts.sexualResponse, 'sexualResponse must be loaded');

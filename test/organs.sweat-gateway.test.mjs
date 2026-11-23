@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startGateway } from '../gateway.js';
 import { checkpoint } from '../test-support/harness.mjs';
@@ -29,9 +29,22 @@ function writeState(dir, parts = {}) {
   return statePath;
 }
 
-function boot(statePath) {
+function writeManifest(dir) {
+  const rootManifest = JSON.parse(readFileSync(rootManifestPath, 'utf8'));
+  const manifestPath = join(dir, 'body-modules.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    ...rootManifest,
+    startupScripts: rootManifest.startupScripts.map((path) => relative(dir, join(root, path))),
+    scripts: rootManifest.scripts
+      .filter((path) => !path.includes('/brain/thermoregulation.ts'))
+      .map((path) => relative(dir, join(root, path))),
+  }));
+  return manifestPath;
+}
+
+function boot(manifestPath, statePath) {
   return startGateway({
-    manifestPath: rootManifestPath,
+    manifestPath,
     statePath,
     port: 0,
     autoTick: false,
@@ -42,8 +55,9 @@ function boot(statePath) {
 async function startBody(t, { parts = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-sweat-'));
   const statePath = writeState(dir, parts);
+  const manifestPath = writeManifest(dir);
   silence(t);
-  const gateway = boot(statePath);
+  const gateway = boot(manifestPath, statePath);
   t.after(async () => {
     await gateway.stop();
     rmSync(dir, { recursive: true, force: true });
@@ -237,9 +251,10 @@ test('a legacy checkpoint fills zero activity, skin request and lung flux withou
 test('restarting keeps the remaining exercise and continues the same sweat and lung water ledger', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-sweat-restart-'));
   const statePath = writeState(dir);
+  const manifestPath = writeManifest(dir);
   silence(t);
 
-  let gateway = boot(statePath);
+  let gateway = boot(manifestPath, statePath);
   t.after(async () => {
     await gateway.stop();
     rmSync(dir, { recursive: true, force: true });
@@ -279,7 +294,7 @@ test('restarting keeps the remaining exercise and continues the same sweat and l
   assert.ok(Math.abs(cumulativeLungMl - 8 * lungMlPerRound) <= 1e-9);
   await gateway.stop();
 
-  gateway = boot(statePath);
+  gateway = boot(manifestPath, statePath);
   await gateway.ready;
   const restored = gateway.getState();
   assert.equal(restored.simulatedSeconds, before.simulatedSeconds);

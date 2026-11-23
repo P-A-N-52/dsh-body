@@ -84,6 +84,21 @@ const liverStub = {
   },
 };
 
+// 最小肾糖异生 stub：只锁定 glucose 声明的入账来源与 transfer 对端，不导入肾模块。
+const kidneyGluconeogenesisInitialState = { glucoseOutputG: 0 };
+
+const kidneyGluconeogenesisStub = {
+  id: 'kidneyGluconeogenesis',
+  initialState: kidneyGluconeogenesisInitialState,
+  fields: {
+    glucoseOutputG: {
+      unit: 'g',
+      mode: 'absolute',
+      transferOut: ['glucose.glucoseMassG'],
+    },
+  },
+};
+
 // 最小乳腺 stub：只锁定 glucose 消费的请求字段与 lactoseG 接收端，不导入乳腺模块。
 const mammaryInitialState = {
   milkRequestMl: 0,
@@ -258,6 +273,7 @@ function registry() {
     kidneyGlucoseStub,
     muscleGlucoseStub,
     liverStub,
+    kidneyGluconeogenesisStub,
     mammaryGlandsStub,
     { id, initialState, fields },
   ]);
@@ -333,7 +349,11 @@ test('glucose exports the compartment contract with the excess signal and baseli
     glucoseMassG: {
       unit: 'g',
       mode: 'absolute',
-      transferIn: ['smallIntestine.carbohydrateG', 'liver.glycogenG'],
+      transferIn: [
+        'smallIntestine.carbohydrateG',
+        'liver.glycogenG',
+        'kidneyGluconeogenesis.glucoseOutputG',
+      ],
       transferOut: [
         'kidneyGlucose.excretedGlucoseG',
         'liver.storageG',
@@ -380,12 +400,53 @@ test('the root glucose entry omits the mammary lactose sink and needs no mammary
     kidneyGlucoseStub,
     muscleGlucoseStub,
     liverStub,
+    kidneyGluconeogenesisStub,
     {
       id: rootGlucose.id,
       initialState: rootGlucose.initialState,
       fields: rootGlucose.fields,
     },
   ]));
+});
+
+test('glucoseMassG declares the kidney gluconeogenesis inflow after liver glycogen', () => {
+  const expected = [
+    'smallIntestine.carbohydrateG',
+    'liver.glycogenG',
+    'kidneyGluconeogenesis.glucoseOutputG',
+  ];
+  assert.deepEqual(fields.glucoseMassG.transferIn, expected);
+  assert.deepEqual(rootGlucose.fields.glucoseMassG.transferIn, expected);
+});
+
+test('a glucose manifest without kidney gluconeogenesis fails on the undeclared source', () => {
+  assert.throws(
+    () => createFieldRegistry([
+      {
+        id: 'smallIntestine',
+        initialState: { carbohydrateG: 0 },
+        fields: {
+          carbohydrateG: {
+            unit: 'g',
+            mode: 'absolute',
+            transferOut: ['glucose.glucoseMassG'],
+          },
+        },
+      },
+      kidneyGlucoseStub,
+      muscleGlucoseStub,
+      liverStub,
+      mammaryGlandsStub,
+      { id, initialState, fields },
+    ]),
+    (error) => {
+      assert.match(error.message, /glucose/);
+      assert.match(error.message, /glucoseMassG/);
+      assert.match(error.message, /kidneyGluconeogenesis\.glucoseOutputG/);
+      assert.match(error.message, /not declared/);
+      return true;
+    },
+  );
 });
 
 test('the root glucose entry ignores the mammary lactose request', () => {
@@ -423,6 +484,22 @@ test('a hydrated body without kidney glucose fails on the glucose transfer targe
     { id: smallIntestine.id, initialState: smallIntestine.initialState, fields: smallIntestine.fields },
     { id: bodyFluid.id, initialState: bodyFluid.initialState, fields: bodyFluid.fields },
     {
+      id: 'colon',
+      initialState: { residueWaterMl: 0, reclaimedWaterMl: 0 },
+      fields: {
+        residueWaterMl: {
+          unit: 'mL',
+          mode: 'absolute',
+          transferIn: ['smallIntestine.waterVolumeMl'],
+        },
+        reclaimedWaterMl: {
+          unit: 'mL',
+          mode: 'absolute',
+          transferOut: ['bodyFluid.waterVolumeMl'],
+        },
+      },
+    },
+    {
       id: 'lungs',
       initialState: { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 },
       fields: {
@@ -435,6 +512,7 @@ test('a hydrated body without kidney glucose fails on the glucose transfer targe
       },
     },
     { id: skin.id, initialState: skin.initialState, fields: skin.fields },
+    kidneyGluconeogenesisStub,
     { id, initialState, fields },
     { id: bladder.id, initialState: bladder.initialState, fields: bladder.fields },
   ];
@@ -470,6 +548,7 @@ test('a glucose registry without muscle glucose fails on the muscle transfer tar
     },
     kidneyGlucoseStub,
     liverStub,
+    kidneyGluconeogenesisStub,
     { id, initialState, fields },
   ];
   assert.throws(
@@ -501,6 +580,7 @@ test('a glucose registry without liver fails on the liver transfer declarations'
     },
     kidneyGlucoseStub,
     muscleGlucoseStub,
+    kidneyGluconeogenesisStub,
     { id, initialState, fields },
   ];
   assert.throws(
@@ -917,6 +997,7 @@ test('same-round intestine inflow lands after write, so concentration rises only
     kidneyGlucoseStub,
     muscleGlucoseStub,
     liverStub,
+    kidneyGluconeogenesisStub,
     mammaryGlandsStub,
     { id, initialState, fields },
   ]);
