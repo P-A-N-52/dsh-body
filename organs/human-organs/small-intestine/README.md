@@ -4,9 +4,9 @@
 
 小肠目前只有一个部位写者 `water-absorption.ts`。它把轮初肠腔水和可消化碳水分别按一阶指数吸收：水转入 `bodyFluid`，碳水转入 `glucose`。文件名保留为水链时代的兼容路径，状态已经不只包含水。
 
-实现状态：脚本、参数与定向测试已在 `organs/human-organs/small-intestine/`，并已加入根清单（当前 19 个部位、21 份参数文件，含 3 份 DI 变体）。
+实现状态：脚本、参数与定向测试已在 `organs/human-organs/small-intestine/`，并已加入根清单（当前根清单 38 部位、37 份参数文件，含 3 份 DI 变体；女性清单 41 / 40，男性清单 40 / 39）。
 
-**清单依赖。** 水通道要求同时加载 `stomach/hydration.ts`、`bodyFluid`、`bladder`、[`skin`](../skin/README.md) 与 [`lungs`](../lungs/README.md)：`bodyFluid.waterVolumeMl` 按肾→肺→汗的顺序向膀胱、肺和皮肤三个出口分配轮初水，`skin.sweatVolumeMl` 与 `lungs.respiratoryWaterLossMl` 分别声明来自体液的 `transferIn`。碳水通道要求加载 `organs/human-compartments/glucose/glucose.ts`，而葡萄糖的肾糖输出又要求 `organs/human-organs/kidney/glucose-excretion.ts`，肌摄糖输出要求 `muscleGlucose`。因此完整硬 transfer 闭包是 `hydration.ts`、`smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose`、`muscleGlucose`、`skin`、`lungs` 九个部位；沿用旧自定义清单、只加载小肠而缺少 `glucose`、`kidneyGlucose`、`muscleGlucose`、`skin` 或 `lungs` 时，启动会因 transfer 配对缺失而拒绝继续。旧 `stomach/motility.ts` 不含小肠，仍可独立加载。[`physicalActivity`](../skeletal-muscle/README.md) 只是 [`skin`](../skin/README.md)、[`lungs`](../lungs/README.md) 与 [`muscleGlucose`](../skeletal-muscle/README.md) 的普通轮初读取，不是 transfer 配对依赖，也不在小肠的读写链上。
+**清单依赖。** 水通道要求同时加载 `stomach/hydration.ts`、`bodyFluid`、`bladder`、`colon`、[`skin`](../skin/README.md) 与 [`lungs`](../lungs/README.md)：`bodyFluid.waterVolumeMl` 按肾→肺→汗的顺序向膀胱、肺和皮肤三个出口分配轮初水，`skin.sweatVolumeMl` 与 `lungs.respiratoryWaterLossMl` 分别声明来自体液的 `transferIn`；`colon.residueWaterMl` 接收本脚本按比例转出的未吸收残渣水，并把回收水转回 `bodyFluid`。碳水通道要求加载 `organs/human-compartments/glucose/glucose.ts`，而葡萄糖的肾糖输出又要求 `organs/human-organs/kidney/glucose-excretion.ts`，肌摄糖输出要求 `muscleGlucose`。因此完整硬 transfer 闭包是 `hydration.ts`、`smallIntestine`、`bodyFluid`、`bladder`、`colon`、`glucose`、`kidneyGlucose`、`muscleGlucose`、`skin`、`lungs` 十个部位；沿用旧自定义清单、只加载小肠而缺少 `glucose`、`kidneyGlucose`、`muscleGlucose`、`colon`、`skin` 或 `lungs` 时，启动会因 transfer 配对缺失而拒绝继续。旧 `stomach/motility.ts` 不含小肠，仍可独立加载。[`physicalActivity`](../skeletal-muscle/README.md) 只是 [`skin`](../skin/README.md)、[`lungs`](../lungs/README.md) 与 [`muscleGlucose`](../skeletal-muscle/README.md) 的普通轮初读取，不是 transfer 配对依赖，也不在小肠的读写链上。
 
 ## 1. 脚本与部位
 
@@ -22,7 +22,7 @@
 
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
-| `waterVolumeMl` | `mL` | 轮末肠腔水量（状态）；`transferIn` 来自 `stomach.waterVolumeMl`，`transferOut` 到 `bodyFluid.waterVolumeMl` |
+| `waterVolumeMl` | `mL` | 轮末肠腔水量（状态）；`transferIn` 来自 `stomach.waterVolumeMl`，`transferOut` 到 `bodyFluid.waterVolumeMl` 与 `colon.residueWaterMl` |
 | `absorbedWaterMl` | `mL` | 本轮水吸收量（每轮通量，不是累计） |
 | `carbohydrateG` | `g` | 轮末肠腔可消化葡萄糖当量碳水（状态）；`transferIn` 来自 `stomach.carbohydrateG`，`transferOut` 到 `glucose.glucoseMassG` |
 | `absorbedCarbohydrateG` | `g` | 本轮碳水吸收量（每轮通量，不是累计） |
@@ -38,20 +38,23 @@
 ```text
 A_water = W_start × (1 − 2^(−dtMin / 20))
 A_carb  = C_start × (1 − 2^(−dtMin / 20))
+residue = 0.05 × max(0, W_start − A_water)
 write.waterVolumeMl = W_start
 write.carbohydrateG = C_start
 write.absorbedWaterMl = A_water
 write.absorbedCarbohydrateG = A_carb
 transfer smallIntestine → bodyFluid: A_water
+transfer smallIntestine → colon: residue
 transfer smallIntestine → glucose: A_carb
 ```
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | ---: | --- | --- | --- |
 | `smallIntestine.absorption.halfTimeMin` | 20 | `min` | `design` | `SRC-PERONNET-2012`（只作水吸收时间尺度背景） |
+| `smallIntestine.residueFraction` | 0.05 | `1` | `design` | —（无直接证据） |
 | `smallIntestine.carbohydrateAbsorption.halfTimeMin` | 20 | `min` | `design` | 无直接来源；未来由人体肠腔碳水消失或餐后葡萄糖观测替换 |
 
-两个 20 min 是独立参数，恰好取相同默认值，不表示水和碳水在人体内有相同吸收机制。碳水半时不能借 Péronnet 的水研究或 Dalla Man 2007 的 `k_abs` 冒充实测值。
+两个 20 min 是独立参数，恰好取相同默认值，不表示水和碳水在人体内有相同吸收机制。碳水半时不能借 Péronnet 的水研究或 Dalla Man 2007 的 `k_abs` 冒充实测值。0.05 只是“本轮未吸收的轮初肠水转入结肠”的固定比例，不是结肠转运时间、粪便水实测值或吸收分数；残渣与吸收量之和不超过轮初肠水。结肠下一轮才回收其中一部分回流 `bodyFluid`，本轮回收量不参与本轮小肠吸收。
 
 只吸收轮初池：胃同轮转入的水和碳水在 Gateway 的 transfer 阶段才加入肠池，下一轮才参与吸收。旧存档缺少碳水字段时按 0，不猜历史摄入。
 
@@ -60,14 +63,15 @@ transfer smallIntestine → glucose: A_carb
 - 本脚本是 `smallIntestine` 的唯一写者，只读自己的轮初状态。
 - 先 `write` 转出前基准，再请求 `transfer`；同轮新流入不能用于本轮吸收。
 - 不读胃的总体积、总能量或排空通量来计算吸收；胃到小肠的质量只经声明的 transfer 配对进入。
-- 不写 `bodyFluid`、`glucose`、`bladder` 或其他部位。
+- 不写 `bodyFluid`、`colon`、`glucose`、`bladder` 或其他部位。
+- 结肠残渣出口由本脚本发起 transfer；`colon` 必须加载，否则启动校验因 `transferOut` 目标未声明而失败。胃同轮转入的水在 transfer 阶段才加入肠池，不参与本轮残渣计算。
 
 ## 5. 证据入口
 
 - 水证据笔记：[`references/notes/peronnet-2012.md`](references/notes/peronnet-2012.md)
 - 葡萄糖隔室与分布体积：[`../../human-compartments/glucose/README.md`](../../human-compartments/glucose/README.md)
 - 共享登记簿：[`../references/source-index.csv`](../references/source-index.csv)
-- 设计：[`docs/superpowers/specs/2026-11-22-water-balance-design.md`](../../../docs/superpowers/specs/2026-11-22-water-balance-design.md) §3.2；[`docs/superpowers/specs/2026-11-22-carbohydrate-glucose-design.md`](../../../docs/superpowers/specs/2026-11-22-carbohydrate-glucose-design.md)
+- 设计：[`docs/superpowers/specs/2026-11-22-water-balance-design.md`](../../../docs/superpowers/specs/2026-11-22-water-balance-design.md) §3.2；[`docs/superpowers/specs/2026-11-22-carbohydrate-glucose-design.md`](../../../docs/superpowers/specs/2026-11-22-carbohydrate-glucose-design.md)；结肠残渣出口见 [`2026-11-24-bowel-design.md`](../../../docs/superpowers/specs/2026-11-24-bowel-design.md)
 
 **证据边界：** Péronnet 2012 是 36 名健康年轻男性一次 300 mL D₂O 的口服标记水研究，只支撑水吸收的探索时间尺度；75–120 min 是表观完全吸收时间，不是小肠半时。碳水一阶吸收和 20 min 都是 `design`，没有独立验证。
 
@@ -76,4 +80,5 @@ transfer smallIntestine → glucose: A_carb
 - 不区分肠段、转运体、刷状缘酶、消化速度、渗透压、肠腔 pH、血流或神经调节。
 - 可消化碳水统一按葡萄糖当量处理；不区分单糖、双糖、淀粉、糖醇和纤维，不建脂肪或蛋白吸收。
 - 两个吸收字段是模型通量读数，不是门静脉实测通量、血浆容量变化或吸收分数。
+- 残渣比例 0.05 是工程假设，不建结肠转运时间、粪便水、纤维或菌群；它会让相当一部分未吸收水进入结肠，而不是全部回流体液。
 - 没有个体化吸收半时，也没有独立生理数据验证。
