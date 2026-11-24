@@ -26,13 +26,35 @@ function validateExercise(args) {
   return null;
 }
 
-function validateAction(args) {
+const BUILTIN_ACTION_TYPES = ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'sex', 'orgasm'];
+
+function getExtraActionTypes(gateway) {
+  if (typeof gateway?.getCapabilities !== 'function') return [];
+  let capabilities;
+  try {
+    capabilities = gateway.getCapabilities();
+  } catch {
+    return [];
+  }
+  if (!capabilities || typeof capabilities !== 'object') return [];
+  return Object.keys(capabilities)
+    .filter((type) => type
+      && !BUILTIN_ACTION_TYPES.includes(type)
+      && Array.isArray(capabilities[type])
+      && capabilities[type].length > 0)
+    .sort();
+}
+
+function validateAction(args, extraActionTypes = []) {
   if (args.type === 'urinate') return null;
   if (args.type === 'defecate') return null;
   if (args.type === 'orgasm') return null;
   if (args.type === 'exercise' || args.type === 'sex') return validateExercise(args);
+  if (extraActionTypes.includes(args.type)) return null;
   if (args.type !== 'drink' && args.type !== 'eat') {
-    return 'type must be drink, eat, urinate, defecate, exercise, sex, or orgasm';
+    return extraActionTypes.length > 0
+      ? `type must be one of ${[...BUILTIN_ACTION_TYPES, ...extraActionTypes].join(', ')}`
+      : 'type must be drink, eat, urinate, defecate, exercise, sex, or orgasm';
   }
   if (!isFiniteNumber(args.volumeMl) || args.volumeMl <= 0) {
     return 'volumeMl must be a finite number greater than 0';
@@ -63,16 +85,25 @@ function renderJson(_args, value) {
 }
 
 export function createBodyTools(gateway) {
+  const typeProperty = { type: 'string' };
+  Object.defineProperty(typeProperty, 'enum', {
+    enumerable: true,
+    get() {
+      return [...BUILTIN_ACTION_TYPES, ...getExtraActionTypes(gateway)];
+    },
+  });
+
   return {
     body_act: {
       name: 'body_act',
       description: 'Submit a structured body action (drink, eat, urinate, defecate, exercise, sex, or orgasm) to the Gateway. '
+        + 'Also supports any additional declared organ actions from gateway capabilities. '
         + 'A 202 queued receipt only means the action is queued; it takes effect in a later heartbeat, '
         + 'so read body_state afterwards. Retrying the same session and tool call reuses the same action id.',
       parameters: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'sex', 'orgasm'] },
+          type: typeProperty,
           volumeMl: { type: 'number', description: 'Intake volume in milliliters.' },
           energyKcal: { type: 'number', description: 'Intake energy in kilocalories.' },
           carbohydrateG: {
@@ -110,7 +141,7 @@ export function createBodyTools(gateway) {
         if (typeof sessionId !== 'string' || sessionId === '') {
           return { ok: false, statusCode: 400, receipt: { error: 'body_act requires an agent session id' } };
         }
-        const invalid = validateAction(args);
+        const invalid = validateAction(args, getExtraActionTypes(gateway));
         if (invalid !== null) {
           return { ok: false, statusCode: 400, receipt: { error: invalid } };
         }

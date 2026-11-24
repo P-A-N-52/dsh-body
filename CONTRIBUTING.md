@@ -20,4 +20,17 @@
 
 - 从 `main` 切主题分支，提交和 PR 聚焦一个改动。说明改了什么、影响哪些接口／字段／单位、做了什么验证；文档用中文，并把未实现项标为计划。改动相关契约时同步对应指南和 [`AGENTS.md`](AGENTS.md)。
 - 代码或参数改动跑一次 `npm test`。需要测试 Gateway 时，复用 [`test-support/harness.mjs`](test-support/harness.mjs) 的临时目录、随机可用端口和手动推进；不要使用个人存档。离线重放可检查模型走势，但不能替代真实 DSH 会话里的动作、通知和恢复验收。纯文档改动核对链接、命令和实现口径即可。
+## 个体差异与可扩展器官开发规范
+
+1. **个体档案与参数差异（只写差异、停机重启生效）**：
+   - 个体差异不修改 `organs/**/*.parameters.json` 证据默认值，也不复制身体清单里的器官代码。
+   - 每具身体在自己的 `body-state.json` 顶层可选声明 `profile: { weightKg, heightCm }`（默认 `75 kg / 170 cm`）与稀疏 `parameters: { [parameterId]: number }` 差异表，停机修改、重启后经 `BodyWorker` 在模块加载时生效。
+2. **体格缩放接入**：
+   - 新部位若存在随体型/体重比例缩放的容积、基线速率或储量常量，应通过 `lib/parameters.js` 的 `scaleByBodyWeight(value, parameterId)` 获取缩放值，保持 `75 kg` 默认逐点一致并允许 `parameters` 显式覆盖优先。
+3. **新增非标器官（如翅膀、尾巴）即插即用**：
+   - 模块遵循既有 ESM 命名导出：`id`、`heartbeat(io)`、`fields`（必选）与 `initialState`、`actionTypes`（可选），保持单一写者与 JSON-safe。
+   - **向大脑上报感受无需改写脑部脚本**：在轮末 `io.write(...)` 中可选写入 `discomfortMm`（`0–100 mm`，与 `discomfort.onsetMm = 70` 同口径）及 `sensations: { [key]: { intensityMm, discomfort?, contextText?, wakeText? } }`。
+   - **纯感觉、零数值硬规则**：`brainNotify` 对 `>= 65 mm` 投递不唤醒 `context`（`agent.inject`）、对 `>= 85 mm` 投递唤醒 `wake`（`agent.followup`），`contextText` / `wakeText` **严禁包含任何阿拉伯数字或数值单位**（含数字将被拦截并回退为通用无数字定性描述）。
+   - **自定义动作自动注册**：器官导出的 `actionTypes` 会进入 Gateway 能力表，`tools.js` (`body_act`) 会自动把已声明动作加入 `type` 枚举并透传 JSON-safe 载荷（未声明动作仍返回 `400`）。
+
 - 提交前查看 `git status`，只提交本次相关文件。不上传本地身体存档、会话通知、凭据、日志、`node_modules/`、`.tower/`、`.superpowers/` 或本地 Pulse 源码检出。

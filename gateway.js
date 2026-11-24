@@ -110,7 +110,10 @@ export function startGateway({
     let modules = [];
     if (saved?.active !== false) {
       try {
-        modules = await runner.describe();
+        modules = await runner.describe({
+          profile: saved?.profile ?? null,
+          parameters: saved?.parameters ?? null,
+        });
       } catch (error) {
         throw new Error(`Failed to load body modules: ${formatError(error)}`, { cause: error });
       }

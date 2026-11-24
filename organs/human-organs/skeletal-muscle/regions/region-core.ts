@@ -54,7 +54,11 @@
  * intensity 超出 [0, 1] 时抛错使本轮失败且不写状态，不用健康常量掩盖异常。合法 0 活动、
  * 0 到账与 0 存量都是有效值。
  */
-import { loadParameters, requireParameter } from '../../../../lib/parameters.js';
+import {
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../../lib/parameters.js';
 
 export type MuscleRegionId = 'muscleHead' | 'muscleTrunk' | 'muscleLimbs';
 
@@ -93,14 +97,14 @@ const regionShares: Readonly<Record<MuscleRegionId, number>> = {
   muscleLimbs: 0.5,
 };
 
-const INITIAL_TOTAL_GLYCOGEN_G = 300;
+const INITIAL_TOTAL_GLYCOGEN_G = scaleByBodyWeight(300);
 const regionIds = Object.keys(regionShares) as MuscleRegionId[];
 
 const parameters = loadParameters(
   new URL('../glucose-uptake.parameters.json', import.meta.url),
 );
-const glycogenUseRateGPerMin = requireParameter(
-  parameters,
+const glycogenUseRateGPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'muscleGlucose.glycogenUseRateGPerMin'),
   'muscleGlucose.glycogenUseRateGPerMin',
 );
 

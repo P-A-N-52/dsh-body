@@ -50,7 +50,11 @@
  * 血容量/血压、RAAS、体温调节、蒸发、肺通气、月经血成分、乳汁成分或乳房解剖；上游胃水、
  * 小肠吸收、肺、皮肤、子宫与乳腺的证据边界见对应器官 README，本文件不引用具体论文。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 
 export type BodyFluidState = {
   waterVolumeMl: number;
@@ -93,8 +97,14 @@ export type BodyWaterModule = {
 };
 
 const parameters = loadParameters(new URL('./water.parameters.json', import.meta.url));
-const referenceVolumeMl = requireParameter(parameters, 'bodyFluid.referenceVolumeMl');
-const deficitScaleMl = requireParameter(parameters, 'bodyFluid.deficitScaleMl');
+const referenceVolumeMl = scaleByBodyWeight(
+  requireParameter(parameters, 'bodyFluid.referenceVolumeMl'),
+  'bodyFluid.referenceVolumeMl',
+);
+const deficitScaleMl = scaleByBodyWeight(
+  requireParameter(parameters, 'bodyFluid.deficitScaleMl'),
+  'bodyFluid.deficitScaleMl',
+);
 
 const bodyFluidInitialState: BodyFluidState = {
   waterVolumeMl: referenceVolumeMl,

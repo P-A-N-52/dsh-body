@@ -1,8 +1,14 @@
 import { fileURLToPath } from 'node:url';
 import { parentPort, workerData } from 'node:worker_threads';
 import { assertJsonValue, isPlainObject as isRecord } from '../json-safe.js';
+import { setWorkerParameterConfig } from '../lib/parameters.js';
 import { maxNotificationTextLength } from './config.js';
 import { createFieldRegistry } from './operations.js';
+
+setWorkerParameterConfig({
+  profile: workerData.profile,
+  parameters: workerData.parameters,
+});
 
 const modules = new Map();
 const frozenObjects = new WeakSet();

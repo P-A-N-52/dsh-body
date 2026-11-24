@@ -641,3 +641,52 @@ test('body_state ignores prototype property names and returns null', async (t) =
     assert.equal(result.parts[part], null);
   }
 });
+
+test('body_act dynamically exposes extra capability actionTypes while keeping built-in validation strict', async () => {
+  const submitted = [];
+  const fakeGateway = {
+    getCapabilities() {
+      return {
+        drink: ['stomach'],
+        fold_wings: ['wings'],
+        wag_tail: ['tail'],
+      };
+    },
+    submitAction(payload) {
+      submitted.push(payload);
+      return { statusCode: 202, body: { ...payload, status: 'queued' } };
+    },
+    getState() {
+      return { simulatedSeconds: 0, parts: {} };
+    },
+  };
+  const tools = createBodyTools(fakeGateway);
+  assert.deepEqual(
+    tools.body_act.parameters.properties.type.enum,
+    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'sex', 'orgasm', 'fold_wings', 'wag_tail'],
+  );
+
+  const customOk = await tools.body_act.execute(
+    { type: 'fold_wings', angleDeg: 15 },
+    fakeExec({ sessionId: 'session-ext', callId: 'wings-1' }),
+  );
+  assert.equal(customOk.ok, true);
+  assert.equal(customOk.statusCode, 202);
+  assert.equal(submitted[0].type, 'fold_wings');
+  assert.equal(submitted[0].angleDeg, 15);
+
+  const unknownRejected = await tools.body_act.execute(
+    { type: 'sniff' },
+    fakeExec({ sessionId: 'session-ext', callId: 'bad-1' }),
+  );
+  assert.equal(unknownRejected.ok, false);
+  assert.equal(unknownRejected.statusCode, 400);
+  assert.match(unknownRejected.receipt.error, /type/);
+
+  const badDrinkRejected = await tools.body_act.execute(
+    { type: 'drink', volumeMl: 0 },
+    fakeExec({ sessionId: 'session-ext', callId: 'bad-drink' }),
+  );
+  assert.equal(badDrinkRejected.ok, false);
+  assert.equal(badDrinkRejected.statusCode, 400);
+});

@@ -126,6 +126,12 @@ import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 export const id = 'interoception';
 export const actionTypes: string[] = [];
 
+export type ExtensibleSensation = {
+  intensityMm: number;
+  contextText?: string;
+  wakeText?: string;
+};
+
 type InteroceptionState = {
   hunger: number;
   fullness: number;
@@ -143,6 +149,7 @@ type InteroceptionState = {
   coldMm: number;
   hypocalcemiaMm: number;
   hypercalcemiaMm: number;
+  sensations?: Record<string, ExtensibleSensation>;
 };
 
 type SensoryReading = {
@@ -214,7 +221,58 @@ type ColonReading = {
   bowelUrgencyMm?: number;
 };
 
+type SnapshotReading = {
+  simulatedSeconds?: number;
+  parts?: Readonly<Record<string, unknown>>;
+};
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function clampMm(value: number): number {
+  return Math.min(100, Math.max(0, value));
+}
+
+function collectExtensibleInputs(
+  io: IO,
+): { discomfortMm: number; sensations: Record<string, ExtensibleSensation> } {
+  const snapshot = io.read();
+  const parts = isPlainRecord(snapshot?.parts) ? snapshot.parts : undefined;
+  if (parts === undefined) return { discomfortMm: 0, sensations: {} };
+
+  let discomfortMm = 0;
+  const sensations: Record<string, ExtensibleSensation> = {};
+  for (const [partId, rawPart] of Object.entries(parts)) {
+    if (partId === id || !isPlainRecord(rawPart)) continue;
+    if (typeof rawPart.discomfortMm === 'number' && Number.isFinite(rawPart.discomfortMm)) {
+      discomfortMm = Math.max(discomfortMm, clampMm(rawPart.discomfortMm));
+    }
+    if (!isPlainRecord(rawPart.sensations)) continue;
+    for (const [sensationKey, rawEntry] of Object.entries(rawPart.sensations)) {
+      if (!sensationKey || !isPlainRecord(rawEntry)) continue;
+      if (typeof rawEntry.intensityMm !== 'number' || !Number.isFinite(rawEntry.intensityMm)) {
+        continue;
+      }
+      const intensityMm = clampMm(rawEntry.intensityMm);
+      if (rawEntry.discomfort === true) {
+        discomfortMm = Math.max(discomfortMm, intensityMm);
+      }
+      const entry: ExtensibleSensation = { intensityMm };
+      if (typeof rawEntry.contextText === 'string' && rawEntry.contextText.trim() !== '') {
+        entry.contextText = rawEntry.contextText.trim();
+      }
+      if (typeof rawEntry.wakeText === 'string' && rawEntry.wakeText.trim() !== '') {
+        entry.wakeText = rawEntry.wakeText.trim();
+      }
+      sensations[`${partId}.${sensationKey}`] = entry;
+    }
+  }
+  return { discomfortMm, sensations };
+}
+
 type IO = {
+  read(): Readonly<SnapshotReading> | undefined;
   read(id: 'stomachSensory'): Readonly<SensoryReading> | undefined;
   read(id: 'stomachGhrelin'): Readonly<GhrelinReading> | undefined;
   read(id: 'duodenum'): Readonly<DuodenumReading> | undefined;
@@ -392,6 +450,7 @@ export function heartbeat(io: IO): void {
     0,
     100,
   );
+  const extensible = collectExtensibleInputs(io);
   const discomfort = Math.max(
     excessOverOnset(hunger, discomfortOnsetMm),
     excessOverOnset(fullness, discomfortOnsetMm),
@@ -400,7 +459,9 @@ export function heartbeat(io: IO): void {
     excessOverOnset(uterineCramp, discomfortOnsetMm),
     excessOverOnset(mammaryFullness, discomfortOnsetMm),
     excessOverOnset(esophagealChoking, discomfortOnsetMm),
+    excessOverOnset(extensible.discomfortMm, discomfortOnsetMm),
   );
+  const hasExtensibleSensations = Object.keys(extensible.sensations).length > 0;
 
   io.write({
     hunger,
@@ -419,5 +480,6 @@ export function heartbeat(io: IO): void {
     coldMm,
     hypocalcemiaMm,
     hypercalcemiaMm,
+    ...(hasExtensibleSensations ? { sensations: extensible.sensations } : {}),
   });
 }

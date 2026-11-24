@@ -33,7 +33,12 @@
  * 绝对核心温度测量、湿度、风速、辐射面积或个体差异；不能称 validated。设计来源：
  * docs/superpowers/specs/2026-11-24-thermoregulation-design.md。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  getNumericParameterOverride,
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 
 export const id = 'thermoregulation';
 export const actionTypes: string[] = [];
@@ -66,19 +71,26 @@ const ambientTemperatureC = requireParameter(
   parameters,
   'thermoregulation.ambientTemperatureC',
 );
-const heatCapacityKcalPerC = requireParameter(
-  parameters,
+const heatCapacityKcalPerC = scaleByBodyWeight(
+  requireParameter(parameters, 'thermoregulation.heatCapacityKcalPerC'),
   'thermoregulation.heatCapacityKcalPerC',
 );
 const metabolicFactor = requireParameter(parameters, 'thermoregulation.metabolicFactor');
-const shiveringGain = requireParameter(parameters, 'thermoregulation.shiveringGain');
-const lossGain = requireParameter(parameters, 'thermoregulation.lossGain');
+const shiveringGain = scaleByBodyWeight(
+  requireParameter(parameters, 'thermoregulation.shiveringGain'),
+  'thermoregulation.shiveringGain',
+);
+const lossGain = scaleByBodyWeight(
+  requireParameter(parameters, 'thermoregulation.lossGain'),
+  'thermoregulation.lossGain',
+);
 const evaporationKcalPerMl = requireParameter(
   parameters,
   'thermoregulation.evaporationKcalPerMl',
 );
 
-const fallbackBasalOxygenConsumptionMlMin = 250;
+const fallbackBasalOxygenConsumptionMlMin =
+  getNumericParameterOverride('bloodOxygen.basalMlMin') ?? scaleByBodyWeight(250);
 const minCoreTemperatureC = 25;
 const maxCoreTemperatureC = 45;
 

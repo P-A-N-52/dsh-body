@@ -1512,3 +1512,121 @@ test('thirst notify state stays JSON-safe across rounds', () => {
     state = written;
   }
 });
+
+test('extensible sensations deliver feeling-only context and wake notifications with hysteresis and no numbers', () => {
+  const r1 = round({
+    interoception: {
+      hunger: 0,
+      fullness: 0,
+      thirst: 0,
+      urinaryUrgency: 0,
+      sensations: {
+        'wings.wingStrain': {
+          intensityMm: 70,
+          contextText: '翅膀有些发酸沉重。',
+          wakeText: '翅膀传来强烈的牵拉不适。',
+        },
+      },
+    },
+    actions: [{ sessionId: 'session-ext' }],
+    simulatedSeconds: 60,
+  });
+  assert.deepEqual(r1.notifications, [{
+    mode: 'context',
+    sessionId: 'session-ext',
+    text: '翅膀有些发酸沉重。',
+  }]);
+  assert.deepEqual(r1.written.sessions['session-ext'].levels, levels());
+  assert.deepEqual(r1.written.sessions['session-ext'].sensationLevels, {
+    'wings.wingStrain': 2,
+  });
+
+  const r2 = round({
+    state: r1.written,
+    interoception: {
+      hunger: 0,
+      fullness: 0,
+      thirst: 0,
+      urinaryUrgency: 0,
+      sensations: {
+        'wings.wingStrain': {
+          intensityMm: 75,
+          contextText: '翅膀有些发酸沉重。',
+          wakeText: '翅膀传来强烈的牵拉不适。',
+        },
+      },
+    },
+    actions: [{ sessionId: 'session-ext' }],
+    simulatedSeconds: 60 + 45 * MINUTE,
+  });
+  assert.deepEqual(r2.notifications, []);
+
+  const r3 = round({
+    state: r2.written,
+    interoception: {
+      hunger: 0,
+      fullness: 0,
+      thirst: 0,
+      urinaryUrgency: 0,
+      sensations: {
+        'wings.wingStrain': {
+          intensityMm: 90,
+          contextText: '翅膀有些发酸沉重。',
+          wakeText: '翅膀传来强烈的牵拉不适。',
+        },
+      },
+    },
+    actions: [{ sessionId: 'session-ext' }],
+    simulatedSeconds: 60 + 90 * MINUTE,
+  });
+  assert.deepEqual(r3.notifications, [{
+    mode: 'wake',
+    sessionId: 'session-ext',
+    text: '翅膀传来强烈的牵拉不适。',
+  }]);
+  assert.deepEqual(r3.written.sessions['session-ext'].sensationLevels, {
+    'wings.wingStrain': 3,
+  });
+
+  const r4 = round({
+    state: r3.written,
+    interoception: {
+      hunger: 0,
+      fullness: 0,
+      thirst: 0,
+      urinaryUrgency: 0,
+      sensations: {
+        'wings.wingStrain': {
+          intensityMm: 90,
+          contextText: '70mm',
+          wakeText: '疼痛达到90分！',
+        },
+      },
+    },
+    actions: [{ sessionId: 'session-other' }],
+    simulatedSeconds: 120,
+  });
+  assert.equal(r4.notifications[0].mode, 'wake');
+  assert.equal(/\d/.test(r4.notifications[0].text), false, 'notification text must never contain numbers');
+
+  const r5 = round({
+    state: r3.written,
+    interoception: {
+      hunger: 0,
+      fullness: 0,
+      thirst: 0,
+      urinaryUrgency: 0,
+      sensations: {
+        'wings.wingStrain': {
+          intensityMm: 20,
+          contextText: '翅膀有些发酸沉重。',
+          wakeText: '翅膀传来强烈的牵拉不适。',
+        },
+      },
+    },
+    actions: [{ sessionId: 'session-ext' }],
+    simulatedSeconds: 60 + 135 * MINUTE,
+  });
+  assert.deepEqual(r5.notifications, []);
+  assert.equal(Object.hasOwn(r5.written.sessions['session-ext'], 'sensationLevels'), false);
+});

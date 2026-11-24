@@ -19,7 +19,12 @@
  * 不建模渗透压、血压/RAAS、昼夜节律、运动、疾病或个体差异；不调用 io.notify，
  * 也不处理动作。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  getNumericParameterOverride,
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 import {
   REFERENCE_RELATIVE_CONCENTRATION,
   adhTarget,
@@ -56,7 +61,8 @@ const volumeGain = requireParameter(parameters, 'hypothalamusAdh.volumeGain');
 const relativeMinimum = requireParameter(parameters, 'hypothalamusAdh.relativeMinimum');
 const relativeMaximum = requireParameter(parameters, 'hypothalamusAdh.relativeMaximum');
 
-const REFERENCE_BLOOD_VOLUME_ML = 5000;
+const REFERENCE_BLOOD_VOLUME_ML =
+  getNumericParameterOverride('blood.referenceBloodVolumeMl') ?? scaleByBodyWeight(5000);
 
 export const initialState: AdhState = {
   relativeConcentration: REFERENCE_RELATIVE_CONCENTRATION,

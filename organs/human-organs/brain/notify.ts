@@ -57,6 +57,7 @@ type SessionState = {
   dayCount: number;
   lastSeenAt: number;
   levels: Levels;
+  sensationLevels?: Record<string, Level>;
 };
 
 type StoredSessionState = Omit<SessionState, 'levels'> & {
@@ -73,6 +74,7 @@ type InteroceptionReading = {
   fullness?: number;
   thirst?: number;
   urinaryUrgency?: number;
+  sensations?: Readonly<Record<string, unknown>>;
 };
 
 type BladderReading = {
@@ -189,10 +191,108 @@ function normalizeLevels(
   return levels;
 }
 
+const SENSATION_MARKED_MM = 65;
+const SENSATION_STRONG_MM = 85;
+const FALLBACK_SENSATION_TEXTS: Readonly<Record<2 | 3, string>> = {
+  2: '身体感受：出现明显的异样感受。',
+  3: '身体感受：出现强烈的异样感受。',
+};
+
+type ObservedSensation = {
+  key: string;
+  level: Level;
+  text: string;
+};
+
+type SensationCandidate = {
+  key: string;
+  level: 2 | 3;
+  text: string;
+};
+
+function qualitativeTextOf(rawText: unknown, level: 2 | 3): string {
+  if (typeof rawText === 'string') {
+    const trimmed = rawText.trim();
+    // Enforce feeling-only delivery: never transmit numeric values or measurements.
+    if (trimmed && !/\d/.test(trimmed)) return trimmed;
+  }
+  return FALLBACK_SENSATION_TEXTS[level];
+}
+
+function normalizeSensationLevels(
+  raw: Readonly<StoredSessionState> | undefined,
+): Record<string, Level> {
+  const stored = (raw as Readonly<{ sensationLevels?: unknown }> | undefined)?.sensationLevels;
+  const levels: Record<string, Level> = {};
+  if (stored !== undefined && stored !== null && typeof stored === 'object' && !Array.isArray(stored)) {
+    for (const [key, value] of Object.entries(stored)) {
+      const level = waterLevelOrZero(value);
+      if (key && level > 0) levels[key] = level;
+    }
+  }
+  return levels;
+}
+
+function observeSensations(io: IO): ObservedSensation[] {
+  const rawSensations = io.read('interoception')?.sensations;
+  if (!rawSensations || typeof rawSensations !== 'object' || Array.isArray(rawSensations)) {
+    return [];
+  }
+  const observed: ObservedSensation[] = [];
+  for (const key of Object.keys(rawSensations).sort()) {
+    if (!key) continue;
+    const entry = rawSensations[key];
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const rawIntensity = (entry as Readonly<{ intensityMm?: unknown }>).intensityMm;
+    if (typeof rawIntensity !== 'number' || !Number.isFinite(rawIntensity)) continue;
+    const level = levelOf(rawIntensity, SENSATION_MARKED_MM, SENSATION_STRONG_MM);
+    const rawText = level >= 3
+      ? (entry as Readonly<{ wakeText?: unknown }>).wakeText
+      : level === 2
+        ? (entry as Readonly<{ contextText?: unknown }>).contextText
+        : undefined;
+    observed.push({
+      key,
+      level,
+      text: level === 2 || level === 3 ? qualitativeTextOf(rawText, level) : '',
+    });
+  }
+  return observed;
+}
+
+function reconcileSensationLevels(
+  previous: Readonly<Record<string, Level>> | undefined,
+  observed: readonly ObservedSensation[],
+): Record<string, Level> {
+  const next: Record<string, Level> = {};
+  for (const entry of observed) {
+    if (entry.level === 0) continue;
+    const prevLevel = previous?.[entry.key] ?? 0;
+    if (prevLevel > 0) next[entry.key] = prevLevel;
+  }
+  return next;
+}
+
+function pickSensationCandidate(
+  levels: Readonly<Record<string, Level>>,
+  observed: readonly ObservedSensation[],
+): SensationCandidate | null {
+  let chosen: SensationCandidate | null = null;
+  for (const entry of observed) {
+    if (entry.level < 2) continue;
+    if (entry.level <= (levels[entry.key] ?? 0)) continue;
+    if (chosen === null || entry.level > chosen.level) {
+      chosen = { key: entry.key, level: entry.level, text: entry.text };
+    }
+  }
+  return chosen;
+}
+
 function normalizeSession(raw: Readonly<StoredSessionState> | undefined, now: number): SessionState {
   const lastLevel = raw?.lastLevel;
   const normalizedLevel = lastLevel === 1 || lastLevel === 2 || lastLevel === 3 ? lastLevel : 0;
   const lastKind = isKind(raw?.lastKind) ? raw.lastKind : null;
+  const sensationLevels = normalizeSensationLevels(raw);
   return {
     lastSentAt: finiteOrNull(raw?.lastSentAt),
     lastLevel: normalizedLevel,
@@ -203,6 +303,7 @@ function normalizeSession(raw: Readonly<StoredSessionState> | undefined, now: nu
     dayCount: countOrZero(raw?.dayCount),
     lastSeenAt: finiteOr(raw?.lastSeenAt, now),
     levels: normalizeLevels(raw, lastKind, normalizedLevel),
+    ...(Object.keys(sensationLevels).length > 0 ? { sensationLevels } : {}),
   };
 }
 
@@ -334,28 +435,64 @@ export function heartbeat(io: IO): void {
 
   const observed = observeSignals(io);
   reconcileLevels(session.levels, observed);
-  const candidate = pickCandidate(session.levels, observed);
-  const canNotify = candidate !== null
+  const builtInCandidate = pickCandidate(session.levels, observed);
+
+  const observedSensations = observeSensations(io);
+  const nextSensationLevels = reconcileSensationLevels(session.sensationLevels, observedSensations);
+  const sensationCandidate = pickSensationCandidate(nextSensationLevels, observedSensations);
+
+  const useSensation = sensationCandidate !== null
+    && (builtInCandidate === null || sensationCandidate.level > builtInCandidate.level);
+  const selectedLevelForCandidate = useSensation
+    ? sensationCandidate.level
+    : builtInCandidate?.level ?? null;
+
+  const canNotify = selectedLevelForCandidate !== null
     && (session.lastSentAt === null || now - session.lastSentAt >= minIntervalMin * 60)
     && session.hourCount < maxPerHour
     && session.dayCount < maxPerDay
     && sessionId.length <= MAX_SESSION_ID_LENGTH;
 
-  if (candidate !== null && canNotify && io.suppressNotifications !== true) {
-    io.notify({
-      mode: candidate.level >= wakeAtLevel ? 'wake' : 'context',
-      sessionId,
-      text: TEXTS[candidate.kind][candidate.level],
-    });
-    session.lastSentAt = now;
-    session.lastLevel = candidate.level;
-    session.lastKind = candidate.kind;
-    session.levels[candidate.kind] = candidate.level;
-    session.hourCount += 1;
-    session.dayCount += 1;
+  if (canNotify && io.suppressNotifications !== true) {
+    if (useSensation && sensationCandidate !== null) {
+      io.notify({
+        mode: sensationCandidate.level >= wakeAtLevel ? 'wake' : 'context',
+        sessionId,
+        text: sensationCandidate.text,
+      });
+      nextSensationLevels[sensationCandidate.key] = sensationCandidate.level;
+      session.lastSentAt = now;
+      session.lastLevel = sensationCandidate.level;
+      session.lastKind = null;
+      session.hourCount += 1;
+      session.dayCount += 1;
+    } else if (builtInCandidate !== null) {
+      io.notify({
+        mode: builtInCandidate.level >= wakeAtLevel ? 'wake' : 'context',
+        sessionId,
+        text: TEXTS[builtInCandidate.kind][builtInCandidate.level],
+      });
+      session.lastSentAt = now;
+      session.lastLevel = builtInCandidate.level;
+      session.lastKind = builtInCandidate.kind;
+      session.levels[builtInCandidate.kind] = builtInCandidate.level;
+      session.hourCount += 1;
+      session.dayCount += 1;
+    }
   } else {
-    const selectedLevel = candidate?.level ?? highestObserved(observed);
+    const highestSensation = observedSensations.reduce<Level>(
+      (maxLevel, entry) => (entry.level > maxLevel ? entry.level : maxLevel),
+      0,
+    );
+    const selectedLevel = selectedLevelForCandidate
+      ?? (Math.max(highestObserved(observed), highestSensation) as Level);
     if (selectedLevel < session.lastLevel) session.lastLevel = selectedLevel;
+  }
+
+  if (Object.keys(nextSensationLevels).length > 0) {
+    session.sensationLevels = nextSensationLevels;
+  } else {
+    delete session.sensationLevels;
   }
 
   sessions[sessionId] = session;

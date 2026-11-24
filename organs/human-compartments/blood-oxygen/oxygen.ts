@@ -36,7 +36,11 @@
  * 模型。不建 PaO2/PaCO2、氧合曲线、CO2、高原/病理缺氧、通气动作或气促通知；心输出与氧
  * 输送由 `blood` 以 `design` 常数给出，本脚本不据此声明循环生理。不能称 validated。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 
 export const id = 'bloodOxygen';
 export const actionTypes: string[] = [];
@@ -70,8 +74,14 @@ type BloodReading = {
 };
 
 const parameters = loadParameters(new URL('./oxygen.parameters.json', import.meta.url));
-const basalMlMin = requireParameter(parameters, 'bloodOxygen.basalMlMin');
-const activityGainMlMin = requireParameter(parameters, 'bloodOxygen.activityGainMlMin');
+const basalMlMin = scaleByBodyWeight(
+  requireParameter(parameters, 'bloodOxygen.basalMlMin'),
+  'bloodOxygen.basalMlMin',
+);
+const activityGainMlMin = scaleByBodyWeight(
+  requireParameter(parameters, 'bloodOxygen.activityGainMlMin'),
+  'bloodOxygen.activityGainMlMin',
+);
 const digestionGain = requireParameter(parameters, 'bloodOxygen.digestionGain');
 const baselineSpo2Percent = requireParameter(parameters, 'bloodOxygen.baselineSpo2Percent');
 

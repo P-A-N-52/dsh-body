@@ -49,7 +49,12 @@
  * 不建模血管分区、微循环、血细胞/血红蛋白、CO2/酸碱、血压分级诊断或运动性高血压。
  * 输出只含七个有限数字段，JSON-safe。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  getNumericParameterOverride,
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 
 export const id = 'blood';
 export const actionTypes: string[] = [];
@@ -77,21 +82,25 @@ type BodyFluidReading = {
 };
 
 const parameters = loadParameters(new URL('./blood.parameters.json', import.meta.url));
-const referenceBloodVolumeMl = requireParameter(
-  parameters,
+const referenceBloodVolumeMl = scaleByBodyWeight(
+  requireParameter(parameters, 'blood.referenceBloodVolumeMl'),
   'blood.referenceBloodVolumeMl',
 );
 const baselineSystolicMmHg = requireParameter(parameters, 'blood.baselineSystolicMmHg');
 const baselineDiastolicMmHg = requireParameter(parameters, 'blood.baselineDiastolicMmHg');
-const baselineGfrMlMin = requireParameter(parameters, 'blood.baselineGfrMlMin');
+const baselineGfrMlMin = scaleByBodyWeight(
+  requireParameter(parameters, 'blood.baselineGfrMlMin'),
+  'blood.baselineGfrMlMin',
+);
 const oxygenContentPerPercentMlPerL = requireParameter(
   parameters,
   'blood.oxygenContentPerPercentMlPerL',
 );
 
-const referenceCardiacOutputMlMin = 4900;
-const referenceBodyWaterMl = 30000;
-const bloodVolumeRange = { min: 2500, max: 6000 };
+const referenceCardiacOutputMlMin = scaleByBodyWeight(4900);
+const referenceBodyWaterMl = getNumericParameterOverride('bodyFluid.referenceVolumeMl')
+  ?? scaleByBodyWeight(30000);
+const bloodVolumeRange = { min: scaleByBodyWeight(2500), max: scaleByBodyWeight(6000) };
 const fallbackSpo2Percent = 97;
 const strokeVolumeGain = 0.2;
 const maxCortisolRelative = 3;
@@ -103,8 +112,8 @@ const heartParameters = loadParameters(
   new URL('../../human-organs/heart/heart.parameters.json', import.meta.url),
 );
 const maxHeartRatePerMin = requireParameter(heartParameters, 'heart.maxHeartRatePerMin');
-const restingStrokeVolumeMl = requireParameter(
-  heartParameters,
+const restingStrokeVolumeMl = scaleByBodyWeight(
+  requireParameter(heartParameters, 'heart.restingStrokeVolumeMl'),
   'heart.restingStrokeVolumeMl',
 );
 const activityGain = requireParameter(heartParameters, 'heart.activityGain');

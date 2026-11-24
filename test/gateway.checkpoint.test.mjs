@@ -199,3 +199,53 @@ test('catch-up does not spend the online notification chance or quota', async (t
   state = app.state();
   assert.equal(state.notifications.length, 1);
 });
+
+test('checkpoint preserves valid profile and sparse parameters across restarts and rejects invalid ones', async (t) => {
+  const seed = {
+    ...checkpoint({
+      wallTimeMs: 0,
+      simulatedSeconds: 0,
+      parts: {},
+    }),
+    profile: { weightKg: 55, heightCm: 162 },
+    parameters: {
+      'glucose.baselineConcentrationMgDl': 95,
+      'futureOrgan.unloadedParam': 1.5,
+    },
+  };
+  const app = await launch(t, { seed });
+  await app.tick();
+  const saved = app.state();
+  assert.deepEqual(saved.profile, { weightKg: 55, heightCm: 162 });
+  assert.deepEqual(saved.parameters, {
+    'glucose.baselineConcentrationMgDl': 95,
+    'futureOrgan.unloadedParam': 1.5,
+  });
+
+  const restarted = await launch(t, { seed: saved });
+  assert.deepEqual(restarted.state().profile, { weightKg: 55, heightCm: 162 });
+  assert.deepEqual(restarted.state().parameters, {
+    'glucose.baselineConcentrationMgDl': 95,
+    'futureOrgan.unloadedParam': 1.5,
+  });
+
+  await assert.rejects(
+    launch(t, {
+      seed: {
+        ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} }),
+        profile: { weightKg: -5 },
+      },
+    }),
+    /Invalid profile\.weightKg/,
+  );
+
+  await assert.rejects(
+    launch(t, {
+      seed: {
+        ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} }),
+        parameters: { 'glucose.baselineConcentrationMgDl': 'bad' },
+      },
+    }),
+    /Invalid parameter override/,
+  );
+});

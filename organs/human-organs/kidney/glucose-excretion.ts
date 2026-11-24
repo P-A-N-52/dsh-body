@@ -26,7 +26,11 @@
  * 上游 `glucose` 未加载时请求按 0（纯模块行为）；上游已加载但浓度字段缺失、非有限或为负数时
  * 令本轮失败，不用健康常量掩盖；合法 0 请求表示无排泄，不是异常。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 
 export const id = 'kidneyGlucose';
 export const actionTypes: string[] = [];
@@ -47,7 +51,10 @@ const distributionVolumeDlPerKg = requireParameter(
   parameters,
   'kidneyGlucose.distributionVolumeDlPerKg',
 );
-const referenceBodyMassKg = requireParameter(parameters, 'kidneyGlucose.referenceBodyMassKg');
+const referenceBodyMassKg = scaleByBodyWeight(
+  requireParameter(parameters, 'kidneyGlucose.referenceBodyMassKg'),
+  'kidneyGlucose.referenceBodyMassKg',
+);
 
 export const initialState: KidneyGlucoseState = {
   excretionRequestG: 0,

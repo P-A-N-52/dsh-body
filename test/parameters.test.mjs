@@ -3,7 +3,16 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadParameters, requireParameter } from '../lib/parameters.js';
+import {
+  getBodyProfile,
+  getNumericParameterOverride,
+  getParameterOverride,
+  hasParameterOverride,
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+  setWorkerParameterConfig,
+} from '../lib/parameters.js';
 
 const parametersFiles = [
   { label: 'organs/human-organs/stomach/motility.parameters.json', url: new URL('../organs/human-organs/stomach/motility.parameters.json', import.meta.url) },
@@ -58,6 +67,36 @@ const sourcedStatuses = new Set(['prior', 'fitted_dev', 'validated']);
 function readParameters(url) {
   return JSON.parse(readFileSync(url, 'utf8'));
 }
+
+test('setWorkerParameterConfig overrides loaded parameters and scales by weight unless overridden', (t) => {
+  t.after(() => {
+    setWorkerParameterConfig({});
+  });
+
+  setWorkerParameterConfig({});
+  assert.deepEqual(getBodyProfile(), { weightKg: 75, heightCm: 170 });
+  assert.equal(scaleByBodyWeight(100), 100);
+  assert.equal(hasParameterOverride('glucose.baselineConcentrationMgDl'), false);
+  assert.equal(getParameterOverride('glucose.baselineConcentrationMgDl'), undefined);
+
+  setWorkerParameterConfig({
+    profile: { weightKg: 50, heightCm: 160 },
+    parameters: {
+      'glucose.baselineConcentrationMgDl': 98,
+      'bodyFluid.referenceVolumeMl': 22000,
+    },
+  });
+  assert.deepEqual(getBodyProfile(), { weightKg: 50, heightCm: 160 });
+  assert.equal(hasParameterOverride('bodyFluid.referenceVolumeMl'), true);
+  assert.equal(getNumericParameterOverride('bodyFluid.referenceVolumeMl'), 22000);
+  assert.equal(scaleByBodyWeight(30000, 'bodyFluid.referenceVolumeMl'), 30000);
+  assert.ok(Math.abs(scaleByBodyWeight(75, 'glucose.referenceBodyMassKg') - 50) < 1e-12);
+
+  const glucoseUrl = new URL('../organs/human-compartments/glucose/glucose.parameters.json', import.meta.url);
+  const loaded = loadParameters(glucoseUrl);
+  assert.equal(loaded['glucose.baselineConcentrationMgDl'], 98);
+  assert.equal(loaded['glucose.referenceBodyMassKg'], 75);
+});
 
 for (const { label, url } of parametersFiles) {
   test(`${label}: schema, ids, unset/null and sources are consistent`, () => {

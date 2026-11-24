@@ -76,7 +76,11 @@
  * 小肠碳水、肝糖原与肾糖异生产糖三个来源，与各来源的 `transferOut` 逐对校验，缺
  * `kidneyGluconeogenesis` 的清单启动即报未声明来源。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 
 export type GlucoseState = {
   glucoseMassG: number;
@@ -125,15 +129,18 @@ export type GlucoseModule = {
 };
 
 const parameters = loadParameters(new URL('./glucose.parameters.json', import.meta.url));
-const referenceBodyMassKg = requireParameter(parameters, 'glucose.referenceBodyMassKg');
+const referenceBodyMassKg = scaleByBodyWeight(
+  requireParameter(parameters, 'glucose.referenceBodyMassKg'),
+  'glucose.referenceBodyMassKg',
+);
 const distributionVolumeDlPerKg = requireParameter(parameters, 'glucose.distributionVolumeDlPerKg');
 const baselineConcentrationMgDl = requireParameter(parameters, 'glucose.baselineConcentrationMgDl');
 const residualDisposalHalfTimeMin = requireParameter(
   parameters,
   'glucose.residualDisposalHalfTimeMin',
 );
-const basalConsumptionGPerMin = requireParameter(
-  parameters,
+const basalConsumptionGPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'glucose.basalConsumptionGPerMin'),
   'glucose.basalConsumptionGPerMin',
 );
 

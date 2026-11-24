@@ -831,3 +831,50 @@ test('calcium readouts do not enter discomfort and other readings stay point-ide
   assert.deepEqual({ ...low, hypocalcemiaMm: 0, hypercalcemiaMm: 0 }, baseline);
   assert.deepEqual({ ...high, hypocalcemiaMm: 0, hypercalcemiaMm: 0 }, baseline);
 });
+
+test('interoception aggregates extensible organ discomfortMm and sensations without breaking legacy snapshots', () => {
+  let written;
+  heartbeat({
+    read(partId) {
+      if (partId === undefined) {
+        return {
+          simulatedSeconds: 60,
+          parts: {
+            interoception: BASELINE,
+            wings: {
+              discomfortMm: 85,
+              sensations: {
+                wingStrain: {
+                  intensityMm: 90,
+                  discomfort: true,
+                  contextText: '翅膀有些发酸。',
+                  wakeText: '翅膀传来明显的牵拉刺痛感。',
+                },
+                featherRuffle: {
+                  intensityMm: 30,
+                },
+              },
+            },
+          },
+        };
+      }
+      return undefined;
+    },
+    actions: [],
+    dt: 60,
+    simulatedSeconds: 60,
+    write: (next) => { written = next; },
+  });
+
+  assertClose(written.discomfort, (100 * (90 - 70)) / 30, 'extensible discomfort');
+  assert.deepEqual(written.sensations, {
+    'wings.wingStrain': {
+      intensityMm: 90,
+      contextText: '翅膀有些发酸。',
+      wakeText: '翅膀传来明显的牵拉刺痛感。',
+    },
+    'wings.featherRuffle': {
+      intensityMm: 30,
+    },
+  });
+});

@@ -15,7 +15,12 @@
  * 本脚本不自己算血容量或 GFR，也不建肾血流量、肾小管分段、重吸收分数、尿渗透压或自由水
  * 清除率。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  getNumericParameterOverride,
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 import { adhDrivenUrineRequestMl } from './urine-production-core.ts';
 
 export const id = 'kidney';
@@ -39,7 +44,8 @@ const adhGain = requireParameter(parameters, 'kidney.urine.adhGain');
 const minRelativeRate = requireParameter(parameters, 'kidney.urine.minRelativeRate');
 const maxRelativeRate = requireParameter(parameters, 'kidney.urine.maxRelativeRate');
 
-const BASELINE_GFR_ML_MIN = 100;
+const BASELINE_GFR_ML_MIN =
+  getNumericParameterOverride('blood.baselineGfrMlMin') ?? scaleByBodyWeight(100);
 
 export const initialState: KidneyState = {
   urineProductionRequestMl: 0,

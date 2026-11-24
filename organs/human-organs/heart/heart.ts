@@ -32,7 +32,12 @@
  * `heart.parameters.json`），不是实测心率、每搏量、心输出、MET 或剂量反应；不能称拟合、
  * 实测或 `validated`。输出只含三个有限数字段，JSON-safe；无 transfer、动作或通知。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  getNumericParameterOverride,
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 
 export const id = 'heart';
 export const actionTypes: string[] = [];
@@ -62,16 +67,17 @@ const restingHeartRatePerMin = requireParameter(
   'heart.restingHeartRatePerMin',
 );
 const maxHeartRatePerMin = requireParameter(parameters, 'heart.maxHeartRatePerMin');
-const restingStrokeVolumeMl = requireParameter(
-  parameters,
+const restingStrokeVolumeMl = scaleByBodyWeight(
+  requireParameter(parameters, 'heart.restingStrokeVolumeMl'),
   'heart.restingStrokeVolumeMl',
 );
 const activityGain = requireParameter(parameters, 'heart.activityGain');
 const catecholamineGain = requireParameter(parameters, 'heart.catecholamineGain');
 
 const strokeVolumeGain = 0.2;
-const referenceBloodVolumeMl = 5000;
-const strokeVolumeRange = { min: 30, max: 140 };
+const referenceBloodVolumeMl = getNumericParameterOverride('blood.referenceBloodVolumeMl')
+  ?? scaleByBodyWeight(5000);
+const strokeVolumeRange = { min: scaleByBodyWeight(30), max: scaleByBodyWeight(140) };
 const preloadFactorRange = { min: 0.5, max: 1.15 };
 
 export const initialState: HeartState = {

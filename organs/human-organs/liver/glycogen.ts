@@ -68,7 +68,11 @@
  * 抛错使本轮失败，且不写状态、不发起 transfer，不用健康常量掩盖异常；合法 0 浓度、0 超基线量、
  * 0 胰高血糖素与 0 皮质醇相对信号都是有效读数。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 
 export const id = 'liver';
 export const actionTypes: string[] = [];
@@ -101,8 +105,14 @@ type AdrenalReading = {
 };
 
 const parameters = loadParameters(new URL('./glycogen.parameters.json', import.meta.url));
-const maxOutputRateGPerMin = requireParameter(parameters, 'liver.maxOutputRateGPerMin');
-const basalOutputRateGPerMin = requireParameter(parameters, 'liver.basalOutputRateGPerMin');
+const maxOutputRateGPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'liver.maxOutputRateGPerMin'),
+  'liver.maxOutputRateGPerMin',
+);
+const basalOutputRateGPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'liver.basalOutputRateGPerMin'),
+  'liver.basalOutputRateGPerMin',
+);
 const hypoglycemiaOutputGainGPerMinPerMgDl = requireParameter(
   parameters,
   'liver.hypoglycemiaOutputGainGPerMinPerMgDl',
@@ -111,9 +121,18 @@ const glucagonOutputGainGPerMin = requireParameter(
   parameters,
   'liver.glucagonOutputGainGPerMin',
 );
-const initialGlycogenG = requireParameter(parameters, 'liver.initialGlycogenG');
-const glycogenCapacityG = requireParameter(parameters, 'liver.glycogenCapacityG');
-const maxUptakeRateGPerMin = requireParameter(parameters, 'liver.maxUptakeRateGPerMin');
+const initialGlycogenG = scaleByBodyWeight(
+  requireParameter(parameters, 'liver.initialGlycogenG'),
+  'liver.initialGlycogenG',
+);
+const glycogenCapacityG = scaleByBodyWeight(
+  requireParameter(parameters, 'liver.glycogenCapacityG'),
+  'liver.glycogenCapacityG',
+);
+const maxUptakeRateGPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'liver.maxUptakeRateGPerMin'),
+  'liver.maxUptakeRateGPerMin',
+);
 const halfMaxExcessG = requireParameter(parameters, 'liver.halfMaxExcessG');
 const insulinSensitivity = requireParameter(parameters, 'liver.insulinSensitivity');
 

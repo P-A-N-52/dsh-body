@@ -32,7 +32,11 @@
  * 常量掩盖异常；合法 0 浓度、0 胰高血糖素与 1 的基线信号都是有效读数。本脚本不读
  * `glucose.glucoseMassG`、不读肝状态，也不建 EPO、肾素/RAAS、GFR 或绝对激素浓度。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 
 export const id = 'kidneyGluconeogenesis';
 export const actionTypes: string[] = [];
@@ -50,17 +54,17 @@ type PancreasReading = {
 };
 
 const parameters = loadParameters(new URL('./gluconeogenesis.parameters.json', import.meta.url));
-const maxOutputRateGPerMin = requireParameter(
-  parameters,
+const maxOutputRateGPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'kidneyGluconeogenesis.maxOutputRateGPerMin'),
   'kidneyGluconeogenesis.maxOutputRateGPerMin',
 );
-const maxOutputPerRoundG = requireParameter(
-  parameters,
+const maxOutputPerRoundG = scaleByBodyWeight(
+  requireParameter(parameters, 'kidneyGluconeogenesis.maxOutputPerRoundG'),
   'kidneyGluconeogenesis.maxOutputPerRoundG',
 );
 const baselineMgDl = requireParameter(parameters, 'kidneyGluconeogenesis.baselineMgDl');
-const basalOutputRateGPerMin = requireParameter(
-  parameters,
+const basalOutputRateGPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'kidneyGluconeogenesis.basalOutputRateGPerMin'),
   'kidneyGluconeogenesis.basalOutputRateGPerMin',
 );
 const hypoglycemiaOutputGainGPerMinPerMgDl = requireParameter(

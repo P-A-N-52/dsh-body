@@ -13,6 +13,7 @@ export function formatError(error) {
 }
 
 export function createBodyRunner({ scripts, scriptTimeoutMs }) {
+  let workerConfig = { profile: null, parameters: null };
   let worker;
   let pending;
   let termination;
@@ -43,7 +44,11 @@ export function createBodyRunner({ scripts, scriptTimeoutMs }) {
 
   function open() {
     const instance = new Worker(new URL('./body-worker.js', import.meta.url), {
-      workerData: { scripts },
+      workerData: {
+        scripts,
+        profile: workerConfig.profile,
+        parameters: workerConfig.parameters,
+      },
       name: 'dsh-body',
     });
     instance.on('message', ({ label, error, result }) => {
@@ -85,7 +90,15 @@ export function createBodyRunner({ scripts, scriptTimeoutMs }) {
   }
 
   return {
-    describe: () => request('describe'),
+    describe: (config) => {
+      if (config !== undefined) {
+        workerConfig = {
+          profile: config?.profile ?? null,
+          parameters: config?.parameters ?? null,
+        };
+      }
+      return request('describe');
+    },
     initialize: (url, snapshot, context) => request('initialize', { url, snapshot, context }),
     heartbeat: (input) => request('heartbeat', input),
     close,

@@ -117,7 +117,40 @@ function migrateV1(saved, statePath) {
       : 0,
     notifications: saved.notifications ?? [],
     startup: saved.startup ?? null,
+    ...(saved.profile !== undefined ? { profile: saved.profile } : {}),
+    ...(saved.parameters !== undefined ? { parameters: saved.parameters } : {}),
   };
+}
+
+function assertPositiveFinite(value, label, statePath) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid ${label} in body checkpoint at ${statePath}`);
+  }
+}
+
+function assertCheckpointProfile(profile, statePath) {
+  if (profile === undefined) return;
+  if (!isRecord(profile)) {
+    throw new Error(`Invalid profile in body checkpoint at ${statePath}`);
+  }
+  if (profile.weightKg !== undefined) {
+    assertPositiveFinite(profile.weightKg, 'profile.weightKg', statePath);
+  }
+  if (profile.heightCm !== undefined) {
+    assertPositiveFinite(profile.heightCm, 'profile.heightCm', statePath);
+  }
+}
+
+function assertCheckpointParameters(parameters, statePath) {
+  if (parameters === undefined) return;
+  if (!isRecord(parameters)) {
+    throw new Error(`Invalid parameters in body checkpoint at ${statePath}`);
+  }
+  for (const [id, value] of Object.entries(parameters)) {
+    if (!id || (value !== null && (typeof value !== 'number' || !Number.isFinite(value)))) {
+      throw new Error(`Invalid parameter override ${id || '<empty>'} in body checkpoint at ${statePath}`);
+    }
+  }
 }
 
 function checkpointActive(saved, statePath) {
@@ -131,6 +164,8 @@ function checkpointActive(saved, statePath) {
 function migrateCheckpoint(saved, statePath) {
   if (!isRecord(saved)) throw new Error(`Invalid body checkpoint at ${statePath}`);
   const active = checkpointActive(saved, statePath);
+  assertCheckpointProfile(saved.profile, statePath);
+  assertCheckpointParameters(saved.parameters, statePath);
   const version = saved.schemaVersion ?? 1;
   if (!Number.isSafeInteger(version) || version < 1) {
     throw new Error(`Invalid body checkpoint schemaVersion ${String(saved.schemaVersion)} at ${statePath}`);
@@ -152,6 +187,8 @@ function encodeCheckpoint(checkpoint, statePath, limitBytes, serialized) {
   if (!Number.isSafeInteger(checkpoint.wallTimeMs) || checkpoint.wallTimeMs < 0) {
     throw new Error(`Invalid wallTimeMs in body checkpoint at ${statePath}`);
   }
+  assertCheckpointProfile(checkpoint.profile, statePath);
+  assertCheckpointParameters(checkpoint.parameters, statePath);
   const snapshot = checkpoint.snapshot;
   if (!isRecord(snapshot)
     || !Number.isSafeInteger(snapshot.simulatedSeconds)

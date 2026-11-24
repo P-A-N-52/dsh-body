@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | [`body-modules.json`](../body-modules.json)（`manifestPath`） | 开发者改，Gateway 启动时读 | 根清单：声明要加载的脚本、每个脚本读取的状态字段、补算上限和脚本超时。 |
 | [`body-modules.female.json`](../body-modules.female.json) | 开发者改，作为另一份 `manifestPath` 在启动时读 | 女性独立清单：根清单 38 脚本 + `ovaries` + `uterus` + `mammary-glands/milk.ts`，`body-water/water.ts` 换成 `water.female.ts`，`glucose.ts` 换成 `glucose.female.ts`，共 41 部位、37 份唯一参数文件（硬 transfer 闭包 17 部位）；必须配独立 `statePath`。 |
-| `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active` | **一具身体一份存档**：所有部位的值、时钟、动作和通知都在一起。根清单与女性/男性清单各用一份存档，不要为每个器官或每个脚本再建存档，也不要在同一份存档上切换清单。 |
+| `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active`、`profile` 或 `parameters` | **一具身体一份存档**：所有部位的值、时钟、动作、通知，以及可选个体 `profile` 与稀疏参数差异 `parameters` 都在一起。根清单与女性/男性清单各用一份存档，不要为每个器官或每个脚本再建存档，也不要在同一份存档上切换清单。 |
 | [`package.json`](../package.json) | 项目维护者改，由 Node/npm 使用 | 声明 ESM、Node 版本、测试命令和发布文件，不登记心跳脚本，也不存身体数据。`files` 收录根清单、女性清单与男性清单；[`cordis.patch.yml`](../cordis.patch.yml) 是 DSH 插件装载描述，不是身体 JSON。 |
 | `organs/human-organs/**/*.parameters.json`、`organs/human-compartments/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官/隔室组件的证据默认值：参数值、单位、证据状态、范围与来源。不是某具身体的最终值，也不做运行中热切换。当前仓库共有 44 份参数文件：根清单（38 部位）加载 34 份唯一参数文件（`skeletal-muscle/activity.ts` 无参数文件，三个区域部位共享 `skeletal-muscle/glucose-uptake.parameters.json`，`stomach/ghrelin.ts` 经 `motility-core.ts` 复用 `stomach/motility.parameters.json`，同一文件只计一次）；女性清单（41 部位）加载 37 份唯一参数文件（多出 `ovaries/menstrual-cycle.parameters.json`、`uterus/uterus.parameters.json` 与 `mammary-glands/milk.parameters.json`）；男性清单（40 部位）加载 36 份唯一参数文件（多出 `testes/testosterone.parameters.json` 与 `epididymis/storage.parameters.json`）。其余 5 份不随任何清单加载：3 份是 DI 样变体的独立参数文件（`hypothalamus-adh-di-central`、`urine-production-di-central`、`urine-production-di-nephrogenic`），2 份是尚未挂入任何清单的甲状旁腺/血钙参数文件（`parathyroid/parathyroid.parameters.json`、`calcium/calcium.parameters.json`）。按去重并集计：根 34 + 女性独有 3 + 男性独有 2 + 其余 5 = 44 份。`systems/` 已不再有参数文件。 |
 
@@ -37,6 +37,7 @@
 | 字段 | 含义 |
 | --- | --- |
 | `schemaVersion`、顶层 `active` | 现在写 v2。`active` 必须是布尔值，旧档缺字段默认 `true`；非法值拒绝启动，不改原档。 |
+| 顶层 `profile`、顶层 `parameters`（均可选） | 每具身体的**个体差异表**（停机修改、重启生效，运行中不做热切换）。`profile` 为 `{ weightKg?: number, heightCm?: number }`，缺省按 `75 kg / 170 cm`（`massScale = weightKg / 75`）；`parameters` 为稀疏字典 `{ [parameterId]: number }`，只写与 `*.parameters.json` 默认值不同的参数，未知或当前清单未加载器官的参数键容错保留。Gateway 启动先 `store.load()`，再在 `BodyWorker` 导入任何器官前把 `{ profile, parameters }` 注入 [`lib/parameters.js`](../lib/parameters.js)。 |
 | `snapshot.simulatedSeconds`、`snapshot.parts`、`wallTimeMs` | 最近一次提交的仿真秒数、按模块 `id` 存放的部位值，以及计算下一轮用的现实时间锚点（毫秒）。 |
 | `actions`、`pendingActionIds`、`activeBatch`、`lastEffectiveAt` | 按 ID 查的动作记录、排队顺序、已锁定待完成的批次和最近分配的生效时刻。`activeBatch` **不是**启停开关。补算轮失败后保留的批次还会带 `suppressNotifications: true`，在线重试继续按补算语义抑制通知；旧档没有这个键时按 `false`。排队和在途动作不裁剪；启用时，已结束的记录默认最多留最近 2000 条，且不超过 30 天。记录被裁剪后，再用相同 ID 可能被视为新动作。 |
 | `notifications`、`startup` | 尚未确认的通知和上次启动记录。`startup.active`、`startup.resumedFromPause` 由 Gateway 写，供恢复与诊断，不要手改。 |
@@ -68,8 +69,9 @@ DSH 插件的默认存档是 `$DSH_HOME/dsh-body/body-state.json`（通常是 `~
 
 | 函数 | 行为 |
 | --- | --- |
-| `loadParameters(parametersUrl)` | 读 JSON，返回 `{ [参数 ID]: 值 }`。校验 `schemaVersion === 1`、`owner` 非空、每个参数 `id` 以 `owner.` 开头且不重复、`status: "unset"` 与 `value: null` 一一对应。 |
+| `loadParameters(parametersUrl)` | 读 JSON，返回 `{ [参数 ID]: 值 }`。校验 `schemaVersion === 1`、`owner` 非空、每个参数 `id` 以 `owner.` 开头且不重复、`status: "unset"` 与 `value: null` 一一对应；若当前 Worker 所属身体存档顶层 `parameters` 存在同名 key，返回稀疏覆盖后的值。 |
 | `requireParameter(values, id)` | 返回值；若值为 `null` 或缺失，抛出带参数 ID 的错误。脚本需要的参数还没标定时，应当在这里失败，而不是拿 `0` 继续跑。 |
+| `getBodyProfile()` / `hasParameterOverride(id)` / `getNumericParameterOverride(id)` / `scaleByBodyWeight(value, parameterId)` | 返回当前身体 `{ weightKg, heightCm }`、查询是否显式覆盖，并按 `weightKg / 75` 自动缩放体格相关参数（`75 kg` 原值逐位不变；`parameters` 显式覆盖优先于自动缩放）。核心隔室、血液、心脏、血氧、肺通气、体温调节、肝糖原、肾糖异生、肌糖原、下丘脑 ADH 与产尿基线已同步接入，保证不同体重下静息 `37.0 °C` 与空腹 `90.0 mg/dL` 平衡不被拆散。 |
 
 `parametersUrl` 可以是文件 URL（`URL` 对象）或文件系统路径；相对路径按进程工作目录解析，所以模块里用 `new URL('./motility.parameters.json', import.meta.url)` 最稳：
 
@@ -530,6 +532,14 @@ try {
 - **只在启动时执行：** 模块放进 `startupScripts`，具名导出**同步**的 `initialize(snapshot, context)`，返回按部位 ID 分组的**字段补丁**（与 `io.write` 的整部位对象不同）。`snapshot`、`context` 都是只读；`context.hasSavedState` 表示有无旧档，`context.sinceCheckpointMs` 是距快照的毫秒数（首次无存档为 `null`，从暂停恢复为 `0`）；`context.resumedFromPause` 标明此次恢复。内置 [reset-parts.js](../startup/reset-parts.js) 展示了如何用 `context.initialParts` 重置模块 `resetOnStart` 列出的字段。如果启动后仍有在途批次，本次跳过初始化，先保留旧快照给重试。
 - **发通知：** `io.notify({ mode: 'context', sessionId, text })`（也支持 `'wake'`）暂存通知，只有在线轮次成功才入队；启动补算产生的通知由 Gateway 直接丢弃，不会稍后补发。补算轮 IO 带只读 `io.suppressNotifications = true`：`brainNotify` 在该标记下不调用 `io.notify`，也不抬高 `levels`、不更新 `lastSentAt`、不消耗小时/天配额，因此恢复后首个在线轮仍保有发送机会，同一档位不会在补算中被提前消耗；其他模块若在补算轮产生通知，Gateway 仍兜底丢弃。`GET /notifications` 可查，`POST /notifications/ack` 用 `{ "id": "通知ID" }` 确认。`sessionId` 指定通知目标；`index.js` 的 `notifications.js` 会把 `context` 用 `agent.inject`、`wake` 用 `agent.followup` 投递到对应会话，投递成功后 ACK。会话不在线时通知保留；通知历史文件和模型已读确认尚未实现。
 - **读旧脚本。** 旧版字符串路径继续支持调用模块导出的 `functions` 和 `io.call(partId, name, ...args)`。旧的 `step(snapshot, dt, actions)` 可以返回本部位完整状态。同一模块有两个轮次入口时使用 `heartbeat`。
+- **接入非标/可扩展器官（如翅膀、尾巴）的规范与即插即用接口：**
+  - **动作扩展：** 模块导出 `export const actionTypes = ['fold_wings', ...]` 并在清单中排在 `brain/interoception.ts` 与 `brain/notify.ts` 之前。`GET /capabilities` 自动登记对应动作，`tools.js` 的 `body_act` 会动态读取 `gateway.getCapabilities()` 并把这些扩展动作并入 `type` 枚举、放行对应载荷；未声明的动作名仍返回 `400`，7 类内置动作继续执行严格字段校验。
+  - **向 `interoception` 与 `brainNotify` 上报通用体感（免改脑部代码）：**
+    - 模块在 `io.write(...)` 中可写可选数字段 `discomfortMm`（`0–100 mm`），`interoception` 会通过轮初 `io.read()?.parts` 自动扫描其他部位（跳过自身）并按 `discomfort.onsetMm = 70` 并入 `interoception.discomfort`。
+    - 模块还可写可选 `sensations: { [key]: { intensityMm, discomfort?, contextText?, wakeText? } }`（JSON-safe）；`interoception` 自动汇聚到可选字段 `sensations['<partId>.<key>']`（无扩展感受时不写出该键），若 `discomfort: true` 同时参与 `discomfort` 计算。
+    - `brainNotify` 在保留原有 4 路 `levels.{hunger,fullness,urinary,thirst}` 与内置 `SIGNAL_ORDER` 优先级不变的前提下，新增可选 `session.sensationLevels`（无激活扩展感受时省略）按统一 65/85/40 mm 滞回门控投递：`2` 档用 `mode: 'context'`（`agent.inject`，添加进上下文不唤醒）、`3` 档用 `mode: 'wake'`（`agent.followup`，系统消息唤醒）。
+    - **纯感觉、零数值硬规则**：`contextText` / `wakeText` 必须是不含阿拉伯数字和数值单位的定性感受描述；若包含数字或未提供文本，`brainNotify` 会强制回退为无数字的通用定性提示，不把 mm 读数、比例或分数发给大脑。
+  - **体型缩放：** 若新器官带有与体重成比例的容量/消耗常数，建议接入 `scaleByBodyWeight(value, paramId)`（见上节 `lib/parameters.js`）。
 
 ### DSH 工具与通知泵
 

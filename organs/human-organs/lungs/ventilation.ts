@@ -44,7 +44,12 @@
  * 心输出量、CO2/酸碱、呼吸力学、潮气量调节、高原或病理缺氧，也不产生气促通知
  * （气促读数由 `interoception` 从血氧池读取）。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  getNumericParameterOverride,
+  loadParameters,
+  requireParameter,
+  scaleByBodyWeight,
+} from '../../../lib/parameters.js';
 
 export const id = 'lungsVentilation';
 export const actionTypes: string[] = [];
@@ -72,22 +77,29 @@ type IO = {
 };
 
 const parameters = loadParameters(new URL('./ventilation.parameters.json', import.meta.url));
-const restingTidalVolumeMl = requireParameter(parameters, 'lungsVentilation.restingTidalVolumeMl');
+const restingTidalVolumeMl = scaleByBodyWeight(
+  requireParameter(parameters, 'lungsVentilation.restingTidalVolumeMl'),
+  'lungsVentilation.restingTidalVolumeMl',
+);
 const restingRatePerMin = requireParameter(parameters, 'lungsVentilation.restingRatePerMin');
 const maxRatePerMin = requireParameter(parameters, 'lungsVentilation.maxRatePerMin');
-const restingVentilationMlMin = requireParameter(
-  parameters,
+const restingVentilationMlMin = scaleByBodyWeight(
+  requireParameter(parameters, 'lungsVentilation.restingVentilationMlMin'),
   'lungsVentilation.restingVentilationMlMin',
 );
-const maxVentilationMlMin = requireParameter(
-  parameters,
+const maxVentilationMlMin = scaleByBodyWeight(
+  requireParameter(parameters, 'lungsVentilation.maxVentilationMlMin'),
   'lungsVentilation.maxVentilationMlMin',
 );
 const inspiredO2Fraction = requireParameter(parameters, 'lungsVentilation.inspiredO2Fraction');
 const deadSpaceFactor = requireParameter(parameters, 'lungsVentilation.deadSpaceFactor');
-const pantingGain = requireParameter(parameters, 'lungsVentilation.pantingGain');
+const pantingGain = scaleByBodyWeight(
+  requireParameter(parameters, 'lungsVentilation.pantingGain'),
+  'lungsVentilation.pantingGain',
+);
 
-const fallbackBasalDemandMlMin = 250;
+const fallbackBasalDemandMlMin =
+  getNumericParameterOverride('bloodOxygen.basalMlMin') ?? scaleByBodyWeight(250);
 const thermoregulationSetpointC = 37;
 const alveolarO2CapacityMlMin = maxVentilationMlMin * (inspiredO2Fraction / deadSpaceFactor);
 
