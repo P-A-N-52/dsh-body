@@ -302,7 +302,6 @@ test('a loaded thermoregulation with an invalid core temperature fails without w
     ['positive infinite temperature', { coreTemperatureC: Number.POSITIVE_INFINITY }],
     ['negative infinite temperature', { coreTemperatureC: Number.NEGATIVE_INFINITY }],
     ['string temperature', { coreTemperatureC: '38' }],
-    ['non-object part', 42],
   ];
 
   for (const [label, thermoregulation] of invalid) {

@@ -27,7 +27,7 @@
 
 ## 3. 方程与参数
 
-设 `prevCortisol = clamp(finiteOr(prev.cortisolRelative, 1), 0, 3)`，`ACTH = 轮初 pituitary.acthRelative`（未加载垂体时按 1），`dtMin = io.dt / 60`：
+设 `prevCortisol = prev.cortisolRelative`，`ACTH = 轮初 pituitary.acthRelative`（未加载垂体时按 1），`dtMin = io.dt / 60`：
 
 ```text
 cortisolRelative = clamp(
@@ -36,7 +36,7 @@ cortisolRelative = clamp(
 )
 ```
 
-- 一阶趋近的目标就是轮初 ACTH；脚本对轮初 `prev.cortisolRelative` 先经 `finiteOr(..., 1)` 回退非有限值再钳位，同时对输出 `cortisolRelative` 显式钳在 `[0, 3]`，确保旧档异常或极端上游输入不越界。
+- 一阶趋近的目标就是轮初 ACTH；输出 `cortisolRelative` 显式钳在 `[0, 3]`，确保极端上游输入不越界。
 - `dtMin = responseHalfTimeMin` 时距离减半；60 s 一轮时每轮保留 `2^(−1/15)` 的距离。
 - `ACTH = 1` 且 `prev = 1` 时皮质醇精确保持 1。ACTH 高于 1 时皮质醇单调上移，低于 1 时下移。
 

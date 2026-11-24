@@ -59,10 +59,6 @@ const thyroxineHalfTimeMin = requireParameter(parameters, 'thyroid.thyroxineHalf
 const MIN_RELATIVE = 0;
 const MAX_RELATIVE = 3;
 
-function finiteOr(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -70,9 +66,6 @@ function clamp(value: number, min: number, max: number): number {
 function readTshRelative(io: IO): number {
   const pituitary = io.read('pituitary');
   if (pituitary === undefined) return 1;
-  if (typeof pituitary !== 'object' || pituitary === null) {
-    throw new Error('thyroid: pituitary must be an object');
-  }
   const tshRelative = pituitary.tshRelative;
   if (typeof tshRelative !== 'number' || !Number.isFinite(tshRelative) || tshRelative < 0) {
     throw new Error('thyroid: pituitary.tshRelative must be a finite non-negative number');
@@ -82,18 +75,13 @@ function readTshRelative(io: IO): number {
 
 export function heartbeat(io: IO): void {
   const prev = io.read(id) ?? initialState;
-  const prevThyroxine = clamp(
-    finiteOr(prev.thyroxineRelative, initialState.thyroxineRelative),
-    MIN_RELATIVE,
-    MAX_RELATIVE,
-  );
   const tshRelative = readTshRelative(io);
 
   const dtMin = io.dt / 60;
   const retention = 2 ** (-dtMin / thyroxineHalfTimeMin);
   io.write({
     thyroxineRelative: clamp(
-      tshRelative + (prevThyroxine - tshRelative) * retention,
+      tshRelative + (prev.thyroxineRelative - tshRelative) * retention,
       MIN_RELATIVE,
       MAX_RELATIVE,
     ),

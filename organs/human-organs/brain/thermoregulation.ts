@@ -114,11 +114,8 @@ export function heatLossKcalMin(
 
 function readOxygenConsumptionMlMin(io: IO): number {
   const bloodOxygen = io.read('bloodOxygen');
-  if (bloodOxygen === undefined || bloodOxygen === null) {
+  if (bloodOxygen === undefined) {
     return fallbackBasalOxygenConsumptionMlMin;
-  }
-  if (typeof bloodOxygen !== 'object') {
-    throw new Error('thermoregulation: bloodOxygen must be an object');
   }
   const oxygenConsumptionMlMin = bloodOxygen.oxygenConsumptionMlMin;
   if (
@@ -135,10 +132,7 @@ function readOxygenConsumptionMlMin(io: IO): number {
 
 function readSweatVolumeMl(io: IO): number {
   const skin = io.read('skin');
-  if (skin === undefined || skin === null) return 0;
-  if (typeof skin !== 'object') {
-    throw new Error('thermoregulation: skin must be an object');
-  }
+  if (skin === undefined) return 0;
   const sweatVolumeMl = skin.sweatVolumeMl;
   if (
     typeof sweatVolumeMl !== 'number'

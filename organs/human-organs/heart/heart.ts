@@ -107,9 +107,6 @@ function requireFinite(value: unknown, name: string): number {
 
 function readIntensity(activity: Readonly<ActivityReading> | undefined): number {
   if (activity === undefined) return 0;
-  if (typeof activity !== 'object' || activity === null) {
-    throw new Error('heart: physicalActivity must be an object');
-  }
   const remainingExerciseMin = requireFinite(
     activity.remainingExerciseMin,
     'physicalActivity.remainingExerciseMin',
@@ -126,9 +123,6 @@ function readIntensity(activity: Readonly<ActivityReading> | undefined): number 
 
 function readCortisolRelative(adrenal: Readonly<AdrenalReading> | undefined): number {
   if (adrenal === undefined) return 1;
-  if (typeof adrenal !== 'object' || adrenal === null) {
-    throw new Error('heart: adrenal must be an object');
-  }
   const cortisolRelative = requireFinite(
     adrenal.cortisolRelative,
     'adrenal.cortisolRelative',
@@ -141,9 +135,6 @@ function readCortisolRelative(adrenal: Readonly<AdrenalReading> | undefined): nu
 
 function readPreloadFactor(blood: Readonly<BloodReading> | undefined): number {
   if (blood === undefined) return 1;
-  if (typeof blood !== 'object' || blood === null) {
-    throw new Error('heart: blood must be an object');
-  }
   const bloodVolumeMl = requireFinite(blood.bloodVolumeMl, 'blood.bloodVolumeMl');
   if (bloodVolumeMl < 0) {
     throw new Error('heart: blood.bloodVolumeMl must not be negative');

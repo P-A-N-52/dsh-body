@@ -4,7 +4,7 @@
 
 `esophagus` 目前只有一个部位写者 `esophagus.ts`。它把本轮合法的 `eat` / `drink` 体积记为在途食团，按固定转运时间递减，并把超过参考食团的部分映射成 0–100 mm 的呛咳风险代理；`interoception.discomfort` 以软读方式取该风险，超过不适起始值后并入第七路。
 
-实现状态：脚本、参数与定向测试已在 `organs/human-organs/esophagus/`，并已加入根清单 `body-modules.json`、女性清单与男性清单。加入本切片后根清单 38 部位、37 份参数文件，女性清单 41 / 40，男性清单 40 / 39。旧存档缺 `esophagus` 时由 `initialState` 补 0。
+实现状态：脚本、参数与定向测试已在 `organs/human-organs/esophagus/`，并已加入根清单 `body-modules.json`、女性清单与男性清单。当前根清单 38 部位、34 份唯一参数文件，女性清单 41 部位、37 份，男性清单 40 部位、36 份。旧存档缺 `esophagus` 时由 `initialState` 补 0。
 
 **清单依赖。** 本脚本不声明 `transfer`，不是硬 transfer 闭包成员，也不要求其他部位同时加载。`interoception` 只是可选软读：未加载 `esophagus` 时该路按 0。胃的摄入时刻由胃脚本按既有动作队列结算，不依赖本部位；因此只加载胃、不加载食管的自定义清单仍可启动，只是没有食管读数。
 

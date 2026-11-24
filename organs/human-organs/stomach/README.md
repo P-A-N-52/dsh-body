@@ -10,10 +10,10 @@
 | --- | --- | --- | --- | --- |
 | `hydration.ts` | `stomach` | 原胃字段加水与碳水存量/每轮排空量；声明到 `smallIntestine.waterVolumeMl` 和 `smallIntestine.carbohydrateG` 的转移 | 自己的轮初状态 `stomach`；`io.actions` 里的 `drink` / `eat` | `motility.parameters.json` |
 | `motility.ts` | `stomach` | 原胃字段（`volumeMl`、`energyKcal`、`solidVolumeMl`、`solidEnergyKcal`、`emptiedMl`、`emptiedKcal`、`lastIntakeAt`、`mealQueue`）；不记水/碳水、不声明 transfer | 自己的轮初状态 `stomach`；`io.actions` 里的 `drink` / `eat` | `motility.parameters.json` |
-| `ghrelin.ts` | `stomachGhrelin` | `relativeConcentration`、`minutesSinceEnergyIntake` | 自己的轮初状态 `stomachGhrelin`；`io.actions` 里含能量的 `eat` / `drink` | `ghrelin.parameters.json` |
+| `ghrelin.ts` | `stomachGhrelin` | `relativeConcentration`、`minutesSinceEnergyIntake` | 自己的轮初状态 `stomachGhrelin`；`io.actions` 中经 `motility-core.parseIntake` 校验合法的 `eat` / `drink` | `ghrelin.parameters.json`；import `motility-core.ts` 时同时只读加载 `motility.parameters.json` |
 | `gastric-sensory.ts` | `stomachSensory` | `mechanical` | `stomach.volumeMl` | `gastric-sensory.parameters.json` |
 
-`motility-core.ts` 不是模块，不导出 `id`；它是两个入口共用的解析、队列与排空方程。`motility.ts` 用 `trackWater: false`、`trackCarbohydrate: false` 调用核心，输出形状与历史一致，可单独加载且不需要小肠或膀胱；`hydration.ts` 同时开启水与碳水跟踪，必须与 `smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose`、[`skin`](../skin/README.md) 及 [`lungs`](../lungs/README.md)（运动相关呼吸失水出口）同时加载；这八个部位构成完整硬 transfer 闭包，缺任一个都会因 transfer 字段配对校验拒绝启动。
+`motility-core.ts` 不是模块，不导出 `id`；它是两个入口共用的解析、队列与排空方程，`parseIntake` 也是 `ghrelin.ts` 复用的同一摄入解析。`motility.ts` 用 `trackWater: false`、`trackCarbohydrate: false` 调用核心，输出形状与历史一致，可单独加载且不需要小肠或膀胱；`hydration.ts` 同时开启水与碳水跟踪，必须与 `smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGluconeogenesis`、`kidneyGlucose`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、[`skin`](../skin/README.md) 及 [`lungs`](../lungs/README.md)（运动相关呼吸失水出口）同时加载；这十五个部位构成完整硬 transfer 闭包，缺任一个都会因 transfer 字段配对校验拒绝启动。
 
 参数文件与脚本同目录，模块在 import 时经 `lib/parameters.js` 只读加载；参数是证据默认值，不做运行中热切换。
 
@@ -111,21 +111,24 @@ transfer stomach → smallIntestine: Ec
 设 `dtMin = io.dt / 60`，`t` 为轮初空腹分钟数，`c` 为轮初相对浓度：
 
 ```text
-含能摄入（eat / drink，energyKcal 有限且 > 0）：
+本轮摄入能量 = Σ 每条经 parseIntake 校验合法且 energyKcal > 0 的 eat / drink
+含能摄入（本轮摄入能量 > 0）：
   t_next = 0
-  c_next = min(c, postmeal.nadir)
+  c_next = clamp(min(c, postmeal.nadir) − suppression, 0, fasting.peak)
 
 无含能摄入：
   t_next = t + dtMin
-  target = fasting.baseline
-         + (fasting.peak - fasting.baseline)
-         × (1 - 2^(-max(0, t_next - fasting.rise.onsetMin)
-                         / fasting.rise.apparentHalfTimeMin))
+  target = clamp(
+    fasting.baseline
+    + (fasting.peak - fasting.baseline)
+      × (1 - 2^(-max(0, t_next - fasting.rise.onsetMin)
+                      / fasting.rise.apparentHalfTimeMin))
+    - suppression, 0, fasting.peak)
   c_next = c + (target - c)
          × (1 - 2^(-dtMin / recovery.apparentHalfTimeMin))
 ```
 
-摄入轮只抑制相对浓度并清零计时，不同时执行上升；纯水、0 kcal 饮料与非法能量值既不抑制也不重置计时。轮初计时缺失、负值或非有限时按 0，相对浓度缺失或非有限时按基线 1。`actionTypes = ['eat', 'drink']` 只是声明，脚本自己再检查能量。
+摄入轮只抑制相对浓度并清零计时，不同时执行上升；经 `parseIntake` 判为非法的动作整条忽略，纯水与合法的 0 kcal 饮料不触发能量摄入项抑制、也不重置空腹计时，但仍可能受机械扩张与十二指肠营养暴露项的抑制。`parseIntake` 要求 `volumeMl` 为有限正数；`eat` 还要求有限非负 `energyKcal` 与 `mealKind ∈ {liquid, solid, mixed}`；`drink.energyKcal` 缺省为 0，给出时必须是有限非负数；可选 `durationMin` 与 `carbohydrateG` 给出时必须是有限非负数。轮初计时缺失、负值或非有限时按 0，相对浓度缺失或非有限时按基线 1。`actionTypes = ['eat', 'drink']` 只是声明，脚本复用 `motility-core.parseIntake` 做与胃完全相同的合法性校验，再检查能量是否大于 0。
 
 上升是空腹时长驱动的工程曲线：`onsetMin` 之前保持原有的向基线恢复，之后目标值按表观半时逼近 `peak`，浓度随之饱和，不会无界增长。在胃机械与营养输入为 0、沿用当前 `interoception` 参数试算时，约 6.3 h 达到 `hunger = 65 mm` 明显档、约 12.1 h 达到 85 mm 强档，20 h 时约 `G = 1.80`、`hunger = 90 mm`。这些是设计试算，不是临床阈值或论文曲线；实际通知还受会话、档位、冷却与配额约束，没有会话时不保证提醒。
 
@@ -191,7 +194,8 @@ P1 的 `brain/interoception.ts` 读取 `relativeConcentration`，`brainNotify` �
 ## 5. 当前限制
 
 - **饥饿素上升是工程曲线**：`stomachGhrelin` 按距上次含能摄入的分钟数驱动上升，180 min 后开始、`peak = 1.8` 饱和；时间驱动、起始延迟、峰值和时间常数均为 `design`、`source: null`，不是人体测量或论文曲线。约 6.3 h / 12.1 h 到 65 / 85 mm 与 20 h 约 1.80 / 90 mm 都是设计试算，不是临床阈值或已验证结果。
-- **不建模餐时表与餐前预期**：不能按钟点预测下一餐；不建模昼夜节律、能量剂量响应（任何正能量摄入仍压到不高于谷值）、多日饥饿适应和能量不足病理。
+- **摄入校验与胃一致（自检）**：`stomachGhrelin` 与胃共用 `motility-core.parseIntake`；缺/非法 `volumeMl`、`eat` 的 `energyKcal` / `mealKind`，以及给出时非法的 `durationMin` / `carbohydrateG`，在两边同样被整条忽略，不会出现“胃拒绝、饥饿素接受”的分叉。`ghrelin.ts` import `motility-core.ts` 时会同时加载 `motility.parameters.json`；根清单已由 `hydration.ts` 加载同一文件，去重后不增加唯一参数文件数。
+- **不建模餐时表与餐前预期**：不能按钟点预测下一餐；不建模昼夜节律、能量剂量响应（任何正能量摄入都从 `min(当前值, 谷值)` 按剂量向下抑制，不固定落在谷值）、多日饥饿适应和能量不足病理。
 - **机械感受是代理**：`mechanical` 是归一化充盈代理，不是张力或神经放电；参考量与指数都是 `design`，不是人体拟合。
 - **固餐半时是参考值的工程借用**：`stomach.emptying.solidHalfTimeMin = 68.7 min` 来自 Vasavid 2014 健康成人米饭鸡蛋标准餐的标记固相半排空时间中位数，参数状态是 `design`。论文报告的是标记保留比例，不是胃总内容量 mL 或 kcal，也没有同能量同体积的液餐对照；模型不复现 18.6 min 的滞后和完整曲线，不能据此说“任何固餐都比任何液餐慢”，也不把 68.7 min 当已验证的人体参数。
 - **`mixed` 不拆分固液**：`mixed` 仍走非固餐组，不推断固液占比；没有研磨、分层或显式滞后。

@@ -176,7 +176,7 @@ export function heartbeat(io: IO): void {
     }
   }
 
-  const prevArousal = clamp(finiteOr(prev.arousalMm, 0), 0, 100);
+  const prevArousal = prev.arousalMm as number;
   let lastOrgasmAtSimMin = savedOrgasmMinute(prev.lastOrgasmAtSimMin);
 
   const active = remainingSexMin > 0 && sexIntensity > 0;
@@ -203,11 +203,7 @@ export function heartbeat(io: IO): void {
     ? arousalHalfTimeMin / testosteroneFactor
     : arousalHalfTimeMin;
   const halfTimeMin = target > prevArousal ? riseHalfTimeMin : resolutionHalfTimeMin;
-  const arousalMm = clamp(
-    target + (prevArousal - target) * 2 ** (-dtMin / halfTimeMin),
-    0,
-    100,
-  );
+  const arousalMm = target + (prevArousal - target) * 2 ** (-dtMin / halfTimeMin);
 
   const sinceOrgasm = lastOrgasmAtSimMin === null
     ? Number.POSITIVE_INFINITY

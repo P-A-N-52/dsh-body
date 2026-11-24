@@ -163,9 +163,6 @@ function readBloodVolume(
   bodyFluid: Readonly<BodyFluidReading> | undefined,
 ): number {
   if (bodyFluid !== undefined) {
-    if (typeof bodyFluid !== 'object' || bodyFluid === null) {
-      throw new Error('blood: bodyFluid must be an object');
-    }
     const waterVolumeMl = requireFinite(
       bodyFluid.waterVolumeMl,
       'bodyFluid.waterVolumeMl',
@@ -188,9 +185,6 @@ function readBloodVolume(
 
 function readCardiacOutput(heart: Readonly<HeartReading> | undefined): number {
   if (heart === undefined) return referenceCardiacOutputMlMin;
-  if (typeof heart !== 'object' || heart === null) {
-    throw new Error('blood: heart must be an object');
-  }
   const cardiacOutputMlMin = requireFinite(
     heart.cardiacOutputMlMin,
     'heart.cardiacOutputMlMin',
@@ -203,9 +197,6 @@ function readCardiacOutput(heart: Readonly<HeartReading> | undefined): number {
 
 function readSpo2Percent(bloodOxygen: Readonly<BloodOxygenReading> | undefined): number {
   if (bloodOxygen === undefined) return fallbackSpo2Percent;
-  if (typeof bloodOxygen !== 'object' || bloodOxygen === null) {
-    throw new Error('blood: bloodOxygen must be an object');
-  }
   const spo2Percent = requireFinite(
     bloodOxygen.spo2Percent,
     'bloodOxygen.spo2Percent',

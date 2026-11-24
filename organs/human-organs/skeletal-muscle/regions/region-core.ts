@@ -8,14 +8,17 @@
  *
  * 公式（design，`dtMin = io.dt / 60`，不足一分钟的活动不按 dt 比例截断，与汗液/呼吸失水语义
  * 一致）：
- *   legacy   = 旧档迁移份额（见下，通常为 0）
+ *   legacy   = 旧档迁移份额（见下；无旧总量时为 undefined，旧总量为 0 时是 0）
  *   uptake   = 轮初 uptakeG（字段缺失按 0）
+ *   seeded   = 本轮状态逐字段等于 initialState 默认种子
+ *   base     = legacy === undefined ? max(0, glycogenG)
+ *            : seeded ? legacy
+ *            : max(0, glycogenG) + legacy
  *   active   = physicalActivity 已加载且 remainingExerciseMin > 0
  *   consumed = active
- *     ? min(glycogenUseRateGPerMin × regionShare × intensity × dtMin,
- *           max(0, glycogenG) + uptake + legacy)
+ *     ? min(glycogenUseRateGPerMin × regionShare × intensity × dtMin, base + uptake)
  *     : 0
- *   glycogenG = max(0, glycogenG) + uptake + legacy − consumed
+ *   glycogenG = base + uptake − consumed
  *   write { uptakeG: 0, glycogenG, glycogenConsumedG: consumed }
  * `glycogenUseRateGPerMin`（0.5 g/min）来自同目录上一级的 `glucose-uptake.parameters.json`，
  * 按区域份额（头颈 0.05 / 躯干 0.45 / 四肢 0.50）拆分，三区全负荷合计恰好 0.5 g/min，不新增区域参数。
@@ -24,8 +27,11 @@
  * `transferIn` 增加的到账通量，每轮 write 归 0。
  *
  * 旧档迁移（design）：旧档只有 `muscleGlucose.glycogenG`（总量）时，区域在自己的第一轮读该
- * 总量，并按**已加载区域**的份额重新归一后把份额并入本轮糖原；聚合器第一次 write 不再保留
- * 旧总量。旧档的在途 `uptakeG` 不参与迁移，仍由聚合器按正常路径 transfer，区域下一轮入账。
+ * 总量，并按**已加载区域**的份额重新归一。若本轮状态仍是 `initialState` 补出的默认种子
+ * （`uptakeG = 0`、`glycogenG = 300 g × 份额`、`glycogenConsumedG = 0`），迁移份额**取代**
+ * 种子而不是叠加，迁移后总量等于旧总量；若区域已有真实存档状态，迁移份额并入其存量。
+ * 聚合器第一次 write 不再保留旧总量，后续轮次读不到旧量，不会重复迁移。旧档的在途
+ * `uptakeG` 不参与迁移，仍由聚合器按正常路径 transfer，区域下一轮入账。
  * 区域只读 `muscleGlucose.glycogenG` 与兄弟区域是否存在，不写聚合器或兄弟区域；缺失区域
  * 不推断质量（例如只有头和躯干时份额为 0.1/0.9）。
  *
@@ -112,11 +118,8 @@ function requireFinite(value: unknown, name: string): number {
 function readActivity(
   io: IO,
 ): { remainingExerciseMin: number; intensity: number } | undefined {
-  const activity = io.read('physicalActivity') as ActivityReading | null | undefined;
-  if (activity === undefined || activity === null) return undefined;
-  if (typeof activity !== 'object') {
-    throw new Error('physicalActivity must be an object');
-  }
+  const activity = io.read('physicalActivity');
+  if (activity === undefined) return undefined;
   const remainingExerciseMin = requireFinite(
     activity.remainingExerciseMin,
     'remainingExerciseMin',
@@ -131,9 +134,9 @@ function readActivity(
   return { remainingExerciseMin, intensity };
 }
 
-function readLegacyGlycogenShareG(io: IO, id: MuscleRegionId): number {
+function readLegacyGlycogenShareG(io: IO, id: MuscleRegionId): number | undefined {
   const muscle = io.read('muscleGlucose');
-  if (muscle === undefined || muscle.glycogenG === undefined) return 0;
+  if (muscle === undefined || muscle.glycogenG === undefined) return undefined;
   const totalG = muscle.glycogenG;
   if (typeof totalG !== 'number' || !Number.isFinite(totalG) || totalG < 0) {
     throw new Error('muscleGlucose.glycogenG must be a finite non-negative number');
@@ -141,8 +144,17 @@ function readLegacyGlycogenShareG(io: IO, id: MuscleRegionId): number {
   const presentShare = regionIds
     .filter((regionId) => io.read(regionId) !== undefined)
     .reduce((sum, regionId) => sum + regionShares[regionId], 0);
-  if (presentShare === 0) return 0;
+  if (presentShare === 0) return undefined;
   return totalG * regionShares[id] / presentShare;
+}
+
+function isSeededDefault(
+  prev: Readonly<SavedMuscleRegionState>,
+  defaults: MuscleRegionState,
+): boolean {
+  return finiteOrZero(prev.uptakeG) === defaults.uptakeG
+    && finiteOrZero(prev.glycogenG) === defaults.glycogenG
+    && finiteOrZero(prev.glycogenConsumedG) === defaults.glycogenConsumedG;
 }
 
 export function createMuscleRegion(id: MuscleRegionId) {
@@ -167,7 +179,13 @@ export function createMuscleRegion(id: MuscleRegionId) {
     const prev = io.read(id) ?? initialState;
     const uptakeG = finiteOrZero(prev.uptakeG);
     const legacyG = readLegacyGlycogenShareG(io, id);
-    const availableG = Math.max(0, finiteOrZero(prev.glycogenG)) + uptakeG + legacyG;
+    const stockedG = Math.max(0, finiteOrZero(prev.glycogenG));
+    const baseG = legacyG === undefined
+      ? stockedG
+      : isSeededDefault(prev, initialState)
+        ? legacyG
+        : stockedG + legacyG;
+    const availableG = baseG + uptakeG;
     const activity = readActivity(io);
 
     const consumedG = activity !== undefined && activity.remainingExerciseMin > 0

@@ -387,16 +387,3 @@ test('upstream cold, hypoglycemia and hard exercise drivers activate TRH/CRH whi
   assert.equal(clampedCombined.trhRelative, 3);
   assert.equal(clampedCombined.crhRelative, 3);
 });
-
-test('malformed prev fields fall back and clamp to [0, 3]', () => {
-  const fromNaN = round({
-    state: { trhRelative: Number.NaN, crhRelative: Number.POSITIVE_INFINITY },
-  });
-  assert.deepEqual(fromNaN, { trhRelative: 1, crhRelative: 1 });
-
-  const fromOutOfRange = round({
-    state: { trhRelative: -5, crhRelative: 10 },
-    dt: 0,
-  });
-  assert.deepEqual(fromOutOfRange, { trhRelative: 0, crhRelative: 3 });
-});

@@ -128,7 +128,6 @@ test('the ventilation parameters are design defaults with no source', () => {
 test('a missing bloodOxygen part falls back to basal demand and resting ventilation', () => {
   for (const [label, reading] of [
     ['missing part', undefined],
-    ['null part', null],
     ['explicit basal demand', demand(250)],
   ]) {
     const { written, writes } = round(reading);
@@ -198,7 +197,6 @@ test('resting hyperthermia immediately raises ventilation and respiratory rate a
 });
 
 test('missing thermoregulation adds no panting term', () => {
-  assert.deepEqual(round(demand(750)).written, round(demand(750), null).written);
   assert.deepEqual(
     round(demand(750)).written,
     round(demand(750), { coreTemperatureC: 37 }).written,
@@ -214,7 +212,6 @@ test('a loaded thermoregulation with an invalid core temperature fails without w
     ['positive infinite temperature', { coreTemperatureC: Number.POSITIVE_INFINITY }],
     ['negative infinite temperature', { coreTemperatureC: Number.NEGATIVE_INFINITY }],
     ['string temperature', { coreTemperatureC: '38' }],
-    ['non-object part', 42],
   ];
 
   for (const [label, thermoregulation] of invalid) {

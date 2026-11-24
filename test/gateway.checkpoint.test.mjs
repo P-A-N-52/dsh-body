@@ -3,6 +3,14 @@ import assert from 'node:assert/strict';
 import { checkpoint, launch } from '../test-support/harness.mjs';
 import { counterSource, defaultsSource, notifySource } from '../test-support/models.mjs';
 
+const brainNotifyUrl = new URL('../organs/human-organs/brain/notify.ts', import.meta.url).href;
+
+function brainNotifySource() {
+  return `
+export { id, actionTypes, initialState, fields, heartbeat } from ${JSON.stringify(brainNotifyUrl)};
+`;
+}
+
 test('a v1 checkpoint migrates to v2 without losing a pending action', async (t) => {
   const seed = {
     wallTimeMs: Date.now(),
@@ -136,4 +144,58 @@ test('catch-up notifications are suppressed', async (t) => {
   assert.equal(state.snapshot.simulatedSeconds, 180);
   assert.equal(state.startup.caughtUpSeconds, 180);
   assert.equal(state.notifications.length, 0);
+});
+
+test('catch-up does not spend the online notification chance or quota', async (t) => {
+  const interval = 25;
+  const session = {
+    lastSentAt: null,
+    lastLevel: 0,
+    lastKind: null,
+    hourStartedAt: 0,
+    hourCount: 1,
+    dayStartedAt: 0,
+    dayCount: 5,
+    lastSeenAt: 0,
+    levels: { hunger: 0, fullness: 0, urinary: 0, thirst: 0 },
+  };
+  const seed = checkpoint({
+    wallTimeMs: Date.now() - 3 * interval - 10,
+    simulatedSeconds: 0,
+    parts: {
+      interoception: { hunger: 70, fullness: 0, thirst: 0, urinaryUrgency: 0 },
+      brainNotify: { lastSessionId: 'session-a', sessions: { 'session-a': session } },
+    },
+  });
+  const app = await launch(t, {
+    modules: { 'brain-notify.mjs': brainNotifySource() },
+    seed,
+    catchUpMinutes: 3,
+    heartbeatIntervalMs: interval,
+  });
+
+  let state = app.state();
+  assert.equal(state.snapshot.simulatedSeconds, 180);
+  assert.equal(state.startup.caughtUpSeconds, 180);
+  assert.deepEqual(state.notifications, []);
+  let stored = state.snapshot.parts.brainNotify.sessions['session-a'];
+  assert.equal(stored.lastSentAt, null);
+  assert.equal(stored.hourCount, 1);
+  assert.equal(stored.dayCount, 5);
+  assert.deepEqual(stored.levels, { hunger: 0, fullness: 0, urinary: 0, thirst: 0 });
+
+  await app.tick();
+  state = app.state();
+  assert.equal(state.notifications.length, 1);
+  assert.equal(state.notifications[0].sessionId, 'session-a');
+  assert.equal(state.notifications[0].mode, 'context');
+  stored = state.snapshot.parts.brainNotify.sessions['session-a'];
+  assert.equal(stored.lastSentAt, 240);
+  assert.equal(stored.hourCount, 2);
+  assert.equal(stored.dayCount, 6);
+  assert.deepEqual(stored.levels, { hunger: 2, fullness: 0, urinary: 0, thirst: 0 });
+
+  await app.tick();
+  state = app.state();
+  assert.equal(state.notifications.length, 1);
 });

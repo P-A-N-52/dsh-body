@@ -4,7 +4,7 @@
 
 `ovaries` 只有一个脚本 `menstrual-cycle.ts`，维护周期日、本身体周期长度、相位和雌二醇（E2）/孕酮（P4）两个 0–1 相对量。它没有动作、没有 `transfer`、不发送通知，也不读取其他部位。唯一消费者是 [`uterus`](../uterus/README.md)：子宫在下一轮按轮初快照读取本部位的 `cycleDay` / `estradiolRelative` / `progesteroneRelative`，生成内膜目标、月经失水请求与痛经代理。
 
-**状态口径。** 当前实现（2026-11-23）：脚本与参数在 `organs/human-organs/ovaries/`，Bull 证据笔记在 [`references/notes/bull-2019.md`](references/notes/bull-2019.md)。本部位只随独立女性清单 `body-modules.female.json` 加载；根清单 `body-modules.json` 仍为 19 部位、21 份参数文件，不含卵巢。女性清单为 21 部位、23 份参数文件，并使用独立 `statePath`。Bull 只支撑周期与相位长度，激素曲线形状和其余参数都是 `design`；尚未做真实 DSH 会话、独立激素数据或临床验证。
+**状态口径。** 当前实现（2026-11-23）：脚本与参数在 `organs/human-organs/ovaries/`，Bull 证据笔记在 [`references/notes/bull-2019.md`](references/notes/bull-2019.md)。本部位只随独立女性清单 `body-modules.female.json` 加载；根清单 `body-modules.json` 为 38 部位、34 份唯一参数文件，不含卵巢。女性清单为 41 部位、37 份唯一参数文件，并使用独立 `statePath`。Bull 只支撑周期与相位长度，激素曲线形状和其余参数都是 `design`；尚未做真实 DSH 会话、独立激素数据或临床验证。
 
 ## 1. 脚本与部位
 
@@ -118,4 +118,4 @@ ovaries.cycleDay / estradiolRelative / progesteroneRelative
 - **个体差异与病理：** 固定周期均值，不建周期长度变异、不规则周期、PCOS、甲状腺功能减退、子宫内膜异位、围绝经期、青春期、激素避孕或个体化周期预测。
 - **男性生殖：** 不建睾丸、睾酮、精子发生或男性生殖道；根清单不含卵巢/子宫，女性清单是独立身体，不引入 `sex` 字段、`presets/` 或 condition 概念。
 - **症状与行为：** 不建性欲、情绪、经前症状、乳房胀痛、基础体温、宫颈黏液、排卵痛或任何自动行为；本部位不产生动作、回执或通知。
-- **未验证：** 没有真实 DSH 会话、独立周期/激素数据、临床验证或 21 部位性能基线；Bull 的队列均值不能当成本身体的验证结果。
+- **未验证：** 没有真实 DSH 会话、独立周期/激素数据、临床验证或 41 部位性能基线；Bull 的队列均值不能当成本身体的验证结果。

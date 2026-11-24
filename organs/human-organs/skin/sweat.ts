@@ -93,10 +93,7 @@ export function sweatRequestMl({
     ? referenceRateMlPerMin * intensity * temperatureFactor
     : 0;
   const thermalRateMlPerMin = heatGain * Math.max(0, coreTemperatureC - thermoregulationSetpointC);
-  const rateMlPerMin = Math.min(
-    maxRateMlPerMin,
-    Math.max(0, exerciseRateMlPerMin + thermalRateMlPerMin),
-  );
+  const rateMlPerMin = Math.min(maxRateMlPerMin, exerciseRateMlPerMin + thermalRateMlPerMin);
   return dtMin > 0 ? rateMlPerMin * dtMin : 0;
 }
 
@@ -108,11 +105,8 @@ function requireFinite(value: unknown, name: string): number {
 }
 
 function readActivity(io: IO): { remainingExerciseMin: number; intensity: number } | undefined {
-  const activity = io.read('physicalActivity') as ActivityReading | null | undefined;
-  if (activity === undefined || activity === null) return undefined;
-  if (typeof activity !== 'object') {
-    throw new Error('physicalActivity must be an object');
-  }
+  const activity = io.read('physicalActivity');
+  if (activity === undefined) return undefined;
   const remainingExerciseMin = requireFinite(activity.remainingExerciseMin, 'remainingExerciseMin');
   const intensity = requireFinite(activity.intensity, 'intensity');
   if (remainingExerciseMin < 0) {
@@ -126,11 +120,8 @@ function readActivity(io: IO): { remainingExerciseMin: number; intensity: number
 
 function readCoreTemperatureC(io: IO): number {
   const thermoregulation = io.read('thermoregulation');
-  if (thermoregulation === undefined || thermoregulation === null) {
+  if (thermoregulation === undefined) {
     return thermoregulationSetpointC;
-  }
-  if (typeof thermoregulation !== 'object') {
-    throw new Error('skin: thermoregulation must be an object');
   }
   const coreTemperatureC = thermoregulation.coreTemperatureC;
   if (typeof coreTemperatureC !== 'number' || !Number.isFinite(coreTemperatureC)) {

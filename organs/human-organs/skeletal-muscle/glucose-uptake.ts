@@ -9,8 +9,10 @@
  * 存在的区域，份额按剩余区域归一。同一清单不能同时加载两个聚合器入口（`id` 相同）。
  *
  * 旧档迁移：旧档只有 `muscleGlucose.glycogenG`（总量）时，各区域在自己的第一轮按存在区域
- * 归一后的份额并入各自糖原；本聚合器第一次 write 只保留 `uptakeG` / `uptakeRequestG`，
- * 不再保留旧总量。在途 `uptakeG` 不改写，重启后的第一轮按份额转给区域，区域下一轮入账。
+ * 归一后的份额迁移；默认种子状态（`uptakeG = 0`、`glycogenG = 300 g × 份额`、
+ * `glycogenConsumedG = 0`）用迁移份额取代种子，已有真实存档状态则并入存量。本聚合器第一次
+ * write 只保留 `uptakeG` / `uptakeRequestG`，不再保留旧总量。在途 `uptakeG` 不改写，重启后
+ * 的第一轮按份额转给区域，区域下一轮入账。
  */
 import { createMuscleGlucose, type MuscleRegionShare } from './glucose-uptake-core.ts';
 

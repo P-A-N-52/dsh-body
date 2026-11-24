@@ -1,5 +1,7 @@
 # 尿意提醒与主动排尿闭环设计
 
+> **历史设计注记（2026-11-24）：** 本文记录当时批准的尿意提醒设计，正文保持原样，不按后续修复改写。2026-11-24 审查修复新增补算 IO 只读标记 `io.suppressNotifications`：补算轮 `brainNotify` 不调用 `io.notify`，也不抬高 `levels`、不更新 `lastSentAt`、不消耗小时/天配额；Gateway 仍会丢弃补算轮由其他模块产生的通知，首个在线轮仍可提醒且同档不重复。当前契约以 `docs/gateway-and-scripts.md`、`organs/human-organs/brain/README.md` 和 `organs/human-organs/brain/notify.ts` 为准；本文的“补算仍消耗冷却与配额”等旧表述已被该修复取代。
+
 **状态：** 当前实现已完成离线单元与真实 Gateway 集成验证；真实 DSH 会话验收尚未完成。用户已授权按推荐方向直接实现；具体阈值和状态结构由本设计确定。
 
 ## 目的

@@ -86,29 +86,25 @@ export const fields = {
 };
 
 function relativeOrOne(
-  part: Readonly<{ [field: string]: unknown }> | null | undefined,
+  part: Readonly<{ [field: string]: unknown }> | undefined,
   partId: string,
   field: string,
 ): number {
   if (part === undefined) return 1;
-  const value = part === null || typeof part !== 'object' ? undefined : part[field];
+  const value = part[field];
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     throw new Error(`pituitary: invalid ${partId}.${field}: ${String(value)}`);
   }
   return value;
 }
 
-function milkMlOrZero(part: Readonly<MammaryGlandsReading> | null | undefined): number {
+function milkMlOrZero(part: Readonly<MammaryGlandsReading> | undefined): number {
   if (part === undefined) return 0;
-  const value = part === null || typeof part !== 'object' ? undefined : part.milkMl;
+  const value = part.milkMl;
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     throw new Error(`pituitary: invalid mammaryGlands.milkMl: ${String(value)}`);
   }
   return value;
-}
-
-function finiteOr(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -145,29 +141,10 @@ export function heartbeat(io: IO): void {
     : PROLACTIN_BASELINE_RELATIVE;
 
   const prev = io.read(id) ?? initialState;
-  const prevTsh = clamp(
-    finiteOr(prev.tshRelative, initialState.tshRelative),
-    MIN_RELATIVE,
-    MAX_RELATIVE,
-  );
-  const prevActh = clamp(
-    finiteOr(prev.acthRelative, initialState.acthRelative),
-    MIN_RELATIVE,
-    MAX_RELATIVE,
-  );
-  const prevProlactin = clamp(
-    finiteOr(prev.prolactinRelative, PROLACTIN_BASELINE_RELATIVE),
-    MIN_RELATIVE,
-    MAX_RELATIVE,
-  );
   const retention = 2 ** (-(io.dt / 60) / RESPONSE_HALF_TIME_MIN);
   io.write({
-    tshRelative: clamp(tshTarget + (prevTsh - tshTarget) * retention, MIN_RELATIVE, MAX_RELATIVE),
-    acthRelative: clamp(acthTarget + (prevActh - acthTarget) * retention, MIN_RELATIVE, MAX_RELATIVE),
-    prolactinRelative: clamp(
-      prolactinTarget + (prevProlactin - prolactinTarget) * retention,
-      MIN_RELATIVE,
-      MAX_RELATIVE,
-    ),
+    tshRelative: tshTarget + (prev.tshRelative - tshTarget) * retention,
+    acthRelative: acthTarget + (prev.acthRelative - acthTarget) * retention,
+    prolactinRelative: prolactinTarget + (prev.prolactinRelative - prolactinTarget) * retention,
   });
 }

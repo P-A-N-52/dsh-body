@@ -22,8 +22,10 @@
  * 动作抑制：`drink` 不会在当轮清零口渴水位，饮水要经胃、小肠和体液改变亏缺后才回落。
  *
  * 每会话用 `levels: { hunger, fullness, urinary, thirst }` 分别记录滞回水位，只有被
- * 选中并实际发送的信号才抬高自己的水位；未选区信号不消耗水位。冷却、每小时/每天配额
- * 仍按会话共享，每轮最多一条；合格候选先取最高档，同档优先级为尿意 > 口渴 > 饱满 >
+ * 选中并实际发送的信号才抬高自己的水位；未选区信号不消耗水位。Gateway 补算轮次用
+ * `io.suppressNotifications` 标记本轮只回放不投递：这些轮次不调用 `io.notify`，也不
+ * 消耗冷却、每小时/每天配额或信号水位，在线轮次仍保有首次提醒机会。冷却、每小时/每天
+ * 配额仍按会话共享，每轮最多一条；合格候选先取最高档，同档优先级为尿意 > 口渴 > 饱满 >
  * 饥饿。`lastKind` 记录最近一次实际提醒的信号；`lastLevel` 保留既有下降闩锁并供旧档
  * 迁移，实际门控由 `levels` 负责。旧会话已有 `levels` 对象时只把缺失的 `thirst` 等
  * 水位补 0，其他信号水位不变；更旧会话缺少 `levels` 时用 `lastKind/lastLevel` 惰性
@@ -88,6 +90,7 @@ type IO = {
   read(id: 'bladder'): Readonly<BladderReading> | undefined;
   readonly actions: readonly Action[];
   readonly simulatedSeconds: number;
+  readonly suppressNotifications?: boolean;
   notify(notification: { mode: Mode; sessionId: string; text: string }): void;
   write(next: BrainNotifyState): void;
 };
@@ -338,7 +341,7 @@ export function heartbeat(io: IO): void {
     && session.dayCount < maxPerDay
     && sessionId.length <= MAX_SESSION_ID_LENGTH;
 
-  if (candidate !== null && canNotify) {
+  if (candidate !== null && canNotify && io.suppressNotifications !== true) {
     io.notify({
       mode: candidate.level >= wakeAtLevel ? 'wake' : 'context',
       sessionId,

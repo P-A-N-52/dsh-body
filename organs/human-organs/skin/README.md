@@ -44,7 +44,7 @@ sweatRequestMl    = rate × dtMin
 write.sweatVolumeMl = 0
 ```
 
-核心温度采用**静息 + 运动叠加的热致出汗**：`thermalRate = heatGain × max(0, C − 37)` 与运动项 `exerciseRate` 相加后再整体受速率上限 `maxRateMlPerMin = 15 mL/min` 钳位。因此即使 `R = 0` 处于静息高热（`C > 37°C`），也会触发热致出汗请求以散热。这是当前工程实现，不是实测体温—出汗曲线。`thermoregulation` 已加载但 `coreTemperatureC` 缺失、非有限或非对象时抛错，本轮不写状态。
+核心温度采用**静息 + 运动叠加的热致出汗**：`thermalRate = heatGain × max(0, C − 37)` 与运动项 `exerciseRate` 相加后再整体受速率上限 `maxRateMlPerMin = 15 mL/min` 钳位。因此即使 `R = 0` 处于静息高热（`C > 37°C`），也会触发热致出汗请求以散热。这是当前工程实现，不是实测体温—出汗曲线。`thermoregulation` 已加载但 `coreTemperatureC` 缺失或非有限时抛错，本轮不写状态。
 
 `R = 0` 且 `C <= 37°C`（或未加载 `thermoregulation`）时请求为 0；`I = 0` 的合法活动且未高热时请求也为 0。温度因子在 0 处截断；上限只作用于总速率（15 mL/min），请求量仍按 `dtMin` 缩放，所以 `dtMin = 2` 且速率已达上限时为 30 mL。25°C、`I = 1`、37°C 核心温度、60 s 轮请求 0.6 mL；35°C 环境时温度因子为 1.4，请求 0.84 mL；总速率最高封顶 15 mL/min。
 
@@ -102,16 +102,16 @@ transfer bodyFluid → skin: U_sweat
 - `skin.sweatVolumeMl` 只由 transfer 增加；实际汗液不会反过来改写 `sweatRequestMl`，请求仍保持本轮计算值。肺失水同理，只进入 `lungs.respiratoryWaterLossMl`，不改写肺请求。
 - 直接调用 `bodyFluid` 模块时，缺失、负数、非有限或非数值的汗液请求按 0 处理；肺请求异常同样按 0 处理。完整清单仍要求 `skin` 与 `lungs` 在场，不能用 0 掩盖缺部位。
 
-水账在既有恒等式上增加实际肺失水和汗液项：
+水账在既有恒等式上增加结肠残渣水、实际肺失水和汗液项：
 
 ```text
-胃水 + 队列水 + 小肠水 + (体液水 − 30000)
+胃水 + 队列水 + 小肠水 + 结肠残渣水 + (体液水 − 30000)
 + 膀胱尿 + 累计 voidedMl + 累计 lungs.respiratoryWaterLossMl
 + 累计 skin.sweatVolumeMl
 = 累计饮水
 ```
 
-其中“胃水”是 `stomach.waterVolumeMl`，“队列水”是 `stomach.mealQueue` 中剩余水量之和，“小肠水”是 `smallIntestine.waterVolumeMl`，“膀胱尿”是当前 `bladder.volumeMl`；`voidedMl` 已包含主动与非自主排出，只累计一次。`sweatRequestMl` 与肺请求不进入水账，只有实际 `sweatVolumeMl` 和 `respiratoryWaterLossMl` 逐轮累加；无活动时两项为 0，既有水账恒等式不变。测试容差为 `1e-6 mL`。
+其中“胃水”是 `stomach.waterVolumeMl`，“队列水”是 `stomach.mealQueue` 中剩余水量之和，“小肠水”是 `smallIntestine.waterVolumeMl`，“结肠残渣水”是 `colon.residueWaterMl`，“膀胱尿”是当前 `bladder.volumeMl`；结肠回收是残渣水池到体液的内部回流，只体现在残渣水项，不另加外部流入。`voidedMl` 已包含主动与非自主排出，只累计一次。`sweatRequestMl` 与肺请求不进入水账，只有实际 `sweatVolumeMl` 和 `respiratoryWaterLossMl` 逐轮累加；无活动时两项为 0。测试容差为 `1e-6 mL`。
 
 未加载 `thermoregulation` 时，30 min、`intensity=1` 的同一次活动产生 18 mL 汗液和 9 mL 运动相关呼吸失水，二者分别记账；加载 `thermoregulation` 后核心温度升高，`thermalRate > 0`，汗量会高于 18 mL，具体取决于温度轨迹。18 mL 只是未计热致出汗的时序算例。18 mL 仍是皮肤汗量，不是 27 mL；9 mL 肺失水不属于皮肤字段，也不能合并成皮肤读数。
 
@@ -123,7 +123,7 @@ transfer bodyFluid → skin: U_sweat
 - **重启：** 保留活动剩余时间/强度、皮肤已提交状态和肺已提交状态；`sweatRequestMl` 每轮按轮初活动重算，`sweatVolumeMl` 每轮先归 0，不按历史轮数补算。已发生的汗液已在体液中扣除，重启不会重复扣水；肺的实际失水同样每轮归 0，不会重复累计。
 - **没有 `physicalActivity`：** `skin` 与 `lungs` 都按“无活动”请求 0；根清单包含该部位，以提供 `exercise` 能力。自定义清单缺少它时不会因 transfer 配对失败，但也不会有活动状态。
 - **已加载 `physicalActivity` 但字段异常：** 缺失、非有限、`remainingExerciseMin < 0`、`intensity < 0` 或 `intensity > 1` 时，`skin` 抛错且本轮不 write，不用固定值掩盖；同一异常也会使 `lungs` 失败。合法的 `remainingExerciseMin = 0` 与 `intensity = 0` 是有效状态，不是异常；`R = 0` 的合法活动请求 0。
-- **缺 `skin`、`lungs`、`muscleGlucose` 或 `bodyFluid`：** `bodyFluid` 的 `transferOut` 目标缺 `skin` 或 `lungs`，`glucose` 的 `transferOut` 目标缺 `muscleGlucose`，或 `skin` 的 `transferIn` 来源缺 `bodyFluid`，`createFieldRegistry` 都会在启动时报错；完整清单必须包含九部位闭包。
+- **缺 `skin`、`lungs`、`muscleGlucose` 或 `bodyFluid`：** `bodyFluid` 的 `transferOut` 目标缺 `skin` 或 `lungs`，`glucose` 的 `transferOut` 目标缺 `muscleGlucose`，或 `skin` 的 `transferIn` 来源缺 `bodyFluid`，`createFieldRegistry` 都会在启动时报错；完整清单必须包含十五部位闭包。
 - **请求不等于结算：** `sweatRequestMl` 只表示意图；只有 `bodyFluid` 成功 transfer 后 `sweatVolumeMl` 才非 0。请求大于轮初可用水时实际被钳低，不产生负水或额外补液。肺请求与肺实际量同理，且汗液优先级低于肺请求。
 
 ## 7. 证据与未建模边界

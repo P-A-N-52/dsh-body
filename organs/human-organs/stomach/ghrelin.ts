@@ -47,10 +47,18 @@
  * Cummings 2001 与 Leone 2022 的含能餐证据外推的 design 假设，不能称为 validated，也不能推出
  * 饮料成分、能量剂量与抑制幅度的关系。
  *
+ * 摄入合法性（复用胃的解析）：本脚本直接调用 `motility-core.ts` 的同一个 `parseIntake`，不再只看
+ * `energyKcal > 0`。`volumeMl` 必须是有限正数；`eat` 还要求有限非负 `energyKcal` 与
+ * `mealKind ∈ {liquid, solid, mixed}`；`drink.energyKcal` 缺省为 0，给出时必须是有限非负数；
+ * 可选的 `durationMin` 与 `carbohydrateG` 给出时必须是有限非负数。胃会忽略的畸形动作同样不计入
+ * 摄入能量、不重置空腹计时；胃接受的合法动作行为不变。多轮摄入仍把整条动作的能量在起始轮计入
+ * （既有行为，不随胃的轮切片拆分）。
+ *
  * 上游契约：`stomachSensory` / `duodenum` 未加载按 0；部位已加载但字段缺失、非有限或为负时抛错，
  * 本轮不写任何状态。读数来自轮初快照，滞后一轮。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import { parseIntake } from './motility-core.ts';
 
 export const id = 'stomachGhrelin';
 export const actionTypes = ['eat', 'drink'];
@@ -104,15 +112,11 @@ export const fields = {
   minutesSinceEnergyIntake: { unit: 'min', mode: 'absolute' },
 };
 
-function intakeEnergyKcal(actions: readonly Action[]): number {
+function intakeEnergyKcal(actions: readonly Action[], dt: number): number {
   let total = 0;
   for (const action of actions) {
-    if ((action.type === 'eat' || action.type === 'drink')
-      && typeof action.energyKcal === 'number'
-      && Number.isFinite(action.energyKcal)
-      && action.energyKcal > 0) {
-      total += action.energyKcal;
-    }
+    const intake = parseIntake(action, dt);
+    if (intake !== null) total += intake.energyKcal;
   }
   return total;
 }
@@ -148,7 +152,7 @@ export function heartbeat(io: IO): void {
 
   const mechanical = readSignal('stomachSensory', io.read('stomachSensory'));
   const nutrientExposure = readSignal('duodenum', io.read('duodenum'));
-  const energyKcal = intakeEnergyKcal(io.actions);
+  const energyKcal = intakeEnergyKcal(io.actions, io.dt);
   const suppression = distensionGain * mechanical
     + nutrientGain * nutrientExposure
     + (intakeGain * energyKcal) / referenceIntakeKcal;

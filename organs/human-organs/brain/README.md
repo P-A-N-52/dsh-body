@@ -9,7 +9,7 @@
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
 | `interoception.ts` | `interoception` | `hunger`、`fullness`、`thirst`、`urinaryUrgency`、`discomfort`、`sexualArousalMm`、`dyspneaMm`、`stressMm`、`sleepinessMm`、`dryMouthMm`、`libidoMm`、`bowelUrgencyMm`、`heatMm`、`coldMm`、`hypocalcemiaMm`、`hypercalcemiaMm` | `stomachSensory.mechanical`、`stomachGhrelin.relativeConcentration`、`duodenum.nutrientExposure`、`hypothalamusThirst.thirst`、`bladder.volumeMl`、`uterus.crampMm`（可选，第五路）、`mammaryGlands.fullnessMm`（可选，第六路）、`esophagus.chokingMm`（可选，第七路）、`colon.bowelUrgencyMm` / `colon.stoolG`（可选软读）、`sexualResponse.arousalMm`（可选软读）、`bloodOxygen.oxygenDeficit`（可选软读）、`adrenal.cortisolRelative`（可选软读）、`pineal.melatoninRelative`（可选软读）、`salivaryGlands.mouthMoistureMm`（可选软读）、`testes.testosteroneRelative`（可选软读）、`thermoregulation.coreTemperatureC`（可选软读）、`bloodCalcium.mgDl`（可选软读） | `interoception.parameters.json` |
-| `notify.ts` | `brainNotify` | `lastSessionId`、`sessions`（内部状态，含每会话 `levels`） | `interoception.hunger/fullness/thirst/urinaryUrgency`、轮初 `bladder.voidedMl`；本轮动作里的 `sessionId` 与 `urinate` | `notify.parameters.json` |
+| `notify.ts` | `brainNotify` | `lastSessionId`、`sessions`（内部状态，含每会话 `levels`） | `interoception.hunger/fullness/thirst/urinaryUrgency`、轮初 `bladder.voidedMl`；本轮动作里的 `sessionId` 与 `urinate`；只读 `io.suppressNotifications` | `notify.parameters.json` |
 | `hypothalamus-adh.ts` | `hypothalamusAdh` | `relativeConcentration` | `bodyFluid.waterDeficit`；轮初 `blood.bloodVolumeMl`（可选） | `hypothalamus-adh.parameters.json` |
 | `hypothalamus-thirst.ts` | `hypothalamusThirst` | `thirst` | `bodyFluid.waterDeficit` | `hypothalamus-thirst.parameters.json` |
 | `thermoregulation.ts` | `thermoregulation` | `coreTemperatureC` | 自己的轮初温度；轮初 `bloodOxygen.oxygenConsumptionMlMin`（可选）、`skin.sweatVolumeMl`（可选）；`io.dt` | `thermoregulation.parameters.json` |
@@ -233,13 +233,11 @@ exerciseDrive     = remainingExerciseMin > 0
                   : 0                                               （未加载或非有限按 0）
 trhTarget   = clamp(1 + trhFeedbackGain × (1 − T4) + coldDrive, 0, 3)
 crhTarget   = clamp(1 + crhFeedbackGain × (1 − 皮质醇) + hypoglycemiaDrive + exerciseDrive, 0, 3)
-prevTrh     = clamp(finiteOr(prev.trhRelative, 1), 0, 3)
-prevCrh     = clamp(finiteOr(prev.crhRelative, 1), 0, 3)
-trhRelative = clamp(trhTarget + (prevTrh − trhTarget) × 2^(−dtMin / 30), 0, 3)
-crhRelative = clamp(crhTarget + (prevCrh − crhTarget) × 2^(−dtMin / 30), 0, 3)
+trhRelative = trhTarget + (prev.trhRelative − trhTarget) × 2^(−dtMin / 30)
+crhRelative = crhTarget + (prev.crhRelative − crhTarget) × 2^(−dtMin / 30)
 ```
 
-T4/皮质醇高于 1 时目标低于 1，低于 1 时目标高于 1；核心温度低于 `36.8°C` 时追加冷应激 TRH 驱动（37°C 位于死区内，静息稳态保持精确 1.0）；低血糖（`< 80 mg/dL`）与高强度活动（`intensity > 0.5`）追加 CRH 驱动。轮初与输出均经 `finiteOr(..., 1)` 回退非有限值并钳在 `[0, 3]`。30 min 半时及各上游驱动常量均在脚本内，两个增益是 `design`、`source: null`，不是 HPT/HPA 轴剂量反应。
+T4/皮质醇高于 1 时目标低于 1，低于 1 时目标高于 1；核心温度低于 `36.8°C` 时追加冷应激 TRH 驱动（37°C 位于死区内，静息稳态保持精确 1.0）；低血糖（`< 80 mg/dL`）与高强度活动（`intensity > 0.5`）追加 CRH 驱动，目标钳在 `[0, 3]`。30 min 半时及各上游驱动常量均在脚本内，两个增益是 `design`、`source: null`，不是 HPT/HPA 轴剂量反应。
 
 ### `pituitary.parameters.json`
 
@@ -252,15 +250,12 @@ T4/皮质醇高于 1 时目标低于 1，低于 1 时目标高于 1；核心温�
 tshTarget       = clamp(TRH × (1 + tshFeedbackGain × (1 − T4)), 0, 3)
 acthTarget      = clamp(CRH × (1 + acthFeedbackGain × (1 − 皮质醇)), 0, 3)
 prolactinTarget = mammaryGlands.milkMl > 0 ? 2 : 1
-prevTsh         = clamp(finiteOr(prev.tshRelative, 1), 0, 3)
-prevActh        = clamp(finiteOr(prev.acthRelative, 1), 0, 3)
-prevProlactin   = clamp(finiteOr(prev.prolactinRelative, 1), 0, 3)
-tshRelative       = clamp(tshTarget + (prevTsh − tshTarget) × 2^(−dtMin / 30), 0, 3)
-acthRelative      = clamp(acthTarget + (prevActh − acthTarget) × 2^(−dtMin / 30), 0, 3)
-prolactinRelative = clamp(prolactinTarget + (prevProlactin − prolactinTarget) × 2^(−dtMin / 30), 0, 3)
+tshRelative       = tshTarget + (prev.tshRelative − tshTarget) × 2^(−dtMin / 30)
+acthRelative      = acthTarget + (prev.acthRelative − acthTarget) × 2^(−dtMin / 30)
+prolactinRelative = prolactinTarget + (prev.prolactinRelative − prolactinTarget) × 2^(−dtMin / 30)
 ```
 
-`TRH`/`CRH` 与 T4/皮质醇缺失时按 1 回退；已加载但字段缺失、非有限或为负时抛错，本轮失败。`mammaryGlands` 未加载时按无泌乳（目标 1）；已加载但 `milkMl` 缺失、非有限或为负时抛错。自身轮初与三个输出均经 `finiteOr(..., 1)` 回退非有限值并钳在 `[0, 3]`。30 min 半时是本脚本常量，两个增益是 `design`、`source: null`。`prolactinRelative` 的 `LETDOWN_TARGET_RELATIVE = 2` 与 30 min 半时也是脚本常量（`design`、`source: null`），不是实测催乳素倍数或吸吮剂量—反应；它只表示“上一轮有乳汁到账”时催乳素向 2 趋近，无泌乳时回落到基线 1。下游消费者与负反馈边界见 [`thyroid`](../thyroid/README.md)、[`adrenal`](../adrenal/README.md) 与 [`mammaryGlands`](../mammary-glands/README.md)。
+`TRH`/`CRH` 与 T4/皮质醇缺失时按 1 回退；已加载但字段缺失、非有限或为负时抛错，本轮失败。`mammaryGlands` 未加载时按无泌乳（目标 1）；已加载但 `milkMl` 缺失、非有限或为负时抛错。目标钳在 `[0, 3]`（`prolactinTarget` 取 1 或 2）。30 min 半时是本脚本常量，两个增益是 `design`、`source: null`。`prolactinRelative` 的 `LETDOWN_TARGET_RELATIVE = 2` 与 30 min 半时也是脚本常量（`design`、`source: null`），不是实测催乳素倍数或吸吮剂量—反应；它只表示“上一轮有乳汁到账”时催乳素向 2 趋近，无泌乳时回落到基线 1。下游消费者与负反馈边界见 [`thyroid`](../thyroid/README.md)、[`adrenal`](../adrenal/README.md) 与 [`mammaryGlands`](../mammary-glands/README.md)。
 
 ### `notify.parameters.json`（提醒策略）
 
@@ -379,7 +374,7 @@ prolactinRelative = clamp(prolactinTarget + (prevProlactin − prolactinTarget) 
 
 **显式饮水后回落**：`drink` 仍由会话显式提交，提醒不会自动调用；收到口渴提醒也不代表已经喝水。水依次进入胃、小肠和体液，口渴只随轮初 `waterDeficit` 下降，不在动作轮清零、不立即消失，也不补发同档提醒。真实 Gateway 用例提交 1000 mL `drink` 后，当轮水仍在胃、`levels.thirst` 保持 3；随后口渴随吸收先维持强档、再经过明显档，观测降到明显档以下后 `levels.thirst` 回 0（40–64 mm 的中间档也按 0），再升到明显/强档才会重新提醒。冷却与配额始终与其他信号共享，其他信号仍可被选中；水账仍满足 `1e-6 mL` 恒等式。
 
-**补算限制**：普通停机后的启动补算仍逐轮执行 `brainNotify` 并提交状态；Gateway 只丢弃补算轮产生的通知。若补算中 `brainNotify` 决定提醒，它仍会更新 `levels`、`lastSentAt` 和小时/天计数，即照常消耗冷却与配额，因此恢复后同一档位可能不补发。该行为属于既有 Gateway 通知架构限制，本设计不修改补算或通知泵；若需补发或延后计数，应另立独立设计。
+**补算不消耗在线提醒机会**：普通停机后的启动补算仍逐轮执行 `brainNotify` 并提交状态，但 IO 带只读 `io.suppressNotifications = true`。`brainNotify` 在该标记下不调用 `io.notify`，也不抬高 `levels`、不更新 `lastSentAt`、不消耗小时/天配额；Gateway 仍会兜底丢弃补算轮由其他模块产生的通知。因此首个在线轮仍保有首次提醒机会，同一档位不会因补算被提前消耗或重复发送。补算轮仍按轮初观测调和既有水位（允许按观测下调），这不是发送或配额消耗。真实 Gateway 测试见 `test/gateway.checkpoint.test.mjs` 的 “catch-up does not spend the online notification chance or quota” 与 `test/organs.brain-notify.test.mjs` 的 suppressed round 用例。
 
 **投递方式**：`marked` 用 `context`（`agent.inject`，不唤醒空闲会话）；`strong` 用 `wake`（`agent.followup`，唤醒会话）。`wakeAtLevel=3`；改成 4 可关闭唤醒。两种模式共用同一套冷却和配额。
 

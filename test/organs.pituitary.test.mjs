@@ -236,7 +236,6 @@ test('loaded parts with missing or invalid readings fail before writing', () => 
     { label: 'negative T4', thyroid: { thyroxineRelative: -0.1 } },
     { label: 'NaN cortisol', adrenal: { cortisolRelative: Number.NaN } },
     { label: 'non-number cortisol', adrenal: { cortisolRelative: '1' } },
-    { label: 'null thyroid', thyroid: null },
   ];
 
   for (const { label, hypothalamusEndocrine, thyroid, adrenal } of invalid) {
@@ -322,7 +321,6 @@ test('prolactin is independent of the hypothalamic and peripheral axes', () => {
 
 test('loaded mammary glands with an invalid milk reading fail before writing', () => {
   const invalid = [
-    { label: 'null mammary', mammaryGlands: null },
     { label: 'empty mammary', mammaryGlands: {} },
     { label: 'NaN milk', mammaryGlands: { milkMl: Number.NaN } },
     { label: 'infinite milk', mammaryGlands: { milkMl: Number.POSITIVE_INFINITY } },
@@ -374,21 +372,4 @@ test('pituitary output is finite and JSON-safe', () => {
     assert.doesNotThrow(() => assertJsonValue(written));
     assert.deepEqual(JSON.parse(JSON.stringify(written)), written);
   }
-});
-
-test('malformed prev fields fall back cleanly and clamp within [0, 3]', () => {
-  const fromNaN = round({
-    state: {
-      tshRelative: Number.NaN,
-      acthRelative: Number.POSITIVE_INFINITY,
-      prolactinRelative: undefined,
-    },
-  });
-  assert.deepEqual(fromNaN, { tshRelative: 1, acthRelative: 1, prolactinRelative: 1 });
-
-  const fromOutOfRange = round({
-    state: { tshRelative: -2, acthRelative: 9, prolactinRelative: 9 },
-    dt: 0,
-  });
-  assert.deepEqual(fromOutOfRange, { tshRelative: 0, acthRelative: 3, prolactinRelative: 3 });
 });

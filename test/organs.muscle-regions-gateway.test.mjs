@@ -203,8 +203,13 @@ test('an amputee manifest without muscleLimbs boots and normalizes over the rema
 
   await gateway.tick();
   const handedOff = gateway.getState().parts;
-  assertClose(handedOff.muscleHead.glycogenG, 15 + 10, 'head initial 15 + legacy stock renormalized to 0.1');
-  assertClose(handedOff.muscleTrunk.glycogenG, 135 + 90, 'trunk initial 135 + legacy stock renormalized to 0.9');
+  assertClose(handedOff.muscleHead.glycogenG, 100 * 0.1, 'head legacy stock renormalized to 0.1');
+  assertClose(handedOff.muscleTrunk.glycogenG, 100 * 0.9, 'trunk legacy stock renormalized to 0.9');
+  assertClose(
+    handedOff.muscleHead.glycogenG + handedOff.muscleTrunk.glycogenG,
+    100,
+    'the legacy total is conserved without the seeded default',
+  );
   assertClose(handedOff.muscleHead.uptakeG, 0.1, 'head uptake renormalized to 0.1');
   assertClose(handedOff.muscleTrunk.uptakeG, 0.9, 'trunk uptake renormalized to 0.9');
   assert.equal(handedOff.muscleGlucose.uptakeG, 0);
@@ -212,8 +217,13 @@ test('an amputee manifest without muscleLimbs boots and normalizes over the rema
 
   await gateway.tick();
   const booked = gateway.getState().parts;
-  assertClose(booked.muscleHead.glycogenG, 25.1, 'head books its share');
-  assertClose(booked.muscleTrunk.glycogenG, 225.9, 'trunk books its share');
+  assertClose(booked.muscleHead.glycogenG, 10.1, 'head books its share');
+  assertClose(booked.muscleTrunk.glycogenG, 90.9, 'trunk books its share');
+
+  await gateway.tick();
+  const after = gateway.getState().parts;
+  assertClose(after.muscleHead.glycogenG, 10.1, 'no repeat migration on the next round');
+  assertClose(after.muscleTrunk.glycogenG, 90.9, 'no repeat migration on the next round');
 });
 
 test('restarting from a committed state continues regional booking and consumption', async (t) => {
@@ -274,7 +284,29 @@ test('restarting from a committed state continues regional booking and consumpti
   );
 });
 
-test('an old save with only muscleGlucose.glycogenG splits it across the regions and keeps in-flight uptake', async (t) => {
+test('a new body keeps the 300 g regional default across rounds', async (t) => {
+  const { gateway } = await startBody(t);
+  const expected = { muscleHead: 15, muscleTrunk: 135, muscleLimbs: 150 };
+
+  const booted = gateway.getState().parts;
+  for (const region of muscleRegions) {
+    assert.deepEqual(booted[region], {
+      uptakeG: 0,
+      glycogenG: expected[region],
+      glycogenConsumedG: 0,
+    }, `${region}: default initial regional glycogen`);
+  }
+
+  await gateway.tick();
+  await gateway.tick();
+  const after = gateway.getState().parts;
+  for (const region of muscleRegions) {
+    assertClose(after[region].glycogenG, expected[region], `${region}: default stock is unchanged`);
+  }
+  assertClose(regionSum(after, 'glycogenG'), 300, 'a new body keeps the 300 g default total');
+});
+
+test('an old save with only muscleGlucose.glycogenG replaces the seeded regions and conserves the legacy total', async (t) => {
   const { gateway } = await startBody(t, {
     parts: {
       muscleGlucose: {
@@ -301,21 +333,45 @@ test('an old save with only muscleGlucose.glycogenG splits it across the regions
   const migrated = gateway.getState().parts;
   assert.equal(Object.hasOwn(migrated.muscleGlucose, 'glycogenG'), false, 'the aggregator drops the legacy total');
   assert.equal(Object.hasOwn(migrated.muscleGlucose, 'glycogenConsumedG'), false);
-  assertClose(migrated.muscleHead.glycogenG, 15 + 100 * 0.05, 'head stock share');
-  assertClose(migrated.muscleTrunk.glycogenG, 135 + 100 * 0.45, 'trunk stock share');
-  assertClose(migrated.muscleLimbs.glycogenG, 150 + 100 * 0.5, 'limbs stock share');
+  assertClose(migrated.muscleHead.glycogenG, 100 * 0.05, 'head stock share');
+  assertClose(migrated.muscleTrunk.glycogenG, 100 * 0.45, 'trunk stock share');
+  assertClose(migrated.muscleLimbs.glycogenG, 100 * 0.5, 'limbs stock share');
+  assertClose(regionSum(migrated, 'glycogenG'), 100, 'the legacy total replaces the 300 g seeded default');
   assertClose(migrated.muscleHead.uptakeG, 2 * 0.05, 'head in-flight share');
   assertClose(migrated.muscleTrunk.uptakeG, 2 * 0.45, 'trunk in-flight share');
   assertClose(migrated.muscleLimbs.uptakeG, 2 * 0.5, 'limbs in-flight share');
 
   await gateway.tick();
   const booked = gateway.getState().parts;
-  assertClose(booked.muscleHead.glycogenG, 20.1, 'head books the in-flight share next round');
-  assertClose(booked.muscleTrunk.glycogenG, 180.9, 'trunk books the in-flight share next round');
-  assertClose(booked.muscleLimbs.glycogenG, 201, 'limbs books the in-flight share next round');
+  assertClose(booked.muscleHead.glycogenG, 5.1, 'head books the in-flight share next round');
+  assertClose(booked.muscleTrunk.glycogenG, 45.9, 'trunk books the in-flight share next round');
+  assertClose(booked.muscleLimbs.glycogenG, 51, 'limbs books the in-flight share next round');
   assertClose(
     regionSum(booked, 'glycogenG'),
-    402,
-    'the initial regional store plus old total plus in-flight uptake is preserved exactly',
+    102,
+    'the old total plus the in-flight uptake is preserved exactly',
   );
+
+  await gateway.tick();
+  const after = gateway.getState().parts;
+  assertClose(regionSum(after, 'glycogenG'), 102, 'the next round does not migrate the legacy total again');
+  assert.equal(Object.hasOwn(after.muscleGlucose, 'glycogenG'), false, 'the legacy total stays gone');
+});
+
+test('an old save with zero muscle glycogen migrates to zero instead of the 300 g default', async (t) => {
+  const { gateway } = await startBody(t, {
+    parts: {
+      muscleGlucose: {
+        uptakeG: 0,
+        uptakeRequestG: 0,
+        glycogenG: 0,
+        glycogenConsumedG: 0,
+      },
+    },
+  });
+
+  await gateway.tick();
+  const migrated = gateway.getState().parts;
+  assertClose(regionSum(migrated, 'glycogenG'), 0, 'a zero legacy stock must not fall back to the seeded 300 g');
+  assert.equal(Object.hasOwn(migrated.muscleGlucose, 'glycogenG'), false, 'the aggregator drops the legacy total');
 });

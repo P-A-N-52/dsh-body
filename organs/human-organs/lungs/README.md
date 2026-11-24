@@ -83,7 +83,7 @@ alveolarO2CapacityMlMin = maxVentilationMlMin × inspiredO2Fraction / deadSpaceF
 - 需氧上升时目标通气与频率上升；`D = 1250` 时（例如静息 250 + 满强度活动 1000）通气约 30000 mL/min、频率 40 次/min（触及频率读数上限）、供给 1250 mL/min。
 - **触顶：** `maxVentilationMlMin = 60000` 后通气与肺泡供给封顶，默认参数下肺泡供给上限为 `60000 × 0.058333 / 1.4 ≈ 2500 mL/min`；需氧继续升高时由 `bloodOxygen` 计算缺口，通气本身不会突破上限。
 - **频率读数：** `respiratoryRatePerMin` 是通气量除以固定潮气量后再单独钳位的读数。当通气量超过 20000 mL/min 后，频率读数即触顶 40 次/min，因此 `ventilationMlMin` 与 `tidalVolumeMl × respiratoryRatePerMin` 不再相等；这是固定潮气量近似，不是呼吸力学。
-- `bloodOxygen` 未加载时按基础需氧 250 mL/min 回退；已加载但字段缺失、非有限或为负时抛错，本轮不写状态。合法的 `oxygenConsumptionMlMin = 0` 按 0 处理，不产生 `NaN`。`thermoregulation` 未加载时喘息项为 0；已加载但 `coreTemperatureC` 缺失、非有限或非对象时抛错，本轮不写状态。37°C 与 `thermoregulation.setpointC` 的默认值一致，本部位只维护 `pantingGain` 一个参数。
+- `bloodOxygen` 未加载时按基础需氧 250 mL/min 回退；已加载但字段缺失、非有限或为负时抛错，本轮不写状态。合法的 `oxygenConsumptionMlMin = 0` 按 0 处理，不产生 `NaN`。`thermoregulation` 未加载时喘息项为 0；已加载但 `coreTemperatureC` 缺失或非有限时抛错，本轮不写状态。37°C 与 `thermoregulation.setpointC` 的默认值一致，本部位只维护 `pantingGain` 一个参数。
 
 同目录参数（`owner: lungsVentilation`）：
 
@@ -113,7 +113,7 @@ alveolarO2CapacityMlMin = maxVentilationMlMin × inspiredO2Fraction / deadSpaceF
 - 唯一上游是轮初 `bloodOxygen.oxygenConsumptionMlMin`；不读自己的上一轮状态，也不读 `lungs` 的水量字段。
 - 唯一消费者是下一轮的 `bloodOxygen`：它读取 `alveolarO2CapacityMlMin` 作为通气能力上限，再与 `blood.maxOxygenDeliveryMlPerMin` 取较紧者。`interoception` 不直接读通气，而是读 `bloodOxygen.oxygenDeficit`。
 - 不调用 `transfer`、不发通知、不接受动作；呼吸是身体自动调节，LLM 只能通过活动、进食等上游行为间接改变需氧。
-- `bloodOxygen` 未加载或为 `null` 时按基础需氧 250 mL/min 回退；已加载但字段缺失、非有限或为负时抛错，本轮不写状态。合法的 `oxygenConsumptionMlMin = 0` 按 0 处理。`thermoregulation` 未加载时喘息项为 0；已加载但字段缺失、非有限或非对象时同样抛错。
+- `bloodOxygen` 未加载时按基础需氧 250 mL/min 回退；已加载但字段缺失、非有限或为负时抛错，本轮不写状态。合法的 `oxygenConsumptionMlMin = 0` 按 0 处理。`thermoregulation` 未加载时喘息项为 0；已加载但字段缺失或非有限时同样抛错。
 - 与 `lungs` 只是同目录的两个部位：`lungs` 管运动相关失水，`lungsVentilation` 管通气与肺泡供氧，互不写字段。
 
 ## 5. 请求与实际时序

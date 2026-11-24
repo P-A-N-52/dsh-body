@@ -43,7 +43,7 @@ function assertAllNumbersFinite(value, path = 'parts') {
 }
 
 for (const manifest of MANIFESTS) {
-  test(`24h (1440-round) resting steady state (${manifest.name})`, async (t) => {
+  test(`24h (1440-round) fasting temperature and glucose proxy regression (${manifest.name})`, async (t) => {
     const app = await bootManifest(t, manifest.file);
 
     let minCoreTempC = Infinity;

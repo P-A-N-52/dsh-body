@@ -20,5 +20,4 @@
 
 - 从 `main` 切主题分支，提交和 PR 聚焦一个改动。说明改了什么、影响哪些接口／字段／单位、做了什么验证；文档用中文，并把未实现项标为计划。改动相关契约时同步对应指南和 [`AGENTS.md`](AGENTS.md)。
 - 代码或参数改动跑一次 `npm test`。需要测试 Gateway 时，复用 [`test-support/harness.mjs`](test-support/harness.mjs) 的临时目录、随机可用端口和手动推进；不要使用个人存档。离线重放可检查模型走势，但不能替代真实 DSH 会话里的动作、通知和恢复验收。纯文档改动核对链接、命令和实现口径即可。
-- 使用代理工作流时，纯 Markdown 可直接编辑；代码、测试、配置和参数文件改动按 [AGENTS.md](AGENTS.md) 走 tower mission 或 swarm。
 - 提交前查看 `git status`，只提交本次相关文件。不上传本地身体存档、会话通知、凭据、日志、`node_modules/`、`.tower/`、`.superpowers/` 或本地 Pulse 源码检出。

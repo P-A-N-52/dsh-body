@@ -107,7 +107,7 @@ function readStatePath(parts, path) {
   return value;
 }
 
-async function heartbeat({ snapshot, actions, dt, simulatedSeconds, wallTimeMs }) {
+async function heartbeat({ snapshot, actions, dt, simulatedSeconds, wallTimeMs, suppressNotifications = false }) {
   await describeModules();
   freezeJson(snapshot);
   freezeJson(actions);
@@ -118,7 +118,7 @@ async function heartbeat({ snapshot, actions, dt, simulatedSeconds, wallTimeMs }
   }
 
   const contexts = new Map();
-  const common = { read, actions, dt, simulatedSeconds, wallTimeMs };
+  const common = { read, actions, dt, simulatedSeconds, wallTimeMs, suppressNotifications };
   const legacyContext = Object.freeze({
     ...common,
     call(id, name, ...args) {
@@ -168,22 +168,11 @@ async function heartbeat({ snapshot, actions, dt, simulatedSeconds, wallTimeMs }
       }
 
       function add(partId, field, delta) {
-        const [clonedPartId, clonedField, clonedDelta] = structuredClone([partId, field, delta]);
-        adds.push({ caller: id, partId: clonedPartId, field: clonedField, delta: clonedDelta });
+        adds.push({ caller: id, partId, field, delta });
       }
 
       function transfer(fromPart, fromField, toPart, toField, amount) {
-        const [clonedFromPart, clonedFromField, clonedToPart, clonedToField, clonedAmount] = structuredClone([
-          fromPart, fromField, toPart, toField, amount,
-        ]);
-        transfers.push({
-          caller: id,
-          fromPart: clonedFromPart,
-          fromField: clonedFromField,
-          toPart: clonedToPart,
-          toField: clonedToField,
-          amount: clonedAmount,
-        });
+        transfers.push({ caller: id, fromPart, fromField, toPart, toField, amount });
       }
 
       if (advance != null) {

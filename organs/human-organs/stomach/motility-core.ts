@@ -228,7 +228,8 @@ type Intake = {
   isDrink: boolean;
 };
 
-function parseIntake(action: Action, dt: number): Intake | null {
+// 胃与饥饿素共用的摄入解析；返回 null 表示这条动作对胃无效，调用方应整条忽略。
+export function parseIntake(action: Action, dt: number): Intake | null {
   if (action.type !== 'drink' && action.type !== 'eat') return null;
   if (typeof action.volumeMl !== 'number' || !Number.isFinite(action.volumeMl) || action.volumeMl <= 0) return null;
 

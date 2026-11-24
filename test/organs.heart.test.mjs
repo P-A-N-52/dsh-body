@@ -229,7 +229,7 @@ test('blood preload scales stroke volume within [0.5, 1.15] and stroke volume cl
   }).written;
   assert.equal(highPreloadMaxDrive.strokeVolumeMl, 140, 'stroke volume clamps at 140 mL');
 
-  for (const blood of [null, {}, { bloodVolumeMl: -1 }, { bloodVolumeMl: Number.NaN }]) {
+  for (const blood of [{}, { bloodVolumeMl: -1 }, { bloodVolumeMl: Number.NaN }]) {
     const sink = [];
     assert.throws(() => round({ state: initialState, blood, sink }), /blood/);
     assert.equal(sink.length, 0);
@@ -249,8 +249,6 @@ test('a loaded physicalActivity with invalid fields fails the round without writ
     ['negative intensity', { remainingExerciseMin: 10, intensity: -0.1 }],
     ['intensity above 1', { remainingExerciseMin: 10, intensity: 1.1 }],
     ['string intensity', { remainingExerciseMin: 10, intensity: '1' }],
-    ['null part', null],
-    ['non-object part', 42],
   ];
 
   for (const [label, activity] of invalid) {
@@ -272,8 +270,6 @@ test('a loaded adrenal with an invalid cortisol fails the round without writes',
     ['infinite cortisol', adrenalAt(Number.POSITIVE_INFINITY)],
     ['negative cortisol', adrenalAt(-0.1)],
     ['string cortisol', adrenalAt('1')],
-    ['null part', null],
-    ['non-object part', 42],
   ];
 
   for (const [label, adrenal] of invalid) {

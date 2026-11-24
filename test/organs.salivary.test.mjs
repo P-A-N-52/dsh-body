@@ -195,12 +195,10 @@ test('the deficit input and mouth moisture are clamped', () => {
 });
 
 test('a missing bodyFluid part means zero deficit', () => {
-  for (const bodyFluid of [undefined, null]) {
-    const { written, writes } = round({ bodyFluid });
-    assert.equal(writes.length, 1);
-    assertClose(written.salivaRateMlPerMin, BASAL_RATE, String(bodyFluid));
-    assertClose(written.mouthMoistureMm, BASAL_MOISTURE, String(bodyFluid));
-  }
+  const { written, writes } = round({});
+  assert.equal(writes.length, 1);
+  assertClose(written.salivaRateMlPerMin, BASAL_RATE, 'missing bodyFluid');
+  assertClose(written.mouthMoistureMm, BASAL_MOISTURE, 'missing bodyFluid');
 });
 
 test('a loaded bodyFluid with an invalid waterDeficit fails the round without writing', () => {
@@ -210,7 +208,6 @@ test('a loaded bodyFluid with an invalid waterDeficit fails the round without wr
     ['string deficit', { waterDeficit: '0.5' }],
     ['NaN deficit', { waterDeficit: Number.NaN }],
     ['infinite deficit', { waterDeficit: Number.POSITIVE_INFINITY }],
-    ['non-object part', 'bodyFluid'],
   ];
 
   for (const [label, bodyFluid] of invalid) {

@@ -216,21 +216,11 @@ test('thyroid output is finite and JSON-safe', () => {
   }
 });
 
-test('thyroid clamps malformed prev and unbounded TSH to [0, 3]', () => {
-  const fromNaN = round({ state: { thyroxineRelative: Number.NaN } }).written;
-  assert.equal(fromNaN.thyroxineRelative, 1);
-
+test('thyroid clamps unbounded TSH target to [0, 3]', () => {
   const clampedHigh = round({
-    state: { thyroxineRelative: 10 },
+    state: initialState,
     pituitary: { tshRelative: 100 },
     dt: 3600,
   }).written;
   assert.equal(clampedHigh.thyroxineRelative, 3);
-
-  const clampedLow = round({
-    state: { thyroxineRelative: -5 },
-    pituitary: { tshRelative: 0 },
-    dt: 0,
-  }).written;
-  assert.equal(clampedLow.thyroxineRelative, 0);
 });

@@ -36,9 +36,10 @@
  * 量，保证各笔之和恰为轮初 `uptakeG`，Gateway 转账不会因浮点尾差透支。
  *
  * 旧档迁移由区域侧完成：旧档只有 `muscleGlucose.glycogenG`（总量）时，各区域在自己的
- * heartbeat 里按存在区域归一后的份额把总量并入本轮糖原；本聚合器第一次 write 只写
- * `uptakeG` / `uptakeRequestG`，不再保留旧总量。在途 `uptakeG` 不动，仍由本脚本在重启后的
- * 第一轮按份额 transfer 给区域，区域下一轮入账。详见 `regions/region-core.ts`。
+ * heartbeat 里按存在区域归一后的份额迁移；默认种子状态用迁移份额取代 300 g 的份额初值，
+ * 已有真实存档状态则并入存量。本聚合器第一次 write 只写 `uptakeG` / `uptakeRequestG`，
+ * 不再保留旧总量。在途 `uptakeG` 不动，仍由本脚本在重启后的第一轮按份额 transfer 给区域，
+ * 区域下一轮入账。详见 `regions/region-core.ts`。
  *
  * 时序（design）：第 N 轮本脚本写请求；第 N+1 轮 `glucose` 读该请求并转出到 `uptakeG`；
  * 第 N+2 轮本脚本把到账量按份额转给区域。运动动作第 1 轮进入 `physicalActivity`，区域在
@@ -151,11 +152,8 @@ function requireReading(value: unknown, name: string): number {
 function readActivity(
   io: IO,
 ): { remainingExerciseMin: number; intensity: number } | undefined {
-  const activity = io.read('physicalActivity') as ActivityReading | null | undefined;
-  if (activity === undefined || activity === null) return undefined;
-  if (typeof activity !== 'object') {
-    throw new Error('physicalActivity must be an object');
-  }
+  const activity = io.read('physicalActivity');
+  if (activity === undefined) return undefined;
   const remainingExerciseMin = requireReading(
     activity.remainingExerciseMin,
     'physicalActivity.remainingExerciseMin',
@@ -210,7 +208,7 @@ export function createMuscleGlucose(regionShares: readonly MuscleRegionShare[]) 
         ? 0
         : requireReading(glucose.concentrationMgDl, 'glucose.concentrationMgDl');
       exerciseUptakeG = exerciseUptakeRateGPerMin
-        * clamp(activity.intensity, 0, 1)
+        * activity.intensity
         * dtMin
         * clamp(concentrationMgDl / REFERENCE_GLUCOSE_MG_DL, 0, MAX_EXERCISE_CONCENTRATION_FACTOR);
     }

@@ -101,11 +101,7 @@ export function startGateway({
 
   function ackNotification(id) {
     requireReady();
-    if (stopping) {
-      const error = new Error('Body Gateway is stopping');
-      error.statusCode = 503;
-      throw error;
-    }
+    if (stopping) throw new Error('Body Gateway is stopping');
     return store.ackNotification(id);
   }
 

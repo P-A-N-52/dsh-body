@@ -45,7 +45,7 @@
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
 | `uptakeG` | `g` | 本轮区域摄糖到账，仅由 `transferIn: ['muscleGlucose.uptakeG']` 增加，每轮 write 归 0 |
-| `glycogenG` | `g` | 区域糖原储量（初值：头颈 `15 g` / 躯干 `135 g` / 四肢 `150 g`）；上一轮 `uptakeG`、旧档迁移份额在本轮并入，运动时扣除；钳到非负，没有容量上限 |
+| `glycogenG` | `g` | 区域糖原储量（初值：头颈 `15 g` / 躯干 `135 g` / 四肢 `150 g`）；上一轮 `uptakeG` 在本轮并入；旧档迁移份额在默认种子状态取代初值、在已有真实状态时并入；运动时扣除；钳到非负，没有容量上限 |
 | `glycogenConsumedG` | `g` | 本轮实际运动消耗，无活动为 0；不是累计量 |
 
 时间原点：`uptakeRequestG` 是本轮轮末写出的请求，`muscleGlucose.uptakeG` 是上一轮 `glucose` 结算后到账、等待分配的在途量；区域 `uptakeG` 是本轮轮末分配后的到账量，`glycogenG` 是轮末储量，`glycogenConsumedG` 是轮末写出的本轮通量。五者都不是测量值，也不换算能量或 MET。
@@ -109,7 +109,7 @@ activityDemandMlMin = remainingExerciseMin > 0 ? activityGainMlMin × intensity 
 
 ## 6. 肌摄糖聚合器与区域糖原
 
-`muscleGlucose` 是 `glucose-uptake.ts` 维护的摄糖聚合器，位于同一骨骼肌目录；它不再持有肌糖原。聚合器按轮初 `glucose.excessMassG` 与 `pancreasEndocrine.insulinRelative`、用本部位自己的参数计算摄糖请求，写 `uptakeRequestG`；下一轮由 `glucose` 按请求结算，实际支付经 transfer 进入 `uptakeG`；同一轮再按区域份额经 transfer 转给已加载的区域。区域（`muscleHead` / `muscleTrunk` / `muscleLimbs`）各自持有糖原、按轮初活动消耗；旧档总量由区域在第一轮按份额并入糖原。聚合器和区域都不向血液释放葡萄糖（肌肉无 G6Pase）；释放只由肝发起。
+`muscleGlucose` 是 `glucose-uptake.ts` 维护的摄糖聚合器，位于同一骨骼肌目录；它不再持有肌糖原。聚合器按轮初 `glucose.excessMassG` 与 `pancreasEndocrine.insulinRelative`、用本部位自己的参数计算摄糖请求，写 `uptakeRequestG`；下一轮由 `glucose` 按请求结算，实际支付经 transfer 进入 `uptakeG`；同一轮再按区域份额经 transfer 转给已加载的区域。区域（`muscleHead` / `muscleTrunk` / `muscleLimbs`）各自持有糖原、按轮初活动消耗；旧档总量由区域在第一轮按份额迁移：默认种子状态用迁移份额取代 300 g 初值，已有真实状态则并入。聚合器和区域都不向血液释放葡萄糖（肌肉无 G6Pase）；释放只由肝发起。
 
 ### 6.1 脚本、字段与参数
 
@@ -159,13 +159,16 @@ write.uptakeG = 0
 区域侧（`regions/region-core.ts`）：
 
 ```text
-legacy   = 旧档迁移份额（仅旧档第一轮非 0）
+legacy   = 旧档迁移份额（仅旧档第一轮存在；无旧总量时 undefined）
 uptake   = 轮初区域 uptakeG
+seeded   = 区域状态逐字段等于 initialState 默认种子
+base     = legacy === undefined ? max(0, glycogenG)
+         : seeded ? legacy
+         : max(0, glycogenG) + legacy
 consumed = active
-  ? min(glycogenUseRateGPerMin × regionShare × intensity × dtMin,
-        max(0, glycogenG) + uptake + legacy)
+  ? min(glycogenUseRateGPerMin × regionShare × intensity × dtMin, base + uptake)
   : 0
-region.glycogenG = max(0, glycogenG) + uptake + legacy − consumed
+region.glycogenG = base + uptake − consumed
 write { uptakeG: 0, glycogenG, glycogenConsumedG: consumed }
 ```
 
@@ -176,7 +179,7 @@ write { uptakeG: 0, glycogenG, glycogenConsumedG: consumed }
 - 最后一笔区域分配取剩余量，保证各笔之和恰为轮初 `uptakeG`；没有区域时保留 `uptakeG` 作为在途余额。
 - `active` 只要求活动部位存在且轮初剩余时间 > 0；`intensity = 0` 时消耗为 0，但剩余时间仍由 `activity.ts` 递减。
 - 不足一分钟的活动不按比例截断：轮初 `remainingExerciseMin = 0.5` 且 `dt = 60` 时仍按整 dt 消耗。
-- 钳位：区域 `consumed` 不超过 `max(0, glycogenG) + uptake + legacy`，所以糖原不会为负；`glycogenConsumedG` 是实际消耗，不是请求。
+- 钳位：区域 `consumed` 不超过 `base + uptake`，所以糖原不会为负；`glycogenConsumedG` 是实际消耗，不是请求。
 - `physicalActivity` 未加载 → 运动摄糖与区域消耗均为 0；已加载但 `remainingExerciseMin` / `intensity` 缺失、非数值、非有限、剩余时间为负或 `intensity ∉ [0, 1]` 时抛错，本轮不写状态。区域自身字段缺失按 0。`glucose.excessMassG`、`glucose.concentrationMgDl`（运动时读取）或 `insulinRelative` 已加载但缺失、非数值、非有限或为负时抛错；合法 0 是有效信号。
 - 时序：第 N 轮 `glucose` 写出 `excessMassG(N)`；第 N+1 轮聚合器读到它并写 `uptakeRequestG`；第 N+2 轮 `glucose` 结算并写入 `muscleGlucose.uptakeG`；第 N+3 轮聚合器把到账量分给区域，区域再下一轮入账 `glycogenG`。`exercise` / `sex` 第 1 轮进入 `physicalActivity`，第 2 轮聚合器请求运动摄糖、区域开始消耗。
 - 示例（区域消耗）：轮初三区 `glycogenG` 为 `15 / 135 / 150 g`、无在途、`intensity = 1`、`dt = 60` → 头颈消耗 `0.025 g`、躯干消耗 `0.225 g`、四肢消耗 `0.25 g`；三区域合计 `0.5 g`。轮初某区域 `glycogenG = 0.2`、`uptakeG = 0`、`dt = 60` 且按份额需耗 `0.25 g` → 该区域实际消耗 `0.2 g`，糖原为 0。
@@ -191,7 +194,7 @@ write { uptakeG: 0, glycogenG, glycogenConsumedG: consumed }
 
 ### 6.4 旧档、重启、变体与未建模
 
-- 旧档只有 `muscleGlucose.glycogenG`（总量）时，各区域在第一轮按已加载区域的份额把总量并入 `glycogenG`（头 0.05 / 躯干 0.45 / 四肢 0.50；缺区域按剩余份额归一）；聚合器第一次 write 不再保留旧总量。旧档在途 `uptakeG` 不改写，仍由聚合器在重启后的第一轮转给区域，区域下一轮入账。旧 `glycogenConsumedG` 丢弃，不反推历史消耗。
+- 旧档只有 `muscleGlucose.glycogenG`（总量）时，各区域在第一轮按已加载区域的份额迁移（头 0.05 / 躯干 0.45 / 四肢 0.50；缺区域按剩余份额归一）：若区域仍是 `initialState` 的默认种子（`uptakeG = 0`、`glycogenG = 300 g × 份额`、`glycogenConsumedG = 0`），迁移份额**取代**种子，迁移后三区合计等于旧总量；若区域已有真实存档状态，份额并入其存量。聚合器第一次 write 不再保留旧总量，后续轮次不会重复迁移。旧档在途 `uptakeG` 不改写，仍由聚合器在重启后的第一轮转给区域，区域下一轮入账。旧 `glycogenConsumedG` 丢弃，不反推历史消耗。
 - 旧档缺 `muscleGlucose` 时补两个 0；已有部位缺 `uptakeRequestG` 时补 0；区域缺失时由 `regions` 的 `initialState` 补 `uptakeG = 0`、`glycogenConsumedG = 0` 及按份额分配的初始 `glycogenG`（头颈 `15 g` / 躯干 `135 g` / 四肢 `150 g`），不反推历史糖原。重启保留已提交的 `uptakeRequestG`、`muscleGlucose.uptakeG`、区域 `uptakeG` / `glycogenG` / `glycogenConsumedG`，下一轮各自只处理一次。
 - 缺区域变体：复制清单，去掉 `regions/limbs.ts`，把聚合器换成 `glucose-uptake.no-limbs.ts`；只声明剩余区域，份额按剩余区域归一。不能只删区域脚本而保留正常入口，否则 `transferOut` 目标未声明会拒绝启动；同一清单不能同时加载两个聚合器入口。更细的左右臂/左右腿拆分、缺失肢体的质量推断与残肢局部代谢不在本切片内。
 - 不建肌糖原容量上限、静息周转、运动类型/MET、能量消耗、乳酸/Cori 循环、区域耗竭对活动或疲劳的反馈、肝糖原释放、胰岛素浓度或脂肪组织分区；肌肉不向血液释放葡萄糖。

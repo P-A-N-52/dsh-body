@@ -1,19 +1,27 @@
 # 项目审阅与 P0 生理建模修复清单
 
-> **起始基线**：`HEAD` `70ec7f2`（修复前 `npm test`：`942/942` 通过）
-> **最新实测（P0 + P1 + P2 完成后）**：Node `v24.19.0`，`npm test` **`987/987` 全部通过**（83 个测试文件、耗时 `~13.1 s`，含新增三清单 24h 稳态回归 `test/organs.steady-state-24h.test.mjs`、DSH 插件入口测试 `test/dsh.index.test.mjs`、`tools/replay.mjs --manifest` 测试与全清单一致性校验）；`git diff --check` 无告警。
-> **口径说明**：本清单严格区分**当前实现 / 已验证 / 待修复 / 仍是计划**。本轮 P0 修正的生理参数均基于人体生理学规律与仓内文献笔记（`SRC-PERONNET-2012`、`SRC-MUDIE-2014`、`SRC-DALLAMAN-2007`），仍标为 `design`（`notify.parameters.json` 14 项提醒策略已按规范标为 `policy`），未做独立盲测前不宣称 `validated`。
+> **起始基线**：`HEAD` `70ec7f2`（修复前 `npm test`：`942/942` 通过），后续合入 `358a968`。
+> **当前工作树全量实测（2026-11-24 瘦身与收尾后，Node `v24.19.0`）**：`npm test` **`988/988` 全部通过，0 fail**，`git diff --check` 退出码 `0`。此前 `358a968` 合入后的 `994/994` 包含部分过度防御测试，本轮按 `AGENTS.md` “不为不可能发生的输入堆防御代码”精简后重新实测为 `988/988`。
+> **口径说明**：本清单严格区分**当前实现 / 已验证 / 待修复 / 仍是计划**。本轮 P0 修正的生理参数均基于人体生理学规律与仓内文献笔记（`SRC-PERONNET-2012`、`SRC-MUDIE-2014`、`SRC-DALLAMAN-2007`），仍标为 `design`（`notify.parameters.json` 14 项提醒策略已按规范标为 `policy`），未做独立盲测前不宣称 `validated`。24 小时测试只覆盖空腹静息下的核心体温代理区间、血糖代理区间与默认非泌乳等断言，不声称全身生理稳态；下文把逐项断言与单次运行观察值分开记录。
 
 ---
 
 ## 一、现状与验证基线
 
-- **已实现（含本轮 P0/P1/P2 改动，尚未提交）**：Gateway 运行时、回环 HTTP API、v1→v2 原子存档、`active` 开关、`write → add → transfer` 结算、`body_act`（7 动作）/`body_state`/带重入互斥保护的 4 路通知泵；中性 38 模块（34 份唯一参数、15 部位传输闭包）、男性 40 模块（36 份参数）、女性 41 模块（37 份参数、17 部位闭包）；另含 7 个未挂载入口（含 `parathyroid`/`bloodCalcium`）。`tools/replay.mjs` 已同时支持 5 模块旧模式与 `--manifest` 完整清单重放；31 份器官 README 已全部补齐并同步。
-- **已验证**：`npm test`（**987/987** 全部通过），其中 [organs.steady-state-24h.test.mjs](file:///home/pan/桌面/dsh-body/test/organs.steady-state-24h.test.mjs) 已实测中性/男性/女性三份完整清单 24 小时（1440 轮）静息稳态与喝水/高强运动/男性性行为场景：
-  - **24h 静息稳态（三清单一致）**：核心体温 `36.999998–37.000000 °C`；首轮静息血压 `120 / 80 mmHg`、`mouthMoistureMm = 100`、`dryMouthMm = 0`；空腹血糖 1h/6h/12h 稳在 `90.0 mg/dL`（肝糖原 `80 → 45.44 → 10.88 g`），约 13.9h 耗尽肝糖原后由肾糖异生平滑接管，24h 稳在 `74.0 mg/dL`（零阶跃锯齿过冲）；默认女性全程 `lactating = false`、`milkMl = 0`、`prolactinRelative = 1.0`。
-  - **240 mL 饮水 2h**：`225.27 mL`（93.9%）进入体液及下游水账，小肠余 `8.70 mL`，结肠残渣仅 `5.61 mL`（累计入结肠 `11.54 mL`）。
-  - **30 min 满强运动 + 60 min 恢复**：心率 `175 /min`、通气 `30.0 L/min`、`SpO2 = 97%`；核心体温峰值 `38.27 °C`、峰值出汗 `6.79 mL/min`（累计 `245.98 mL`），90 min 降至 `37.05 °C`；三分区肌糖原共耗 `15.00 g`（头 `0.75` / 躯干 `6.75` / 四肢 `7.50 g`）；血糖峰值 `90.75 mg/dL`。
-  - **男性 08:00 持续性活动 30 min**：最高唤起 `95.34 mm`（`<= 100`），仅触发 `1` 次高潮并进入 20 min 不应期，零连发高潮。
+- **已实现（P0/P1/P2 主体已随 `358a968` 提交；2026-11-24 审查修复尚未提交）**：Gateway 运行时、回环 HTTP API、v1→v2 原子存档、`active` 开关、`write → add → transfer` 结算、`body_act`（7 动作）/`body_state`/带重入互斥保护的 4 路通知泵；中性 38 模块（34 份唯一参数文件、15 部位传输闭包）、男性 40 模块（36 份唯一参数文件）、女性 41 模块（37 份唯一参数文件、17 部位闭包）；另含 7 个未挂载入口（含 `parathyroid`/`bloodCalcium`）。`tools/replay.mjs` 已同时支持 5 模块旧模式与 `--manifest` 完整清单重放；31 份器官 README 已全部补齐并同步。
+- **已验证**：当前工作树 `npm test` **988/988** 全部通过（0 fail，Node `v24.19.0`），`git diff --check` 退出码 `0`。新增的 `test/gateway.regressions.test.mjs` activeBatch 失败重试用例计入该总数；原 6 条针对不可能输入（`add`/`transfer` 传函数、停机人工双服务器 503、`Number.MAX_VALUE` 溢出、垂体/下丘脑 `NaN` 自身状态）的过度防御单测已按约定精简。
+- **24 小时测试的逐项断言**（[organs.steady-state-24h.test.mjs](file:///home/pan/桌面/dsh-body/test/organs.steady-state-24h.test.mjs)，中性/男性/女性三份完整清单各跑 1440 轮）：
+  - 每轮核心体温 `[36.5, 37.5] °C`、血糖 `[60, 95] mg/dL`（并另断言血糖 `<= 105`）。
+  - 第 1 轮 `systolicMmHg = 120`、`diastolicMmHg = 80`、`mouthMoistureMm = 100`、`dryMouthMm = 0`。
+  - 第 360 轮（6 h）血糖 `[85, 95] mg/dL` 且 `liver.glycogenG < 80`。
+  - 女性清单每轮 `lactating = false`、`milkMl = 0`、`lactoseG = 0`、`prolactinRelative = 1`。
+  - 本轮结束时再次断言核心体温与血糖的 min/max 区间。
+  测试还覆盖喝水、高强运动和男性性行为场景；它不是全身生理稳态验收。
+- **单次运行观察值**（不同场景分别运行，不是逐项断言，也不是同一轮）：
+  - **24h 空腹静息（三清单）观察值**：核心体温 `36.999998–37.000000 °C`；空腹血糖 1h/6h/12h 稳在 `90.0 mg/dL`（肝糖原 `80 → 45.44 → 10.88 g`），约 13.9h 耗尽肝糖原后由肾糖异生平滑接管，24h 稳在 `74.0 mg/dL`（零阶跃锯齿过冲）。默认女性非泌乳是逐项断言（见上段），不在此重复。
+  - **240 mL 饮水 2h 观察值**：该测试的 `systemWaterMl` 只汇总 `bodyFluid.waterVolumeMl + bladder.volumeMl + 累计 voidedMl + 累计 skin.sweatVolumeMl + 累计 lungs.respiratoryWaterLossMl`，不含胃、队列、小肠与结肠残渣水；`absorbedToSystemMl` 是饮水与基线两次运行的差值。观察值 `225.27 mL`（93.9%）即这一系统水增量；小肠余 `8.70 mL`，结肠残渣 `5.61 mL`（累计入结肠 `11.54 mL`）。测试断言 `absorbedToSystemMl > 200`、小肠水 `< 10 mL`、`colon.residueWaterMl < 20`、`cumRoutedToColonMl < 20`；含结肠残渣项的完整水账由 `test/organs.bowel-gateway.test.mjs` 覆盖。
+  - **30 min 满强运动 + 60 min 恢复观察值**：心率 `175 /min`、通气 `30.0 L/min`、`SpO2 = 97%`；核心体温峰值 `38.27 °C`、峰值出汗 `6.79 mL/min`（累计 `245.98 mL`），90 min 降至 `37.05 °C`；三分区肌糖原共耗 `15.00 g`（头 `0.75` / 躯干 `6.75` / 四肢 `7.50 g`）；血糖峰值 `90.75 mg/dL`。对应断言是：第 2 轮心率 `> 140` 且 `SpO2 = 97`；第 3 轮通气 `> 20000 mL/min`；每轮体温 `< 39.5 °C`，峰值 `> 37 °C` 且恢复后低于峰值；血糖 `<= 105`；三区耗糖各自精确到 `1e-6 g`。
+  - **男性 08:00 持续性活动 30 min 观察值**：最高唤起 `95.34 mm`（`<= 100`），仅触发 `1` 次高潮并进入 20 min 不应期，零连发高潮。对应断言是：唤起 `[0, 100]`、至少 1 次高潮、出现 `orgasm` 与 `refractory` 相位、相邻高潮间隔 `>= 20 min`。
 - **尚未验证**：当前改动未在真实 DSH 宿主实机联调；未验证装入 `node_modules` 的加载（已于 `README.md` 注明 Node 类型擦除仅支持本地源码路径）；仓内 24 条登记文献均为 `results_seen`（0 盲测验证集）。
 - **仍是计划（非本轮修复范围）**：多会话绑定与静默冻结、LLM 食物估算流水线、M5 浏览器观测页、身体预设与 5 级免疫、M6/M7 慢/急性状态、睡眠行为、脂肪/脂质代谢、`logs/` 滚动日志、通知阅读回执。
 
@@ -41,11 +49,11 @@
 - [x] **B3. 优化 `colon` 水回收动力学与统一 `bowelUrgencyMm` 消费链**
   - **已改**：`colon.ts` 改用解析指数回收 `1 - exp(-k * dtMin)`，`colon.parameters.json` 将 `reclamationRatePerMin` 提至 `0.01 /min`（半时 ~69 min）；`interoception.ts` 直接消费 `colon.bowelUrgencyMm`。
 
-### 分片 C：血糖稳态、女性泌乳与分区骨骼肌
+### 分片 C：血糖代理、女性泌乳与分区骨骼肌
 
 - [x] **C1. 修复女性默认清单永久泌乳 1.44 L/天与催乳素正反馈锁死**
   - **已改**：`mammary-glands/milk.ts` 新增 `lactating: false` 状态与 `fullnessDecayHalfTimeMin = 30 min`，默认女性 0 泌乳、0 乳糖流失、`prolactinRelative = 1.0`；显式 `lactating: true` 时恢复正常产乳与催乳素响应且不再棘轮锁死 `fullnessMm`。
-- [x] **C2. 建立真实空腹血糖稳态：基础非胰岛素耗糖 + 运动耗糖 + 平滑肝肾放糖**
+- [x] **C2. 建立空腹血糖代理平衡：基础非胰岛素耗糖 + 运动耗糖 + 平滑肝肾放糖**
   - **已改**：
     - `glucose-core.ts` 新增 `glucose.basalConsumptionGPerMin = 0.12 g/min`（低糖 `< 50 mg/dL` 柔和衰减）；
     - `liver/glycogen.ts` 与 `kidney/gluconeogenesis.ts` 改用平滑比例 + 餐后抑制（静息 `0.096 + 0.024 = 0.120 g/min` 精确平衡基础耗糖），放宽肾糖异生 `maxOutputPerRoundG = 0.6`、`maxOutputRateGPerMin = 0.5`，补齐 `insulinResponse >= 0` 保护；
@@ -65,12 +73,12 @@
   - **已改**：`notify.ts` 在 `40–64 mm` 滞回带保持水位不清零，仅 `< 40 mm` 复位；`notify.parameters.json` 14 项参数全部由 `design` 改为 `policy`（`parameters.test.mjs` 新增状态白名单校验）。
 - [x] **D5. 修复 `blood` / `heart` 静息心输出错位与血容量脱钩**
   - **已改**：`blood.ts` 将静息基准对齐 `4900 mL/min`（首轮精准 `120 / 80 mmHg`），并将 `bloodVolumeMl` 按 `bodyFluid.waterVolumeMl / 30000` 联动（钳位 `[2500, 6000]`）；`heart.ts` 加入血容量前负荷因子（`[0.5, 1.15]`）并将 `strokeVolumeMl` 钳位 `[30, 140] mL`。
-- [x] **D6. 修复内分泌 HPT/HPA 轴 `NaN` 防护并接入基线中性上游生理驱动**
-  - **已改**：`hypothalamus-endocrine.ts`、`pituitary.ts`、`thyroid.ts`、`cortisol.ts` 补齐 `finiteOr` 与 `[0, 3]` 钳位；`hypothalamus-endocrine.ts` 接入低温（`< 36.8 °C`）→ TRH、低血糖（`< 80 mg/dL`）/ 高强运动（`intensity > 0.5`）→ CRH 驱动（正常静息精确为 `1.0`）。
+- [x] **D6. 接入 HPT/HPA 轴 `[0, 3]` 边界与基线中性上游生理驱动**
+  - **已改**：`hypothalamus-endocrine.ts`、`pituitary.ts` 在目标值做 `[0, 3]` 钳位，`thyroid.ts`、`cortisol.ts` 在输出做 `[0, 3]` 钳位，去掉对 Gateway 已保障的自身 `prev` 字段重复 `finiteOr`/输入钳位及不可能的 `null`/`非对象` 判空；`hypothalamus-endocrine.ts` 接入低温（`< 36.8 °C`）→ TRH、低血糖（`< 80 mg/dL`）/ 高强运动（`intensity > 0.5`）→ CRH 驱动（正常静息精确为 `1.0`）。
 
-### 分片 E：全清单 24 小时稳态与日间场景回归闸门
+### 分片 E：全清单 24 小时空腹体温/血糖代理与日间场景回归闸门
 
-- [x] **E1. 新增三清单 24 小时稳态与典型日间场景 Gateway 回归测试**
+- [x] **E1. 新增三清单 24 小时空腹体温/血糖代理与典型日间场景 Gateway 回归测试**
   - **已新增并通过**：`test/organs.steady-state-24h.test.mjs`（6/6 通过，耗时 ~4.8 s）。
 
 ---
@@ -79,12 +87,12 @@
 
 - [x] **P1-1. 修复通知泵无重入保护导致的重复投递**（`notifications.js` + `index.js`）：已加入 `activeRun` 重入锁并新增 `test/dsh.index.test.mjs` 生命周期与真实 Gateway 联调测试及并发防重投单测。
 - [x] **P1-2. 修复启动 `catchUp` 携带 `activeBatch` 时击穿 `catchUpMinutes` 上限**（`gateway/simulation.js`）：`remaining <= 0` 返回前快进 `wallTimeMs` 跳过超出上限的时段；清理存档顶层冗余 `catchUpError` 键；`start()` 不再覆盖 `catchUp` 触发的 `fatalFailure` 或虚假写入 `lastSuccessAtMs`；补齐回归测试。
-- [x] **P1-3. 修复 `applyOperations` 浮点溢出绕过 JSON-safe**（`gateway/operations.js`）：已对累加后的 `delta`、`base + delta`、`pair.amount`、`targetValue + amount` 做 `Number.isFinite` 校验并补齐溢出 `FatalOperationError` 测试。
+- [x] **P1-3. 保留 `applyOperations` 输入类型与有限性校验，移除 `Number.MAX_VALUE` 极端溢出防御**（`gateway/operations.js`）：继续把非有限/错类型 `delta`、`base`、`amount`、`available`、`targetValue` 判为 `FatalOperationError`；瘦身移除生理量下不可能触及的 `Number.MAX_VALUE` 求和溢出检查与专项测试。
 - [x] **P1-4. 修复次级运行边界**
-  - `tools.js` 与 `lib/parameters.js` 已补 `Object.hasOwn` 防原型属性泄露，并补 `loadParameters` 异常分支测试；
+  - `tools.js` 与 `lib/parameters.js` 补 `Object.hasOwn` 校验，并补 `loadParameters` 异常分支测试；
   - `gateway/checkpoint.js` 已调整为先 `prune(next)` 再校验 `maxCheckpointBytes - actionReserveBytes`；
-  - `gateway/http.js` 与 `gateway.js` 停机期间 `/notifications/ack` 返回 `503` 而非 `500`，守卫 `server.address()` 为 `null`；
-  - `gateway/body-worker.js` 对 `io.add`/`io.transfer` 入参做 `structuredClone` 早校验；
+  - `gateway/http.js` 在 `checkRequest` 保留一次 `server.address()` 守卫，移除 `/health` 不可达的二次判空及 `ackNotification` 人工 503 测试包装；
+  - `gateway/body-worker.js` 移除 `io.add`/`io.transfer` 原始参数上的冗余 `structuredClone`，统一交由 `operations.js` 校验；
   - `package.json` 保持零构建源码 `.ts` 路线，已在 `README.md` 明确标注需本地源码路径接入、装入 `node_modules` 须预编译。
 
 ---
@@ -96,7 +104,7 @@
 - [x] **P2-3. 把清单计数/闭包/README 存在性校验纳入测试**：已在 `test/organs.modules.test.mjs` 中自动校验三份清单 `createFieldRegistry`、脚本数、唯一参数文件数、传输闭包数、31 份器官 README 非空存在性及 `startup/reset-parts.js`。
 - [x] **P2-4. 升级 `tools/replay.mjs`**：已保留默认 5 模块兼容路径并新增 `--manifest [path]` 全清单 `createFieldRegistry` + `applyOperations` 重放支持，补齐测试。
 - [ ] **P2-5. 需用户拍板的剩余清理与决策**：
-  - 根目录未跟踪的 219 MiB `dsh-body-transfer-20261122-144024.tar.gz`（按原血钙计划保留，待确认是否删除或移出）；
+  - 根目录 219 MiB 传输压缩包 `dsh-body-transfer-20261122-144024.tar.gz` 已按用户明确要求在本次修复中删除（2026-11-24），不保留、不移动、不入库；
   - 是否将已修好 `* 1000` 与骨容量守恒且补齐 README 的 `parathyroid` + `bloodCalcium` 正式挂载进三份 `body-modules*.json` 清单；
   - 两处历史跨器官参数导入遗留（`blood.ts` 读 `heart.parameters.json`、`duodenum/nutrient-exposure.ts` 读 `saliva.parameters.json`）是否值得后续解耦；
   - 核对本地领先 `origin/main` 的 4 个提交与当前工作区全部改动并提交/推送。

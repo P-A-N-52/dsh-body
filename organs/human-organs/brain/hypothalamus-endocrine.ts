@@ -14,13 +14,13 @@
  *     ? 0.4 × max(0, physicalActivity.intensity − 0.5) : 0（未加载或非有限按 0）
  *   trhTarget = clamp(1 + gain × (1 − T4) + coldDrive, 0, 3)
  *   crhTarget = clamp(1 + gain × (1 − 皮质醇) + hypoglycemiaDrive + exerciseDrive, 0, 3)
- *   再按 30 min 半时一阶趋近：`next = clamp(target + (prev − target) × 2^(−dtMin / 30), 0, 3)`，
+ *   再按 30 min 半时一阶趋近：`next = target + (prev − target) × 2^(−dtMin / 30)`，
  *   `dtMin = io.dt / 60`。在正常 37°C（≥ 36.8°C 冷应激死区）、90 mg/dL、静息基线下三项上游驱动均为 0，
  *   静息 HPT/HPA 保持精确 1.0。公式、增益与半时全是工程假设，参数见同目录
  *   `hypothalamus-endocrine.parameters.json`（`status: design`、`source: null`）。
  * - 只读轮初快照；未加载的 `thyroid` / `adrenal` 部位按 1 回退，已加载但字段缺失、非有限或
  *   为负时抛错，让本轮整体作废，不用基线掩盖异常。`thermoregulation` / `glucose` / `physicalActivity`
- *   及自身旧状态缺字段或非有限时回落基线常量，结果钳在 [0, 3]。
+ *   缺字段或非有限时回落基线常量，目标值钳在 [0, 3]。
  * - 无动作、transfer 或通知；不建模脉冲式分泌、昼夜节律、T3、绝对浓度、结合蛋白、
  *   疾病或个体差异。
  */
@@ -164,26 +164,8 @@ export function heartbeat(io: IO): void {
     MAX_RELATIVE,
   );
 
-  const prevTrh = clamp(
-    finiteOr(prev.trhRelative, initialState.trhRelative),
-    MIN_RELATIVE,
-    MAX_RELATIVE,
-  );
-  const prevCrh = clamp(
-    finiteOr(prev.crhRelative, initialState.crhRelative),
-    MIN_RELATIVE,
-    MAX_RELATIVE,
-  );
-  const trhRelative = clamp(
-    trhTarget + (prevTrh - trhTarget) * retention,
-    MIN_RELATIVE,
-    MAX_RELATIVE,
-  );
-  const crhRelative = clamp(
-    crhTarget + (prevCrh - crhTarget) * retention,
-    MIN_RELATIVE,
-    MAX_RELATIVE,
-  );
+  const trhRelative = trhTarget + (prev.trhRelative - trhTarget) * retention;
+  const crhRelative = crhTarget + (prev.crhRelative - crhTarget) * retention;
 
   io.write({ trhRelative, crhRelative });
 }

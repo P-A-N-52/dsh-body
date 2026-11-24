@@ -113,10 +113,7 @@ function clamp(value: number, min: number, max: number): number {
 
 function readDemandMlMin(io: IO): number {
   const bloodOxygen = io.read('bloodOxygen');
-  if (bloodOxygen === undefined || bloodOxygen === null) return fallbackBasalDemandMlMin;
-  if (typeof bloodOxygen !== 'object') {
-    throw new Error('bloodOxygen must be an object');
-  }
+  if (bloodOxygen === undefined) return fallbackBasalDemandMlMin;
   const demand = bloodOxygen.oxygenConsumptionMlMin;
   if (typeof demand !== 'number' || !Number.isFinite(demand)) {
     throw new Error('bloodOxygen.oxygenConsumptionMlMin must be a finite number');
@@ -129,10 +126,7 @@ function readDemandMlMin(io: IO): number {
 
 function readCoreTemperatureC(io: IO): number | undefined {
   const thermoregulation = io.read('thermoregulation');
-  if (thermoregulation === undefined || thermoregulation === null) return undefined;
-  if (typeof thermoregulation !== 'object') {
-    throw new Error('lungsVentilation: thermoregulation must be an object');
-  }
+  if (thermoregulation === undefined) return undefined;
   const coreTemperatureC = thermoregulation.coreTemperatureC;
   if (typeof coreTemperatureC !== 'number' || !Number.isFinite(coreTemperatureC)) {
     throw new Error(

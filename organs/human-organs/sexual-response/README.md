@@ -55,7 +55,7 @@
 
 ## 4. 状态机与方程
 
-设轮初自身状态为 `prev`（`prevArousal = clamp(finiteOr(prev.arousalMm, 0), 0, 100)`），`dtMin = io.dt / 60`，`simMin = io.simulatedSeconds / 60`：
+设轮初自身状态为 `prev`（`prevArousal = prev.arousalMm`），`dtMin = io.dt / 60`，`simMin = io.simulatedSeconds / 60`：
 
 ```text
 remainingSexMin = max(0, prev.remainingSexMin − dtMin)
@@ -79,7 +79,7 @@ riseHalfTimeMin = testosteroneRelative > 1
   ? arousalHalfTimeMin / testosteroneFactor
   : arousalHalfTimeMin
 halfTimeMin = target > prevArousal ? riseHalfTimeMin : resolutionHalfTimeMin
-arousalMm   = clamp(target + (prevArousal − target) × 2^(−dtMin / halfTimeMin), 0, 100)
+arousalMm   = target + (prevArousal − target) × 2^(−dtMin / halfTimeMin)
 
 sinceOrgasm = lastOrgasmAtSimMin === null ? Infinity : simMin − lastOrgasmAtSimMin
 phase = sinceOrgasm < orgasmDurationMin ? 'orgasm'
@@ -89,7 +89,7 @@ phase = sinceOrgasm < orgasmDurationMin ? 'orgasm'
 ```
 
 - `active` 只要求剩余分钟和强度都大于 0；`sexIntensity = 0` 或剩余分钟为 0 时目标为 0，唤醒按消退半时回落。
-- **不应期门控与释放轮回落：** 两条释放路径都要求 `!refractory`（不应期内既不触发主动 `orgasm` 也不触发强制释放）；而且在释放当轮（`released === true`）即把 `target` 置为 `0`，使唤醒当轮就开始按消退半时下降、不会在释放轮仍向高潮前目标推升。`arousalMm` 写入与轮初读取均按 `[0, 100]` 钳位。
+- **不应期门控与释放轮回落：** 两条释放路径都要求 `!refractory`（不应期内既不触发主动 `orgasm` 也不触发强制释放）；而且在释放当轮（`released === true`）即把 `target` 置为 `0`，使唤醒当轮就开始按消退半时下降、不会在释放轮仍向高潮前目标推升。`target` 已钳在 `[0, 100]`。
 - **睾酮可选缩放：** 仅当加载 `testes` 时（如男性清单）才影响唤醒幅度和上升速度：`testosteroneFactor = 0.5 + 0.5 × testosteroneRelative`（`testosteroneRelative = 1` 时因子为 `1`，与无睾酮清单完全一致）；当 `testosteroneRelative > 1` 时上升半时缩短为 `arousalHalfTimeMin / testosteroneFactor`，高睾酮上升更快。未加载或非有限按 `1`。
 - 释放判定用**轮初**唤醒：本轮 `sex` 写入的 `arousalMm` 不会在同一轮触发释放。例如轮初 69 mm、同轮 `sex` 把它推到 75 mm，主动 `orgasm` 仍被忽略；若升到 95 mm 以上，也要等到下一轮轮初才强制释放。
 - 事件轮 `sinceOrgasm = 0`，相位为 `orgasm`；下一轮 `sinceOrgasm = dtMin`（60 s 轮下为 1 min），不再满足 `sinceOrgasm < orgasmDurationMin = 1`，进入 `refractory`，目标保持 0，唤醒继续按 15 min 半时下降。

@@ -55,6 +55,7 @@ export function flakySource({
   startedPath,
   releasePath,
   countPath,
+  failures = 1,
 } = {}) {
   return `
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -75,7 +76,7 @@ export async function heartbeat(io) {
   try {
     count = Number(readFileSync(${JSON.stringify(countPath)}, 'utf8')) || 0;
   } catch {}
-  if (count < 1) {
+  if (count < ${failures}) {
     writeFileSync(${JSON.stringify(countPath)}, String(count + 1));
     throw new Error('planned failure');
   }

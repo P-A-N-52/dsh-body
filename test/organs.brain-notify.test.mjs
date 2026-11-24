@@ -36,6 +36,7 @@ function round({
   bladder,
   actions = [],
   simulatedSeconds = 60,
+  suppressNotifications = false,
 } = {}) {
   const notifications = [];
   let written;
@@ -49,6 +50,7 @@ function round({
     actions,
     dt: 60,
     simulatedSeconds,
+    suppressNotifications,
     notify: (notification) => { notifications.push(notification); },
     write: (next) => { written = next; },
   });
@@ -151,6 +153,51 @@ test('same level does not repeat', () => {
   assert.equal(later.written.sessions['session-a'].lastLevel, 2);
   assert.equal(later.written.sessions['session-a'].hourCount, 1);
   assert.equal(later.written.sessions['session-a'].dayCount, 1);
+});
+
+test('a suppressed round spends no level watermark, cooldown or quota', () => {
+  const seeded = {
+    lastSessionId: 'session-a',
+    sessions: {
+      'session-a': session({
+        hourCount: 1,
+        dayCount: 5,
+      }),
+    },
+  };
+  const catchUp = round({
+    state: seeded,
+    interoception: { hunger: 70, fullness: 0 },
+    actions: [{ sessionId: 'session-a' }],
+    simulatedSeconds: 60,
+    suppressNotifications: true,
+  });
+  assert.deepEqual(catchUp.notifications, []);
+  assert.equal(catchUp.written.sessions['session-a'].lastSentAt, null);
+  assert.equal(catchUp.written.sessions['session-a'].hourCount, 1);
+  assert.equal(catchUp.written.sessions['session-a'].dayCount, 5);
+  assert.deepEqual(catchUp.written.sessions['session-a'].levels, levels());
+
+  const online = round({
+    state: catchUp.written,
+    interoception: { hunger: 70, fullness: 0 },
+    actions: [],
+    simulatedSeconds: 120,
+  });
+  assert.equal(online.notifications.length, 1);
+  assert.equal(online.notifications[0].sessionId, 'session-a');
+  assert.equal(online.written.sessions['session-a'].lastSentAt, 120);
+  assert.equal(online.written.sessions['session-a'].hourCount, 2);
+  assert.equal(online.written.sessions['session-a'].dayCount, 6);
+  assert.deepEqual(online.written.sessions['session-a'].levels, levels({ hunger: 2 }));
+
+  const repeated = round({
+    state: online.written,
+    interoception: { hunger: 70, fullness: 0 },
+    actions: [],
+    simulatedSeconds: 180,
+  });
+  assert.deepEqual(repeated.notifications, []);
 });
 
 test('a drop below reset allows a later rise after cooldown', () => {
@@ -508,7 +555,7 @@ test('urinary hysteresis repeats only after a drop below reset', () => {
   assert.deepEqual(repeated.written.sessions['session-a'].levels, levels({ urinary: 2 }));
 });
 
-test('urinary and hunger share the 45 minute cooldown without consuming water', () => {
+test('urinary and hunger share the 45 minute cooldown without consuming either level watermark', () => {
   const first = round({
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 65 },
     actions: [{ sessionId: 'session-a' }],
@@ -605,7 +652,7 @@ test('a notified hunger does not suppress a later urinary notification and vice 
   assert.equal(hungerSecond.written.sessions['session-b'].dayCount, 2);
 });
 
-test('the highest level wins and a lower candidate keeps its water level', () => {
+test('the highest level wins and a lower candidate keeps its level watermark', () => {
   const first = round({
     interoception: { hunger: 85, fullness: 65, urinaryUrgency: 65 },
     actions: [{ sessionId: 'session-a' }],
@@ -632,7 +679,7 @@ test('the highest level wins and a lower candidate keeps its water level', () =>
   assert.deepEqual(later.written.sessions['session-a'].levels, levels({ urinary: 2 }));
 });
 
-test('equal levels prefer urinary over fullness and hunger without consuming their water', () => {
+test('equal levels prefer urinary over fullness and hunger without consuming their watermarks', () => {
   const first = round({
     interoception: { hunger: 65, fullness: 65, urinaryUrgency: 65 },
     actions: [{ sessionId: 'session-a' }],
@@ -753,7 +800,7 @@ test('missing or non-finite urinary urgency falls back to zero', () => {
   assertJsonSafe(negativeInfinite.written);
 });
 
-test('a submitted void drops the urinary water level and re-arms after it clears', () => {
+test('a submitted void drops the urinary level watermark and re-arms after it clears', () => {
   const seeded = {
     lastSessionId: 'session-a',
     sessions: {
@@ -930,7 +977,7 @@ test('a urinate action in the current round suppresses the urinary candidate', (
   assert.deepEqual(nonUrinating.written.sessions['session-d'].levels, levels({ urinary: 3 }));
 });
 
-test('urinary water stays latched across 40-64 mm and clears below 40 mm', () => {
+test('the urinary level watermark stays latched across 40-64 mm and clears below 40 mm', () => {
   const first = round({
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 70 },
     actions: [{ sessionId: 'session-a' }],
@@ -1114,14 +1161,14 @@ test('missing or non-finite thirst stays below the marked tier without notifying
       simulatedSeconds: 60 + 45 * MINUTE,
     });
     assert.deepEqual(notifications, [], `${label}: must not notify`);
-    assert.deepEqual(written.sessions[sessionId].levels, levels({ thirst: 3 }), `${label}: thirst water stays latched at fallback 50 mm`);
+    assert.deepEqual(written.sessions[sessionId].levels, levels({ thirst: 3 }), `${label}: thirst level watermark stays latched at fallback 50 mm`);
     assert.equal(written.sessions[sessionId].lastLevel, 1, `${label}: fallback stays below marked`);
     assert.equal(written.sessions[sessionId].lastSentAt, 60, `${label}: must not send`);
     assertJsonSafe(written);
   }
 });
 
-test('discomfort alone does not notify or consume any signal water', () => {
+test('discomfort alone does not notify or consume any signal level watermark', () => {
   const { written, notifications } = round({
     interoception: {
       hunger: 0,
@@ -1172,7 +1219,7 @@ test('the highest level wins over signal order', () => {
   );
 });
 
-test('equal marked thirst outranks fullness and hunger without consuming their water', () => {
+test('equal marked thirst outranks fullness and hunger without consuming their watermarks', () => {
   const thirstFirst = round({
     interoception: { hunger: 65, fullness: 65, thirst: 65 },
     actions: [{ sessionId: 'session-a' }],
@@ -1255,7 +1302,7 @@ test('equal marked and strong urinary outrank thirst', () => {
   );
 });
 
-test('an existing levels object gains thirst=0 without changing other water levels', () => {
+test('an existing levels object gains thirst=0 without changing other level watermarks', () => {
   const seeded = {
     lastSessionId: 'session-a',
     sessions: {
@@ -1374,7 +1421,7 @@ test('thirst shares the cooldown and quotas with other signals', () => {
   assert.deepEqual(dayBlocked.written.sessions['session-day'].levels, levels());
 });
 
-test('legacy lastKind thirst and lastLevel migrate into the thirst water level', () => {
+test('legacy lastKind thirst and lastLevel migrate into the thirst level watermark', () => {
   const seeded = {
     lastSessionId: 'session-a',
     sessions: {
@@ -1459,7 +1506,7 @@ test('thirst notify state stays JSON-safe across rounds', () => {
     const { written } = round({ ...input, state });
     assertJsonSafe(written);
     for (const stored of Object.values(written.sessions)) {
-      assert.equal(typeof stored.levels.thirst, 'number', 'thirst water level must be present');
+      assert.equal(typeof stored.levels.thirst, 'number', 'thirst level watermark must be present');
     }
     assert.deepEqual(JSON.parse(JSON.stringify(written)), written);
     state = written;

@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { createBodyHttpServer } from '../gateway/http.js';
 import { checkpoint, launch, makeTempDir, rawRequest } from '../test-support/harness.mjs';
 import {
   counterSource,
@@ -11,6 +10,14 @@ import {
   sharedSource,
   sparseActionTypesSource,
 } from '../test-support/models.mjs';
+
+const brainNotifyUrl = new URL('../organs/human-organs/brain/notify.ts', import.meta.url).href;
+
+function brainNotifySource() {
+  return `
+export { id, actionTypes, initialState, fields, heartbeat } from ${JSON.stringify(brainNotifyUrl)};
+`;
+}
 
 test('v1 migration sorts pending actions by effectiveAt', async (t) => {
   const seed = {
@@ -258,6 +265,110 @@ test('a failed resume batch leaves the gateway reachable and retries online', as
   assert.equal(health.status, 'ok');
 });
 
+test('a failed catch-up batch retries online without delivering its historical notification', async (t) => {
+  const root = makeTempDir();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const interval = 25;
+  let clock = 1_700_000_000_000;
+  const startedPath = join(root, 'control', 'started');
+  const releasePath = join(root, 'control', 'release');
+  const countPath = join(root, 'control', 'count');
+  mkdirSync(join(root, 'control'), { recursive: true });
+  writeFileSync(releasePath, '');
+  const wallTimeMs = clock - 2 * interval;
+  const action = {
+    id: 'a1',
+    type: 'eat',
+    action: { id: 'a1', type: 'eat', sessionId: 'session-a' },
+    payloadDigest: 'sha256:test',
+    status: 'queued',
+    effectiveAt: 60,
+    receivedAtWallTimeMs: wallTimeMs,
+    queuedAtSimulatedSeconds: 0,
+    batchId: null,
+    attempts: 0,
+    lastError: null,
+    appliedAtSimulatedSeconds: null,
+    appliedAtWallTimeMs: null,
+    failedReason: null,
+  };
+  const seed = checkpoint({
+    wallTimeMs,
+    simulatedSeconds: 0,
+    parts: {
+      interoception: { hunger: 70, fullness: 0, thirst: 0, urinaryUrgency: 0 },
+    },
+    pendingActionIds: ['a1'],
+    actions: { a1: action },
+    lastEffectiveAt: 60,
+    activeBatch: {
+      id: 60,
+      targetSimulatedSeconds: 60,
+      targetWallTimeMs: wallTimeMs + interval,
+      actionIds: ['a1'],
+      attempts: 0,
+      lastError: null,
+      startedAtWallTimeMs: wallTimeMs,
+    },
+  });
+  const app = await launch(t, {
+    dir: root,
+    modules: {
+      'flaky.mjs': flakySource({ startedPath, releasePath, countPath, failures: 2 }),
+      'brain-notify.mjs': brainNotifySource(),
+    },
+    seed,
+    catchUpMinutes: 1,
+    heartbeatIntervalMs: interval,
+    gatewayOptions: { now: () => clock },
+  });
+
+  assert.equal(app.readyError, null);
+  let state = app.state();
+  const afterFailedCatchUp = state;
+  assert.equal(state.activeBatch.attempts, 1);
+  assert.match(state.activeBatch.lastError, /planned failure/);
+  assert.deepEqual(state.notifications, []);
+
+  await app.tick();
+  state = app.state();
+  const afterFailedRetry = state;
+  assert.equal(state.snapshot.simulatedSeconds, 0);
+  assert.equal(state.activeBatch.attempts, 2);
+  assert.match(state.activeBatch.lastError, /planned failure/);
+  assert.deepEqual(state.notifications, []);
+
+  await app.tick();
+  state = app.state();
+  assert.equal(state.snapshot.simulatedSeconds, 60);
+  assert.equal(state.activeBatch, null);
+  assert.deepEqual(state.snapshot.parts.flaky.applied, ['a1']);
+  assert.deepEqual(state.notifications, []);
+  assert.equal(afterFailedCatchUp.activeBatch.suppressNotifications, true);
+  assert.equal(afterFailedRetry.activeBatch.suppressNotifications, true);
+  let stored = state.snapshot.parts.brainNotify.sessions['session-a'];
+  assert.equal(stored.lastSentAt, null);
+  assert.equal(stored.hourCount, 0);
+  assert.equal(stored.dayCount, 0);
+  assert.deepEqual(stored.levels, { hunger: 0, fullness: 0, urinary: 0, thirst: 0 });
+
+  await app.tick();
+  state = app.state();
+  assert.equal(state.snapshot.simulatedSeconds, 120);
+  assert.equal(state.notifications.length, 1);
+  assert.equal(state.notifications[0].sessionId, 'session-a');
+  assert.equal(state.notifications[0].mode, 'context');
+  stored = state.snapshot.parts.brainNotify.sessions['session-a'];
+  assert.equal(stored.lastSentAt, 120);
+  assert.equal(stored.hourCount, 1);
+  assert.equal(stored.dayCount, 1);
+  assert.deepEqual(stored.levels, { hunger: 2, fullness: 0, urinary: 0, thirst: 0 });
+
+  await app.tick();
+  state = app.state();
+  assert.equal(state.notifications.length, 1);
+});
+
 test('a sparse actionTypes array is rejected', async (t) => {
   const app = await launch(t, {
     modules: { 'sparse.mjs': sparseActionTypesSource() },
@@ -407,58 +518,4 @@ test('expired action records are pruned before checking reserveForAction checkpo
   const state = app.state();
   assert.equal(Object.hasOwn(state.actions, 'old-0'), false);
   assert.equal(Object.hasOwn(state.actions, 'fresh'), true);
-});
-
-test('/notifications/ack returns 503 when Gateway is stopping', async (t) => {
-  const app = await launch(t, {
-    modules: { 'counter.mjs': counterSource() },
-  });
-
-  const http = createBodyHttpServer({
-    store: { current: app.state() },
-    getHealth: () => ({ ok: true }),
-    getCapabilities: () => ({}),
-    enqueue: () => ({ statusCode: 202, body: {} }),
-    ackNotification: app.gateway.ackNotification,
-  });
-  const address = await http.listen(0);
-  t.after(() => http.close());
-
-  const stopPromise = app.gateway.stop();
-  assert.throws(
-    () => app.gateway.ackNotification('n1'),
-    (error) => error.statusCode === 503 && /stopping/.test(error.message),
-  );
-
-  const response = await fetch(`http://127.0.0.1:${address.port}/notifications/ack`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id: 'n1' }),
-  });
-  assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { error: 'Body Gateway is stopping' });
-  await stopPromise;
-});
-
-test('body-worker rejects uncloneable add/transfer arguments synchronously with the script URL', async (t) => {
-  const uncloneableAdd = `
-export const id = 'pool';
-export const actionTypes = [];
-export const initialState = { amount: 0 };
-export const fields = { amount: { unit: 'mL', mode: 'additive', contributors: ['pool'] } };
-
-export function heartbeat(io) {
-  io.add('pool', 'amount', () => 1);
-}
-`;
-  const app = await launch(t, {
-    modules: { 'pool.mjs': uncloneableAdd },
-    heartbeatIntervalMs: 60_000,
-  });
-
-  const outcome = await app.tick();
-  assert.equal(outcome.failed, true);
-  const health = await (await app.get('/health')).json();
-  assert.equal(health.status, 'degraded');
-  assert.match(health.heartbeat.lastError, /pool\.mjs/);
 });

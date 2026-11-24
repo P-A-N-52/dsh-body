@@ -22,7 +22,7 @@
  *   `durationMin`/`carbohydrateG`；`drink` 的 `energyKcal` 可选且非负有限；`eat` 必须具备
  *   合法 `mealKind`（`liquid`/`solid`/`mixed`）与非负有限 `energyKcal`，避免畸形 `eat`
  *   触发唾液刺激。同轮多条合法动作只把窗口重置一次，不叠加或延长。
- * - `bodyFluid` 缺失（undefined/null）时 deficit 按 0；部位存在但 `waterDeficit` 缺失、非数或
+ * - `bodyFluid` 缺失（undefined）时 deficit 按 0；部位存在但 `waterDeficit` 缺失、非数或
  *   非有限时抛错，且本轮不写任何状态。deficit 超出 [0, 1] 由公式钳位，不报错。
  * - 只读轮初快照与本轮原始动作，刺激窗口用 `io.dt` 递减，不用现实时间；当轮新到的动作
  *   立即生效，但下游消费者读到的是本轮提交后的快照。
@@ -64,7 +64,7 @@ type SavedSalivaryState = {
 type IO = {
   read(id: 'salivaryGlands'): Readonly<SavedSalivaryState> | undefined;
   read(id: 'bodyFluid'): Readonly<BodyFluidReading> | undefined;
-  readonly actions: readonly (Action | null | undefined)[];
+  readonly actions: readonly Action[];
   readonly dt: number;
   write(next: SalivaryState): void;
 };
@@ -106,8 +106,7 @@ function isMealKind(value: unknown): value is 'liquid' | 'solid' | 'mixed' {
   return value === 'liquid' || value === 'solid' || value === 'mixed';
 }
 
-function isIntake(action: Action | null | undefined): boolean {
-  if (action === null || action === undefined || typeof action !== 'object') return false;
+function isIntake(action: Action): boolean {
   if (action.type !== 'eat' && action.type !== 'drink') return false;
   if (typeof action.volumeMl !== 'number' || !Number.isFinite(action.volumeMl) || action.volumeMl <= 0) {
     return false;
@@ -138,10 +137,7 @@ function isIntake(action: Action | null | undefined): boolean {
 
 function readDeficit(io: IO): number {
   const bodyFluid = io.read('bodyFluid');
-  if (bodyFluid === undefined || bodyFluid === null) return 0;
-  if (typeof bodyFluid !== 'object') {
-    throw new Error('bodyFluid must be an object');
-  }
+  if (bodyFluid === undefined) return 0;
   const deficit = bodyFluid.waterDeficit;
   if (typeof deficit !== 'number' || !Number.isFinite(deficit)) {
     throw new Error('bodyFluid.waterDeficit must be a finite number');

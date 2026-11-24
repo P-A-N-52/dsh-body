@@ -27,7 +27,7 @@
 
 ## 3. 方程与参数
 
-设 `prevThyroxine = clamp(finiteOr(prev.thyroxineRelative, 1), 0, 3)`，`TSH = 轮初 pituitary.tshRelative`（未加载垂体时按 1），`dtMin = io.dt / 60`：
+设 `prevThyroxine = prev.thyroxineRelative`，`TSH = 轮初 pituitary.tshRelative`（未加载垂体时按 1），`dtMin = io.dt / 60`：
 
 ```text
 thyroxineRelative = clamp(
@@ -36,7 +36,7 @@ thyroxineRelative = clamp(
 )
 ```
 
-- 一阶趋近的目标就是轮初 TSH；脚本对轮初值 `prev.thyroxineRelative` 先经 `finiteOr(..., 1)` 回退非有限值再钳位，同时对写入输出 `thyroxineRelative` 也显式钳在 `[0, 3]`，防止旧档异常值或极大上游信号越界。
+- 一阶趋近的目标就是轮初 TSH；输出 `thyroxineRelative` 显式钳在 `[0, 3]`，防止极大上游信号越界。
 - `dtMin = thyroxineHalfTimeMin` 时距离减半；60 s 一轮时每轮保留 `2^(−1/60)` 的距离。
 - `TSH = 1` 且 `prev = 1` 时 T4 精确保持 1。TSH 高于 1 时 T4 单调上移，低于 1 时下移。
 

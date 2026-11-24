@@ -336,7 +336,7 @@ test('bodyFluid waterVolumeMl couples bloodVolumeMl within [2500, 6000] when pre
   const highClamp = round({ state: initialState, bodyFluid: { waterVolumeMl: 50000 } }).written;
   assert.equal(highClamp.bloodVolumeMl, 6000);
 
-  for (const bodyFluid of [null, {}, { waterVolumeMl: -1 }, { waterVolumeMl: Number.NaN }]) {
+  for (const bodyFluid of [{}, { waterVolumeMl: -1 }, { waterVolumeMl: Number.NaN }]) {
     const sink = [];
     assert.throws(() => round({ state: initialState, bodyFluid, sink }), /bodyFluid/);
     assert.equal(sink.length, 0);
@@ -353,8 +353,6 @@ test('a loaded heart with an invalid output fails the round without writes', () 
     ['negative output', heartAt(-1)],
     ['null output', { cardiacOutputMlMin: null }],
     ['string output', heartAt('5000')],
-    ['null part', null],
-    ['non-object part', 42],
   ];
 
   for (const [label, heart] of invalid) {
@@ -377,8 +375,6 @@ test('a loaded bloodOxygen with an invalid saturation fails the round without wr
     ['negative saturation', oxygenAt(-0.1)],
     ['null saturation', { spo2Percent: null }],
     ['string saturation', oxygenAt('97')],
-    ['null part', null],
-    ['non-object part', 42],
   ];
 
   for (const [label, bloodOxygen] of invalid) {

@@ -208,11 +208,6 @@ test('missing upstream parts and old state fall back without NaN', () => {
 
   assertClose(round().written.coreTemperatureC, expected, 'missing bloodOxygen and skin');
   assertClose(
-    round({ bloodOxygen: null, skin: null }).written.coreTemperatureC,
-    expected,
-    'null parts',
-  );
-  assertClose(
     round({ bloodOxygen: consumption(250) }).written.coreTemperatureC,
     expected,
     'missing skin',
@@ -231,7 +226,6 @@ test('missing upstream parts and old state fall back without NaN', () => {
 
 test('a loaded upstream with an invalid field fails the round without writing', () => {
   const invalidBloodOxygen = [
-    ['non-object', 42],
     ['empty part', {}],
     ['null demand', { oxygenConsumptionMlMin: null }],
     ['NaN demand', { oxygenConsumptionMlMin: Number.NaN }],
@@ -251,7 +245,6 @@ test('a loaded upstream with an invalid field fails the round without writing', 
   }
 
   const invalidSkin = [
-    ['non-object', 42],
     ['empty part', {}],
     ['null volume', { sweatVolumeMl: null }],
     ['NaN volume', { sweatVolumeMl: Number.NaN }],

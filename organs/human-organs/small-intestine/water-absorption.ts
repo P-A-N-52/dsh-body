@@ -232,17 +232,10 @@ export function heartbeat(io: IO): void {
     carbohydrateG,
   );
 
-  const clampedResidueFraction = clamp(residueFraction, 0, 1);
-  const remainingWaterMl = Math.max(0, waterVolumeMl - absorbedWaterMl);
-  let residueWaterMl = 0;
-  if (clampedResidueFraction >= 1) {
-    residueWaterMl = remainingWaterMl;
-  } else if (clampedResidueFraction > 0) {
-    residueWaterMl = Math.min(
-      remainingWaterMl,
-      absorbedWaterMl * (clampedResidueFraction / (1 - clampedResidueFraction)),
-    );
-  }
+  const remainingWaterMl = waterVolumeMl - absorbedWaterMl;
+  const residueWaterMl = residueFraction > 0
+    ? Math.min(remainingWaterMl, absorbedWaterMl * (residueFraction / (1 - residueFraction)))
+    : 0;
 
   io.write({
     waterVolumeMl,

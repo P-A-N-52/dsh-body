@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fields, heartbeat, initialState } from '../organs/human-organs/stomach/ghrelin.ts';
+import {
+  advanceStomach,
+  stomachInitialState,
+} from '../organs/human-organs/stomach/motility-core.ts';
 
 function round(state, actions = [], parts = {}) {
   let written;
@@ -154,6 +158,74 @@ test('water and non-energy actions keep the same fasting state as no action', ()
       round({ relativeConcentration: 1.2, minutesSinceEnergyIntake: 200 }, actions),
       control,
     );
+  }
+});
+
+test('actions the stomach rejects do not suppress ghrelin or reset its clock', () => {
+  const control = round({ relativeConcentration: 1.2, minutesSinceEnergyIntake: 200 });
+  const eat = { type: 'eat', volumeMl: 100, energyKcal: 100, mealKind: 'liquid' };
+  const drink = { type: 'drink', volumeMl: 330, energyKcal: 140 };
+  const cases = [
+    ['eat without volumeMl', { type: 'eat', energyKcal: 100, mealKind: 'liquid' }],
+    ['eat with a null volumeMl', { ...eat, volumeMl: null }],
+    ['eat with a zero volumeMl', { ...eat, volumeMl: 0 }],
+    ['eat with a negative volumeMl', { ...eat, volumeMl: -100 }],
+    ['eat with a string volumeMl', { ...eat, volumeMl: '100' }],
+    ['eat without mealKind', { type: 'eat', volumeMl: 100, energyKcal: 100 }],
+    ['eat with a null mealKind', { ...eat, mealKind: null }],
+    ['eat with an unknown mealKind', { ...eat, mealKind: 'paste' }],
+    ['eat with a negative durationMin', { ...eat, durationMin: -1 }],
+    ['eat with a null durationMin', { ...eat, durationMin: null }],
+    ['eat with a string durationMin', { ...eat, durationMin: '5' }],
+    ['eat with a negative carbohydrateG', { ...eat, carbohydrateG: -1 }],
+    ['eat with a null carbohydrateG', { ...eat, carbohydrateG: null }],
+    ['eat with a string carbohydrateG', { ...eat, carbohydrateG: '10' }],
+    ['drink without volumeMl', { type: 'drink', energyKcal: 140 }],
+    ['drink with a null volumeMl', { ...drink, volumeMl: null }],
+    ['drink with a zero volumeMl', { ...drink, volumeMl: 0 }],
+    ['drink with a negative volumeMl', { ...drink, volumeMl: -330 }],
+    ['drink with a negative durationMin', { ...drink, durationMin: -1 }],
+    ['drink with a negative carbohydrateG', { ...drink, carbohydrateG: -1 }],
+    ['drink with a string carbohydrateG', { ...drink, carbohydrateG: '35' }],
+  ];
+
+  for (const [label, action] of cases) {
+    const stomach = advanceStomach(stomachInitialState, [action], 60, 60).state;
+    assert.deepEqual(
+      [stomach.volumeMl, stomach.energyKcal, stomach.lastIntakeAt],
+      [0, 0, null],
+      `${label}: the stomach must ignore the action`,
+    );
+    assert.deepEqual(
+      round({ relativeConcentration: 1.2, minutesSinceEnergyIntake: 200 }, [action]),
+      control,
+      `${label}: ghrelin must ignore the action`,
+    );
+  }
+});
+
+test('stomach-accepted intake actions keep supplying energy to ghrelin', () => {
+  const cases = [
+    ['liquid eat', { type: 'eat', volumeMl: 100, energyKcal: 100, mealKind: 'liquid' }, 0.34],
+    ['solid eat with duration and carbohydrate', {
+      type: 'eat', volumeMl: 100, energyKcal: 100, mealKind: 'solid', durationMin: 10, carbohydrateG: 20,
+    }, 0.34],
+    ['mixed eat with zero duration', {
+      type: 'eat', volumeMl: 100, energyKcal: 100, mealKind: 'mixed', durationMin: 0,
+    }, 0.34],
+    ['energy drink with duration and carbohydrate', {
+      type: 'drink', volumeMl: 330, energyKcal: 140, durationMin: 2, carbohydrateG: 35,
+    }, 0.276],
+    ['energy drink without optional fields', { type: 'drink', volumeMl: 330, energyKcal: 140 }, 0.276],
+  ];
+
+  for (const [label, action, expected] of cases) {
+    const stomach = advanceStomach(stomachInitialState, [action], 60, 60).state;
+    assert.ok(stomach.volumeMl > 0, `${label}: the stomach must accept the action`);
+    assert.ok(stomach.energyKcal > 0, `${label}: the stomach must account the energy`);
+    const next = round({ ...initialState }, [action]);
+    assert.ok(Math.abs(next.relativeConcentration - expected) < 1e-12, label);
+    assert.equal(next.minutesSinceEnergyIntake, 0, label);
   }
 });
 

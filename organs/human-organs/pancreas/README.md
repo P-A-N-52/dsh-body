@@ -4,7 +4,7 @@
 
 `pancreasEndocrine` 读取轮初血浆葡萄糖浓度代理，写入两个无量纲的相对信号：高血糖侧 `insulinRelative`，低血糖侧 `glucagonRelative`。`insulinRelative` 由各摄糖部位各自使用：骨骼肌按敏感度 1.0、肝按 0.5 把相对信号换算成自己的摄糖请求；`glucagonRelative` 只由肝用于放大肝糖原释放。葡萄糖隔室自身的残余清除与胰岛素信号无关。它位于 `organs/human-organs/pancreas/`，只实现 `glucose.concentrationMgDl → pancreasEndocrine.insulinRelative → muscleGlucose / liver 摄糖请求` 与 `glucose.concentrationMgDl → pancreasEndocrine.glucagonRelative → liver 释放` 两条工程薄切片，不是胰岛素/胰高血糖素浓度、分泌率、C-peptide 或完整血糖—激素模型。
 
-实现状态：胰腺脚本、参数与模块契约测试已落地；葡萄糖浓度、肌肉/肝摄糖请求与肝糖原释放的耦合、根清单注册均已接入，当前根清单为 32 个部位、31 份参数文件（女性清单 35 个部位、34 份，男性清单 34 个部位、33 份，含 3 份 DI 变体）。`muscleGlucose` 与 `liver` 各自读取 `insulinRelative` 并用自己的敏感度计算请求；`liver` 另读 `glucagonRelative`；`glucose` 不再读本信号。尚未做真实 DSH 会话验收或独立生理数据验证。
+实现状态：胰腺脚本、参数与模块契约测试已落地；葡萄糖浓度、肌肉/肝摄糖请求与肝糖原释放的耦合、根清单注册均已接入，当前根清单为 38 个部位、34 份唯一参数文件（女性清单 41 个部位、37 份，男性清单 40 个部位、36 份；另有 3 份 DI 变体、`parathyroid` 与 `calcium` 参数不随任何清单加载，全库共 44 份）。`muscleGlucose` 与 `liver` 各自读取 `insulinRelative` 并用自己的敏感度计算请求；`liver` 另读 `glucagonRelative`；`glucose` 不再读本信号。尚未做真实 DSH 会话验收或独立生理数据验证。
 
 ## 1. 脚本与读写关系
 
@@ -52,7 +52,7 @@ write.glucagonRelative = H_next
 | `pancreasEndocrine.glucagon.responseHalfTimeMin` | 10 | `min` | `design` | `source: null`；相对胰高血糖素信号一阶趋近目标的时间尺度；消费者是 `liver`。不是实测分泌/清除半时；未来由分泌与清除证据替换 |
 | `pancreasEndocrine.glucagon.maxRelative` | 5 | `1` | `design` | `source: null`；相对胰高血糖素目标的工程上限；当前增益与参考值下 `G = 0` 的目标为 2.8，5 只是参数变化时的保护，不是测量或临床界值；未来由饱和 α 细胞响应替换 |
 
-八个数值都不是人体测量、文献报告值或拟合结果。参考血糖与葡萄糖基线分属两份参数文件，不跨模块 import 对方参数；当前靠测试固定二者相等。`glucagonRelative` 的曲线是纯工程反向占位，Dalla Man 2007 不含胰高血糖素方程或参数。
+这些数值都不是人体测量、文献报告值或拟合结果。参考血糖与葡萄糖基线分属两份参数文件，不跨模块 import 对方参数；当前靠测试固定二者相等。`glucagonRelative` 的曲线是纯工程反向占位，Dalla Man 2007 不含胰高血糖素方程或参数。
 
 ## 4. 摄糖请求与肝释放的消费者
 
@@ -115,7 +115,7 @@ Gateway 先应用 write，再把本轮 transfer 按 transfer 对键排序后逐�
 - **旧根存档缺该部位：** 启动时只补 `insulinRelative = 1`、`glucagonRelative = 1`，不反推升级前的激素，也不重置已有葡萄糖。第一轮肌肉与肝按 `I = 1` 写请求、肝按 `H = 1` 基线释放，后续再响应。
 - **重启：** 保留已提交的两个相对信号，不从当前血糖反推历史；餐后或低血糖重启后的第一轮使用恢复的信号。
 
-根清单（`body-modules.json`）当前为 23 个部位、25 份参数文件（含 3 份 DI 变体），包含胰腺、肝糖原、肾糖、活动—皮肤切片加入的 [`physicalActivity`](../skeletal-muscle/README.md) 与 [`skin`](../skin/README.md)、肺切片加入的 [`lungs`](../lungs/README.md)，以及肌摄糖切片加入的 [`muscleGlucose`](../skeletal-muscle/README.md)；自定义清单可以省略胰腺（两部位按 `I = 1` 写请求、肝按 `H = 1` 释放），但不能只加载胰腺而期待它改变不存在的葡萄糖、肌肉或肝状态。`liver` 与 `muscleGlucose` 是含 `glucose` 清单的硬依赖，不能靠省略它们来跳过请求—结算链。
+根清单（`body-modules.json`）当前为 38 个部位、34 份唯一参数文件，包含胰腺、肝糖原、肾糖、活动—皮肤切片加入的 [`physicalActivity`](../skeletal-muscle/README.md) 与 [`skin`](../skin/README.md)、肺切片加入的 [`lungs`](../lungs/README.md)，以及肌摄糖切片加入的 [`muscleGlucose`](../skeletal-muscle/README.md)；自定义清单可以省略胰腺（两部位按 `I = 1` 写请求、肝按 `H = 1` 释放），但不能只加载胰腺而期待它改变不存在的葡萄糖、肌肉或肝状态。`liver` 与 `muscleGlucose` 是含 `glucose` 清单的硬依赖，不能靠省略它们来跳过请求—结算链。
 
 ## 7. 证据入口
 

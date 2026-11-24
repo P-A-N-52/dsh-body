@@ -53,13 +53,15 @@ export function createBodySimulation({
     };
   }
 
-  async function runHeartbeat(current, batch, { suppressNotifications = false } = {}) {
+  async function runHeartbeat(current, batch) {
+    const suppressNotifications = batch.suppressNotifications === true;
     const { parts, notifications, adds, transfers } = await runner.heartbeat({
       snapshot: current.snapshot,
       actions: batch.actionIds.map((id) => current.actions[id].action),
       dt: heartbeatSeconds,
       simulatedSeconds: batch.targetSimulatedSeconds,
       wallTimeMs: batch.targetWallTimeMs,
+      suppressNotifications,
     });
     const nextParts = applyOperations({
       registry,
@@ -166,8 +168,9 @@ export function createBodySimulation({
     let remaining = Math.min(elapsed, limit);
     try {
       if (next.activeBatch) {
-        const batch = next.activeBatch;
-        const result = await runHeartbeat(next, batch, { suppressNotifications: true });
+        const batch = { ...next.activeBatch, suppressNotifications: true };
+        next = { ...next, activeBatch: batch };
+        const result = await runHeartbeat(next, batch);
         next = store.prune(applyBatch(next, result, batch));
         remaining -= 1;
         if (remaining <= 0) {
@@ -189,9 +192,9 @@ export function createBodySimulation({
         wallTimeMs: next.wallTimeMs + (elapsedAfter - replay) * heartbeatIntervalMs,
       };
       for (let index = 0; index < replay; index++) {
-        const batch = makeBatch(next);
+        const batch = { ...makeBatch(next), suppressNotifications: true };
         next = { ...next, activeBatch: batch };
-        const result = await runHeartbeat(next, batch, { suppressNotifications: true });
+        const result = await runHeartbeat(next, batch);
         next = store.prune(applyBatch(next, result, batch));
       }
       return { checkpoint: next, catchUpError: null };

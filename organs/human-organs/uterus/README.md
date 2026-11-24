@@ -7,7 +7,7 @@
 - [`interoception`](../brain/README.md) 的第五路 `discomfort` 读取 `crampMm`（软读；根清单没有子宫时按 0）；
 - [`bodyFluid`](../../human-compartments/body-water/README.md) 的女性变体读取 `bleedingRequestMl`，把 `bodyFluid.waterVolumeMl` 转入 `bleedingMl`。
 
-**状态口径。** 当前实现（2026-11-23）：脚本与参数在 `organs/human-organs/uterus/`，只随独立女性清单 `body-modules.female.json` 加载；根清单仍为 19 部位、21 份参数文件，不含子宫。女性清单为 21 部位、23 份参数文件，并使用独立 `statePath`。`mensesDays = 4.0` 取 Bull 2019 的自报出血天数（`prior`、`SRC-BULL-2019`）；经量、痛经、内膜半时和权重全是 `design`、`source: null`。尚未做真实 DSH 会话、独立经量/痛经数据或临床验证。
+**状态口径。** 当前实现（2026-11-23）：脚本与参数在 `organs/human-organs/uterus/`，只随独立女性清单 `body-modules.female.json` 加载；根清单为 38 部位、34 份唯一参数文件，不含子宫。女性清单为 41 部位、37 份唯一参数文件，并使用独立 `statePath`。`mensesDays = 4.0` 取 Bull 2019 的自报出血天数（`prior`、`SRC-BULL-2019`）；经量、痛经、内膜半时和权重全是 `design`、`source: null`。尚未做真实 DSH 会话、独立经量/痛经数据或临床验证。
 
 ## 1. 脚本与部位
 
@@ -86,8 +86,8 @@ ovaries.cycleDay / estradiolRelative / progesteroneRelative
 - `uterus.bleedingMl` 声明 `transferIn: ["bodyFluid.waterVolumeMl"]`；女性变体 `water.female.ts` 的 `bodyFluid.waterVolumeMl` 在 `transferOut` 末位声明 `uterus.bleedingMl`。两端都是 `mL` / `absolute`。
 - 女性清单缺 `uterus` 时，启动报 `transferOut target "uterus.bleedingMl" is not declared`；不能靠省略字段或运行中兜底绕过。缺 `bodyFluid` 时，`uterus.bleedingMl` 的来源未声明，同样启动失败。
 - 根清单的 `water.ts` 只有肾 → 肺 → 汗三出口，不声明 `uterus.bleedingMl`；根清单也不加载 `uterus`，所以根身体没有月经失水。同一清单不能同时加载 `water.ts` 与 `water.female.ts`。
-- 根清单硬 transfer 闭包仍为 9 部位（`hydration.ts`、`smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose`、`muscleGlucose`、`skin`、`lungs`）；女性清单在此之上加 `uterus`，硬闭包为 10 部位。`ovaries` 只是 `uterus` 的普通轮初读取，不参与 transfer 配对。
-- 女性清单为 21 部位、23 份参数文件（根 19 部位 + `ovaries` + `uterus`；`water.ts` 换成 `water.female.ts`，不新增体液参数文件）。`body-modules.female.json` 必须与根清单一起发布（`package.json` 的 `files` 收录），并使用独立 `statePath`；不要在根身体存档上直接切换清单。
+- 根清单硬 transfer 闭包为 15 部位（`hydration.ts`、`smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGluconeogenesis`、`kidneyGlucose`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、`skin`、`lungs`）；女性清单在此之上再加 `uterus` 与 `mammaryGlands`，硬闭包为 17 部位（`mammaryGlands` 也经 `glucose.female.ts` 的乳糖汇进入配对）。`ovaries` 只是 `uterus` 的普通轮初读取，不参与 transfer 配对。
+- 女性清单为 41 部位、37 份唯一参数文件（根 38 部位 + `ovaries` + `uterus` + `mammary-glands`；`water.ts` 换成 `water.female.ts`，`glucose.ts` 换成 `glucose.female.ts`，不新增体液或葡萄糖参数文件）。`body-modules.female.json` 必须与根清单一起发布（`package.json` 的 `files` 收录），并使用独立 `statePath`；不要在根身体存档上直接切换清单。
 
 ## 6. 旧档与重启
 
@@ -112,4 +112,4 @@ ovaries.cycleDay / estradiolRelative / progesteroneRelative
 - **痛经与症状：** 不建前列腺素机制、疼痛通路、痛经严重度分级、恶心/头痛/腰酸等伴随症状，也没有痛经通知通道；`crampMm` 只进 `interoception.discomfort` 第五路，`brainNotify` 不读不适、不发痛经提醒。不建经前情绪、性欲、乳房胀痛、基础体温或宫颈黏液。
 - **解剖与病理：** 不建阴道、宫颈、外阴、输卵管、乳腺或盆腔结构；不建 PCOS、子宫内膜异位、子宫肌瘤、腺肌症、异常子宫出血、围绝经期、青春期、激素避孕或妊娠。
 - **男性生殖：** 不建睾丸、睾酮、精子发生或男性生殖道；根清单不含子宫/卵巢，女性清单是独立身体，不引入 `sex` 字段、`presets/` 或 condition 概念。
-- **未验证：** 没有真实 DSH 会话、独立经量/痛经/内膜数据、临床验证或 21 部位性能基线；Bull 的 4.0 天是队列均值，不是本身体的个体预测。
+- **未验证：** 没有真实 DSH 会话、独立经量/痛经/内膜数据、临床验证或 41 部位性能基线；Bull 的 4.0 天是队列均值，不是本身体的个体预测。
