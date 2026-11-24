@@ -21,7 +21,7 @@ const parametersUrl = new URL(
   import.meta.url,
 );
 
-const MG_DL_PER_G = 1 / 140 / 1000;
+const MG_DL_PER_G = 1000 / 140;
 
 function round({ state, parathyroid, blood, dt = 60, actions = [] } = {}) {
   const writes = [];
@@ -220,7 +220,7 @@ test('release is capped by the bone store and the store cannot go below zero', (
   assertClose(written.mgDl, 9.5 + 0.01 * MG_DL_PER_G, 'only the remaining store is released');
 });
 
-test('deposit is capped by the 200 g bone capacity', () => {
+test('deposit is capped by the 200 g bone capacity with mass conservation', () => {
   const { written } = round({
     state: { mgDl: 9.5, boneStoreG: 199.99 },
     parathyroid: { pthRelative: 0 },
@@ -228,7 +228,16 @@ test('deposit is capped by the 200 g bone capacity', () => {
     dt: 6000,
   });
   assert.equal(written.boneStoreG, 200);
-  assertClose(written.mgDl, 9.5 - 0.04 * MG_DL_PER_G, 'the full deposit leaves blood');
+  assertClose(written.mgDl, 9.5 - 0.01 * MG_DL_PER_G, 'only the capped deposit leaves blood');
+
+  const atCap = round({
+    state: { mgDl: 9.5, boneStoreG: 200 },
+    parathyroid: { pthRelative: 0 },
+    blood: { gfrMlMin: 0 },
+    dt: 6000,
+  });
+  assert.equal(atCap.written.boneStoreG, 200);
+  assert.equal(atCap.written.mgDl, 9.5, 'no phantom calcium leaves blood when bone is full');
 });
 
 test('GFR scales PTH-dependent calcium excretion and reduces blood calcium', () => {

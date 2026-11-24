@@ -121,8 +121,8 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
   assert.deepEqual(first.parts.blood, {
     bloodVolumeMl: 5000,
     cardiacOutputMlMin: 4900,
-    systolicMmHg: 120 * (4900 / 5000) ** 0.5,
-    diastolicMmHg: 80 * (4900 / 5000) ** 0.3,
+    systolicMmHg: 120,
+    diastolicMmHg: 80,
     oxygenDeliveryMlMin: 4900 * (97 * 2) / 1000,
     maxOxygenDeliveryMlPerMin: 3666.6,
     gfrMlMin: 100,
@@ -130,7 +130,7 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
   assert.ok(
     Math.abs(
       first.parts.thermoregulation.coreTemperatureC
-        - (37 + (0.02 * 250 - 0.05 * 12) / 60),
+        - (37 + (0.005 * 250 - 0.104167 * 12) / 60),
     ) < 1e-12,
   );
   assert.equal(first.parts.interoception.heatMm, 0);
@@ -146,10 +146,15 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
     uptakeG: 0,
     uptakeRequestG: 0,
   });
+  const initialRegionGlycogen = {
+    muscleHead: 15,
+    muscleTrunk: 135,
+    muscleLimbs: 150,
+  };
   for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
     assert.deepEqual(first.parts[region], {
       uptakeG: 0,
-      glycogenG: 0,
+      glycogenG: initialRegionGlycogen[region],
       glycogenConsumedG: 0,
     }, region);
   }
@@ -168,15 +173,15 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
   assert.equal(first.parts.interoception.sleepinessMm, 50);
   assert.deepEqual(first.parts.liver, {
     glycogenCapacityG: 100,
-    glycogenG: 80,
+    glycogenG: 80 - 0.096,
     storageG: 0,
     storageRequestG: 0,
-    outputG: 0,
+    outputG: 0.096,
   });
   assert.deepEqual(first.parts.glucose, {
     glucoseMassG: 12.69,
     concentrationMgDl: 90,
-    disposedGlucoseG: 0,
+    disposedGlucoseG: 0.12,
     excessMassG: 0,
   });
   assert.equal(first.parts.bladder.volumeMl, 0);
@@ -193,17 +198,17 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
   assert.deepEqual(first.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
   assert.deepEqual(first.parts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
   assert.deepEqual(first.parts.bloodOxygen, {
-    oxygenConsumptionMlMin: 250 * (0.8 + 0.4),
-    oxygenSupplyMlMin: 250 * (0.8 + 0.4),
+    oxygenConsumptionMlMin: 250,
+    oxygenSupplyMlMin: 250,
     spo2Percent: 97,
     oxygenDeficit: 0,
   });
   assert.deepEqual(first.parts.lungsVentilation, {
     tidalVolumeMl: 500,
-    respiratoryRatePerMin: 12,
-    ventilationMlMin: 6000,
-    alveolarO2MlMin: 900,
-    alveolarO2CapacityMlMin: 9000,
+    respiratoryRatePerMin: (250 * 1.4 / 0.058333) / 500,
+    ventilationMlMin: 250 * 1.4 / 0.058333,
+    alveolarO2MlMin: 250,
+    alveolarO2CapacityMlMin: 60000 * (0.058333 / 1.4),
   });
   assert.equal(first.parts.interoception.dyspneaMm, 0);
   assert.deepEqual(first.parts.salivaryGlands, {
@@ -211,7 +216,7 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
     mealStimulusMin: 5,
     mouthMoistureMm: 100,
   });
-  assert.equal(first.parts.interoception.dryMouthMm, 100 - 100 / 3);
+  assert.equal(first.parts.interoception.dryMouthMm, 0);
   assert.equal(first.parts.brainNotify.lastSessionId, null);
   assert.deepEqual(first.parts.brainNotify.sessions, {});
 

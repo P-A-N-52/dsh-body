@@ -24,12 +24,13 @@ function adrenalAt(cortisolRelative) {
   return { cortisolRelative };
 }
 
-function round({ state, activity, adrenal, sink = [] } = {}) {
+function round({ state, activity, adrenal, blood, sink = [] } = {}) {
   heartbeat({
     read: (partId) => {
       if (partId === 'heart') return state;
       if (partId === 'physicalActivity') return activity;
       if (partId === 'adrenal') return adrenal;
+      if (partId === 'blood') return blood;
       return undefined;
     },
     actions: [],
@@ -201,6 +202,38 @@ test('a missing part falls back to no activity and cortisol 1', () => {
 
   const neither = round({ state: initialState });
   assert.equal(neither.written.heartRatePerMin, 70, 'missing both');
+});
+
+test('blood preload scales stroke volume within [0.5, 1.15] and stroke volume clamps to [30, 140]', () => {
+  const normal = round({ state: initialState, blood: { bloodVolumeMl: 5000 } }).written;
+  assert.equal(normal.strokeVolumeMl, 70);
+  assert.equal(normal.cardiacOutputMlMin, 4900);
+
+  const hypovolemic = round({ state: initialState, blood: { bloodVolumeMl: 3000 } }).written;
+  assertClose(hypovolemic.strokeVolumeMl, 70 * 0.6, 'preload 0.6');
+  assertClose(hypovolemic.cardiacOutputMlMin, 70 * 70 * 0.6, 'CO falls in hypovolemia');
+
+  const severeHypo = round({
+    state: initialState,
+    adrenal: adrenalAt(0),
+    blood: { bloodVolumeMl: 1000 },
+  }).written;
+  // preloadFactor clamps at 0.5, drive=0.5 -> 70 * 0.9 * 0.5 = 31.5; with lower SV clamp 30
+  assertClose(severeHypo.strokeVolumeMl, 31.5, 'severe hypovolemia with preload floor 0.5');
+
+  const highPreloadMaxDrive = round({
+    state: initialState,
+    activity: activityAt(1),
+    adrenal: adrenalAt(10),
+    blood: { bloodVolumeMl: 6000 },
+  }).written;
+  assert.equal(highPreloadMaxDrive.strokeVolumeMl, 140, 'stroke volume clamps at 140 mL');
+
+  for (const blood of [null, {}, { bloodVolumeMl: -1 }, { bloodVolumeMl: Number.NaN }]) {
+    const sink = [];
+    assert.throws(() => round({ state: initialState, blood, sink }), /blood/);
+    assert.equal(sink.length, 0);
+  }
 });
 
 test('a loaded physicalActivity with invalid fields fails the round without writes', () => {

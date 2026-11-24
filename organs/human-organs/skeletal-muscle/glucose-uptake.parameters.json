@@ -36,7 +36,16 @@
       "status": "design",
       "range": [0, 5],
       "source": null,
-      "note": "肌肉对相对胰岛素信号的敏感度：请求乘以 1 + insulinSensitivity × (insulinRelative − 1)；1.0 表示与相对信号同比例，0 表示不敏感。不是胰岛素敏感性指数、钳夹实验值或受体亲和力，无登记来源。range 是工程调参范围，不是人体测量范围"
+      "note": "肌肉对相对胰岛素信号的敏感度：请求乘以 max(0, 1 + insulinSensitivity × (insulinRelative − 1))；1.0 表示与相对信号同比例，0 表示不敏感。不是胰岛素敏感性指数、钳夹实验值或受体亲和力，无登记来源。range 是工程调参范围，不是人体测量范围"
+    },
+    {
+      "id": "muscleGlucose.exerciseUptakeRateGPerMin",
+      "unit": "g/min",
+      "value": 0.15,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "运动收缩介导的非胰岛素依赖骨骼肌血糖摄取基准速率工程占位；当 physicalActivity.remainingExerciseMin > 0 时按强度与血糖浓度比例加入摄糖请求。不是实测运动肌摄糖率，无登记来源。range 是工程调参范围"
     }
   ]
 }

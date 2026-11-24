@@ -12,11 +12,11 @@
 
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
-| `uptakeG` | `g` | 本轮区域摄糖到账，仅由 `transferIn: ['muscleGlucose.uptakeG']` 增加，每轮 `write` 归 0 |
-| `glycogenG` | `g` | 区域糖原储量；上一轮 `uptakeG`、旧档迁移份额在本轮并入，运动时扣除；钳到非负 |
-| `glycogenConsumedG` | `g` | 本轮实际运动消耗，无活动为 0；不是累计量 |
+| `uptakeG` | `g` | 本轮区域摄糖到账，仅由 `transferIn: ['muscleGlucose.uptakeG']` 增加，每轮 `write` 归 0（初值 `0`） |
+| `glycogenG` | `g` | 区域糖原储量；初值按 `300 g × regionShare` 分配（头颈 `15 g`、躯干 `135 g`、四肢 `150 g`）；上一轮 `uptakeG`、旧档迁移份额在本轮并入，运动时扣除；钳到非负 |
+| `glycogenConsumedG` | `g` | 本轮实际运动消耗，无活动为 0；不是累计量（初值 `0`） |
 
-三个字段初值均为 0。`uptakeG` 是通量，`glycogenG` 是状态，`glycogenConsumedG` 是读数/通量；三者不能重复计入质量账。时间原点是轮末：`glycogenG` 与 `glycogenConsumedG` 在本轮提交后，下一轮才对其他部位可见。
+`uptakeG` 与 `glycogenConsumedG` 初值为 0，`glycogenG` 初值分别为 `15 / 135 / 150 g`。`uptakeG` 是通量，`glycogenG` 是状态，`glycogenConsumedG` 是读数/通量；三者不能重复计入质量账。时间原点是轮末：`glycogenG` 与 `glycogenConsumedG` 在本轮提交后，下一轮才对其他部位可见。
 
 每个区域导出 `actionTypes = []`，没有动作、通知或主动 transfer。`uptakeG.transferIn` 固定指向 `muscleGlucose.uptakeG`，因此区域必须与一个聚合器入口同时加载；聚合器的 `fields.uptakeG.transferOut` 必须声明该区域，缺配对会在启动时被 Gateway 拒绝。
 
@@ -29,15 +29,15 @@ legacy   = 旧档迁移份额（仅旧档第一轮非 0，见 §4）
 uptake   = 轮初 uptakeG（字段缺失按 0）
 active   = physicalActivity 已加载且 remainingExerciseMin > 0
 consumed = active
-  ? min(glycogenUseRateGPerMin × intensity × dtMin,
+  ? min(glycogenUseRateGPerMin × regionShare × intensity × dtMin,
         max(0, glycogenG) + uptake + legacy)
   : 0
 glycogenG = max(0, glycogenG) + uptake + legacy − consumed
 write { uptakeG: 0, glycogenG, glycogenConsumedG: consumed }
 ```
 
-- `glycogenUseRateGPerMin = 0.5` 来自 `../glucose-uptake.parameters.json`，三个区域共享，不新增区域参数。它是 `design`、`source: null` 的工程占位，不是实测区域糖原分解速率。
-- 三个区域各自按该速率消耗：`intensity = 1`、`dt = 60` 时每个区域每分钟 0.5 g，三区域合计 1.5 g/min。这是“共享参数、各自消耗”的直接结果；旧的单部位模型合计 0.5 g/min，不能把两者当成同一总量。质量账按各区域实际消耗累计，不按旧单部位速率反推。
+- `glycogenUseRateGPerMin = 0.5` 来自 `../glucose-uptake.parameters.json`，按区域份额（头颈 `0.05` / 躯干 `0.45` / 四肢 `0.50`）缩放；不新增区域参数。它是 `design`、`source: null` 的工程占位，不是实测区域糖原分解速率。
+- **按份额缩放消耗：** `intensity = 1`、`dt = 60` 时头颈消耗 `0.025 g/min`、躯干消耗 `0.225 g/min`、四肢消耗 `0.25 g/min`，三区域全负荷合计恰好为 `0.5 g/min`（不再是旧的每区域 0.5、合计 1.5 g/min）。质量账按各区域实际消耗累计。
 - 不足一分钟的活动不按 dt 比例截断：轮初 `remainingExerciseMin = 0.5` 且 `dt = 60` 时仍按整 dt 消耗。
 - `consumed` 钳到 `max(0, glycogenG) + uptake + legacy`，区域糖原不会为负；`glycogenConsumedG` 是实际消耗，不是请求。
 - `physicalActivity` 未加载时消耗 0；已加载但 `remainingExerciseMin` / `intensity` 缺失、非数值、非有限、剩余时间为负或 `intensity ∉ [0, 1]` 时抛错，本轮不写状态，不用健康常量掩盖异常。合法 0 活动、0 到账与 0 存量都是有效值。
@@ -82,6 +82,6 @@ amount(region) = uptakeG × weight(region) / Σ(已加载区域 weight)
 
 ## 6. 证据、未建模与未验证
 
-- **证据：** 本切片没有区域肌肉质量分布、区域糖原储量、运动底物利用或区域糖原分解速率的实测数据。`glycogenUseRateGPerMin = 0.5` 与 0.05 / 0.45 / 0.50 份额都是 `status: design`、`source: null` 的工程占位，不是引用值、拟合结果或临床阈值，不能称 validated。`SRC-DALLAMAN-2007` 只支撑“组织利用可分为不同部分”的结构方向，不支撑这些数值。
+- **证据：** 本切片没有区域肌肉质量分布、区域糖原储量、运动底物利用或区域糖原分解速率的实测数据。`glycogenUseRateGPerMin = 0.5`（按区域份额拆分为头 `0.025` / 躯干 `0.225` / 四肢 `0.25 g/min`）、`15 / 135 / 150 g` 初始糖原与 `0.05 / 0.45 / 0.50` 份额都是 `status: design`、`source: null` 的工程占位，不是引用值、拟合结果或临床阈值，不能称 validated。`SRC-DALLAMAN-2007` 只支撑“组织利用可分为不同部分”的结构方向，不支撑这些数值。
 - **未建模：** 区域肌肉绝对质量、区域血流与纤维类型、肌群疲劳/延迟酸痛、左右肢体与皮肤分区、运动类型/MET/强度非线性、乳酸与 Cori 循环、脂肪组织分区、个体差异、区域耗竭对活动或疲劳的反馈。区域之间不互相搬运糖原；某区域耗尽后不虚构补充，消耗不回流血糖或肝。肌肉无葡萄糖-6-磷酸酶，不向血液释放葡萄糖。
 - **未验证：** 没有真实 DSH 会话、独立区域肌糖原/运动生理数据、区域质量分布实测或临床验证。区域份额和共享消耗速率是工程假设，不能外推为人体测量。

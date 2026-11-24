@@ -128,6 +128,7 @@ test('the parameters keep the shared uptake and glycogen use design defaults', (
     'muscleGlucose.maxUptakeRateGPerMin',
     'muscleGlucose.halfMaxExcessG',
     'muscleGlucose.insulinSensitivity',
+    'muscleGlucose.exerciseUptakeRateGPerMin',
   ]);
 
   const useRate = byId['muscleGlucose.glycogenUseRateGPerMin'];
@@ -141,6 +142,7 @@ test('the parameters keep the shared uptake and glycogen use design defaults', (
     'muscleGlucose.maxUptakeRateGPerMin': [0.5, 'g/min', [0, 5]],
     'muscleGlucose.halfMaxExcessG': [20, 'g', [0.1, 500]],
     'muscleGlucose.insulinSensitivity': [1, '1', [0, 5]],
+    'muscleGlucose.exerciseUptakeRateGPerMin': [0.15, 'g/min', [0, 1]],
   };
   for (const [parameterId, [value, unit, range]] of Object.entries(expected)) {
     const parameter = byId[parameterId];
@@ -156,6 +158,7 @@ test('the parameters keep the shared uptake and glycogen use design defaults', (
     'muscleGlucose.maxUptakeRateGPerMin': 0.5,
     'muscleGlucose.halfMaxExcessG': 20,
     'muscleGlucose.insulinSensitivity': 1,
+    'muscleGlucose.exerciseUptakeRateGPerMin': 0.15,
   });
 });
 

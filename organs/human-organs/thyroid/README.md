@@ -4,7 +4,7 @@
 
 `thyroid/` 目前只有一个部位 `thyroid`，脚本为 `thyroid.ts`，没有动作、通知或 `transfer`，也不写其他部位。它把轮初 `pituitary.tshRelative` 一阶趋近成 `thyroxineRelative`（T4 相对量，0–3，1 为工程基线）：TSH 高于基线时 T4 上升，低于基线时下降。T4 的消费者是 `bloodOxygen`（基础氧耗缩放）以及 `hypothalamusEndocrine` / `pituitary` 的负反馈读取；T4 升高会反向压低 TRH 与 TSH。本切片只建相对信号与一阶时滞，不是甲状腺功能检查、T4 浓度、分泌率或临床甲状腺模型。
 
-实现状态：脚本、参数与模块契约测试已落地；根清单为 28 部位、30 份参数文件，女性清单为 30 部位、32 份；本切片不新增 `transfer`，硬闭包仍为根 10 / 女性 11 个部位。`thyroid.thyroxineHalfTimeMin` 是 `design`、`source: null`，没有登记人体来源。本文只描述离线模型与契约，未做真实 DSH 会话、激素实测或临床验证。
+实现状态：脚本、参数与模块契约测试已落地；当前根清单为 38 部位、34 份唯一参数文件，女性清单为 41 部位、37 份，男性清单为 40 部位、36 份；硬闭包为根与男性 15 个部位、女性 17 个部位，本切片不新增 `transfer`。`thyroid.thyroxineHalfTimeMin` 是 `design`、`source: null`，没有登记人体来源。本文只描述离线模型与契约，未做真实 DSH 会话、激素实测或临床验证。
 
 ## 1. 脚本与读写关系
 
@@ -27,13 +27,16 @@
 
 ## 3. 方程与参数
 
-设 `prev` 为轮初自身状态，`TSH = 轮初 pituitary.tshRelative`（未加载垂体时按 1），`dtMin = io.dt / 60`：
+设 `prevThyroxine = clamp(finiteOr(prev.thyroxineRelative, 1), 0, 3)`，`TSH = 轮初 pituitary.tshRelative`（未加载垂体时按 1），`dtMin = io.dt / 60`：
 
 ```text
-thyroxineRelative = TSH + (prev.thyroxineRelative − TSH) × 2^(−dtMin / thyroxineHalfTimeMin)
+thyroxineRelative = clamp(
+  TSH + (prevThyroxine − TSH) × 2^(−dtMin / thyroxineHalfTimeMin),
+  0, 3
+)
 ```
 
-- 一阶趋近的目标就是轮初 TSH；没有额外的增益、容量或饱和项。`0–3` 由上游 TSH 的钳位范围传递，T4 自身不另加钳位。
+- 一阶趋近的目标就是轮初 TSH；脚本对轮初值 `prev.thyroxineRelative` 先经 `finiteOr(..., 1)` 回退非有限值再钳位，同时对写入输出 `thyroxineRelative` 也显式钳在 `[0, 3]`，防止旧档异常值或极大上游信号越界。
 - `dtMin = thyroxineHalfTimeMin` 时距离减半；60 s 一轮时每轮保留 `2^(−1/60)` 的距离。
 - `TSH = 1` 且 `prev = 1` 时 T4 精确保持 1。TSH 高于 1 时 T4 单调上移，低于 1 时下移。
 
@@ -47,11 +50,11 @@ thyroxineRelative = TSH + (prev.thyroxineRelative − TSH) × 2^(−dtMin / thyr
 
 | 消费者 | 读什么 | 用途 |
 | --- | --- | --- |
-| `bloodOxygen` | `thyroid.thyroxineRelative` | 基础氧耗乘 `0.8 + 0.4 × T4`；未加载甲状腺时保持 `basalMlMin` |
+| `bloodOxygen` | `thyroid.thyroxineRelative` | 基础氧耗乘 `max(0.2, 0.6 + 0.4 × T4)`；未加载甲状腺时保持 `basalMlMin` |
 | `hypothalamusEndocrine` | `thyroid.thyroxineRelative` | T4 高于 1 时压低 TRH 目标，低于 1 时抬高目标 |
 | `pituitary` | `thyroid.thyroxineRelative` | T4 高于 1 时压低 TSH 目标，低于 1 时抬高目标 |
 
-`0.8 + 0.4 × T4` 使 T4 = 1 时基础需氧为 `basalMlMin` 的 1.2 倍、T4 = 0.5 时回到 `basalMlMin`、T4 = 2 时为 1.6 倍；整条曲线是 `design` 常量，不是代谢率或甲状腺功能测量。T4 只经 `bloodOxygen` 改变基础氧耗项，不直接写血氧质量、血糖、体温、心率或行为；活动附加氧耗与消化氧耗仍按各自公式，不随 T4 缩放。
+`max(0.2, 0.6 + 0.4 × T4)` 使 T4 = 1 时基础需氧正好等于 `1.0 × basalMlMin = 250 mL/min`（与静息参考和热平衡对齐）、T4 = 0 时为 `0.6 × basalMlMin`（最低下限 `0.2 × basalMlMin`）、T4 = 2 时为 `1.4 × basalMlMin`；整条曲线是 `design` 常量，不是代谢率或甲状腺功能测量。T4 只经 `bloodOxygen` 改变基础氧耗项，不直接写血氧质量、血糖、体温、心率或行为；活动附加氧耗与消化氧耗仍按各自公式，不随 T4 缩放。
 
 负反馈闭合顺序（60 s 一轮）：
 

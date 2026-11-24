@@ -2,9 +2,9 @@
 
 **功能标签：** 血氧（供氧—需氧平衡代理，不是解剖器官）。
 
-`bloodOxygen` 位于 `organs/human-compartments/blood-oxygen/`，由 `oxygen.ts` 维护。它每轮按轮初快照合成需氧 `oxygenConsumptionMlMin`（基础 + 活动 + 消化），其中基础项按轮初 `thyroid.thyroxineRelative` 缩放为 `basalMlMin × (0.8 + 0.4 × T4)`；再读取轮初 `lungsVentilation.alveolarO2CapacityMlMin`（通气能力上限）与 `blood.maxOxygenDeliveryMlPerMin`（循环能力上限），取两者较紧者为供给能力，按缺口写 `oxygenDeficit` 与 `spo2Percent`。**它是供—需平衡，不是可耗空的氧气账本**：不保存氧气质量，不做逐轮扣减，也不累计“氧债”；每轮重算供需，供 ≥ 需时 SpO2 停在基线，供 < 需时按缺口比例下降。它没有动作、通知或 `transfer`，也不写其他部位。
+`bloodOxygen` 位于 `organs/human-compartments/blood-oxygen/`，由 `oxygen.ts` 维护。它每轮按轮初快照合成需氧 `oxygenConsumptionMlMin`（基础 + 活动 + 消化），其中基础项按轮初 `thyroid.thyroxineRelative` 缩放为 `basalMlMin × max(0.2, 0.6 + 0.4 × T4)`（`T4 = 1` 时正好为 `1.0 × basalMlMin = 250 mL/min`）；再读取轮初 `lungsVentilation.alveolarO2CapacityMlMin`（通气能力上限）与 `blood.maxOxygenDeliveryMlPerMin`（循环能力上限），取两者较紧者为供给能力，按缺口写 `oxygenDeficit` 与 `spo2Percent`。**它是供—需平衡，不是可耗空的氧气账本**：不保存氧气质量，不做逐轮扣减，也不累计“氧债”；每轮重算供需，供 ≥ 需时 SpO2 停在基线，供 < 需时按缺口比例下降。它没有动作、通知或 `transfer`，也不写其他部位。
 
-实现状态（2026-11-24）：脚本与参数在 `organs/human-compartments/blood-oxygen/`，已加入根清单。加入循环与体温切片后根清单为 36 部位、35 份参数文件，女性清单 39 部位、38 份，男性清单 38 部位、37 份。硬 transfer 闭包不变，本切片不新增 transfer。同期新增 `lungsVentilation`（见 [`lungs`](../../human-organs/lungs/README.md)）、`heart` / `blood`（见 [`heart`](../../human-organs/heart/README.md) 与 [`blood`](../blood/README.md)）、`interoception.dyspneaMm`（见 [`brain`](../../human-organs/brain/README.md)）与 `thyroid.thyroxineRelative`（见 [`thyroid`](../../human-organs/thyroid/README.md)）。本切片有模块测试与真实 Gateway 进程的离线集成测试；未做真实 DSH 会话、独立人体氧耗/通气/SpO2 数据或临床验证。
+实现状态（2026-11-24）：脚本与参数在 `organs/human-compartments/blood-oxygen/`，已加入根清单。当前根清单为 38 部位、34 份唯一参数文件，女性清单 41 部位、37 份，男性清单 40 部位、36 份；硬 transfer 闭包为根/男性 15 部位、女性 17 部位，本切片不新增 transfer。同期相关部位包括 `lungsVentilation`（见 [`lungs`](../../human-organs/lungs/README.md)）、`heart` / `blood`（见 [`heart`](../../human-organs/heart/README.md) 与 [`blood`](../blood/README.md)）、`interoception.dyspneaMm`（见 [`brain`](../../human-organs/brain/README.md)）与 `thyroid.thyroxineRelative`（见 [`thyroid`](../../human-organs/thyroid/README.md)）。本切片有模块测试与真实 Gateway 进程的离线集成测试；未做真实 DSH 会话、独立人体氧耗/通气/SpO2 数据或临床验证。
 
 ## 1. 脚本与读写关系
 
@@ -35,7 +35,7 @@
 设轮初活动剩余分钟 `R`、相对强度 `I`、营养暴露 `N`（`kcal/min`）、甲状腺相对量 `T4`：
 
 ```text
-basalDemand = basalMlMin × (0.8 + 0.4 × T4)   （未加载 thyroid 时 = basalMlMin）
+basalDemand = basalMlMin × max(0.2, 0.6 + 0.4 × T4)   （未加载 thyroid 时 = basalMlMin）
 demand = basalDemand
        + activityGainMlMin × I                （R > 0 时）
        + digestionGain × N × basalMlMin
@@ -47,7 +47,7 @@ spo2Percent = baselineSpo2Percent × (1 − deficit)
 write { oxygenConsumptionMlMin: demand, oxygenSupplyMlMin: supply, spo2Percent, oxygenDeficit: deficit }
 ```
 
-- `T4 = 1` 时基础项是 `basalMlMin` 的 1.2 倍；`T4 = 0.5` 时回到 `basalMlMin`，`T4 = 2` 时为 1.6 倍。`0.8 + 0.4 × T4` 是 `design` 常量，不是代谢率或甲状腺功能测量；活动附加项与消化项仍按 `basalMlMin` 计，不随 T4 缩放。
+- `T4 = 1` 时基础项正好等于 `1.0 × basalMlMin = 250 mL/min`（与静息参考和热平衡对齐）；`T4 = 0` 时为 `0.6 × basalMlMin = 150 mL/min`（下限钳在 `0.2 × basalMlMin = 50 mL/min`），`T4 = 2` 时为 `1.4 × basalMlMin = 350 mL/min`。`0.6 + 0.4 × T4` 是 `design` 常量，不是代谢率或甲状腺功能测量；活动附加项与消化项仍按 `basalMlMin` 计，不随 T4 缩放。
 - `R = 0` 时活动项为 0，即使 `I` 仍是旧值；`I = 0` 或 `N = 0` 时对应项也为 0。
 - `demand = 0` 是合法边界：缺口按 0 处理，不产生 `NaN`；正常参数下不会出现。
 - `supply ≥ demand` 时 `deficit = 0`、`spo2Percent = 97`；`supply < demand` 时缺口按比例放大，`deficit = 1` 时 SpO2 为 0。
@@ -94,28 +94,28 @@ bloodOxygen.spo2Percent / oxygenDeficit ─► body_state / GET /state（只读�
 
 | 轮次 | 轮初活动 | `bloodOxygen` 需氧 / 供给（SpO2） | `lungsVentilation` 轮初看到的需氧 → 写出的通气 |
 | ---: | --- | --- | --- |
-| 1 | 无（动作轮末写入 30 min / 1） | 300 / 300（97%） | 300 → 6000 mL/min |
-| 2 | 30 min / 1 | 1300 / 1300（97%） | 300 → 6000 mL/min |
-| 3 | 29 min / 1 | 1300 / 1300（97%） | 1300 → 约 8666.7 mL/min |
+| 1 | 无（动作轮末写入 30 min / 1） | 250 / 250（97%） | 250 → 6000 mL/min |
+| 2 | 30 min / 1 | 1250 / 1250（97%） | 250 → 6000 mL/min |
+| 3 | 29 min / 1 | 1250 / 1250（97%） | 1250 → 约 30000 mL/min |
 | … | … | … | … |
-| 31 | 1 min / 1 | 1300 / 1300（97%） | 1300 → 约 8666.7 mL/min |
-| 32 | 0 / 0 | 300 / 300（97%） | 1300 → 约 8666.7 mL/min |
-| 33 | 0 / 0 | 300 / 300（97%） | 300 → 6000 mL/min |
+| 31 | 1 min / 1 | 1250 / 1250（97%） | 1250 → 约 30000 mL/min |
+| 32 | 0 / 0 | 250 / 250（97%） | 1250 → 约 30000 mL/min |
+| 33 | 0 / 0 | 250 / 250（97%） | 250 → 6000 mL/min |
 
-- 第 1 轮活动状态在轮末提交，血氧与通气都还读不到；第 2 轮血氧先看到活动，通气仍读第 1 轮的 300 mL/min 基础需氧。
-- 默认参数下循环能力上限约 3666.6 mL/min、通气能力上限对应 9000 mL/min 肺泡氧，均高于活动需氧 1300 mL/min，所以 SpO2 停在 97%。若能力上限低于需氧，缺口才会持续存在；具体见 [`blood`](../blood/README.md) 与 [`lungs`](../../human-organs/lungs/README.md)。
+- 第 1 轮活动状态在轮末提交，血氧与通气都还读不到；第 2 轮血氧先看到活动，通气仍读第 1 轮的 250 mL/min 基础需氧。
+- 默认参数下循环能力上限约 3666.6 mL/min、通气能力上限对应约 2500 mL/min 肺泡氧，均高于活动需氧 1250 mL/min，所以 SpO2 停在 97%。若能力上限低于需氧，缺口才会持续存在；具体见 [`blood`](../blood/README.md) 与 [`lungs`](../../human-organs/lungs/README.md)。
 - 活动结束后，需氧先回落，通气再晚一轮回到静息；血氧仍按轮初能力上限判断，不产生额外缺口。
-- 本表的数值是模型内算例，不是实测氧耗、通气或 SpO2 时程；表中通气值含体温调节的喘息项，默认核心温度从 37°C 起步。
+- 本表的数值是模型内算例，不是实测氧耗、通气或 SpO2 时程；表中通气值未计升温后的喘息项，默认核心温度从 37°C 起步。
 
 ## 6. 旧档、重启与可选部位
 
-- **旧档：** 启动时只为缺失的 `bloodOxygen` 补初值 `250 / 250 / 97 / 0`，不反推历史氧耗、SpO2 或氧债；已有活动、十二指肠、通气与甲状腺状态不重置。旧档缺 `thyroid` 时由甲状腺模块补 `thyroxineRelative = 1`，第一轮基础项按 1.2 倍计。
+- **旧档：** 启动时只为缺失的 `bloodOxygen` 补初值 `250 / 250 / 97 / 0`，不反推历史氧耗、SpO2 或氧债；已有活动、十二指肠、通气与甲状腺状态不重置。旧档缺 `thyroid` 时由甲状腺模块补 `thyroxineRelative = 1`，第一轮基础项仍为 `250 mL/min`（`1.0 × basalMlMin`）。
 - **重启：** 没有累计氧气质量或历史缺口需要恢复；下一次 heartbeat 按当时的轮初活动、营养暴露、T4 和存档中的通气重新合成供需。若重启前通气或 T4 处于高位，血氧第一轮可能读到这些旧值，属于正常的轮初快照，不是重复消耗。
 - **合法零值：** `oxygenDeficit = 0`、`spo2Percent = 0`（极端供给不足）与 `oxygenSupplyMlMin = 0` 都是合法状态，不是缺失。
 - **自定义清单没有 `bloodOxygen`：** `lungsVentilation` 按基础需氧 250 mL/min 回退，`interoception.dyspneaMm` 按 0；根清单不依赖这个回退，而是完整加载三者。
 - **自定义清单没有 `lungsVentilation`：** 本隔室不把该能力上限纳入 min，只剩 `blood` 能力上限（若也未加载则按需氧全额供给）；这是可选部位回退，不是“供氧无限”的生理结论。
 - **自定义清单没有 `blood`：** 本隔室退回只用肺泡能力上限，与接入循环前行为一致；这是可选部位回退，不是“循环无限”的生理结论。根清单同时加载 `heart`、`blood` 与 `lungsVentilation`。
-- **自定义清单没有 `thyroid`：** 基础项保持 `basalMlMin`，不乘 `0.8 + 0.4 × T4`；这是可选部位回退，不是“T4 正常”的生理结论。根清单同时加载两者。
+- **自定义清单没有 `thyroid`：** 基础项保持 `basalMlMin`，不乘 `0.6 + 0.4 × T4`；这是可选部位回退，不是“T4 正常”的生理结论。根清单同时加载两者。
 - **已加载但上游异常：** `physicalActivity`、`duodenum`、`lungsVentilation`、`blood` 或 `thyroid` 存在但字段缺失、非有限或为负时抛错，不用默认值掩盖，避免把损坏状态读成健康状态。合法的 `remainingExerciseMin = 0`、`intensity = 0`、`nutrientExposure = 0`、`alveolarO2CapacityMlMin = 0`、`maxOxygenDeliveryMlPerMin = 0` 与 `thyroxineRelative = 0` 不是异常。
 
 ## 7. 未建模与未验证
@@ -132,6 +132,6 @@ bloodOxygen.spo2Percent / oxygenDeficit ─► body_state / GET /state（只读�
 - 氧气质量守恒、累计氧债、组织缺氧损伤、乳酸、疲劳与运动耐量反馈；血氧下降不会自动限制活动或改变动作校验。
 - 运动类型、MET、能量消耗、体温调节、环境温度/湿度/海拔、年龄、性别、BMI、训练状态与个体差异；`intensity` 只是模型内相对强度，`thermoregulation` 只经 `skin` / `lungsVentilation` 间接影响本隔室，不进入供需方程。
 
-**未验证：** 四个参数全部是 `design`、`source: null`，没有登记人体来源；250 mL/min、1000 mL/min、0.1 与 97% 都不是实测值或拟合值。`0.8 + 0.4 × T4` 同样是 `design` 脚本常量，没有甲状腺—代谢实测标定。模块测试与真实 Gateway 离线测试只核对公式、供需平衡、时序、回退、异常与 JSON-safe，不等于独立人体数据、临床验证或真实 DSH 会话验收。不能把本隔室的 SpO2、需氧或缺口外推为人体测量、血气结论或疾病判断。循环能力上限由 `blood` 以 `design` 参数给出，本切片未做 36 / 39 部位性能基线。
+**未验证：** 四个参数全部是 `design`、`source: null`，没有登记人体来源；250 mL/min、1000 mL/min、0.1 与 97% 都不是实测值或拟合值。`max(0.2, 0.6 + 0.4 × T4)` 同样是 `design` 脚本常量，没有甲状腺—代谢实测标定。模块测试与真实 Gateway 离线测试只核对公式、供需平衡、时序、回退、异常与 JSON-safe，不等于独立人体数据、临床验证或真实 DSH 会话验收。不能把本隔室的 SpO2、需氧或缺口外推为人体测量、血气结论或疾病判断。循环能力上限由 `blood` 以 `design` 参数给出，本切片未做 38 / 41 部位性能基线。
 
 设计见 [`2026-11-23-blood-oxygen-design.md`](../../../docs/superpowers/specs/2026-11-23-blood-oxygen-design.md)；通气侧见 [`lungs`](../../human-organs/lungs/README.md)，气促读数见 [`brain`](../../human-organs/brain/README.md)，消化氧耗上游见 [`duodenum`](../../human-organs/duodenum/README.md)，活动氧耗上游见 [`skeletal-muscle`](../../human-organs/skeletal-muscle/README.md)。

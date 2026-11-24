@@ -99,11 +99,11 @@
  *   `testes` 未加载、字段缺失、NaN 或非有限时按 0.5（即读数 0）。它只是 0–100 mm
  *   读数，不参与 `discomfort`，也不产生动作或通知；相对值 1 的工程基线对应 50 mm，
  *   没有来源把该斜率标定到主观性欲。
- * - `bowelUrgencyMm = clamp(100 × colon.stoolG / 200, 0, 100)` 是结肠粪便量的软读
- *   （`design` 口径，不是直肠压力、肛门直肠测压阈值或临床便意评分）：只读轮初
- *   `colon.stoolG`，200 g 是与 `colon.referenceStoolG` 一致的工程参考量；`colon` 未加载、
- *   字段缺失、NaN 或非有限时按 0，负值也按 0。它只是 0–100 mm 读数，不参与 `discomfort`，
- *   也不产生动作或通知；`defecate` 由会话显式触发，没有自动排便反射。
+ * - `bowelUrgencyMm` 优先直接软读轮初 `colon.bowelUrgencyMm`（有限时钳到 [0, 100]）；
+ *   若该字段缺失或非有限，再回落到 `clamp(100 × colon.stoolG / 200, 0, 100)`（`design` 口径，
+ *   200 g 是与 `colon.referenceStoolG` 一致的工程参考量）；`colon` 未加载、字段全缺失或非有限时
+ *   按 0，负值也按 0。它只是 0–100 mm 读数，不参与 `discomfort`，也不产生动作或通知；
+ *   `defecate` 由会话显式触发，没有自动排便反射。
  * - `heatMm = clamp(50 × (coreTemperatureC − 37), 0, 100)` 与
  *   `coldMm = clamp(50 × (37 − coreTemperatureC), 0, 100)` 是 `thermoregulation` 的软读
  *   （`design` 口径，不是体温测量或冷热感觉量表）：只读轮初 `coreTemperatureC`；部位未
@@ -211,6 +211,7 @@ type EsophagusReading = {
 
 type ColonReading = {
   stoolG?: number;
+  bowelUrgencyMm?: number;
 };
 
 type IO = {
@@ -353,12 +354,16 @@ export function heartbeat(io: IO): void {
     : 0;
   const testosteroneRelative = finiteOr(io.read('testes')?.testosteroneRelative, 0.5);
   const libidoMm = clamp(100 * (testosteroneRelative - 0.5), 0, 100);
-  const stoolG = Math.max(0, finiteOr(io.read('colon')?.stoolG, 0));
-  const bowelUrgencyMm = clamp(
-    (100 * stoolG) / bowelUrgencyReferenceStoolG,
-    0,
-    100,
-  );
+  const colon = io.read('colon');
+  const rawBowelUrgencyMm = colon?.bowelUrgencyMm;
+  const stoolG = Math.max(0, finiteOr(colon?.stoolG, 0));
+  const bowelUrgencyMm = typeof rawBowelUrgencyMm === 'number' && Number.isFinite(rawBowelUrgencyMm)
+    ? clamp(rawBowelUrgencyMm, 0, 100)
+    : clamp(
+      (100 * stoolG) / bowelUrgencyReferenceStoolG,
+      0,
+      100,
+    );
   const coreTemperatureC = finiteOr(
     io.read('thermoregulation')?.coreTemperatureC,
     thermoregulationSetpointC,

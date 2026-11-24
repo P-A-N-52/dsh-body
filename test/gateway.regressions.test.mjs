@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { createBodyHttpServer } from '../gateway/http.js';
 import { checkpoint, launch, makeTempDir, rawRequest } from '../test-support/harness.mjs';
 import {
   counterSource,
@@ -265,4 +266,199 @@ test('a sparse actionTypes array is rejected', async (t) => {
 
   assert.ok(app.readyError);
   assert.match(app.readyError.message, /actionTypes/);
+});
+
+test('catchUp with activeBatch and elapsed exceeding catchUpMinutes advances wallTimeMs without spamming online heartbeats', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const interval = 60_000;
+  let clock = 1_700_000_000_000;
+  const seedWallTimeMs = clock - 10 * interval;
+  const action = {
+    id: 'a1',
+    type: 'eat',
+    action: { id: 'a1', type: 'eat' },
+    payloadDigest: 'sha256:test',
+    status: 'queued',
+    effectiveAt: 60,
+    receivedAtWallTimeMs: seedWallTimeMs,
+    queuedAtSimulatedSeconds: 0,
+    batchId: null,
+    attempts: 0,
+    lastError: null,
+    appliedAtSimulatedSeconds: null,
+    appliedAtWallTimeMs: null,
+    failedReason: null,
+  };
+  const seed = checkpoint({
+    wallTimeMs: seedWallTimeMs,
+    simulatedSeconds: 0,
+    pendingActionIds: ['a1'],
+    actions: { a1: action },
+    lastEffectiveAt: 60,
+    activeBatch: {
+      id: 60,
+      targetSimulatedSeconds: 60,
+      targetWallTimeMs: seedWallTimeMs + interval,
+      actionIds: ['a1'],
+      attempts: 0,
+      lastError: null,
+      startedAtWallTimeMs: seedWallTimeMs,
+    },
+  });
+
+  const app = await launch(t, {
+    modules: { 'counter.mjs': counterSource() },
+    seed,
+    catchUpMinutes: 1,
+    heartbeatIntervalMs: interval,
+    autoTick: true,
+    gatewayOptions: { now: () => clock },
+  });
+
+  const state = app.state();
+  assert.equal(state.snapshot.simulatedSeconds, 60);
+  assert.equal(state.wallTimeMs, clock);
+  assert.equal(Object.hasOwn(state, 'catchUpError'), false);
+  assert.equal(state.startup.catchUpError, null);
+
+  t.mock.timers.tick(0);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.state().snapshot.simulatedSeconds, 60);
+  assert.equal(app.state().snapshot.parts.counter.rounds.length, 1);
+
+  clock += interval;
+  t.mock.timers.tick(interval);
+  const deadline = Date.now() + 4000;
+  while (app.state().snapshot.simulatedSeconds !== 120) {
+    if (Date.now() > deadline) throw new Error('timed out waiting for heartbeat to reach 120s');
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(app.state().snapshot.simulatedSeconds, 120);
+});
+
+test('FatalOperationError during catchUp keeps /health fatal and consecutiveFailures 0 without root catchUpError', async (t) => {
+  const interval = 25;
+  const clock = 1_700_000_000_000;
+  const badAddSource = `
+export const id = 'source';
+export const actionTypes = [];
+export const initialState = { volumeMl: 0 };
+export const fields = { volumeMl: { unit: 'mL', mode: 'absolute' } };
+
+export function heartbeat(io) {
+  io.add('source', 'volumeMl', 1);
+}
+`;
+  const app = await launch(t, {
+    modules: { 'source.mjs': badAddSource },
+    seed: checkpoint({ wallTimeMs: clock - 2 * interval }),
+    catchUpMinutes: 1,
+    heartbeatIntervalMs: interval,
+    autoTick: true,
+    gatewayOptions: { now: () => clock },
+  });
+
+  const state = app.state();
+  assert.equal(Object.hasOwn(state, 'catchUpError'), false);
+  assert.match(state.startup.catchUpError, /absolute/);
+
+  const health = await (await app.get('/health')).json();
+  assert.equal(health.status, 'fatal');
+  assert.equal(health.ok, false);
+  assert.equal(health.heartbeat.consecutiveFailures, 0);
+  assert.equal(health.heartbeat.lastSuccessAtMs, null);
+  assert.match(health.heartbeat.lastError, /absolute/);
+});
+
+test('expired action records are pruned before checking reserveForAction checkpoint budget', async (t) => {
+  const clock = 1_700_000_000_000;
+  const expired = {};
+  for (let i = 0; i < 4; i++) {
+    const id = `old-${i}`;
+    expired[id] = {
+      id,
+      type: 'eat',
+      action: { id, type: 'eat', note: 'x'.repeat(160) },
+      payloadDigest: 'sha256:test',
+      status: 'applied',
+      effectiveAt: 60,
+      receivedAtWallTimeMs: clock - 10_000,
+      queuedAtSimulatedSeconds: 0,
+      batchId: 60,
+      attempts: 1,
+      lastError: null,
+      appliedAtSimulatedSeconds: 60,
+      appliedAtWallTimeMs: clock - 5_000,
+      failedReason: null,
+    };
+  }
+  const app = await launch(t, {
+    modules: { 'counter.mjs': counterSource() },
+    seed: checkpoint({ wallTimeMs: clock, simulatedSeconds: 60, actions: expired, lastEffectiveAt: 60 }),
+    gatewayOptions: {
+      now: () => clock,
+      actionRetentionMs: 1000,
+      maxCheckpointBytes: 2500,
+    },
+  });
+
+  const response = await app.post('/actions', { id: 'fresh', type: 'eat', volumeMl: 10 });
+  assert.equal(response.status, 202);
+  const state = app.state();
+  assert.equal(Object.hasOwn(state.actions, 'old-0'), false);
+  assert.equal(Object.hasOwn(state.actions, 'fresh'), true);
+});
+
+test('/notifications/ack returns 503 when Gateway is stopping', async (t) => {
+  const app = await launch(t, {
+    modules: { 'counter.mjs': counterSource() },
+  });
+
+  const http = createBodyHttpServer({
+    store: { current: app.state() },
+    getHealth: () => ({ ok: true }),
+    getCapabilities: () => ({}),
+    enqueue: () => ({ statusCode: 202, body: {} }),
+    ackNotification: app.gateway.ackNotification,
+  });
+  const address = await http.listen(0);
+  t.after(() => http.close());
+
+  const stopPromise = app.gateway.stop();
+  assert.throws(
+    () => app.gateway.ackNotification('n1'),
+    (error) => error.statusCode === 503 && /stopping/.test(error.message),
+  );
+
+  const response = await fetch(`http://127.0.0.1:${address.port}/notifications/ack`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id: 'n1' }),
+  });
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: 'Body Gateway is stopping' });
+  await stopPromise;
+});
+
+test('body-worker rejects uncloneable add/transfer arguments synchronously with the script URL', async (t) => {
+  const uncloneableAdd = `
+export const id = 'pool';
+export const actionTypes = [];
+export const initialState = { amount: 0 };
+export const fields = { amount: { unit: 'mL', mode: 'additive', contributors: ['pool'] } };
+
+export function heartbeat(io) {
+  io.add('pool', 'amount', () => 1);
+}
+`;
+  const app = await launch(t, {
+    modules: { 'pool.mjs': uncloneableAdd },
+    heartbeatIntervalMs: 60_000,
+  });
+
+  const outcome = await app.tick();
+  assert.equal(outcome.failed, true);
+  const health = await (await app.get('/health')).json();
+  assert.equal(health.status, 'degraded');
+  assert.match(health.heartbeat.lastError, /pool\.mjs/);
 });

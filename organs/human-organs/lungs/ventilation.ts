@@ -10,20 +10,20 @@
  * 不表示同一个部位。
  *
  * 公式（demand 为轮初需氧，mL/min；coreTemperatureC 为轮初核心温度，未加载按缺失）：
- *   targetVentilation = demand × deadSpaceFactor / inspiredO2Fraction
- *                     + pantingGain × max(0, coreTemperatureC − 37)
+ *   metabolicVentilation = demand × deadSpaceFactor / inspiredO2Fraction
+ *   pantingMlMin = pantingGain × max(0, coreTemperatureC − 37)
+ *   targetVentilation = max(restingVentilationMlMin, metabolicVentilation) + pantingMlMin
  *   ventilationMlMin = clamp(targetVentilation, restingVentilationMlMin, maxVentilationMlMin)
  *   respiratoryRatePerMin = clamp(ventilationMlMin / restingTidalVolumeMl,
  *                                 restingRatePerMin, maxRatePerMin)
  *   tidalVolumeMl = restingTidalVolumeMl（本切片固定，不做潮气量调节）
  *   alveolarO2MlMin = ventilationMlMin × inspiredO2Fraction / deadSpaceFactor
  *   alveolarO2CapacityMlMin = maxVentilationMlMin × inspiredO2Fraction / deadSpaceFactor
- * `targetVentilation` 是满足该需氧所需的通气量；低于静息通气时回到静息值，高于上限时
- * 触顶，肺泡供氧随之封顶。核心温度高于设定点时在目标上叠加喘息项，再走同一套静息/
- * 上限钳位；`thermoregulation` 未加载时喘息项为 0。37°C 与
- * `thermoregulation.setpointC` 的设计默认值一致，本部位只维护 `pantingGain` 一个参数。
+ * `metabolicVentilation` 是满足该需氧所需的通气量；低于静息通气时先回到静息基线，核心温度
+ * 高于设定点时再在其上叠加喘息项，最后钳位到静息/上限区间；`thermoregulation` 未加载时喘息项为 0。
+ * 37°C 与 `thermoregulation.setpointC` 的设计默认值一致，本部位只维护 `pantingGain` 一个参数。
  * `alveolarO2MlMin` 是本轮实际通气量对应的供氧读数，受轮初需氧与一轮滞后影响；
- * `alveolarO2CapacityMlMin` 是通气能力上限（默认 9000 mL/min），
+ * `alveolarO2CapacityMlMin` 是通气能力上限（默认约 2500 mL/min），
  * 由参数直接决定、与需氧无关。`bloodOxygen` 用能力上限判定 SpO2
  * （supply = min(demand, capacity)），避免活动首轮把上一轮通气量误当成供氧不足；
  * `alveolarO2MlMin` 只保留为滞后读数，不参与 SpO2。`respiratoryRatePerMin` 是由
@@ -38,8 +38,8 @@
  * 状态。只读轮初快照，所以需氧、核心温度变化与通气反应之间有一轮滞后，与既有反馈链一致。
  *
  * 参数全部来自同目录 `ventilation.parameters.json`，状态 `design`、`source: null`；
- * 500 mL / 12 次/min / 40 次/min / 6000 mL/min / 60000 mL/min / 0.21 / 1.4 与喘息增益
- * 0.5 mL/(min·°C) 都是工程默认值，不是人体测量、不是实测最大通气量或体温—通气斜率，
+ * 500 mL / 12 次/min / 40 次/min / 6000 mL/min / 60000 mL/min / 0.058333 / 1.4 与喘息增益
+ * 1500 mL/(min·°C) 都是工程默认值，不是人体测量、不是实测最大通气量或体温—通气斜率，
  * 也没有独立数据验证，不能称 validated。本切片不建血气分压、氧合曲线、血红蛋白、
  * 心输出量、CO2/酸碱、呼吸力学、潮气量调节、高原或病理缺氧，也不产生气促通知
  * （气促读数由 `interoception` 从血氧池读取）。
@@ -148,7 +148,8 @@ export function heartbeat(io: IO): void {
   const pantingMlMin = coreTemperatureC === undefined
     ? 0
     : pantingGain * Math.max(0, coreTemperatureC - thermoregulationSetpointC);
-  const targetVentilationMlMin = (demandMlMin * deadSpaceFactor) / inspiredO2Fraction
+  const metabolicVentilationMlMin = (demandMlMin * deadSpaceFactor) / inspiredO2Fraction;
+  const targetVentilationMlMin = Math.max(restingVentilationMlMin, metabolicVentilationMlMin)
     + pantingMlMin;
   const ventilationMlMin = clamp(
     targetVentilationMlMin,

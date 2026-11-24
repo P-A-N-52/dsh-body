@@ -39,6 +39,9 @@ function round({
   state = initialState,
   thyroid,
   adrenal,
+  thermoregulation,
+  glucose,
+  physicalActivity,
   dt = 60,
   actions = [],
   writes = [],
@@ -48,6 +51,9 @@ function round({
       if (partId === 'hypothalamusEndocrine') return state;
       if (partId === 'thyroid') return thyroid;
       if (partId === 'adrenal') return adrenal;
+      if (partId === 'thermoregulation') return thermoregulation;
+      if (partId === 'glucose') return glucose;
+      if (partId === 'physicalActivity') return physicalActivity;
       throw new Error(`unexpected read: ${partId}`);
     },
     actions,
@@ -306,4 +312,91 @@ test('the written state is finite and JSON-safe', () => {
     assert.doesNotThrow(() => assertJsonValue(next));
     assert.deepEqual(JSON.parse(JSON.stringify(next)), next);
   }
+});
+
+test('upstream cold, hypoglycemia and hard exercise drivers activate TRH/CRH while resting baseline stays 1.0', () => {
+  const resting = round({
+    thyroid: { thyroxineRelative: 1 },
+    adrenal: { cortisolRelative: 1 },
+    thermoregulation: { coreTemperatureC: 37 },
+    glucose: { concentrationMgDl: 90 },
+    physicalActivity: { remainingExerciseMin: 0, intensity: 0 },
+  });
+  assert.deepEqual(resting, { trhRelative: 1, crhRelative: 1 });
+
+  const deadband = round({
+    thermoregulation: { coreTemperatureC: 36.8 },
+    dt: 30 * 60,
+  });
+  assert.deepEqual(deadband, { trhRelative: 1, crhRelative: 1 }, '36.8C sits at the cold-stress deadband');
+
+  const nearResting = round({
+    thermoregulation: { coreTemperatureC: 36.99999993 },
+    dt: 30 * 60,
+  });
+  assert.deepEqual(nearResting, { trhRelative: 1, crhRelative: 1 }, '36.99999993C stays inside deadband');
+
+  const cold = round({
+    thermoregulation: { coreTemperatureC: 35 },
+    dt: 30 * 60,
+  });
+  assertClose(cold.trhRelative, 1 + (1.54 - 1) * 0.5, 'cold 35C drives TRH toward 1.54');
+  assert.equal(cold.crhRelative, 1);
+
+  const normoglycemia80 = round({
+    glucose: { concentrationMgDl: 80 },
+    dt: 30 * 60,
+  });
+  assert.equal(normoglycemia80.crhRelative, 1, '80 mg/dL adds +0 to CRH');
+
+  const hypoglycemia = round({
+    glucose: { concentrationMgDl: 60 },
+    dt: 30 * 60,
+  });
+  assertClose(hypoglycemia.crhRelative, 1 + (1.4 - 1) * 0.5, 'glucose 60 drives CRH toward 1.4');
+  assert.equal(hypoglycemia.trhRelative, 1);
+
+  const moderateExercise = round({
+    physicalActivity: { remainingExerciseMin: 10, intensity: 0.5 },
+    dt: 30 * 60,
+  });
+  assert.equal(moderateExercise.crhRelative, 1, 'intensity 0.5 adds +0 to CRH');
+
+  const hardExercise = round({
+    physicalActivity: { remainingExerciseMin: 10, intensity: 1 },
+    dt: 30 * 60,
+  });
+  assertClose(hardExercise.crhRelative, 1 + (1.2 - 1) * 0.5, 'hard exercise drives CRH toward 1.2');
+
+  const extremeCombined = round({
+    thermoregulation: { coreTemperatureC: 20 },
+    glucose: { concentrationMgDl: 0 },
+    physicalActivity: { remainingExerciseMin: 10, intensity: 1 },
+    dt: 6000 * 60,
+  });
+  assert.equal(extremeCombined.trhRelative, 3);
+  assertClose(extremeCombined.crhRelative, 2.8, 'hypoglycemia 1.6 + exercise 0.2');
+
+  const clampedCombined = round({
+    adrenal: { cortisolRelative: 0 },
+    thermoregulation: { coreTemperatureC: 20 },
+    glucose: { concentrationMgDl: 0 },
+    physicalActivity: { remainingExerciseMin: 10, intensity: 1 },
+    dt: 6000 * 60,
+  });
+  assert.equal(clampedCombined.trhRelative, 3);
+  assert.equal(clampedCombined.crhRelative, 3);
+});
+
+test('malformed prev fields fall back and clamp to [0, 3]', () => {
+  const fromNaN = round({
+    state: { trhRelative: Number.NaN, crhRelative: Number.POSITIVE_INFINITY },
+  });
+  assert.deepEqual(fromNaN, { trhRelative: 1, crhRelative: 1 });
+
+  const fromOutOfRange = round({
+    state: { trhRelative: -5, crhRelative: 10 },
+    dt: 0,
+  });
+  assert.deepEqual(fromOutOfRange, { trhRelative: 0, crhRelative: 3 });
 });

@@ -930,7 +930,7 @@ test('a urinate action in the current round suppresses the urinary candidate', (
   assert.deepEqual(nonUrinating.written.sessions['session-d'].levels, levels({ urinary: 3 }));
 });
 
-test('urinary water clears at 50 mm and re-arms after the cooldown', () => {
+test('urinary water stays latched across 40-64 mm and clears below 40 mm', () => {
   const first = round({
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 70 },
     actions: [{ sessionId: 'session-a' }],
@@ -947,13 +947,31 @@ test('urinary water clears at 50 mm and re-arms after the cooldown', () => {
     simulatedSeconds: 60 + 20 * MINUTE,
   });
   assert.deepEqual(fellToFifty.notifications, []);
-  assert.deepEqual(fellToFifty.written.sessions['session-a'].levels, levels());
+  assert.deepEqual(fellToFifty.written.sessions['session-a'].levels, levels({ urinary: 2 }));
 
-  const repeated = round({
+  const backToMarkedWithoutReset = round({
     state: fellToFifty.written,
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 70 },
     actions: [{ sessionId: 'session-a' }],
     simulatedSeconds: 60 + 45 * MINUTE,
+  });
+  assert.deepEqual(backToMarkedWithoutReset.notifications, []);
+  assert.deepEqual(backToMarkedWithoutReset.written.sessions['session-a'].levels, levels({ urinary: 2 }));
+
+  const belowReset = round({
+    state: backToMarkedWithoutReset.written,
+    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 39 },
+    actions: [{ sessionId: 'session-a' }],
+    simulatedSeconds: 60 + 46 * MINUTE,
+  });
+  assert.deepEqual(belowReset.notifications, []);
+  assert.deepEqual(belowReset.written.sessions['session-a'].levels, levels());
+
+  const repeated = round({
+    state: belowReset.written,
+    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 70 },
+    actions: [{ sessionId: 'session-a' }],
+    simulatedSeconds: 60 + 47 * MINUTE,
   });
   assert.deepEqual(repeated.notifications, [{
     mode: 'context',
@@ -1096,7 +1114,7 @@ test('missing or non-finite thirst stays below the marked tier without notifying
       simulatedSeconds: 60 + 45 * MINUTE,
     });
     assert.deepEqual(notifications, [], `${label}: must not notify`);
-    assert.deepEqual(written.sessions[sessionId].levels, levels(), `${label}: thirst water`);
+    assert.deepEqual(written.sessions[sessionId].levels, levels({ thirst: 3 }), `${label}: thirst water stays latched at fallback 50 mm`);
     assert.equal(written.sessions[sessionId].lastLevel, 1, `${label}: fallback stays below marked`);
     assert.equal(written.sessions[sessionId].lastSentAt, 60, `${label}: must not send`);
     assertJsonSafe(written);

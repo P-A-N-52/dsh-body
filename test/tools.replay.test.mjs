@@ -48,3 +48,53 @@ test('cola replay records energy intake and the design interoception readout', (
     'ghrelin should recover as distension and nutrient exposure fade',
   );
 });
+
+test('manifest replay runs the full 38-script water scenario without fatal operation errors', () => {
+  const output = execFileSync(
+    process.execPath,
+    ['tools/replay.mjs', '--manifest', 'body-modules.json', 'scenarios/m1-water-240.json'],
+    { cwd: root, encoding: 'utf8' },
+  );
+  const result = JSON.parse(output);
+  assert.equal(result.scenario, 'm1-water-240');
+  assert.equal(result.actionLagRounds, 1);
+  assert.deepEqual(result.manifest, { path: 'body-modules.json', scriptCount: 38 });
+
+  const start = result.observations.find((entry) => entry.simMin === 0);
+  const atThirty = result.observations.find((entry) => entry.simMin === 30);
+  const atNinety = result.observations.find((entry) => entry.simMin === 90);
+  assert.equal(start['stomach.volumeMl'], 35);
+  assert.ok(atThirty['bodyFluid.waterVolumeMl'] > start['bodyFluid.waterVolumeMl']);
+  assert.ok(atNinety['bodyFluid.waterVolumeMl'] > start['bodyFluid.waterVolumeMl']);
+  for (const entry of result.observations) {
+    assert.ok(
+      entry['thermoregulation.coreTemperatureC'] >= 36.5
+        && entry['thermoregulation.coreTemperatureC'] <= 37.5,
+      `expected coreTemperatureC near 37°C at simMin ${entry.simMin}, got ${entry['thermoregulation.coreTemperatureC']}`,
+    );
+  }
+});
+
+test('manifest replay defaults --manifest with no path to body-modules.json on the cola scenario', () => {
+  const output = execFileSync(
+    process.execPath,
+    ['tools/replay.mjs', '--manifest', 'scenarios/p1-cola-330.json'],
+    { cwd: root, encoding: 'utf8' },
+  );
+  const result = JSON.parse(output);
+  assert.equal(result.scenario, 'p1-cola-330');
+  assert.equal(result.actionLagRounds, 1);
+  assert.deepEqual(result.manifest, { path: 'body-modules.json', scriptCount: 38 });
+
+  const start = result.observations.find((entry) => entry.simMin === 0);
+  const atNinety = result.observations.find((entry) => entry.simMin === 90);
+  assert.equal(start['stomach.volumeMl'], 0);
+  assert.ok(atNinety['bodyFluid.waterVolumeMl'] > start['bodyFluid.waterVolumeMl']);
+  for (const entry of result.observations) {
+    assert.ok(
+      entry['thermoregulation.coreTemperatureC'] >= 36.5
+        && entry['thermoregulation.coreTemperatureC'] <= 37.5,
+      `expected coreTemperatureC near 37°C at simMin ${entry.simMin}, got ${entry['thermoregulation.coreTemperatureC']}`,
+    );
+  }
+});

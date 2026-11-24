@@ -18,7 +18,7 @@
       "status": "design",
       "range": [0, 1],
       "source": null,
-      "note": "本轮未吸收的轮初肠水中转入结肠残渣池的比例；0.05 是工程假设，不是结肠转运时间、粪便水实测值或吸收分数。residue = 该值 × max(0, 轮初肠水 − 本轮吸收水)，转给 colon.residueWaterMl；range 是工程调参范围"
+      "note": "离开小肠水通量中分流至结肠残渣池的比例；0.05 是工程假设，不是结肠转运时间、粪便水实测值或吸收分数。按通量比例分流 residue = min(max(0, 轮初肠水 − 本轮吸收水), 本轮吸收水 × f / (1 − f))，累计约 5% 转给 colon.residueWaterMl、95% 吸收进 bodyFluid；range 是工程调参范围"
     },
     {
       "id": "smallIntestine.carbohydrateAbsorption.halfTimeMin",
@@ -32,20 +32,20 @@
     {
       "id": "smallIntestine.waterAbsorptionDehydrationFactor",
       "unit": "1",
-      "value": 0.5,
+      "value": 0.1,
       "status": "design",
       "range": [0, 1],
       "source": null,
-      "note": "waterFactor = 1 − factor × clamp(bodyFluid.waterDeficit, 0, 1)；满亏缺时水吸收减半。工程假设，不是脱水-肠吸收的人体测量"
+      "note": "waterFactor = max(0, 1 + factor × clamp(bodyFluid.waterDeficit, 0, 1))；脱水时不抑制反而温和维持/略促进小肠吸水。工程假设，不是脱水-肠吸收的人体测量"
     },
     {
       "id": "smallIntestine.carbAbsorptionInsulinGain",
       "unit": "1",
-      "value": 0.2,
+      "value": 0,
       "status": "design",
       "range": [0, 1],
       "source": null,
-      "note": "carbFactor 中 (pancreasEndocrine.insulinRelative − 1) 的权重；胰岛素相对值升高时碳水吸收增加。工程假设，不是胰岛素-吸收实测斜率"
+      "note": "carbFactor 中 (pancreasEndocrine.insulinRelative − 1) 的权重；肠腔 SGLT1 碳水吸收不依赖胰岛素，故默认 0（保留参数 ID 兼容）。工程假设，不是胰岛素-吸收实测斜率"
     },
     {
       "id": "smallIntestine.carbAbsorptionGradientGain",
@@ -54,7 +54,7 @@
       "status": "design",
       "range": [0, 1],
       "source": null,
-      "note": "carbFactor 中 (glucose.concentrationMgDl / 90 − 1) 的权重；90 mg/dL 是硬编码参考浓度。工程假设，不是浓度梯度-吸收实测斜率"
+      "note": "carbFactor 中负反馈项 −factor × (glucose.concentrationMgDl / 90 − 1) 的权重；血糖升高降低肠腔到血液的浓度梯度从而减缓吸收，90 mg/dL 是硬编码参考浓度。工程假设，不是浓度梯度-吸收实测斜率"
     }
   ]
 }

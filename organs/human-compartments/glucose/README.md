@@ -4,7 +4,7 @@
 
 `glucose` 接收小肠吸收的可消化葡萄糖当量碳水，维护一个“血浆 + 快速平衡组织”的可及池质量，并把轮初质量换算为血浆葡萄糖浓度代理。它只做三件事：持有血池、计算自身残余清除、按入口给出的顺序结算各部位上一轮写出的摄糖请求。正常入口 `glucose.ts` 固定“肾 → 肝 → 肌”三汇；女性变体 `glucose.female.ts` 在末位追加 `mammaryGlands.lactoseG`（乳汁乳糖），只用于 `body-modules.female.json`。超基线部分 `excessMassG = max(0, glucoseMassG − baselineMassG)` 由本隔室每轮写出，供骨骼肌与肝各自按自己的参数（最大速率、半饱和量、胰岛素敏感度；肝另有容量）计算请求；实际到账量分别写入 `muscleGlucose.uptakeG` 与 `liver.storageG`。总清除量是各部位响应的涌现结果，不由单一清除半时决定。低于基线时，`liver` 可把肝糖原经 transfer 转回 `glucoseMassG`，由真实存量补回而非保持原质量；`kidneyGluconeogenesis` 也可按自身速率上限转入产糖，两者并行、各自独立受各自阈值驱动。它位于 `organs/human-compartments/glucose/`，不是独立解剖器官，也不是完整糖代谢、胰岛素浓度或胰高血糖素模型。
 
-实现状态：`glucose-core.ts`、正常入口 `glucose.ts`、女性变体 `glucose.female.ts`、参数、证据笔记、单元测试和真实 Gateway 测试已落地。根清单当前为 36 个部位、35 份参数文件，女性清单为 39 个部位、38 份参数文件，男性清单为 38 个部位、37 份参数文件。胰腺相对的胰岛素/胰高血糖素信号、肾糖请求、肌摄糖、肝糖原储存/释放、肾糖异生产糖与女性乳糖汇已接入；`muscleGlucose` 的自主摄糖请求、按区域份额分配与三个区域的糖原入账/运动消耗见[骨骼肌 README](../../human-organs/skeletal-muscle/README.md)与[区域 README](../../human-organs/skeletal-muscle/regions/README.md)，肝的自主储存请求、糖原存量与释放见[肝 README](../../human-organs/liver/README.md)，乳腺请求见[乳腺 README](../../human-organs/mammary-glands/README.md)。尚未做真实 DSH 会话验收或独立生理数据验证。
+实现状态：`glucose-core.ts`、正常入口 `glucose.ts`、女性变体 `glucose.female.ts`、参数、证据笔记、单元测试和真实 Gateway 测试已落地。根清单当前为 38 个部位、34 份唯一参数文件，女性清单为 41 个部位、37 份参数文件，男性清单为 40 个部位、36 份参数文件。胰腺相对的胰岛素/胰高血糖素信号、肾糖请求、肌摄糖、肝糖原储存/释放、肾糖异生产糖与女性乳糖汇已接入；`muscleGlucose` 的自主摄糖请求、按区域份额分配与三个区域的糖原入账/运动消耗见[骨骼肌 README](../../human-organs/skeletal-muscle/README.md)与[区域 README](../../human-organs/skeletal-muscle/regions/README.md)，肝的自主储存请求、糖原存量与释放见[肝 README](../../human-organs/liver/README.md)，乳腺请求见[乳腺 README](../../human-organs/mammary-glands/README.md)。尚未做真实 DSH 会话验收或独立生理数据验证。
 
 ## 1. 脚本与读写关系
 
@@ -16,7 +16,7 @@
 
 `glucoseMassG` 声明 `transferIn: ["smallIntestine.carbohydrateG", "liver.glycogenG", "kidneyGluconeogenesis.glucoseOutputG"]`；正常入口的 `transferOut` 为 `["kidneyGlucose.excretedGlucoseG", "liver.storageG", "muscleGlucose.uptakeG"]`，女性变体末位再加 `mammaryGlands.lactoseG`。出口目标与入口来源都必须声明。`liver.glycogenG → glucose.glucoseMassG` 的释放由 `liver` 发起，`kidneyGluconeogenesis.glucoseOutputG → glucose.glucoseMassG` 由肾糖异生部位发起，其余三笔（女性变体为四笔）由本隔室发起。Gateway 先应用 write，再把本轮 transfer 按 transfer 对键排序后逐笔应用（`gateway/operations.js:206`）；正常入口的三个出口等价于目标名顺序 `kidneyGlucose.excretedGlucoseG` → `liver.storageG` → `muscleGlucose.uptakeG`，女性变体的金额按“肾 → 肝 → 肌 → 乳腺”钳位，Gateway 的键排序只改变扣减顺序，不改变金额。同一清单不能同时加载 `glucose.ts` 与 `glucose.female.ts`。
 
-完整清单中加载 glucose 时必须同时加载小肠、`liver`、`kidneyGluconeogenesis` 与 `muscleGlucose`；`kidneyGlucose` 是可选汇，但完整清单会加载它。小肠的水与碳水 transfer 又要求胃水链入口、`bodyFluid`、`bladder`、[`skin`](../../human-organs/skin/README.md) 与 [`lungs`](../../human-organs/lungs/README.md) 都在清单中（`bodyFluid.waterVolumeMl` 按肾→肺→汗的顺序向膀胱、肺与皮肤三个出口分配轮初水），因此根清单完整硬 transfer 闭包为十一部位：`hydration.ts`、`smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGlucose`、`kidneyGluconeogenesis`、`muscleGlucose`、`skin`、`lungs`；女性清单再加 `uterus` 与 `mammaryGlands`，为 13 部位。不能只取本隔室单独运行。[`physicalActivity`](../../human-organs/skeletal-muscle/README.md) 只是 `muscleGlucose`、`skin` 与 `lungs` 的普通轮初读取，不在闭包内。
+完整清单中加载 glucose 时必须同时加载小肠、`liver`、`kidneyGluconeogenesis` 与 `muscleGlucose`；`kidneyGlucose` 是可选汇，但完整清单会加载它。小肠的水与碳水 transfer 又要求胃水链入口、`colon`、`bodyFluid`、`bladder`、[`skin`](../../human-organs/skin/README.md) 与 [`lungs`](../../human-organs/lungs/README.md) 都在清单中（`bodyFluid.waterVolumeMl` 按肾→肺→汗的顺序向膀胱、肺与皮肤三个出口分配轮初水），同时 `muscleGlucose` 声明三个骨骼肌区域，因此根与男性清单完整硬 transfer 闭包为 15 部位：`hydration.ts`、`smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGlucose`、`kidneyGluconeogenesis`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、`skin`、`lungs`；女性清单再加 `uterus` 与 `mammaryGlands`，为 17 部位。不能只取本隔室单独运行。[`physicalActivity`](../../human-organs/skeletal-muscle/README.md) 只是 `muscleGlucose`、`skin` 与 `lungs` 的普通轮初读取，不在闭包内。
 
 正常入口只读三个请求字段，女性变体另读第四个 `mammaryGlands.lactoseRequestG`；两者都不读 `pancreasEndocrine`，也不读肝容量或存量：残余清除与胰岛素信号无关，肝容量钳位由 `liver` 自己完成。`pancreasEndocrine` 是 `liver` 与 `muscleGlucose` 的软读取：缺失时两部位按 `insulinRelative = 1` 计算请求；`glucagonRelative` 由 `liver` 与 `kidneyGluconeogenesis` 读取。`muscleGlucose` 与 `liver` 读轮初 `excessMassG` 和 `insulinRelative`，写出本轮请求，本隔室下一轮结算；`mammaryGlands` 读轮初 `prolactinRelative` 写 `lactoseRequestG`。已加载的请求部位在旧档补齐后仍缺字段、非数值、非有限或为负时抛错，不用 0 或参考值掩盖。缺 `liver` 或 `muscleGlucose` 部位时启动报错（transfer 配对不完整），不做“无请求”回退；`kidneyGlucose` 与 `mammaryGlands` 是可选汇，未加载时按 0。
 
@@ -28,7 +28,7 @@
 | --- | --- | --- |
 | `glucoseMassG` | `g` | 轮末可及池总质量，含基础量；不是血浆内实际质量或直接测得的全身葡萄糖 |
 | `concentrationMgDl` | `mg/dL` | 用**轮初**质量计算的血浆葡萄糖浓度代理读数 |
-| `disposedGlucoseG` | `g` | 本轮 `glucose` 自身残余清除（脑/红细胞等非器官组织的表观清除），按 `residualDisposalHalfTimeMin` 计算；不是累计量，不包含肾糖、肝储存或肌摄糖 |
+| `disposedGlucoseG` | `g` | 本轮 `glucose` 自身基础消耗与超基线残余清除之和（脑/红细胞等非器官组织的表观利用，按 `basalConsumptionGPerMin` 与 `residualDisposalHalfTimeMin` 计算）；不是累计量，不包含肾糖、肝储存或肌摄糖 |
 | `excessMassG` | `g` | `max(0, 轮初 glucoseMassG − baselineMassG)`，供各摄糖部位计算请求的只读信号；不是质量通量，不进入质量账，只有本隔室写 |
 
 `kidneyGlucose.excretedGlucoseG` 由 transfer 单独记录实际肾糖排泄，不并入 `disposedGlucoseG`。`muscleGlucose` 的四个字段不属于本隔室：`uptakeRequestG` 是本轮请求（不是实际通量），`uptakeG` 是 `glucoseMassG` 的 transfer 目标、接收实际支付的 `U_paid` 并在下一轮入账，`glycogenG` 是肌糖原存量，`glycogenConsumedG` 是每轮运动消耗通量。`liver` 的五个字段也不属于本隔室：`storageRequestG` 是本轮储存请求（不是实际通量），`storageG` 是 `glucoseMassG` 的 transfer 目标、接收实际支付的 `L_paid` 并在下一轮并入存量，`glycogenG` 是肝糖原存量，也是 `glucoseMassG.transferIn` 的来源，`glycogenCapacityG` 是容量字段（由 `liver` 自己用于钳制请求），`outputG` 是肝本轮实际释放记录、不进质量账。`kidneyGluconeogenesis.glucoseOutputG` 是 `glucoseMassG` 的另一 transfer 来源，记录本轮肾糖异生产糖并在结算时全部转入血糖；它是通量，不是请求或累计量。`mammaryGlands.lactoseG` 是女性变体的 `glucoseMassG` transfer 目标，接收实际支付的 `G_paid`；`lactoseRequestG` 是请求字段，不进入质量账。请求字段不进入质量账；只有实际到账的 `uptakeG`、`storageG`、`excretedGlucoseG` 与（女性变体）`mammaryGlands.lactoseG` 才代表质量转移。
@@ -42,16 +42,20 @@
 | `glucose.referenceBodyMassKg` | 75 | `kg` | `design` | 未建个体体重；未来由身体预设/个体输入替换 |
 | `glucose.distributionVolumeDlPerKg` | 1.88 | `dL/kg` | `design` | `SRC-DALLAMAN-2007`；未来由更完整分布模型替换 |
 | `glucose.baselineConcentrationMgDl` | 90 | `mg/dL` | `design` | 工程基线；未来由个体基线替换 |
-| `glucose.residualDisposalHalfTimeMin` | 60 | `min` | `design` | `source: null`；仅用于本隔室自身残余清除（脑/红细胞等，与胰岛素无关），不随 `insulinRelative` 缩放；不是组织利用总清除半时，未来由更完整的非器官组织清除模型替换 |
+| `glucose.residualDisposalHalfTimeMin` | 60 | `min` | `design` | `source: null`；仅用于本隔室自身超基线残余清除（与胰岛素无关），不随 `insulinRelative` 缩放；不是组织利用总清除半时，未来由更完整的非器官组织清除模型替换 |
+| `glucose.basalConsumptionGPerMin` | 0.12 | `g/min` | `design` | `source: null`；非胰岛素依赖的基础葡萄糖消耗速率（约 172.8 g/d，对应脑与红细胞等利用），在 `< 50 mg/dL` 时按比例平滑衰减以防变负，空腹 90 mg/dL 下与肝 `0.096` + 肾 `0.024 g/min` 精确平衡 |
 
-原 `glucose.apparentDisposalHalfTimeMin` 已更名为 `residualDisposalHalfTimeMin`，值仍为 60；语义从“全体表观清除”收窄为“本隔室自身残余清除”。本隔室没有摄糖速率参数；肌肉与肝的摄糖效率由各自参数文件里的 `maxUptakeRateGPerMin`、`halfMaxExcessG` 与 `insulinSensitivity` 决定（肝另有 `glycogenCapacityG`），`glucose` 只按它们的请求结算。
+原 `glucose.apparentDisposalHalfTimeMin` 已更名为 `residualDisposalHalfTimeMin`，值仍为 60；语义从“全体表观清除”收窄为“本隔室自身超基线残余清除”，并与 `basalConsumptionGPerMin = 0.12 g/min` 共同构成 `disposedGlucoseG`。本隔室没有摄糖速率参数；肌肉与肝的摄糖效率由各自参数文件里的 `maxUptakeRateGPerMin`、`halfMaxExcessG` 与 `insulinSensitivity` 决定（肝另有 `glycogenCapacityG`），`glucose` 只按它们的请求结算。
 
 ```text
 V = 75 × 1.88 = 141 dL
 B = 90 × 141 / 1000 = 12.69 g
 M = max(0, 轮初 glucoseMassG)
-E = max(0, M − B)                                        （写 excessMassG）
-D = E × (1 − 2^(−dtMin / residualDisposalHalfTimeMin))   （自身残余清除，不按 I 缩放）
+C = M × 1000 / V                                           （写 concentrationMgDl）
+E = max(0, M − B)                                          （写 excessMassG）
+basalDisposed = min(M, basalConsumptionGPerMin × dtMin × clamp(C / 50, 0, 1))
+excessDisposed = E × (1 − 2^(−dtMin / residualDisposalHalfTimeMin))
+D = min(M, basalDisposed + excessDisposed)                 （写 disposedGlucoseG）
 M_after = M − D
 R = 轮初 kidneyGlucose.excretionRequestG（未加载按 0）
 X = min(max(0, R), M_after)                              （肾糖）
@@ -62,19 +66,19 @@ U_paid = min(max(0, U_req), M_after − X − L_paid)        （肌摄糖）
 [女性变体] G_req = 轮初 mammaryGlands.lactoseRequestG（未加载按 0）
 [女性变体] G_paid = min(max(0, G_req), M_after − X − L_paid − U_paid) （乳汁乳糖）
 W = M_after                                              （write 值，转移前质量）
-concentrationMgDl = M × 1000 / V
-write { glucoseMassG: W, concentrationMgDl, disposedGlucoseG: D, excessMassG: E }
+write { glucoseMassG: W, concentrationMgDl: C, disposedGlucoseG: D, excessMassG: E }
 transfer（write 后逐笔结算）：
   glucose.glucoseMassG → kidneyGlucose.excretedGlucoseG: X
   glucose.glucoseMassG → liver.storageG: L_paid
   glucose.glucoseMassG → muscleGlucose.uptakeG: U_paid
   [女性变体] glucose.glucoseMassG → mammaryGlands.lactoseG: G_paid
   liver.glycogenG → glucose.glucoseMassG: release（由 liver 发起）
+  kidneyGluconeogenesis.glucoseOutputG → glucose.glucoseMassG: output（由 kidneyGluconeogenesis 发起）
 ```
 
-结算顺序“肾 → 肝 → 肌 → [乳腺]”是 `policy`。正常入口与 Gateway 的 transfer 对键排序一致；女性变体的金额按 `G_paid` 最后钳位，Gateway 的键排序只改变扣减顺序，不改变金额。每个请求都由对应部位在上一轮按自身输入计算：肌肉请求受最大速率、半饱和与敏感度约束，肝请求先按同一形式计算、再由 `liver` 自己钳到剩余容量，乳腺请求由 `mammaryGlands` 按轮初催乳素与乳汁水请求计算。`glucose` 不重新计算组织请求，也不读取肝容量；余额不足时按上述顺序依次钳位，后结算者拿到较少或 0，不会产生负质量。
+结算顺序“肾 → 肝 → 肌 → [乳腺]”是 `policy`。正常入口与 Gateway 的 transfer 对键排序一致；女性变体的金额按 `G_paid` 最后钳位，Gateway 的键排序只改变扣减顺序，不改变金额。每个请求都由对应部位在上一轮按自身输入计算：肌肉请求受最大速率、半饱和、胰岛素敏感度与运动摄糖约束，肝请求先按同一胰岛素依赖形式计算、再由 `liver` 自己钳到剩余容量，乳腺请求由 `mammaryGlands` 按轮初催乳素与乳汁水请求计算。`glucose` 不重新计算组织请求，也不读取肝容量；余额不足时按上述顺序依次钳位，后结算者拿到较少或 0，不会产生负质量。
 
-`D` 只表示本隔室自身残余清除，始终 `0 ≤ D ≤ E`；它不是组织摄糖总量，也不随 `insulinRelative` 变化。`X`、`L_paid`、`U_paid`、`G_paid` 都是实际支付量，各自被轮初请求和可用余额钳制。write 的 `W = M_after` 是只扣自身残余清除后的转移前质量，不含各笔支付；Gateway 在 write 之后才按 transfer 逐笔扣减，因此提交后的池质量（同轮肝释放之前）为 `W − X − L_paid − U_paid − G_paid = M_after − X − L_paid − U_paid − G_paid`。
+`D` 只表示本隔室自身基础利用与残余清除之和，始终 `0 ≤ D ≤ M`；它不是组织摄糖总量，也不随 `insulinRelative` 变化。空腹基线（90 mg/dL）时 `basalDisposed = 0.12 × dtMin`，与肝基础释放（`0.096 g/min`）和肾糖异生基础输出（`0.024 g/min`）合计 `0.120 g/min` 精确平衡，使空腹血糖稳态维持在约 90 mg/dL；低于 50 mg/dL 时基础消耗按 `C / 50` 线性软化以防止池质量变负。`X`、`L_paid`、`U_paid`、`G_paid` 都是实际支付量，各自被轮初请求和可用余额钳制。write 的 `W = M_after` 是只扣自身清除后的转移前质量，不含各笔支付；Gateway 在 write 之后才按 transfer 逐笔扣减，因此提交后的池质量（同轮肝/肾产出之前）为 `W − X − L_paid − U_paid − G_paid = M_after − X − L_paid − U_paid − G_paid`。
 
 质量账（不含同轮肝释放）：`M_start = M_final + X + (D + L_paid + U_paid + G_paid)`，其中 `M_final` 是全部出口结算后的池质量。若本轮 `liver` 发起释放，释放量从 `liver.glycogenG` 转入 `glucoseMassG`，池质量在 `M_final` 之上再加 `release`；这部分已由外源碳水质量账的肝糖原项体现，不在本隔室的“自身清除”里重复计算。外源碳水质量账各项（肌肉糖原、在途摄取、累计消耗、肝糖原差值、在途储存）保持不变，女性变体另加累计乳汁乳糖，见 §5。
 

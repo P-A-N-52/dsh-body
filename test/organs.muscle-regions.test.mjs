@@ -6,9 +6,9 @@ import * as limbs from '../organs/human-organs/skeletal-muscle/regions/limbs.ts'
 import * as trunk from '../organs/human-organs/skeletal-muscle/regions/trunk.ts';
 
 const regions = [
-  ['head', 'muscleHead', head],
-  ['trunk', 'muscleTrunk', trunk],
-  ['limbs', 'muscleLimbs', limbs],
+  ['head', 'muscleHead', head, 0.05, 15],
+  ['trunk', 'muscleTrunk', trunk, 0.45, 135],
+  ['limbs', 'muscleLimbs', limbs, 0.5, 150],
 ];
 
 function regionRound(regionModule, { state, activity, dt = 60, simulatedSeconds = 60 } = {}) {
@@ -39,7 +39,7 @@ function assertClose(actual, expected, label, tolerance = 1e-12) {
 }
 
 test('each region exports its own uptake, glycogen and consumption contract', () => {
-  for (const [label, expectedId, regionModule] of regions) {
+  for (const [label, expectedId, regionModule, , initialGlycogenG] of regions) {
     assert.equal(regionModule.id, expectedId, label);
     assert.deepEqual(regionModule.actionTypes, [], label);
     assert.deepEqual(regionModule.fields, {
@@ -53,14 +53,14 @@ test('each region exports its own uptake, glycogen and consumption contract', ()
     }, label);
     assert.deepEqual(regionModule.initialState, {
       uptakeG: 0,
-      glycogenG: 0,
+      glycogenG: initialGlycogenG,
       glycogenConsumedG: 0,
     }, label);
 
     const { written } = regionRound(regionModule);
     assert.deepEqual(written, {
       uptakeG: 0,
-      glycogenG: 0,
+      glycogenG: initialGlycogenG,
       glycogenConsumedG: 0,
     }, label);
   }
@@ -79,23 +79,26 @@ test('each region books the previous uptake into its own glycogen and zeroes the
   }
 });
 
-test('exercise consumes glycogen at the shared rate times intensity and dt', () => {
-  for (const [label, , regionModule] of regions) {
+test('exercise consumes glycogen at the share-scaled rate times intensity and dt', () => {
+  let totalOneMinConsumedG = 0;
+  for (const [label, , regionModule, share] of regions) {
+    const rate = 0.5 * share;
     const oneMinute = regionRound(regionModule, {
       state: { uptakeG: 0, glycogenG: 10 },
       activity: active(30, 1),
       dt: 60,
     });
-    assertClose(oneMinute.written.glycogenConsumedG, 0.5, `${label}: one minute`);
-    assertClose(oneMinute.written.glycogenG, 9.5, `${label}: glycogen after one minute`);
+    assertClose(oneMinute.written.glycogenConsumedG, rate, `${label}: one minute`);
+    assertClose(oneMinute.written.glycogenG, 10 - rate, `${label}: glycogen after one minute`);
+    totalOneMinConsumedG += oneMinute.written.glycogenConsumedG;
 
     const twoMinutes = regionRound(regionModule, {
       state: { uptakeG: 0, glycogenG: 10 },
       activity: active(30, 1),
       dt: 120,
     });
-    assertClose(twoMinutes.written.glycogenConsumedG, 1, `${label}: two minutes`);
-    assertClose(twoMinutes.written.glycogenG, 9, `${label}: glycogen after two minutes`);
+    assertClose(twoMinutes.written.glycogenConsumedG, 2 * rate, `${label}: two minutes`);
+    assertClose(twoMinutes.written.glycogenG, 10 - 2 * rate, `${label}: glycogen after two minutes`);
 
     const halfMinuteLeft = regionRound(regionModule, {
       state: { uptakeG: 0, glycogenG: 10 },
@@ -104,7 +107,7 @@ test('exercise consumes glycogen at the shared rate times intensity and dt', () 
     });
     assertClose(
       halfMinuteLeft.written.glycogenConsumedG,
-      0.5,
+      rate,
       `${label}: the last partial minute still consumes the whole dt`,
     );
 
@@ -113,19 +116,21 @@ test('exercise consumes glycogen at the shared rate times intensity and dt', () 
       activity: active(30, 0.5),
       dt: 60,
     });
-    assertClose(scaled.written.glycogenConsumedG, 0.25, `${label}: intensity 0.5 halves the rate`);
+    assertClose(scaled.written.glycogenConsumedG, 0.5 * rate, `${label}: intensity 0.5 halves the rate`);
   }
+  assertClose(totalOneMinConsumedG, 0.5, 'sum across all three regions equals 0.5 g/min');
 });
 
 test('the same round books uptake and consumes from the combined available pool', () => {
-  for (const [label, , regionModule] of regions) {
+  for (const [label, , regionModule, share] of regions) {
+    const rate = 0.5 * share;
     const { written } = regionRound(regionModule, {
       state: { uptakeG: 1.2, glycogenG: 10 },
       activity: active(30, 1),
       dt: 60,
     });
-    assertClose(written.glycogenConsumedG, 0.5, `${label}: consumption`);
-    assertClose(written.glycogenG, 10.7, `${label}: 10 + 1.2 - 0.5`);
+    assertClose(written.glycogenConsumedG, rate, `${label}: consumption`);
+    assertClose(written.glycogenG, 10 + 1.2 - rate, `${label}: 10 + 1.2 - rate`);
     assert.equal(written.uptakeG, 0, `${label}: uptake flux resets`);
   }
 });
@@ -133,19 +138,19 @@ test('the same round books uptake and consumes from the combined available pool'
 test('consumption is clamped to the glycogen available this round', () => {
   for (const [label, , regionModule] of regions) {
     const lowGlycogen = regionRound(regionModule, {
-      state: { uptakeG: 0, glycogenG: 0.2 },
+      state: { uptakeG: 0, glycogenG: 0.01 },
       activity: active(30, 1),
       dt: 60,
     });
-    assertClose(lowGlycogen.written.glycogenConsumedG, 0.2, `${label}: only the stored glycogen`);
+    assertClose(lowGlycogen.written.glycogenConsumedG, 0.01, `${label}: only the stored glycogen`);
     assert.equal(lowGlycogen.written.glycogenG, 0, label);
 
     const uptakeOnly = regionRound(regionModule, {
-      state: { uptakeG: 0.4, glycogenG: 0 },
+      state: { uptakeG: 0.015, glycogenG: 0 },
       activity: active(30, 1),
       dt: 60,
     });
-    assertClose(uptakeOnly.written.glycogenConsumedG, 0.4, `${label}: uptake can pay consumption`);
+    assertClose(uptakeOnly.written.glycogenConsumedG, 0.015, `${label}: uptake can pay consumption`);
     assert.equal(uptakeOnly.written.glycogenG, 0, label);
   }
 });

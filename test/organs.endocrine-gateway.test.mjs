@@ -85,20 +85,20 @@ test('seeded high TSH raises T4, raises basal oxygen demand and pulls TRH/TSH ba
   assert.ok(first.thyroid.thyroxineRelative > 1, 'TSH must raise T4');
   assert.equal(
     first.bloodOxygen.oxygenConsumptionMlMin,
-    250 * (0.8 + 0.4),
+    250 * (0.6 + 0.4),
     'the oxygen consumer still sees the round-start T4 baseline',
   );
 
   await gateway.tick();
   const second = gateway.getState().parts;
-  const expectedDemandMlMin = 250 * (0.8 + 0.4 * first.thyroid.thyroxineRelative);
+  const expectedDemandMlMin = 250 * (0.6 + 0.4 * first.thyroid.thyroxineRelative);
   assert.ok(second.thyroid.thyroxineRelative > 1, 'T4 must stay above baseline');
   assert.ok(
     Math.abs(second.bloodOxygen.oxygenConsumptionMlMin - expectedDemandMlMin) < 1e-9,
     `basal demand ${second.bloodOxygen.oxygenConsumptionMlMin} != ${expectedDemandMlMin}`,
   );
   assert.ok(
-    second.bloodOxygen.oxygenConsumptionMlMin > 250 * (0.8 + 0.4),
+    second.bloodOxygen.oxygenConsumptionMlMin > 250 * (0.6 + 0.4),
     'higher T4 must raise basal oxygen demand',
   );
   assert.ok(
@@ -199,4 +199,34 @@ test('restarting on the same state path continues the HPT axis', async (t) => {
     Math.abs(after.parts.thyroid.thyroxineRelative - expectedT4) < 1e-12,
     `T4 ${after.parts.thyroid.thyroxineRelative} != ${expectedT4}`,
   );
+});
+
+test('resting baseline keeps HPT/HPA at 1.0 while cold and hypoglycemia activate TRH and CRH', async (t) => {
+  const restingBody = await startBody(t);
+  const resting = await restingBody.start();
+  await resting.tick();
+  const restingParts = resting.getState().parts;
+  assert.equal(restingParts.hypothalamusEndocrine.trhRelative, 1);
+  assert.equal(restingParts.hypothalamusEndocrine.crhRelative, 1);
+  assert.equal(restingParts.pituitary.tshRelative, 1);
+  assert.equal(restingParts.pituitary.acthRelative, 1);
+  assert.equal(restingParts.thyroid.thyroxineRelative, 1);
+  assert.equal(restingParts.adrenal.cortisolRelative, 1);
+
+  const stressedBody = await startBody(t, {
+    parts: {
+      thermoregulation: { coreTemperatureC: 35 },
+      glucose: {
+        glucoseMassG: 8.46,
+        concentrationMgDl: 60,
+        disposedGlucoseG: 0,
+        excessMassG: 0,
+      },
+    },
+  });
+  const stressed = await stressedBody.start();
+  await stressed.tick();
+  const stressedParts = stressed.getState().parts;
+  assert.ok(stressedParts.hypothalamusEndocrine.trhRelative > 1, 'cold raises TRH');
+  assert.ok(stressedParts.hypothalamusEndocrine.crhRelative > 1, 'hypoglycemia raises CRH');
 });

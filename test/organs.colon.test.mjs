@@ -72,7 +72,7 @@ test('the colon parameters are design placeholders with no source', () => {
   ));
   const byId = Object.fromEntries(data.parameters.map((parameter) => [parameter.id, parameter]));
   for (const [parameterId, value, unit] of [
-    ['colon.reclamationRatePerMin', 0.001, '1/min'],
+    ['colon.reclamationRatePerMin', 0.01, '1/min'],
     ['colon.stoolFormationGPerMin', 0.01, 'g/min'],
     ['colon.referenceStoolG', 200, 'g'],
   ]) {
@@ -97,26 +97,36 @@ test('a missing saved part falls back to zero and transfers zero', () => {
   assert.deepEqual(transfers, [['colon', 'reclaimedWaterMl', 'bodyFluid', 'waterVolumeMl', 0]]);
 });
 
-test('one round reclaims 0.1% of the round-start residue and sends it to body fluid', () => {
+test('one round reclaims residue exponentially at 0.01/min and sends it to body fluid', () => {
   const { written, transfers } = round({ ...initialState, residueWaterMl: 1000 });
-  assertClose(written.residueWaterMl, 999, 'residue after reclaim');
-  assertClose(written.reclaimedWaterMl, 1, 'reclaimed');
+  const expectedReclaimed = 1000 * (1 - Math.exp(-0.01));
+  const expectedResidue = 1000 - expectedReclaimed;
+  assertClose(written.residueWaterMl, expectedResidue, 'residue after reclaim');
+  assertClose(written.reclaimedWaterMl, expectedReclaimed, 'reclaimed');
   assertClose(written.stoolG, 0.01, 'stool');
   assert.equal(written.defecatedG, 0);
   assertClose(written.bowelUrgencyMm, 0.005, 'urgency');
-  assert.deepEqual(transfers, [['colon', 'reclaimedWaterMl', 'bodyFluid', 'waterVolumeMl', 1]]);
+  assertClose(transfers[0][4], expectedReclaimed, 'transfer amount');
+  assert.deepEqual(transfers[0].slice(0, 4), ['colon', 'reclaimedWaterMl', 'bodyFluid', 'waterVolumeMl']);
 });
 
 test('reclaim is proportional to the round-start residue and never exceeds it', () => {
   const tiny = round({ ...initialState, residueWaterMl: 0.0005 });
-  assertClose(tiny.written.reclaimedWaterMl, 5e-7, 'tiny reclaimed');
-  assertClose(tiny.written.residueWaterMl, 0.0004995, 'tiny residue');
+  const tinyExpected = 0.0005 * (1 - Math.exp(-0.01));
+  assertClose(tiny.written.reclaimedWaterMl, tinyExpected, 'tiny reclaimed');
+  assertClose(tiny.written.residueWaterMl, 0.0005 - tinyExpected, 'tiny residue');
   assert.deepEqual(
     tiny.transfers,
-    [['colon', 'reclaimedWaterMl', 'bodyFluid', 'waterVolumeMl', 5e-7]],
+    [['colon', 'reclaimedWaterMl', 'bodyFluid', 'waterVolumeMl', tinyExpected]],
   );
 
-  const capped = round({ ...initialState, residueWaterMl: 0.0005 }, [], { dt: 120000 });
+  const longRound = round({ ...initialState, residueWaterMl: 0.0005 }, [], { dt: 120000 });
+  const longExpected = 0.0005 * (1 - Math.exp(-0.01 * 2000));
+  assertClose(longRound.written.reclaimedWaterMl, longExpected, 'long round reclaimed');
+  assertClose(longRound.written.residueWaterMl, 0.0005 - longExpected, 'long round residue');
+  assert.ok(longRound.written.reclaimedWaterMl <= 0.0005);
+
+  const capped = round({ ...initialState, residueWaterMl: 0.0005 }, [], { dt: 60 * 10000 });
   assertClose(capped.written.reclaimedWaterMl, 0.0005, 'capped reclaimed');
   assert.equal(capped.written.residueWaterMl, 0);
   assert.deepEqual(
@@ -259,6 +269,7 @@ test('reclaimed water flows into body fluid while incoming residue lands after t
 
   const start = { ...initialState, residueWaterMl: 1000 };
   const { written, transfers } = round(start);
+  const expectedReclaimed = 1000 * (1 - Math.exp(-0.01));
   const next = applyOperations({
     registry,
     snapshotParts: {
@@ -287,8 +298,8 @@ test('reclaimed water flows into body fluid while incoming residue lands after t
     ],
   });
 
-  assertClose(next.bodyFluid.waterVolumeMl, 30001, 'body fluid inflow');
-  assertClose(next.colon.residueWaterMl, 1004, 'residue after reclaim and inflow');
+  assertClose(next.bodyFluid.waterVolumeMl, 30000 + expectedReclaimed, 'body fluid inflow');
+  assertClose(next.colon.residueWaterMl, 1000 - expectedReclaimed + 5, 'residue after reclaim and inflow');
   assert.equal(next.colon.reclaimedWaterMl, 0);
   assertClose(next.smallIntestine.waterVolumeMl, 0, 'small intestine after transfer');
 });

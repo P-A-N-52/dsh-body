@@ -25,37 +25,38 @@
 ### Task 1: 聚合器改造（TDD）
 
 **Files:** Modify `organs/human-organs/skeletal-muscle/glucose-uptake.ts`（保留摄糖请求，改为聚合分配）、`test/organs.muscle-glucose.test.mjs`
-- [ ] Step 1: 失败测试（`uptakeG` 按 0.05/0.45/0.50 分配到三区域；`muscleGlucose` 不再持有 `glycogenG`；`glycogenConsumedG` 移到区域）。
-- [ ] Step 2: 运行预期失败。
-- [ ] Step 3: 实现聚合分配（`muscleGlucose.uptakeG.transferOut` 声明三区域，按份额 transfer；保留 `uptakeRequestG` 计算与 `uptakeG` 每轮归 0）。
-- [ ] Step 4: 运行预期通过。
+- [x] Step 1: 失败测试（`uptakeG` 按 0.05/0.45/0.50 分配到三区域；`muscleGlucose` 不再持有 `glycogenG`；`glycogenConsumedG` 移到区域）。
+- [x] Step 2: 运行预期失败。
+- [x] Step 3: 实现聚合分配（`muscleGlucose.uptakeG.transferOut` 声明三区域，按份额 transfer；保留 `uptakeRequestG` 计算与 `uptakeG` 每轮归 0）。
+- [x] Step 4: 运行预期通过。
 
 ### Task 2: 三个区域部位（TDD）
 
 **Files:** Create `organs/human-organs/skeletal-muscle/regions/head.ts`、`trunk.ts`、`limbs.ts` 与 `test/organs.muscle-regions.test.mjs`
-- [ ] Step 1: 失败测试（区域 `uptakeG` 到账入账、按活动消耗并钳到可用量、`physicalActivity` 未加载消耗 0、非法活动抛错、JSON-safe）。
-- [ ] Step 2: 运行预期失败。
-- [ ] Step 3: 实现（`uptakeG.transferIn: ['muscleGlucose.uptakeG']`、每轮归 0；`glycogenG`、`glycogenConsumedG` 字段与公式同旧单部位）。
-- [ ] Step 4: 运行预期通过。
+- [x] Step 1: 失败测试（区域 `uptakeG` 到账入账、按活动消耗并钳到可用量、`physicalActivity` 未加载消耗 0、非法活动抛错、JSON-safe）。
+- [x] Step 2: 运行预期失败。
+- [x] Step 3: 实现（`uptakeG.transferIn: ['muscleGlucose.uptakeG']`、每轮归 0；`glycogenG`、`glycogenConsumedG` 字段与公式同旧单部位）。
+- [x] Step 4: 运行预期通过。
 
 ### Task 3: 旧档迁移与独臂变体
 
 **Files:** Modify 迁移逻辑与清单变体（`organs/human-organs/skeletal-muscle/glucose-uptake.ts` 的 initialState/迁移路径、`body-modules*.json` 及变体）
-- [ ] Step 1: 失败测试（旧档只有总量时按份额分配到区域初值；独臂变体无 `muscleLimbs` 时启动正常且分配归一）。
-- [ ] Step 2: 运行预期失败。
-- [ ] Step 3: 实现迁移（旧档总量按 0.05/0.45/0.50 分配，在途 `uptakeG` 保留）与变体出口声明。
-- [ ] Step 4: 运行预期通过。
+- [x] Step 1: 失败测试（旧档只有总量时按份额分配到区域初值；独臂变体无 `muscleLimbs` 时启动正常且分配归一）。
+- [x] Step 2: 运行预期失败。
+- [x] Step 3: 实现迁移（旧档总量按 0.05/0.45/0.50 分配，在途 `uptakeG` 保留）与变体出口声明。
+- [x] Step 4: 运行预期通过。
 
 ### Task 4: 真实 Gateway 与文档
 
 **Files:** Create `test/organs.muscle-regions-gateway.test.mjs`、`organs/human-organs/skeletal-muscle/regions/README.md`；Modify `organs/human-organs/skeletal-muscle/README.md`、`docs/gateway-and-scripts.md`、`docs/virtual-body.md`、相关计数测试
-- [ ] Step 1: 真实 Gateway：餐后各区域糖原按份额上升、运动消耗发生在各区域、总量账与旧单部位一致；独臂变体可用；重启接续。
-- [ ] Step 2: 文档（区域机制、聚合分配、旧档迁移、独臂变体用法、未建模：疲劳/延迟酸痛/左右分区/绝对肌量/MET）。
-- [ ] Step 3: `npm test` 与 `git diff --check`。
+- [x] Step 1: 真实 Gateway：餐后各区域糖原按份额上升、运动消耗发生在各区域、总量账与旧单部位一致；独臂变体可用；重启接续。
+- [x] Step 2: 文档（区域机制、聚合分配、旧档迁移、独臂变体用法、未建模：疲劳/延迟酸痛/左右分区/绝对肌量/MET）。
+- [x] Step 3: `npm test` 与 `git diff --check`。
 
 ## 交付记录（2026-11-24）
 
-- **已实现：** `muscleGlucose` 由单一糖原库改为聚合分配器：按 `head 0.05 / trunk 0.45 / limbs 0.50` 把摄糖经 transfer 分配给 `muscleHead` / `muscleTrunk` / `muscleLimbs`（存在区域归一）。三个区域各自持有糖原并按轮初 `physicalActivity` 以 `0.5 g/min × intensity × dtMin` 消耗（`regions/region-core.ts` 共享逻辑）。`glucose-uptake.no-limbs.ts` 为独臂变体（缺 `muscleLimbs`，份额按剩余区域归一）。旧档总量按份额迁移到区域初值，在途 `uptakeG` 保留。根清单 32 部位 / 34 参数、女性 34 / 36。
-- **已验证：** 聚合与区域单元 21/21；真实 Gateway：各区域糖原按份额上升、运动消耗发生在各区域、总量与旧单部位一致、独臂变体可用、旧档按份额迁移、重启接续。`npm test` 772/772。
-- **仍未实现/未验证：** 肌群疲劳/延迟酸痛、左右小腿与皮肤分区、绝对肌量、MET、独立生理数据、真实 DSH 会话、32 部位性能。
+- **已实现：** `muscleGlucose` 由单一糖原库改为聚合分配器：按 `head 0.05 / trunk 0.45 / limbs 0.50` 把摄糖经 transfer 分配给 `muscleHead` / `muscleTrunk` / `muscleLimbs`（存在区域归一）。`glucose-uptake.no-limbs.ts` 为独臂变体。旧档总量按份额迁移到区域初值，在途 `uptakeG` 保留。当时根清单 32 部位（现 38 部位 / 34 份唯一参数）。
+- **P0 修正：** `regions/region-core.ts` 将区域消耗率按份额拆分为 `0.5 × regionShare`（三区合计 `0.5 g/min`，修正原 3 倍总消耗），初始糖原设为 `15 / 135 / 150 g`（合计 `300 g`）；`glucose-uptake-core.ts` 新增运动收缩非胰岛素依赖摄糖 `exerciseUptakeRateGPerMin = 0.15 g/min`。
+- **已验证：** 聚合与区域单元 21/21；真实 Gateway（`test/organs.muscle-regions-gateway.test.mjs`）与 `test/organs.steady-state-24h.test.mjs` 通过（`c134fd0` 合入时 `npm test` 772/772，P0 后 967/967）。
+- **仍未实现/未验证：** 肌群疲劳/延迟酸痛、左右小腿与皮肤分区、绝对肌量、MET、独立生理数据、真实 DSH 会话、性能基线。
 - **工作区：** 与男性生殖、消化反馈合入本地提交 `c134fd0`。

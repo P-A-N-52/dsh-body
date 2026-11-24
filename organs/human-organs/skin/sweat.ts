@@ -7,16 +7,17 @@
  * 设计来源：docs/superpowers/specs/2026-11-23-activity-sweat-design.md §4。无直接人体证据，
  * 也没有实测代谢、体温调节或最大出汗率模型。同目录 `sweat.parameters.json` 的参数全部为
  * `design`、`source: null`：25°C、intensity=1 的 0.6 mL/min 是工程参考，0.04/°C 是工程温度
- * 斜率，2 mL/min 是工程上限，25°C 是默认环境参数。它们不是 METs、热量、心率、核心/皮肤温度
+ * 斜率，15 mL/min 是工程上限，5 mL/(min·°C) 是热致出汗率增益，25°C 是默认环境参数。它们不是 METs、热量、心率、核心/皮肤温度
  * 或人体最大出汗率，不能称 validated。
  *
- * 请求公式（R > 0；R = 0 或活动缺失时请求 0）：
+ * 请求公式（静息高热也可触发出汗）：
  *   temperatureFactor = max(0, 1 + ambientGainPerC × (T − 25))
- *   rate = min(maxRateMlPerMin, referenceRateMlPerMin × I × temperatureFactor)
- *   heatFactor = 1 + heatGain × max(0, coreTemperatureC − 37)
- *   sweatRequestMl = rate × dtMin × heatFactor
+ *   exerciseRate = R > 0 ? referenceRateMlPerMin × I × temperatureFactor : 0
+ *   thermalRate = heatGain × max(0, coreTemperatureC − 37)
+ *   rate = min(maxRateMlPerMin, max(0, exerciseRate + thermalRate))
+ *   sweatRequestMl = rate × dtMin
  * 只读取轮初 `physicalActivity` 与轮初 `thermoregulation`；本轮新入队的活动下一轮才影响请求。
- * `thermoregulation` 未加载时 heatFactor = 1；已加载但 `coreTemperatureC` 缺失、非有限或
+ * `thermoregulation` 未加载时 `coreTemperatureC = 37`（thermalRate = 0）；已加载但 `coreTemperatureC` 缺失、非有限或
  * 非对象时抛错，不写状态。37°C 与 `thermoregulation.setpointC` 的设计默认值一致，皮肤侧
  * 只用 `heatGain` 一个参数，不复制设定点参数。活动部位存在但字段缺失、非有限、为负，或
  * intensity > 1 时抛错，不写状态。不建皮肤分区、温度、湿润度或蒸发残余。
@@ -87,14 +88,16 @@ export function sweatRequestMl({
   ambientTemperatureC: temperatureC,
   coreTemperatureC = thermoregulationSetpointC,
 }: SweatRequestInput): number {
-  if (!(remainingExerciseMin > 0)) return 0;
   const temperatureFactor = Math.max(0, 1 + ambientGainPerC * (temperatureC - referenceTemperatureC));
+  const exerciseRateMlPerMin = remainingExerciseMin > 0
+    ? referenceRateMlPerMin * intensity * temperatureFactor
+    : 0;
+  const thermalRateMlPerMin = heatGain * Math.max(0, coreTemperatureC - thermoregulationSetpointC);
   const rateMlPerMin = Math.min(
     maxRateMlPerMin,
-    referenceRateMlPerMin * intensity * temperatureFactor,
+    Math.max(0, exerciseRateMlPerMin + thermalRateMlPerMin),
   );
-  const heatFactor = 1 + heatGain * Math.max(0, coreTemperatureC - thermoregulationSetpointC);
-  return rateMlPerMin * dtMin * heatFactor;
+  return dtMin > 0 ? rateMlPerMin * dtMin : 0;
 }
 
 function requireFinite(value: unknown, name: string): number {
@@ -139,15 +142,13 @@ function readCoreTemperatureC(io: IO): number {
 export function heartbeat(io: IO): void {
   const activity = readActivity(io);
   const coreTemperatureC = readCoreTemperatureC(io);
-  const requestMl = activity
-    ? sweatRequestMl({
-        remainingExerciseMin: activity.remainingExerciseMin,
-        intensity: activity.intensity,
-        dtMin: io.dt / 60,
-        ambientTemperatureC,
-        coreTemperatureC,
-      })
-    : 0;
+  const requestMl = sweatRequestMl({
+    remainingExerciseMin: activity?.remainingExerciseMin ?? 0,
+    intensity: activity?.intensity ?? 0,
+    dtMin: io.dt / 60,
+    ambientTemperatureC,
+    coreTemperatureC,
+  });
 
   io.write({ sweatRequestMl: requestMl, sweatVolumeMl: 0 });
 }

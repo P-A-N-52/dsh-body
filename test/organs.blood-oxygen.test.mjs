@@ -137,43 +137,43 @@ test('thyroid T4 scales basal demand and a missing thyroid keeps the neutral fac
   assert.equal(round().written.oxygenConsumptionMlMin, 250, 'missing thyroid is neutral');
   assertClose(
     round({ thyroid: { thyroxineRelative: 0 } }).written.oxygenConsumptionMlMin,
-    200,
-    'T4 0 gives factor 0.8',
+    150,
+    'T4 0 gives factor 0.6',
   );
   assertClose(
     round({ thyroid: { thyroxineRelative: 0.5 } }).written.oxygenConsumptionMlMin,
-    250,
-    'T4 0.5 gives factor 1.0',
+    200,
+    'T4 0.5 gives factor 0.8',
   );
   assertClose(
     round({ thyroid: { thyroxineRelative: 1 } }).written.oxygenConsumptionMlMin,
-    300,
-    'T4 1 gives factor 1.2 by the design formula',
+    250,
+    'T4 1 gives factor 1.0 by the design formula',
   );
   assertClose(
     round({ thyroid: { thyroxineRelative: 2 } }).written.oxygenConsumptionMlMin,
-    400,
-    'T4 2 gives factor 1.6',
+    350,
+    'T4 2 gives factor 1.4',
   );
   assertClose(
     round({ thyroid: { thyroxineRelative: 3 } }).written.oxygenConsumptionMlMin,
-    500,
-    'T4 3 gives factor 2.0',
+    450,
+    'T4 3 gives factor 1.8',
   );
 
   const active = round({
     activity: { remainingExerciseMin: 10, intensity: 1 },
     thyroid: { thyroxineRelative: 2 },
   }).written;
-  assertClose(active.oxygenConsumptionMlMin, 1400, 'activity gain is not T4-scaled');
-  assertClose(active.oxygenSupplyMlMin, 1400, 'supply follows demand');
+  assertClose(active.oxygenConsumptionMlMin, 1350, 'activity gain is not T4-scaled');
+  assertClose(active.oxygenSupplyMlMin, 1350, 'supply follows demand');
   assert.equal(active.spo2Percent, 97);
 
   const digested = round({
     duodenum: { nutrientExposure: 0.5 },
     thyroid: { thyroxineRelative: 2 },
   }).written;
-  assertClose(digested.oxygenConsumptionMlMin, 412.5, 'digestion term stays on basalMlMin');
+  assertClose(digested.oxygenConsumptionMlMin, 362.5, 'digestion term stays on basalMlMin');
 });
 
 test('T4-scaled demand follows the same capacity and SpO2 logic', () => {
@@ -181,17 +181,17 @@ test('T4-scaled demand follows the same capacity and SpO2 logic', () => {
     thyroid: { thyroxineRelative: 2 },
     lungsVentilation: { alveolarO2CapacityMlMin: 200 },
   }).written;
-  assertClose(capped.oxygenConsumptionMlMin, 400, 'capped demand');
+  assertClose(capped.oxygenConsumptionMlMin, 350, 'capped demand');
   assertClose(capped.oxygenSupplyMlMin, 200, 'capped supply');
-  assertClose(capped.oxygenDeficit, 0.5, 'capped deficit');
-  assertClose(capped.spo2Percent, 48.5, 'capped SpO2');
+  assertClose(capped.oxygenDeficit, 150 / 350, 'capped deficit');
+  assertClose(capped.spo2Percent, 97 * (200 / 350), 'capped SpO2');
 
   const adequate = round({
     thyroid: { thyroxineRelative: 2 },
     lungsVentilation: { alveolarO2CapacityMlMin: 9000 },
   }).written;
-  assertClose(adequate.oxygenConsumptionMlMin, 400, 'adequate demand');
-  assertClose(adequate.oxygenSupplyMlMin, 400, 'adequate supply');
+  assertClose(adequate.oxygenConsumptionMlMin, 350, 'adequate demand');
+  assertClose(adequate.oxygenSupplyMlMin, 350, 'adequate supply');
   assert.equal(adequate.oxygenDeficit, 0);
   assert.equal(adequate.spo2Percent, 97);
 });

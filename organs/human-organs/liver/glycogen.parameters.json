@@ -54,7 +54,34 @@
       "status": "design",
       "range": [0, 2],
       "source": null,
-      "note": "胰岛素相对信号对肝摄糖请求的敏感度工程占位：response = 1 + sensitivity × (insulinRelative − 1)，insulinRelative = 1 时不影响请求；0.5 低于肌肉的 1.0 只是本切片的工程设定，不是实测肝/肌胰岛素敏感性比，也不作用于释放。无登记来源。range 是工程调参范围，不是人体测量范围"
+      "note": "胰岛素相对信号对肝摄糖请求的敏感度工程占位：response = max(0, 1 + sensitivity × (insulinRelative − 1))，insulinRelative = 1 时不影响请求；0.5 低于肌肉的 1.0 只是本切片的工程设定，不是实测肝/肌胰岛素敏感性比，也不作用于释放。无登记来源。range 是工程调参范围，不是人体测量范围"
+    },
+    {
+      "id": "liver.basalOutputRateGPerMin",
+      "unit": "g/min",
+      "value": 0.096,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": null,
+      "note": "空腹基线（90 mg/dL、glucagonRelative = 1、cortisolRelative = 1）时的基础肝糖输出速率工程占位，约占静息总内源产糖 0.12 g/min 的 80%；餐后随高血糖平滑抑制。不是实测肝糖输出率，无登记来源。range 是工程调参范围"
+    },
+    {
+      "id": "liver.hypoglycemiaOutputGainGPerMinPerMgDl",
+      "unit": "g/(min·mg/dL)",
+      "value": 0.015,
+      "status": "design",
+      "range": [0, 0.1],
+      "source": null,
+      "note": "血糖低于基线 90 mg/dL 时每 mg/dL 缺口对应的肝糖输出增量增益工程占位，用于平滑比例反调节、消除阶跃振荡。不是实测剂量反应，无登记来源。range 是工程调参范围"
+    },
+    {
+      "id": "liver.glucagonOutputGainGPerMin",
+      "unit": "g/min",
+      "value": 0.15,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "glucagonRelative 高于基线 1 时每单位超额胰高血糖素信号对应的肝糖输出增量工程占位。不是实测胰高血糖素剂量反应，无登记来源。range 是工程调参范围"
     }
   ]
 }

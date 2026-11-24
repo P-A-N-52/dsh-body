@@ -7,10 +7,10 @@
  * 来源：无直接人体证据。`organs/human-organs/references/source-index.csv` 没有提醒阈值、
  * 冷却或次数上限的人体测量；本文件所有阈值、冷却、每小时/每天上限与档位划分都是
  * `policy` / `design`，不是人体测量，也不是开发集拟合或独立验证。设计灵感只到定性层面：
- * 显著性（只有明显档位才提醒）、习惯化 / 滞回（同档不重复：再次提醒同档需先降到该
- * 信号水位以下；升到更高档可直接提醒，不必先复位）与不应期（最小间隔）；没有搬用
- * 论文方程或参数。`resetBelow` 只区分观测 0/1 档，用于门控的 `levels` 只保留 0/2/3，
- * 40–64 mm 的中间档按 0 计。
+ * 显著性（只有明显档位才提醒）、习惯化 / 滞回（同档不重复：再次提醒同档需先降到
+ * `resetBelow` 40 mm 以下复位水位；40–64 mm 保持原水位锁定，升到更高档可直接提醒）
+ * 与不应期（最小间隔）；没有搬用论文方程或参数。`resetBelow` 区分观测 0 档（< 40）与
+ * 1 档（40–64），用于门控的 `levels` 保留 0/2/3，并在 1 档区间维持锁定不复位。
  *
  * 输入口径：`interoception.hunger/fullness/thirst/urinaryUrgency` 是 0–100 mm VAS 代理
  * （见 `brain/interoception.ts`；`thirst` 是下丘脑口渴驱动的原样代理，不是血浆渗透压
@@ -237,8 +237,12 @@ function observeSignals(io: IO): Record<Kind, Level> {
 
 function reconcileLevels(levels: Levels, observed: Record<Kind, Level>): void {
   for (const kind of SIGNAL_ORDER) {
-    const observedLevel = waterLevelOrZero(observed[kind]);
-    if (observedLevel < levels[kind]) levels[kind] = observedLevel;
+    const obs = observed[kind];
+    if (obs === 0) {
+      levels[kind] = 0;
+    } else if (obs === 2 && levels[kind] > 2) {
+      levels[kind] = 2;
+    }
   }
 }
 

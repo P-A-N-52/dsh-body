@@ -65,6 +65,25 @@ function round({
   return { written, writes, transfers };
 }
 
+function expectedReleaseG({
+  glucoseMgDl = baselineMgDl,
+  glucagonRelative = 1,
+  cortisolRelative = 1,
+  storedG = 80,
+  dt = 60,
+} = {}) {
+  const deficitMgDl = Math.max(0, baselineMgDl - glucoseMgDl);
+  const excessMgDl = Math.max(0, glucoseMgDl - baselineMgDl);
+  const suppression = 1 / (1 + excessMgDl / 30);
+  const rawRate = (
+    0.096 * suppression
+    + 0.015 * deficitMgDl
+    + 0.15 * Math.max(0, glucagonRelative - 1)
+  ) * Math.max(0, cortisolRelative);
+  const rate = Math.min(1, Math.max(0, rawRate));
+  return Math.min(rate * (dt / 60), Math.max(0, storedG));
+}
+
 function assertClose(actual, expected, label, tolerance = 1e-12) {
   assert.ok(
     Math.abs(actual - expected) <= tolerance,
@@ -130,52 +149,41 @@ test('the liver parameters are design defaults with no source', () => {
     data.parameters.map((parameter) => [parameter.id, parameter]),
   );
   assert.deepEqual(Object.keys(byId).sort(), [
+    'liver.basalOutputRateGPerMin',
+    'liver.glucagonOutputGainGPerMin',
     'liver.glycogenCapacityG',
     'liver.halfMaxExcessG',
+    'liver.hypoglycemiaOutputGainGPerMinPerMgDl',
     'liver.initialGlycogenG',
     'liver.insulinSensitivity',
     'liver.maxOutputRateGPerMin',
     'liver.maxUptakeRateGPerMin',
   ]);
 
-  const maxRate = byId['liver.maxOutputRateGPerMin'];
-  assert.equal(maxRate.value, 1);
-  assert.equal(maxRate.unit, 'g/min');
-  assert.equal(maxRate.status, 'design');
-  assert.equal(maxRate.source, null);
-
-  const initial = byId['liver.initialGlycogenG'];
-  assert.equal(initial.value, 80);
-  assert.equal(initial.unit, 'g');
-  assert.equal(initial.status, 'design');
-  assert.equal(initial.source, null);
-
-  const capacity = byId['liver.glycogenCapacityG'];
-  assert.equal(capacity.value, 100);
-  assert.equal(capacity.unit, 'g');
-  assert.equal(capacity.status, 'design');
-  assert.equal(capacity.source, null);
-
-  const maxUptake = byId['liver.maxUptakeRateGPerMin'];
-  assert.equal(maxUptake.value, 0.2);
-  assert.equal(maxUptake.unit, 'g/min');
-  assert.equal(maxUptake.status, 'design');
-  assert.equal(maxUptake.source, null);
-
-  const halfMaxExcess = byId['liver.halfMaxExcessG'];
-  assert.equal(halfMaxExcess.value, 15);
-  assert.equal(halfMaxExcess.unit, 'g');
-  assert.equal(halfMaxExcess.status, 'design');
-  assert.equal(halfMaxExcess.source, null);
-
-  const insulinSensitivity = byId['liver.insulinSensitivity'];
-  assert.equal(insulinSensitivity.value, 0.5);
-  assert.equal(insulinSensitivity.unit, '1');
-  assert.equal(insulinSensitivity.status, 'design');
-  assert.equal(insulinSensitivity.source, null);
+  const expected = {
+    'liver.maxOutputRateGPerMin': [1, 'g/min'],
+    'liver.basalOutputRateGPerMin': [0.096, 'g/min'],
+    'liver.hypoglycemiaOutputGainGPerMinPerMgDl': [0.015, 'g/(min·mg/dL)'],
+    'liver.glucagonOutputGainGPerMin': [0.15, 'g/min'],
+    'liver.initialGlycogenG': [80, 'g'],
+    'liver.glycogenCapacityG': [100, 'g'],
+    'liver.maxUptakeRateGPerMin': [0.2, 'g/min'],
+    'liver.halfMaxExcessG': [15, 'g'],
+    'liver.insulinSensitivity': [0.5, '1'],
+  };
+  for (const [parameterId, [value, unit]] of Object.entries(expected)) {
+    const parameter = byId[parameterId];
+    assert.equal(parameter.value, value, `${parameterId}: value`);
+    assert.equal(parameter.unit, unit, `${parameterId}: unit`);
+    assert.equal(parameter.status, 'design', `${parameterId}: status`);
+    assert.equal(parameter.source, null, `${parameterId}: source`);
+  }
 
   assert.deepEqual(loadParameters(parametersUrl), {
     'liver.maxOutputRateGPerMin': 1,
+    'liver.basalOutputRateGPerMin': 0.096,
+    'liver.hypoglycemiaOutputGainGPerMinPerMgDl': 0.015,
+    'liver.glucagonOutputGainGPerMin': 0.15,
     'liver.initialGlycogenG': 80,
     'liver.glycogenCapacityG': 100,
     'liver.maxUptakeRateGPerMin': 0.2,
@@ -190,31 +198,32 @@ test('previous storage is folded into the stored glycogen before release', () =>
     glucose: glucoseAt(110),
     pancreas: pancreasAt(0.5),
   });
-  assert.deepEqual(written, {
-    glycogenG: 75,
-    storageG: 0,
-    glycogenCapacityG: 100,
-    storageRequestG: 0,
-    outputG: 0,
-  });
-  assert.deepEqual(transfers, []);
+  const expected = expectedReleaseG({ glucoseMgDl: 110, glucagonRelative: 0.5, storedG: 75 });
+  assert.equal(written.glycogenG, 75);
+  assert.equal(written.storageG, 0);
+  assert.equal(written.glycogenCapacityG, 100);
+  assert.equal(written.storageRequestG, 0);
+  assertClose(written.outputG, expected, 'suppressed basal release');
+  assert.deepEqual(transfers, [
+    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', expected],
+  ]);
 });
 
-test('low glucose with high glucagon releases min(rate × signal × dtMin, stored)', () => {
+test('low glucose with high glucagon releases smoothly via proportional counter-regulation', () => {
   const oneMinute = round({
     state: { glycogenG: 70, storageG: 0, outputG: 1 },
     glucose: glucoseAt(70),
     pancreas: pancreasAt(2),
   });
-  assert.deepEqual(oneMinute.written, {
-    glycogenG: 70,
-    storageG: 0,
-    glycogenCapacityG: 100,
-    storageRequestG: 0,
-    outputG: 2,
-  });
+  const expected1 = expectedReleaseG({ glucoseMgDl: 70, glucagonRelative: 2, storedG: 70 });
+  assertClose(expected1, 0.096 + 0.015 * 20 + 0.15 * 1, 'expected 1 min rate');
+  assert.equal(oneMinute.written.glycogenG, 70);
+  assert.equal(oneMinute.written.storageG, 0);
+  assert.equal(oneMinute.written.glycogenCapacityG, 100);
+  assert.equal(oneMinute.written.storageRequestG, 0);
+  assertClose(oneMinute.written.outputG, expected1, 'one minute round');
   assert.deepEqual(oneMinute.transfers, [
-    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', 2],
+    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', oneMinute.written.outputG],
   ]);
 
   const twoMinutes = round({
@@ -223,37 +232,39 @@ test('low glucose with high glucagon releases min(rate × signal × dtMin, store
     pancreas: pancreasAt(2),
     dt: 120,
   });
-  assertClose(twoMinutes.written.outputG, 4, 'two minute round');
+  assertClose(twoMinutes.written.outputG, expected1 * 2, 'two minute round');
   assert.deepEqual(twoMinutes.transfers, [
-    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', 4],
+    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', twoMinutes.written.outputG],
   ]);
 });
 
-test('high glucose with glucagon below baseline does not release', () => {
-  const { written, transfers } = round({
+test('high glucose smoothly suppresses basal liver release without abrupt zeroing', () => {
+  const at110 = round({
     state: { glycogenG: 80, storageG: 0, outputG: 0 },
     glucose: glucoseAt(110),
     pancreas: pancreasAt(0.5),
   });
-  assert.deepEqual(written, {
-    glycogenG: 80,
-    storageG: 0,
-    glycogenCapacityG: 100,
-    storageRequestG: 0,
-    outputG: 0,
+  const at150 = round({
+    state: { glycogenG: 80, storageG: 0, outputG: 0 },
+    glucose: glucoseAt(150),
+    pancreas: pancreasAt(0.5),
   });
-  assert.deepEqual(transfers, []);
+  assertClose(at110.written.outputG, 0.096 / (1 + 20 / 30), '110 mg/dL suppression');
+  assertClose(at150.written.outputG, 0.096 / (1 + 60 / 30), '150 mg/dL suppression');
+  assert.ok(at150.written.outputG < at110.written.outputG);
+  assert.ok(at110.written.outputG < 0.096);
 });
 
-test('glucagon above baseline releases even when glucose is not low', () => {
+test('glucagon above baseline increases liver release even when glucose is not low', () => {
   const { written, transfers } = round({
     state: { glycogenG: 80, storageG: 0, outputG: 0 },
     glucose: glucoseAt(110),
     pancreas: pancreasAt(2),
   });
-  assert.equal(written.outputG, 2);
+  const expected = expectedReleaseG({ glucoseMgDl: 110, glucagonRelative: 2 });
+  assertClose(written.outputG, expected, 'glucagon-driven release at 110 mg/dL');
   assert.deepEqual(transfers, [
-    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', 2],
+    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', written.outputG],
   ]);
 });
 
@@ -270,15 +281,13 @@ test('cortisol above baseline scales the release rate proportionally', () => {
     pancreas: pancreasAt(2),
     adrenal: adrenalAt(2),
   });
-  assert.equal(baseline.written.outputG, 2);
-  assert.equal(doubled.written.outputG, 4);
-  assert.equal(
-    doubled.written.outputG,
-    baseline.written.outputG * 2,
-    'cortisol 2 doubles the release',
-  );
+  const expectedBase = expectedReleaseG({ glucoseMgDl: 70, glucagonRelative: 2, cortisolRelative: 1 });
+  const expectedDoubled = expectedReleaseG({ glucoseMgDl: 70, glucagonRelative: 2, cortisolRelative: 2 });
+  assertClose(baseline.written.outputG, expectedBase, 'baseline cortisol');
+  assertClose(doubled.written.outputG, expectedDoubled, 'doubled cortisol clamped at max');
+  assert.ok(doubled.written.outputG > baseline.written.outputG);
   assert.deepEqual(doubled.transfers, [
-    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', 4],
+    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', doubled.written.outputG],
   ]);
 });
 
@@ -289,7 +298,11 @@ test('cortisol below baseline scales release down and zero suppresses it', () =>
     pancreas: pancreasAt(2),
     adrenal: adrenalAt(0.5),
   });
-  assert.equal(half.written.outputG, 1);
+  assertClose(
+    half.written.outputG,
+    expectedReleaseG({ glucoseMgDl: 70, glucagonRelative: 2, cortisolRelative: 0.5 }),
+    'half cortisol',
+  );
 
   const suppressed = round({
     state: { glycogenG: 80, storageG: 0, outputG: 0 },
@@ -360,19 +373,19 @@ test('release is clamped to the stored glycogen with high cortisol', () => {
 
 test('release is clamped to the stored glycogen and is zero once depleted', () => {
   const first = round({
-    state: { glycogenG: 0.5, storageG: 0, outputG: 0 },
+    state: { glycogenG: 0.2, storageG: 0, outputG: 0 },
     glucose: glucoseAt(70),
     pancreas: pancreasAt(2),
   });
   assert.deepEqual(first.written, {
-    glycogenG: 0.5,
+    glycogenG: 0.2,
     storageG: 0,
     glycogenCapacityG: 100,
     storageRequestG: 0,
-    outputG: 0.5,
+    outputG: 0.2,
   });
   assert.deepEqual(first.transfers, [
-    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', 0.5],
+    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', 0.2],
   ]);
 
   // Gateway 先应用 write 再结算 transfer；扣掉释放后存量为 0，下一轮不再释放。
@@ -402,9 +415,10 @@ test('a missing pancreas falls back to glucagonRelative 1', () => {
     state: { glycogenG: 80, storageG: 0, outputG: 0 },
     glucose: glucoseAt(70),
   });
-  assert.equal(low.written.outputG, 1);
+  const expectedLow = expectedReleaseG({ glucoseMgDl: 70, glucagonRelative: 1 });
+  assertClose(low.written.outputG, expectedLow, 'missing pancreas at 70 mg/dL');
   assert.deepEqual(low.transfers, [
-    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', 1],
+    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', low.written.outputG],
   ]);
 
   const high = round({
@@ -421,21 +435,27 @@ test('a missing pancreas falls back to glucagonRelative 1', () => {
   assert.deepEqual(high.transfers, []);
 });
 
-test('release uses a strict glucose below the 90 mg/dL baseline trigger', () => {
+test('smooth counter-regulatory output equals basal 0.096 at 90 mg/dL and increases proportionally below 90', () => {
   const atBaseline = round({
     state: { glycogenG: 80, storageG: 0, outputG: 0 },
     glucose: glucoseAt(baselineMgDl),
   });
-  assert.equal(atBaseline.written.outputG, 0);
+  assertClose(atBaseline.written.outputG, 0.096, 'fasting basal output at 90 mg/dL');
 
   const below = round({
     state: { glycogenG: 80, storageG: 0, outputG: 0 },
     glucose: glucoseAt(baselineMgDl - 0.1),
   });
-  assert.equal(below.written.outputG, 1);
+  assertClose(below.written.outputG, 0.096 + 0.015 * 0.1, 'proportional increase below 90');
+
+  const above = round({
+    state: { glycogenG: 80, storageG: 0, outputG: 0 },
+    glucose: glucoseAt(baselineMgDl + 30),
+  });
+  assertClose(above.written.outputG, 0.048, 'halved at 120 mg/dL');
 });
 
-test('a missing glucose falls back to the 90 mg/dL baseline reference', () => {
+test('a missing glucose falls back to the 90 mg/dL baseline reference with basal output', () => {
   const { written, transfers } = round({
     state: { glycogenG: 80, storageG: 0, outputG: 0 },
   });
@@ -444,9 +464,11 @@ test('a missing glucose falls back to the 90 mg/dL baseline reference', () => {
     storageG: 0,
     glycogenCapacityG: 100,
     storageRequestG: 0,
-    outputG: 0,
+    outputG: 0.096,
   });
-  assert.deepEqual(transfers, []);
+  assert.deepEqual(transfers, [
+    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', 0.096],
+  ]);
 });
 
 test('autonomous storage request follows rate × half-saturation × insulin response × dtMin', () => {
@@ -508,7 +530,19 @@ test('the storage request is clamped to the remaining glycogen capacity', () => 
   });
   assertClose(written.storageRequestG, 0.03, 'remaining capacity');
   assertClose(written.glycogenG, 99.97, 'folded storage');
-  assert.deepEqual(transfers, []);
+  assertClose(written.outputG, expectedReleaseG({ glucoseMgDl: 110 }), 'suppressed basal output');
+  assert.deepEqual(transfers, [
+    ['liver', 'glycogenG', 'glucose', 'glucoseMassG', written.outputG],
+  ]);
+});
+
+test('zero insulin never produces a negative storage request', () => {
+  const { written } = round({
+    state: { glycogenG: 0, storageG: 0, outputG: 0 },
+    glucose: glucoseAt(110, 15),
+    pancreas: pancreasAt(1, 0),
+  });
+  assert.ok(written.storageRequestG >= 0);
 });
 
 test('a full or over-capacity liver requests no storage', () => {

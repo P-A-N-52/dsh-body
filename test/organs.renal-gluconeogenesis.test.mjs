@@ -16,7 +16,24 @@ const parametersUrl = new URL(
   '../organs/human-organs/kidney/gluconeogenesis.parameters.json',
   import.meta.url,
 );
-const maxOutputPerRoundG = 0.3;
+const maxOutputRateGPerMin = 0.5;
+const maxOutputPerRoundG = 0.6;
+const baselineMgDl = 90;
+
+function expectedOutputG({
+  concentrationMgDl = baselineMgDl,
+  glucagonRelative = 1,
+  dt = 60,
+} = {}) {
+  const deficitMgDl = Math.max(0, baselineMgDl - concentrationMgDl);
+  const excessMgDl = Math.max(0, concentrationMgDl - baselineMgDl);
+  const suppression = 1 / (1 + excessMgDl / 30);
+  const rawRate = 0.024 * suppression
+    + 0.005 * deficitMgDl
+    + 0.05 * Math.max(0, glucagonRelative - 1);
+  const rate = Math.min(maxOutputRateGPerMin, Math.max(0, rawRate));
+  return Math.min(rate * (dt / 60), maxOutputPerRoundG);
+}
 
 function glucoseAt(concentrationMgDl) {
   return { concentrationMgDl };
@@ -75,22 +92,34 @@ test('kidneyGluconeogenesis exports the single output field contract', () => {
   assert.deepEqual(initialState, { glucoseOutputG: 0 });
 });
 
-test('the three design parameters keep their documented values and null sources', () => {
+test('the six design parameters keep their documented values and null sources', () => {
   const data = JSON.parse(readFileSync(parametersUrl, 'utf8'));
   assert.equal(data.schemaVersion, 1);
   assert.equal(data.owner, 'kidneyGluconeogenesis');
   const byId = Object.fromEntries(data.parameters.map((parameter) => [parameter.id, parameter]));
   assert.deepEqual(Object.keys(byId).sort(), [
+    'kidneyGluconeogenesis.basalOutputRateGPerMin',
     'kidneyGluconeogenesis.baselineMgDl',
+    'kidneyGluconeogenesis.glucagonOutputGainGPerMin',
+    'kidneyGluconeogenesis.hypoglycemiaOutputGainGPerMinPerMgDl',
     'kidneyGluconeogenesis.maxOutputPerRoundG',
     'kidneyGluconeogenesis.maxOutputRateGPerMin',
   ]);
   assert.equal(byId['kidneyGluconeogenesis.maxOutputRateGPerMin'].unit, 'g/min');
-  assert.equal(byId['kidneyGluconeogenesis.maxOutputRateGPerMin'].value, 0.3);
+  assert.equal(byId['kidneyGluconeogenesis.maxOutputRateGPerMin'].value, 0.5);
   assert.equal(byId['kidneyGluconeogenesis.maxOutputPerRoundG'].unit, 'g');
-  assert.equal(byId['kidneyGluconeogenesis.maxOutputPerRoundG'].value, 0.3);
+  assert.equal(byId['kidneyGluconeogenesis.maxOutputPerRoundG'].value, 0.6);
   assert.equal(byId['kidneyGluconeogenesis.baselineMgDl'].unit, 'mg/dL');
   assert.equal(byId['kidneyGluconeogenesis.baselineMgDl'].value, 90);
+  assert.equal(byId['kidneyGluconeogenesis.basalOutputRateGPerMin'].unit, 'g/min');
+  assert.equal(byId['kidneyGluconeogenesis.basalOutputRateGPerMin'].value, 0.024);
+  assert.equal(
+    byId['kidneyGluconeogenesis.hypoglycemiaOutputGainGPerMinPerMgDl'].unit,
+    'g/(min·mg/dL)',
+  );
+  assert.equal(byId['kidneyGluconeogenesis.hypoglycemiaOutputGainGPerMinPerMgDl'].value, 0.005);
+  assert.equal(byId['kidneyGluconeogenesis.glucagonOutputGainGPerMin'].unit, 'g/min');
+  assert.equal(byId['kidneyGluconeogenesis.glucagonOutputGainGPerMin'].value, 0.05);
   for (const parameter of data.parameters) {
     assert.equal(parameter.status, 'design', `${parameter.id}: status`);
     assert.equal(parameter.source, null, `${parameter.id}: source`);
@@ -99,79 +128,107 @@ test('the three design parameters keep their documented values and null sources'
   const parameters = loadParameters(parametersUrl);
   assert.equal(
     requireParameter(parameters, 'kidneyGluconeogenesis.maxOutputRateGPerMin'),
-    0.3,
+    0.5,
   );
   assert.equal(
     requireParameter(parameters, 'kidneyGluconeogenesis.maxOutputPerRoundG'),
-    0.3,
+    0.6,
   );
   assert.equal(requireParameter(parameters, 'kidneyGluconeogenesis.baselineMgDl'), 90);
+  assert.equal(requireParameter(parameters, 'kidneyGluconeogenesis.basalOutputRateGPerMin'), 0.024);
+  assert.equal(
+    requireParameter(parameters, 'kidneyGluconeogenesis.hypoglycemiaOutputGainGPerMinPerMgDl'),
+    0.005,
+  );
+  assert.equal(requireParameter(parameters, 'kidneyGluconeogenesis.glucagonOutputGainGPerMin'), 0.05);
 });
 
-test('low glucose produces the baseline rate and transfers it to glucose', () => {
+test('low glucose produces smooth proportional output and transfers it to glucose', () => {
   const { written, writes, transfers } = round({
     state: { glucoseOutputG: 5 },
     glucose: glucoseAt(70),
   });
+  const expected = expectedOutputG({ concentrationMgDl: 70 });
   assert.equal(writes.length, 1);
-  assert.equal(written.glucoseOutputG, maxOutputPerRoundG);
+  assertClose(written.glucoseOutputG, expected, 'output at 70 mg/dL');
+  assertClose(expected, 0.024 + 0.005 * 20, 'basal + hypoglycemia gain');
   assert.deepEqual(transfers, [
-    ['kidneyGluconeogenesis', 'glucoseOutputG', 'glucose', 'glucoseMassG', 0.3],
+    ['kidneyGluconeogenesis', 'glucoseOutputG', 'glucose', 'glucoseMassG', written.glucoseOutputG],
   ]);
 });
 
-test('glucagon above baseline drives output even when glucose is not low', () => {
-  const { written, transfers } = round({
+test('glucagon above baseline increases output above 0.3 g/min when hypoglycemia is severe', () => {
+  const at110 = round({
     glucose: glucoseAt(110),
     pancreas: pancreasAt(2),
   });
-  assert.equal(written.glucoseOutputG, 0.3);
-  assert.deepEqual(transfers, [
-    ['kidneyGluconeogenesis', 'glucoseOutputG', 'glucose', 'glucoseMassG', 0.3],
+  assertClose(
+    at110.written.glucoseOutputG,
+    expectedOutputG({ concentrationMgDl: 110, glucagonRelative: 2 }),
+    'glucagon at 110 mg/dL',
+  );
+  assert.deepEqual(at110.transfers, [
+    ['kidneyGluconeogenesis', 'glucoseOutputG', 'glucose', 'glucoseMassG', at110.written.glucoseOutputG],
   ]);
+
+  const baseLow = round({
+    glucose: glucoseAt(20),
+    pancreas: pancreasAt(1),
+  });
+  const highGlucagonLow = round({
+    glucose: glucoseAt(20),
+    pancreas: pancreasAt(2),
+  });
+  assert.ok(highGlucagonLow.written.glucoseOutputG > 0.3, 'not choked at 0.3 g');
+  assert.ok(highGlucagonLow.written.glucoseOutputG > baseLow.written.glucoseOutputG);
 });
 
-test('high glucose with baseline glucagon produces no output and resets the field', () => {
+test('high glucose smoothly suppresses basal output and resets the prior field', () => {
   const { written, writes, transfers } = round({
     state: { glucoseOutputG: 7 },
-    glucose: glucoseAt(110),
+    glucose: glucoseAt(120),
     pancreas: pancreasAt(1),
   });
   assert.equal(writes.length, 1);
-  assert.deepEqual(written, { glucoseOutputG: 0 });
-  assert.deepEqual(transfers, []);
+  assertClose(written.glucoseOutputG, 0.012, 'halved at 120 mg/dL');
+  assert.deepEqual(transfers, [
+    ['kidneyGluconeogenesis', 'glucoseOutputG', 'glucose', 'glucoseMassG', 0.012],
+  ]);
 });
 
-test('the baseline threshold is strict at 90 mg/dL', () => {
-  for (const concentrationMgDl of [90, 90.1, 110]) {
+test('counter-regulation is continuous across 90 mg/dL and equals 0.024 at baseline', () => {
+  const at90 = round({ glucose: glucoseAt(90), pancreas: pancreasAt(0.5) });
+  assertClose(at90.written.glucoseOutputG, 0.024, 'basal at 90 mg/dL');
+
+  const at150 = round({ glucose: glucoseAt(150), pancreas: pancreasAt(0.5) });
+  assertClose(at150.written.glucoseOutputG, 0.024 / 3, 'suppressed at 150 mg/dL');
+
+  for (const concentrationMgDl of [89, 70, 0]) {
     const { written, transfers } = round({
       glucose: glucoseAt(concentrationMgDl),
       pancreas: pancreasAt(0.5),
     });
-    assert.equal(written.glucoseOutputG, 0, `C=${concentrationMgDl} must not produce`);
-    assert.deepEqual(transfers, [], `C=${concentrationMgDl} must not transfer`);
-  }
-  for (const concentrationMgDl of [89.999, 70, 0]) {
-    const { written, transfers } = round({
-      glucose: glucoseAt(concentrationMgDl),
-      pancreas: pancreasAt(0.5),
-    });
-    assert.equal(written.glucoseOutputG, 0.15, `C=${concentrationMgDl} must produce`);
+    assertClose(
+      written.glucoseOutputG,
+      expectedOutputG({ concentrationMgDl, glucagonRelative: 0.5 }),
+      `C=${concentrationMgDl}`,
+    );
     assert.equal(transfers.length, 1, `C=${concentrationMgDl} must transfer`);
   }
 });
 
-test('output scales with glucagon and dtMin but is capped per round', () => {
+test('output scales with glucagon and dtMin and is capped per round at 0.6 g', () => {
   const cases = [
-    { dt: 30, glucagonRelative: 1, concentrationMgDl: 70, expectedG: 0.15 },
-    { dt: 30, glucagonRelative: 2, concentrationMgDl: 70, expectedG: 0.3 },
-    { dt: 60, glucagonRelative: 0.5, concentrationMgDl: 70, expectedG: 0.15 },
-    { dt: 90, glucagonRelative: 0.5, concentrationMgDl: 70, expectedG: 0.225 },
-    { dt: 120, glucagonRelative: 1, concentrationMgDl: 70, expectedG: 0.3 },
-    { dt: 120, glucagonRelative: 3, concentrationMgDl: 110, expectedG: 0.3 },
-    { dt: 600, glucagonRelative: 10, concentrationMgDl: 110, expectedG: 0.3 },
+    { dt: 30, glucagonRelative: 1, concentrationMgDl: 70 },
+    { dt: 30, glucagonRelative: 2, concentrationMgDl: 70 },
+    { dt: 60, glucagonRelative: 0.5, concentrationMgDl: 70 },
+    { dt: 90, glucagonRelative: 0.5, concentrationMgDl: 70 },
+    { dt: 120, glucagonRelative: 1, concentrationMgDl: 70 },
+    { dt: 120, glucagonRelative: 3, concentrationMgDl: 110 },
+    { dt: 600, glucagonRelative: 10, concentrationMgDl: 110 },
   ];
-  for (const { dt, glucagonRelative, concentrationMgDl, expectedG } of cases) {
+  for (const { dt, glucagonRelative, concentrationMgDl } of cases) {
+    const expectedG = expectedOutputG({ dt, glucagonRelative, concentrationMgDl });
     const { written, transfers } = round({
       glucose: glucoseAt(concentrationMgDl),
       pancreas: pancreasAt(glucagonRelative),
@@ -181,6 +238,12 @@ test('output scales with glucagon and dtMin but is capped per round', () => {
     assert.equal(transfers.length, 1);
     assertClose(transfers[0][4], expectedG, `transfer dt=${dt}, glucagon=${glucagonRelative}`);
   }
+  const capped = round({
+    glucose: glucoseAt(20),
+    pancreas: pancreasAt(5),
+    dt: 600,
+  });
+  assert.equal(capped.written.glucoseOutputG, 0.6);
 });
 
 test('the rate signal uses io.dt rather than io.simulatedSeconds', () => {
@@ -189,18 +252,20 @@ test('the rate signal uses io.dt rather than io.simulatedSeconds', () => {
     dt: 30,
     simulatedSeconds: 3600,
   });
-  assertClose(written.glucoseOutputG, 0.15, 'dt=30 s');
+  assertClose(written.glucoseOutputG, expectedOutputG({ concentrationMgDl: 70, dt: 30 }), 'dt=30 s');
 });
 
-test('missing glucose falls back to 90 mg/dL with no baseline output', () => {
+test('missing glucose falls back to 90 mg/dL with basal 0.024 g/min output', () => {
   const { written, transfers } = round({ state: { glucoseOutputG: 4 } });
-  assert.deepEqual(written, { glucoseOutputG: 0 });
-  assert.deepEqual(transfers, []);
+  assertClose(written.glucoseOutputG, 0.024, 'basal fallback at 90 mg/dL');
+  assert.deepEqual(transfers, [
+    ['kidneyGluconeogenesis', 'glucoseOutputG', 'glucose', 'glucoseMassG', 0.024],
+  ]);
 
   const glucagonDriven = round({ pancreas: pancreasAt(2) });
-  assert.equal(glucagonDriven.written.glucoseOutputG, 0.3);
+  assertClose(glucagonDriven.written.glucoseOutputG, 0.024 + 0.05, 'basal + glucagon');
   assert.deepEqual(glucagonDriven.transfers, [
-    ['kidneyGluconeogenesis', 'glucoseOutputG', 'glucose', 'glucoseMassG', 0.3],
+    ['kidneyGluconeogenesis', 'glucoseOutputG', 'glucose', 'glucoseMassG', glucagonDriven.written.glucoseOutputG],
   ]);
 });
 
@@ -209,7 +274,7 @@ test('missing pancreas falls back to glucagonRelative 1', () => {
   const explicit = round({ glucose: glucoseAt(70), pancreas: pancreasAt(1) });
   assert.deepEqual(missing.written, explicit.written);
   assert.deepEqual(missing.transfers, explicit.transfers);
-  assert.equal(missing.written.glucoseOutputG, 0.3);
+  assertClose(missing.written.glucoseOutputG, expectedOutputG({ concentrationMgDl: 70 }), '70 mg/dL');
 });
 
 test('loaded upstream parts with invalid fields fail the round before any write', () => {
@@ -299,7 +364,8 @@ test('a written round applies the declared transfer through the shared registry'
       amount,
     })),
   });
-  assertClose(next.glucose.glucoseMassG, 6.3, 'glucose mass after transfer');
+  const expected = expectedOutputG({ concentrationMgDl: 70 });
+  assertClose(next.glucose.glucoseMassG, 6 + expected, 'glucose mass after transfer');
   assertClose(
     next.kidneyGluconeogenesis.glucoseOutputG,
     0,
@@ -314,7 +380,7 @@ test('a written round applies the declared transfer through the shared registry'
   assert.equal(withoutTransfer.glucose, undefined, 'no transfer means no glucose change');
   assertClose(
     withoutTransfer.kidneyGluconeogenesis.glucoseOutputG,
-    0.3,
+    expected,
     'the write carries the round output',
   );
 });

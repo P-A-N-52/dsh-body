@@ -4,11 +4,11 @@
 
 `skin` 位于 `organs/human-organs/skin/sweat.ts`，只持有两个 mL 字段：按轮初 `physicalActivity` 和固定环境参数算出下一轮出汗请求，以及记录本轮由 `bodyFluid` 实际转入的汗液。它不持有体液水、不调用 `transfer`，也不模拟皮肤分区、皮肤温度、湿润度、蒸发残余或汗液电解质。汗液只以 mL 表示，不换算成 METs、热量、心率或代谢率。
 
-实现状态：脚本与参数文件在 `organs/human-organs/skin/`，模块定向测试见 [`test/organs.skin.test.mjs`](../../../test/organs.skin.test.mjs)。根清单与 `bodyFluid` 三出口已接入；加入循环与体温切片后根清单为 36 个部位、35 份参数文件，女性清单 39 个部位、38 份，男性清单 38 个部位、37 份。端到端水账测试见 [`test/organs.sweat-gateway.test.mjs`](../../../test/organs.sweat-gateway.test.mjs)，体温—出汗集成测试见 [`test/organs.thermoregulation-gateway.test.mjs`](../../../test/organs.thermoregulation-gateway.test.mjs)。完整 `npm test` 结果以当前 HEAD 为准。尚未做真实 DSH 会话、独立人体出汗数据或临床验证。
+实现状态：脚本与参数文件在 `organs/human-organs/skin/`，模块定向测试见 [`test/organs.skin.test.mjs`](../../../test/organs.skin.test.mjs)。根清单与 `bodyFluid` 三出口已接入；当前根清单为 38 个部位、34 份唯一参数文件，女性清单 41 个部位、37 份，男性清单 40 个部位、36 份。端到端水账测试见 [`test/organs.sweat-gateway.test.mjs`](../../../test/organs.sweat-gateway.test.mjs)，体温—出汗集成测试见 [`test/organs.thermoregulation-gateway.test.mjs`](../../../test/organs.thermoregulation-gateway.test.mjs)。完整 `npm test` 结果以当前 HEAD 为准。尚未做真实 DSH 会话、独立人体出汗数据或临床验证。
 
-**清单依赖（transfer 配对校验）。** `sweatVolumeMl` 声明 `transferIn: ["bodyFluid.waterVolumeMl"]`；`bodyFluid.waterVolumeMl` 同时声明 `transferOut: ["bladder.volumeMl", "lungs.respiratoryWaterLossMl", "skin.sweatVolumeMl"]`。因此完整硬 transfer 闭包是 `stomach/hydration.ts`、`smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`kidneyGlucose`、`muscleGlucose`、`skin`、`lungs` 共九个部位：`hydration.ts` 向 `smallIntestine` 转水，`smallIntestine` 向 `bodyFluid` 转水并向 `glucose` 转碳水，`bodyFluid` 向 `bladder`、`lungs` 和 `skin` 转水，`glucose` 向 `kidneyGlucose` 与 `muscleGlucose` 转糖。缺任一个都会在 `createFieldRegistry` 启动校验时报字段配对错误；不能用一个未加载的槽位或“先欠着”的请求绕过。`physicalActivity` 只是 `skin`、`lungs` 与 `muscleGlucose` 的普通轮初读取，不是 transfer 配对依赖；根清单仍包含它，以提供 `exercise` 能力。
+**清单依赖（transfer 配对校验）。** `sweatVolumeMl` 声明 `transferIn: ["bodyFluid.waterVolumeMl"]`；`bodyFluid.waterVolumeMl` 同时声明 `transferOut: ["bladder.volumeMl", "lungs.respiratoryWaterLossMl", "skin.sweatVolumeMl"]`。完整硬 transfer 闭包为根与男性清单 15 个部位（`stomach/hydration.ts`、`smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGlucose`、`kidneyGluconeogenesis`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、`skin`、`lungs`），女性清单另加 `uterus` 与 `mammaryGlands` 共 17 个部位。缺任一个都会在 `createFieldRegistry` 启动校验时报字段配对错误；不能用一个未加载的槽位或“先欠着”的请求绕过。`physicalActivity` 只是 `skin`、`lungs`、`muscleGlucose` 等的普通轮初读取，不是 transfer 配对依赖；根清单仍包含它，以提供 `exercise` 能力。
 
-活动—出汗切片当时新增 `physicalActivity`、`skin` 两个部位和 `sweat.parameters.json` 一份参数；后续切片又新增 `lungs`、`glucose-uptake`、三个肌肉区域（共享参数文件）、`heart`、`blood`、`thermoregulation` 等部位；当前根清单为 36 个部位、35 份参数文件。`kidney`、`hypothalamusAdh`、`hypothalamusThirst`、`interoception`、`thermoregulation` 都是软读取，缺省时各脚本按自己的默认值处理。
+当前三份清单中 `kidney`、`hypothalamusAdh`、`hypothalamusThirst`、`interoception`、`thermoregulation` 都是软读取，缺省时各脚本按自己的默认值处理。
 
 ## 1. 脚本与部位
 
@@ -37,15 +37,16 @@
 
 ```text
 temperatureFactor = max(0, 1 + 0.04 × (T − 25))
-rate = R > 0 ? min(2, 0.6 × I × temperatureFactor) : 0
-heatFactor = 1 + heatGain × max(0, C − 37)
-sweatRequestMl = rate × dtMin × heatFactor
+exerciseRate      = R > 0 ? 0.6 × I × temperatureFactor : 0
+thermalRate       = heatGain × max(0, C − 37)
+rate              = min(maxRateMlPerMin, max(0, exerciseRate + thermalRate))
+sweatRequestMl    = rate × dtMin
 write.sweatVolumeMl = 0
 ```
 
-核心温度只放大请求，不改变 `R = 0` 时请求为 0 的规则；`heatFactor` 乘在速率上限之后，所以高热时请求可以超过 `maxRateMlPerMin × dtMin`。这是当前工程实现，不是实测体温—出汗曲线。`thermoregulation` 已加载但 `coreTemperatureC` 缺失、非有限或非对象时抛错，本轮不写状态。
+核心温度采用**静息 + 运动叠加的热致出汗**：`thermalRate = heatGain × max(0, C − 37)` 与运动项 `exerciseRate` 相加后再整体受速率上限 `maxRateMlPerMin = 15 mL/min` 钳位。因此即使 `R = 0` 处于静息高热（`C > 37°C`），也会触发热致出汗请求以散热。这是当前工程实现，不是实测体温—出汗曲线。`thermoregulation` 已加载但 `coreTemperatureC` 缺失、非有限或非对象时抛错，本轮不写状态。
 
-`R = 0` 或 `physicalActivity` 部位缺失时请求为 0；`I = 0` 的合法活动请求也为 0。温度因子在 0 处截断；上限只作用于速率（2 mL/min），请求量仍按 `dtMin` 缩放，所以 `dtMin = 2` 且速率已达上限时为 4 mL，而不是 2 mL。25°C、`I = 1`、60 s 轮请求 0.6 mL；35°C 时温度因子为 1.4，请求 0.84 mL；温度升到使速率超过 2 mL/min 后，60 s 请求封顶 2 mL。
+`R = 0` 且 `C <= 37°C`（或未加载 `thermoregulation`）时请求为 0；`I = 0` 的合法活动且未高热时请求也为 0。温度因子在 0 处截断；上限只作用于总速率（15 mL/min），请求量仍按 `dtMin` 缩放，所以 `dtMin = 2` 且速率已达上限时为 30 mL。25°C、`I = 1`、37°C 核心温度、60 s 轮请求 0.6 mL；35°C 环境时温度因子为 1.4，请求 0.84 mL；总速率最高封顶 15 mL/min。
 
 同目录参数：
 
@@ -54,8 +55,8 @@ write.sweatVolumeMl = 0
 | `skin.sweat.ambientTemperatureC` | 25 | `°C` | `design` | `source: null`；默认环境温度，不是实测环境；25°C 同时是温度因子的参考温度。未来由环境状态替换 |
 | `skin.sweat.referenceRateMlPerMin` | 0.6 | `mL/min` | `design` | `source: null`；25°C、`intensity=1` 的工程参考出汗率，不是人体出汗测量、METs、热量或最大出汗能力。未来由活动/体温模型替换 |
 | `skin.sweat.ambientGainPerC` | 0.04 | `1/°C` | `design` | `source: null`；环境温度每偏离 25°C 1°C 的工程线性斜率，不是体温调节或环境—出汗证据。未来由环境—出汗证据替换 |
-| `skin.sweat.maxRateMlPerMin` | 2 | `mL/min` | `design` | `source: null`；工程速率上限，不是人体最大出汗率或任何实测上限。未来由活动/体温模型替换 |
-| `skin.heatGain` | 1 | `1/°C` | `design` | `source: null`；核心温度每高于 37°C 1°C 时对请求的相对增益；工程假设，不是实测体温—出汗斜率。37°C 与 `thermoregulation.setpointC` 的默认值一致，本部位不复制该参数 |
+| `skin.sweat.maxRateMlPerMin` | 15 | `mL/min` | `design` | `source: null`；工程速率上限（覆盖运动与热致出汗总和），不是人体最大出汗率或任何实测上限。未来由活动/体温模型替换 |
+| `skin.heatGain` | 5 | `mL/(min·°C)` | `design` | `source: null`；核心温度每高于设定点 37°C 1°C 时叠加的热致出汗率增益，静息与运动均生效；工程假设，不是实测体温—出汗斜率。37°C 与 `thermoregulation.setpointC` 的默认值一致，本部位不复制该参数 |
 
 五个参数全部是 `design`、`source: null`；参数文件中的 `range` 只是工程调参范围，不是人体耐受范围或百分位。
 
@@ -112,7 +113,7 @@ transfer bodyFluid → skin: U_sweat
 
 其中“胃水”是 `stomach.waterVolumeMl`，“队列水”是 `stomach.mealQueue` 中剩余水量之和，“小肠水”是 `smallIntestine.waterVolumeMl`，“膀胱尿”是当前 `bladder.volumeMl`；`voidedMl` 已包含主动与非自主排出，只累计一次。`sweatRequestMl` 与肺请求不进入水账，只有实际 `sweatVolumeMl` 和 `respiratoryWaterLossMl` 逐轮累加；无活动时两项为 0，既有水账恒等式不变。测试容差为 `1e-6 mL`。
 
-未加载 `thermoregulation` 时，30 min、`intensity=1` 的同一次活动产生 18 mL 汗液和 9 mL 运动相关呼吸失水，二者分别记账；加载 `thermoregulation` 后核心温度升高，`heatFactor > 1`，汗量会高于 18 mL，具体取决于温度轨迹。18 mL 只是 `heatFactor = 1` 的时序算例。18 mL 仍是皮肤汗量，不是 27 mL；9 mL 肺失水不属于皮肤字段，也不能合并成皮肤读数。
+未加载 `thermoregulation` 时，30 min、`intensity=1` 的同一次活动产生 18 mL 汗液和 9 mL 运动相关呼吸失水，二者分别记账；加载 `thermoregulation` 后核心温度升高，`thermalRate > 0`，汗量会高于 18 mL，具体取决于温度轨迹。18 mL 只是未计热致出汗的时序算例。18 mL 仍是皮肤汗量，不是 27 mL；9 mL 肺失水不属于皮肤字段，也不能合并成皮肤读数。
 
 体液下降后，口渴仍由既有 `waterDeficit → hypothalamusThirst → interoception` 按各自轮初快照逐轮读出；本切片不新增通知、不改变阈值，也不自动饮水。
 
@@ -127,7 +128,7 @@ transfer bodyFluid → skin: U_sweat
 
 ## 7. 证据与未建模边界
 
-- 五个参数全部没有人体来源，均为 `design`、`source: null`；脚本头注释与设计文档同样标注。`0.6 mL/min` 是 25°C、`intensity=1` 的工程参考，不是实测人体出汗率；`0.04/°C` 是工程温度斜率；`2 mL/min` 是工程上限；25°C 是默认环境参数，不是实测环境；`heatGain = 1` 是核心温度对请求的工程相对增益。
+- 五个参数全部没有人体来源，均为 `design`、`source: null`；脚本头注释与设计文档同样标注。`0.6 mL/min` 是 25°C、`intensity=1` 的工程参考，不是实测人体出汗率；`0.04/°C` 是工程温度斜率；`15 mL/min` 是工程上限；25°C 是默认环境参数，不是实测环境；`heatGain = 5 mL/(min·°C)` 是核心温度高于 37°C 时的热致出汗叠加增益。
 - 肺失水参数 `0.3 mL/min` 同样是 `design`、`source: null`，不是实测呼吸失水率或总呼吸失水；它与汗液分开记账，详见 [`lungs`](../lungs/README.md)。
 - 不建 METs、热量/kcal、摄氧量、心率、血压、血气、肌糖原、乳酸、疲劳、睡眠、运动类型、皮肤分区、皮肤温度、皮肤湿润度、蒸发残余、汗液电解质、环境热应激、疾病或个体差异；也不建静息呼吸失水、通气量、潮气量、呼吸频率或气喘提醒。核心温度由 `thermoregulation` 薄切片提供，本部位只读一个标量并放大请求，不建体温调节本身。
 - 不声称真实 DSH 会话验收、独立人体出汗数据、汗液电解质测量、临床验证或个体预测；模型内的 18 mL 是 `heatFactor = 1` 时的皮肤汗液水账/时序核对，不是实测汗量；加载 `thermoregulation` 后汗量随模型核心温度放大，但仍不是实测值，也不能外推为运动或体温模型。同一次活动的 9 mL 肺失水不在 18 mL 内。

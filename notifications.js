@@ -11,6 +11,7 @@ export function buildBodyMessage(notification, makeId) {
 
 export function createNotificationPump({ gateway, agentFor, makeId = randomUUID, logger = console }) {
   const delivered = new Set();
+  let activeRun = null;
 
   async function acknowledge(id) {
     try {
@@ -23,7 +24,7 @@ export function createNotificationPump({ gateway, agentFor, makeId = randomUUID,
     }
   }
 
-  async function run() {
+  async function runOnce() {
     let notifications;
     try {
       notifications = gateway.getNotifications();
@@ -60,6 +61,14 @@ export function createNotificationPump({ gateway, agentFor, makeId = randomUUID,
       results.push({ id, status: (await acknowledge(id)) ? 'delivered' : 'failed' });
     }
     return results;
+  }
+
+  function run() {
+    if (activeRun) return activeRun;
+    activeRun = runOnce().finally(() => {
+      activeRun = null;
+    });
+    return activeRun;
   }
 
   return { run };

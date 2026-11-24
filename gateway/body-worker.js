@@ -168,11 +168,22 @@ async function heartbeat({ snapshot, actions, dt, simulatedSeconds, wallTimeMs }
       }
 
       function add(partId, field, delta) {
-        adds.push({ caller: id, partId, field, delta });
+        const [clonedPartId, clonedField, clonedDelta] = structuredClone([partId, field, delta]);
+        adds.push({ caller: id, partId: clonedPartId, field: clonedField, delta: clonedDelta });
       }
 
       function transfer(fromPart, fromField, toPart, toField, amount) {
-        transfers.push({ caller: id, fromPart, fromField, toPart, toField, amount });
+        const [clonedFromPart, clonedFromField, clonedToPart, clonedToField, clonedAmount] = structuredClone([
+          fromPart, fromField, toPart, toField, amount,
+        ]);
+        transfers.push({
+          caller: id,
+          fromPart: clonedFromPart,
+          fromField: clonedFromField,
+          toPart: clonedToPart,
+          toField: clonedToField,
+          amount: clonedAmount,
+        });
       }
 
       if (advance != null) {

@@ -156,8 +156,14 @@ test('a carb meal fills the three regions by share and exercise consumes each re
       assert.equal(regionSum(parts, 'glycogenConsumedG'), 0, 'the action round has no round-start activity');
     } else if (round <= 6) {
       for (const region of muscleRegions) {
-        assert.equal(parts[region].glycogenConsumedG, 0.5, `round ${round}: ${region} consumption`);
+        assertClose(
+          parts[region].glycogenConsumedG,
+          0.5 * regionShares[region],
+          `round ${round}: ${region} consumption`,
+          1e-12,
+        );
       }
+      assertClose(regionSum(parts, 'glycogenConsumedG'), 0.5, `round ${round}: total consumption 0.5 g/min`, 1e-12);
     } else {
       assert.equal(regionSum(parts, 'glycogenConsumedG'), 0, 'consumption stops with the activity');
     }
@@ -167,8 +173,8 @@ test('a carb meal fills the three regions by share and exercise consumes each re
     regionSum(afterExercise, 'glycogenG')
       + regionSum(afterExercise, 'uptakeG')
       + afterExercise.muscleGlucose.uptakeG,
-    exerciseStartG + exercisePaymentsG - 7.5,
-    'five one-minute rounds consume 0.5 g in each of the three regions',
+    exerciseStartG + exercisePaymentsG - 2.5,
+    'five one-minute rounds consume 2.5 g total across the three share-scaled regions',
     1e-6,
   );
 });
@@ -197,8 +203,8 @@ test('an amputee manifest without muscleLimbs boots and normalizes over the rema
 
   await gateway.tick();
   const handedOff = gateway.getState().parts;
-  assertClose(handedOff.muscleHead.glycogenG, 10, 'head stock renormalized to 0.1');
-  assertClose(handedOff.muscleTrunk.glycogenG, 90, 'trunk stock renormalized to 0.9');
+  assertClose(handedOff.muscleHead.glycogenG, 15 + 10, 'head initial 15 + legacy stock renormalized to 0.1');
+  assertClose(handedOff.muscleTrunk.glycogenG, 135 + 90, 'trunk initial 135 + legacy stock renormalized to 0.9');
   assertClose(handedOff.muscleHead.uptakeG, 0.1, 'head uptake renormalized to 0.1');
   assertClose(handedOff.muscleTrunk.uptakeG, 0.9, 'trunk uptake renormalized to 0.9');
   assert.equal(handedOff.muscleGlucose.uptakeG, 0);
@@ -206,8 +212,8 @@ test('an amputee manifest without muscleLimbs boots and normalizes over the rema
 
   await gateway.tick();
   const booked = gateway.getState().parts;
-  assertClose(booked.muscleHead.glycogenG, 10.1, 'head books its share');
-  assertClose(booked.muscleTrunk.glycogenG, 90.9, 'trunk books its share');
+  assertClose(booked.muscleHead.glycogenG, 25.1, 'head books its share');
+  assertClose(booked.muscleTrunk.glycogenG, 225.9, 'trunk books its share');
 });
 
 test('restarting from a committed state continues regional booking and consumption', async (t) => {
@@ -255,7 +261,12 @@ test('restarting from a committed state continues regional booking and consumpti
     beforeRestart.parts.physicalActivity.remainingExerciseMin - 1,
   );
   for (const region of muscleRegions) {
-    assert.equal(after[region].glycogenConsumedG, 0.5, `${region}: consumption continues after restart`);
+    assertClose(
+      after[region].glycogenConsumedG,
+      0.5 * regionShares[region],
+      `${region}: consumption continues after restart`,
+      1e-12,
+    );
   }
   assert.ok(
     after.muscleHead.glycogenG > 0 && after.muscleTrunk.glycogenG > 0 && after.muscleLimbs.glycogenG > 0,
@@ -276,12 +287,13 @@ test('an old save with only muscleGlucose.glycogenG splits it across the regions
   });
 
   const booted = gateway.getState().parts;
+  const expectedInitial = { muscleHead: 15, muscleTrunk: 135, muscleLimbs: 150 };
   for (const region of muscleRegions) {
     assert.deepEqual(booted[region], {
       uptakeG: 0,
-      glycogenG: 0,
+      glycogenG: expectedInitial[region],
       glycogenConsumedG: 0,
-    }, `${region}: new region starts at zero`);
+    }, `${region}: default initial regional glycogen`);
   }
   assert.equal(booted.muscleGlucose.glycogenG, 100, 'the legacy total is still in the boot snapshot');
 
@@ -289,21 +301,21 @@ test('an old save with only muscleGlucose.glycogenG splits it across the regions
   const migrated = gateway.getState().parts;
   assert.equal(Object.hasOwn(migrated.muscleGlucose, 'glycogenG'), false, 'the aggregator drops the legacy total');
   assert.equal(Object.hasOwn(migrated.muscleGlucose, 'glycogenConsumedG'), false);
-  assertClose(migrated.muscleHead.glycogenG, 100 * 0.05, 'head stock share');
-  assertClose(migrated.muscleTrunk.glycogenG, 100 * 0.45, 'trunk stock share');
-  assertClose(migrated.muscleLimbs.glycogenG, 100 * 0.5, 'limbs stock share');
+  assertClose(migrated.muscleHead.glycogenG, 15 + 100 * 0.05, 'head stock share');
+  assertClose(migrated.muscleTrunk.glycogenG, 135 + 100 * 0.45, 'trunk stock share');
+  assertClose(migrated.muscleLimbs.glycogenG, 150 + 100 * 0.5, 'limbs stock share');
   assertClose(migrated.muscleHead.uptakeG, 2 * 0.05, 'head in-flight share');
   assertClose(migrated.muscleTrunk.uptakeG, 2 * 0.45, 'trunk in-flight share');
   assertClose(migrated.muscleLimbs.uptakeG, 2 * 0.5, 'limbs in-flight share');
 
   await gateway.tick();
   const booked = gateway.getState().parts;
-  assertClose(booked.muscleHead.glycogenG, 5.1, 'head books the in-flight share next round');
-  assertClose(booked.muscleTrunk.glycogenG, 45.9, 'trunk books the in-flight share next round');
-  assertClose(booked.muscleLimbs.glycogenG, 51, 'limbs books the in-flight share next round');
+  assertClose(booked.muscleHead.glycogenG, 20.1, 'head books the in-flight share next round');
+  assertClose(booked.muscleTrunk.glycogenG, 180.9, 'trunk books the in-flight share next round');
+  assertClose(booked.muscleLimbs.glycogenG, 201, 'limbs books the in-flight share next round');
   assertClose(
     regionSum(booked, 'glycogenG'),
-    102,
-    'the old total plus the in-flight uptake is preserved exactly',
+    402,
+    'the initial regional store plus old total plus in-flight uptake is preserved exactly',
   );
 });

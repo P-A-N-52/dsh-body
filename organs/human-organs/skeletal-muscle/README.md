@@ -4,14 +4,14 @@
 
 骨骼肌目录是一组独立部位：`physicalActivity`（`activity.ts`）保存一次 `exercise` 或 `sex` 动作留下的活动剩余分钟和相对强度，供皮肤出汗、肺运动相关呼吸失水、区域糖原消耗与血氧需氧按轮初快照读取；`sex` 按体力活动计入，走同一字段、同一校验与同一替换策略，不另建性活动状态。`muscleGlucose`（`glucose-uptake.ts`）是摄糖聚合器：按轮初 `glucose.excessMassG` 与 `pancreasEndocrine.insulinRelative` 计算摄糖请求，写 `uptakeRequestG`；下一轮 `glucose` 按请求结算，实际支付经 transfer 进入 `uptakeG`；再下一轮聚合器按区域份额转给已加载的区域。`muscleHead` / `muscleTrunk` / `muscleLimbs`（`regions/head.ts`、`trunk.ts`、`limbs.ts`，共享 `regions/region-core.ts`）各自持有区域糖原并按轮初活动消耗。这些脚本都不模拟肌肉收缩、运动类型、代谢产热、疲劳或能量代谢，也不消耗能量、产热、调节体温或自动运动；血氧隔室只把活动强度按 `design` 系数折算成需氧，不由肌糖原或能量代谢推导。从未 `exercise` / `sex` 时活动为 0、糖原消耗为 0，进行中的活动在没有新动作时仍按 `io.dt` 递减并保留强度，既有水账与口渴轨迹不变。
 
-实现状态：`activity.ts`、`glucose-uptake.ts`（正常聚合器入口）、`glucose-uptake.no-limbs.ts`（缺四肢变体）与 `regions/{head,trunk,limbs}.ts` 均在 `organs/human-organs/skeletal-muscle/`；活动脚本无参数文件，模块定向测试见 [`test/organs.activity.test.mjs`](../../../test/organs.activity.test.mjs)；摄糖与区域脚本使用 `glucose-uptake.parameters.json`，测试见 [`test/organs.muscle-glucose.test.mjs`](../../../test/organs.muscle-glucose.test.mjs)、[`test/organs.muscle-regions.test.mjs`](../../../test/organs.muscle-regions.test.mjs) 与 [`test/organs.muscle-regions-gateway.test.mjs`](../../../test/organs.muscle-regions-gateway.test.mjs)。`exercise` / `sex` 工具入口、皮肤/肺请求链、血氧需氧、根清单、体液出口、`glucose → muscleGlucose` 的实际支付 transfer 与 `muscleGlucose → 区域` 的分配 transfer 均已接入；当前根清单为 32 个部位、31 份参数文件（女性清单 35 部位、34 份；男性清单 34 部位、33 份）。区域份额与共享消耗速率仍是 `design`，本文不把历史计数当作当前结果。完整契约见本文、[`regions/README.md`](regions/README.md)、[`skin`](../skin/README.md)、[`lungs`](../lungs/README.md) 与 [`sexual-response`](../sexual-response/README.md)。尚未做真实 DSH 会话、独立运动生理数据或临床验证。
+实现状态：`activity.ts`、`glucose-uptake.ts`（正常聚合器入口）、`glucose-uptake.no-limbs.ts`（缺四肢变体）与 `regions/{head,trunk,limbs}.ts` 均在 `organs/human-organs/skeletal-muscle/`；活动脚本无参数文件，模块定向测试见 [`test/organs.activity.test.mjs`](../../../test/organs.activity.test.mjs)；摄糖与区域脚本使用 `glucose-uptake.parameters.json`，测试见 [`test/organs.muscle-glucose.test.mjs`](../../../test/organs.muscle-glucose.test.mjs)、[`test/organs.muscle-regions.test.mjs`](../../../test/organs.muscle-regions.test.mjs) 与 [`test/organs.muscle-regions-gateway.test.mjs`](../../../test/organs.muscle-regions-gateway.test.mjs)。`exercise` / `sex` 工具入口、皮肤/肺请求链、血氧需氧、根清单、体液出口、`glucose → muscleGlucose` 的实际支付 transfer 与 `muscleGlucose → 区域` 的分配 transfer 均已接入；当前根清单为 38 个部位、34 份唯一参数文件（女性清单 41 部位、37 份；男性清单 40 部位、36 份）。区域份额与消耗速率仍是 `design`，本文不把历史计数当作当前结果。完整契约见本文、[`regions/README.md`](regions/README.md)、[`skin`](../skin/README.md)、[`lungs`](../lungs/README.md) 与 [`sexual-response`](../sexual-response/README.md)。尚未做真实 DSH 会话、独立运动生理数据或临床验证。
 
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
 | `activity.ts` | `physicalActivity` | `remainingExerciseMin`、`intensity` | 自己的轮初状态；`io.actions` 中的 `exercise` / `sex`；`io.dt` | 无 |
-| `glucose-uptake.ts` / `glucose-uptake.no-limbs.ts` | `muscleGlucose` | `uptakeRequestG`、`uptakeG` | 自己的轮初状态；轮初 `glucose.excessMassG`（未加载 glucose 时按 0）、`pancreasEndocrine.insulinRelative`（未加载胰腺时按 1）；各区域是否存在；`io.dt` | `glucose-uptake.parameters.json` |
+| `glucose-uptake.ts` / `glucose-uptake.no-limbs.ts` | `muscleGlucose` | `uptakeRequestG`、`uptakeG` | 自己的轮初状态；轮初 `glucose.excessMassG` / `concentrationMgDl`（未加载 glucose 时按 0）、`pancreasEndocrine.insulinRelative`（未加载胰腺时按 1）、`physicalActivity.remainingExerciseMin` / `intensity`（可选）；各区域是否存在；`io.dt` | `glucose-uptake.parameters.json` |
 | `regions/head.ts` | `muscleHead` | `uptakeG`、`glycogenG`、`glycogenConsumedG` | 自己的轮初状态；`muscleGlucose.glycogenG`（仅旧档迁移）、`physicalActivity`；`io.dt` | `glucose-uptake.parameters.json` |
 | `regions/trunk.ts` | `muscleTrunk` | 同上 | 同上 | 同上 |
 | `regions/limbs.ts` | `muscleLimbs` | 同上 | 同上 | 同上 |
@@ -40,12 +40,12 @@
 | `uptakeRequestG` | `g` | 本轮按轮初 `excessMassG` 与 `insulinRelative` 计算的摄糖请求；不是实际通量，不进入质量账，下一轮由 `glucose` 结算 |
 | `uptakeG` | `g` | 上一轮请求结算后实际到账的肌摄糖（在途），每轮 write 先归 0，只由 `transferIn: ['glucose.glucoseMassG']` 增加；本轮按区域份额转出 |
 
-每个区域另有三个 `absolute` 字段，初值均为 0：
+每个区域另有三个 `absolute` 字段，其中 `uptakeG` 与 `glycogenConsumedG` 初值为 `0`，`glycogenG` 初值按 `300 g × regionShare` 分配（头颈 `15 g`、躯干 `135 g`、四肢 `150 g`）：
 
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
 | `uptakeG` | `g` | 本轮区域摄糖到账，仅由 `transferIn: ['muscleGlucose.uptakeG']` 增加，每轮 write 归 0 |
-| `glycogenG` | `g` | 区域糖原储量；上一轮 `uptakeG`、旧档迁移份额在本轮并入，运动时扣除；钳到非负，没有容量上限 |
+| `glycogenG` | `g` | 区域糖原储量（初值：头颈 `15 g` / 躯干 `135 g` / 四肢 `150 g`）；上一轮 `uptakeG`、旧档迁移份额在本轮并入，运动时扣除；钳到非负，没有容量上限 |
 | `glycogenConsumedG` | `g` | 本轮实际运动消耗，无活动为 0；不是累计量 |
 
 时间原点：`uptakeRequestG` 是本轮轮末写出的请求，`muscleGlucose.uptakeG` 是上一轮 `glucose` 结算后到账、等待分配的在途量；区域 `uptakeG` 是本轮轮末分配后的到账量，`glycogenG` 是轮末储量，`glycogenConsumedG` 是轮末写出的本轮通量。五者都不是测量值，也不换算能量或 MET。
@@ -122,27 +122,33 @@ activityDemandMlMin = remainingExerciseMin > 0 ? activityGainMlMin × intensity 
 | 动作 / 通知 | 均无 |
 | transfer | `uptakeG` 声明 `transferIn: ['glucose.glucoseMassG']`，并按入口声明 `transferOut: ['muscleHead.uptakeG', ...]` |
 
-字段见 §2；聚合器只有两个 `g` / `absolute` 字段，初值 0。区域各有三个 `g` / `absolute` 字段，初值 0；详细契约见 [`regions/README.md`](regions/README.md)。
+字段见 §2；聚合器只有两个 `g` / `absolute` 字段，初值 0。区域各有三个 `g` / `absolute` 字段，`glycogenG` 初值为头颈 `15 g` / 躯干 `135 g` / 四肢 `150 g`（合计 300 g）；详细契约见 [`regions/README.md`](regions/README.md)。
 
 | 参数 ID | 默认值 | 单位 | 状态 | 来源与替换点 |
 | --- | ---: | --- | --- | --- |
 | `muscleGlucose.maxUptakeRateGPerMin` | 0.5 | `g/min` | `design` | `source: null`；半饱和与敏感度修正前的最大摄糖速率，纯工程占位；不是实测肌肉葡萄糖摄取率 |
 | `muscleGlucose.halfMaxExcessG` | 20 | `g` | `design` | `source: null`；超基线质量达到该值时响应为半最大，纯工程占位；不是实测半饱和量 |
 | `muscleGlucose.insulinSensitivity` | 1.0 | `1` | `design` | `source: null`；相对胰岛素信号每偏离基线 1 个单位时的线性敏感度，肌肉取 1.0；不是受体亲和力或实测敏感度 |
-| `muscleGlucose.glycogenUseRateGPerMin` | 0.5 | `g/min` | `design` | `source: null`；每个区域在 `intensity = 1` 时每分钟的糖原消耗，纯工程占位；未来由运动强度—糖原利用证据替换 |
+| `muscleGlucose.exerciseUptakeRateGPerMin` | 0.15 | `g/min` | `design` | `source: null`；运动收缩介导的非胰岛素依赖骨骼肌血糖摄取基准速率工程占位，活动期间按强度与血糖浓度比例加入摄糖请求 |
+| `muscleGlucose.glycogenUseRateGPerMin` | 0.5 | `g/min` | `design` | `source: null`；`intensity = 1` 时全身骨骼肌总消耗速率工程占位，按区域份额（0.05 / 0.45 / 0.50）分配到各区域；未来由运动强度—糖原利用证据替换 |
 
-四个参数都是工程假设，没有登记来源；参数文件中的 `range` 只是工程调参范围，不是人体百分位或测量范围。`SRC-DALLAMAN-2007` §III.C.3 只支撑“组织利用可分为不同部分”的结构方向，不支撑这些数值。三个区域共享同一个消耗速率参数，因此 `intensity = 1` 时每区域 0.5 g/min，三区域合计 1.5 g/min；这不是旧的单部位 0.5 g/min 总量，质量账按各区域实际消耗累计。
+五个参数都是工程假设，没有登记来源；参数文件中的 `range` 只是工程调参范围，不是人体百分位或测量范围。`SRC-DALLAMAN-2007` §III.C.3 只支撑“组织利用可分为不同部分”的结构方向，不支撑这些数值。`glycogenUseRateGPerMin = 0.5 g/min` 按区域份额 `0.05 / 0.45 / 0.50` 拆分为头颈 `0.025 g/min`、躯干 `0.225 g/min`、四肢 `0.25 g/min`，三区域全负荷合计恰好为 `0.5 g/min`，质量账按各区域实际消耗累计。
 
 ### 6.2 方程与时序
 
-设 `prev` 为轮初聚合器状态，`excess = max(0, 轮初 glucose.excessMassG)`（未加载 `glucose` 时按 0），`I = 轮初 pancreasEndocrine.insulinRelative`（未加载胰腺时按 1），`dtMin = io.dt / 60`：
+设 `prev` 为轮初聚合器状态，`excess = max(0, 轮初 glucose.excessMassG)`（未加载 `glucose` 时按 0），`C = 轮初 glucose.concentrationMgDl`（未加载 `glucose` 时按 0），`I = 轮初 pancreasEndocrine.insulinRelative`（未加载胰腺时按 1），`dtMin = io.dt / 60`：
 
 ```text
-response = 1 + insulinSensitivity × (I − 1)
-request = maxUptakeRateGPerMin
-        × (excess / (excess + halfMaxExcessG))
-        × response
-        × dtMin
+response = max(0, 1 + insulinSensitivity × (I − 1))
+insulinUptakeG = maxUptakeRateGPerMin
+               × (excess / (excess + halfMaxExcessG))
+               × response
+               × dtMin
+exerciseUptakeG = physicalActivity.remainingExerciseMin > 0
+                ? exerciseUptakeRateGPerMin × clamp(intensity, 0, 1) × dtMin
+                  × clamp(C / 90, 0, 1.5)
+                : 0
+request = insulinUptakeG + exerciseUptakeG
 uptake = prev.uptakeG
 for region in 已加载区域:
   amount(region) = uptake × weight(region) / Σ(已加载区域 weight)
@@ -153,17 +159,17 @@ write.uptakeG = 0
 区域侧（`regions/region-core.ts`）：
 
 ```text
-legacy = 旧档迁移份额（仅旧档第一轮非 0）
-uptake = 轮初区域 uptakeG
+legacy   = 旧档迁移份额（仅旧档第一轮非 0）
+uptake   = 轮初区域 uptakeG
 consumed = active
-  ? min(glycogenUseRateGPerMin × intensity × dtMin,
+  ? min(glycogenUseRateGPerMin × regionShare × intensity × dtMin,
         max(0, glycogenG) + uptake + legacy)
   : 0
 region.glycogenG = max(0, glycogenG) + uptake + legacy − consumed
 write { uptakeG: 0, glycogenG, glycogenConsumedG: consumed }
 ```
 
-- 请求 = 0 当 `excess = 0`：没有超基线质量时肌肉不请求摄糖。`excess` 越大，`excess / (excess + halfMaxExcessG)` 越接近 1，最大不超过 `maxUptakeRateGPerMin`。
+- 静息空腹（`excess = 0` 且未运动）时请求为 0；**运动期间**即使 `excess = 0`，收缩介导的非胰岛素依赖摄糖 `exerciseUptakeG` 仍按 `0.15 × intensity × dtMin × clamp(C / 90, 0, 1.5)` 请求血糖。`excess` 越大，`excess / (excess + halfMaxExcessG)` 越接近 1。
 - `I = 1` 时 `response = 1`；`I = 2` 时肌肉 `response = 2`、肝（敏感度 0.5）为 1.5；`I = 0` 时肌肉 `response = 0`。`I` 是低血糖/高血糖方向的相对信号，不是浓度。
 - 请求每轮重写，不是累计量；请求可以大于血池可用量，结算时由 `glucose` 按余额钳位，实际到账记在 `muscleGlucose.uptakeG`。聚合器第一次 write 后不再保留旧 `glycogenG` / `glycogenConsumedG`，也不把请求写进质量账。
 - 份额：正常入口为头 0.05 / 躯干 0.45 / 四肢 0.50；缺区域变体只声明存在的区域，按剩余份额归一（头和躯干为 0.1 / 0.9）。份额是 `design` / `source: null`，不随动作类型或肢体使用变化。
@@ -171,9 +177,9 @@ write { uptakeG: 0, glycogenG, glycogenConsumedG: consumed }
 - `active` 只要求活动部位存在且轮初剩余时间 > 0；`intensity = 0` 时消耗为 0，但剩余时间仍由 `activity.ts` 递减。
 - 不足一分钟的活动不按比例截断：轮初 `remainingExerciseMin = 0.5` 且 `dt = 60` 时仍按整 dt 消耗。
 - 钳位：区域 `consumed` 不超过 `max(0, glycogenG) + uptake + legacy`，所以糖原不会为负；`glycogenConsumedG` 是实际消耗，不是请求。
-- `physicalActivity` 未加载 → 区域消耗 0；已加载但 `remainingExerciseMin` / `intensity` 缺失、非数值、非有限、剩余时间为负或 `intensity ∉ [0, 1]` 时抛错，本轮不写状态。区域自身字段缺失按 0。`glucose.excessMassG` 或 `insulinRelative` 已加载但缺失、非数值、非有限或为负时抛错；合法 0 是有效信号。
-- 时序：第 N 轮 `glucose` 写出 `excessMassG(N)`；第 N+1 轮聚合器读到它并写 `uptakeRequestG`；第 N+2 轮 `glucose` 结算并写入 `muscleGlucose.uptakeG`；第 N+3 轮聚合器把到账量分给区域，区域再下一轮入账 `glycogenG`。`exercise` / `sex` 第 1 轮进入 `physicalActivity`，第 2 轮区域开始消耗。
-- 示例（区域消耗）：轮初区域 `glycogenG = 10`、无在途、`intensity = 1`、`dt = 60` → 每个区域消耗 0.5 g；三区域合计 1.5 g。轮初 `glycogenG = 0.2`、`uptakeG = 0`、`dt = 60` → 该区域实际消耗 0.2 g，糖原为 0。
+- `physicalActivity` 未加载 → 运动摄糖与区域消耗均为 0；已加载但 `remainingExerciseMin` / `intensity` 缺失、非数值、非有限、剩余时间为负或 `intensity ∉ [0, 1]` 时抛错，本轮不写状态。区域自身字段缺失按 0。`glucose.excessMassG`、`glucose.concentrationMgDl`（运动时读取）或 `insulinRelative` 已加载但缺失、非数值、非有限或为负时抛错；合法 0 是有效信号。
+- 时序：第 N 轮 `glucose` 写出 `excessMassG(N)`；第 N+1 轮聚合器读到它并写 `uptakeRequestG`；第 N+2 轮 `glucose` 结算并写入 `muscleGlucose.uptakeG`；第 N+3 轮聚合器把到账量分给区域，区域再下一轮入账 `glycogenG`。`exercise` / `sex` 第 1 轮进入 `physicalActivity`，第 2 轮聚合器请求运动摄糖、区域开始消耗。
+- 示例（区域消耗）：轮初三区 `glycogenG` 为 `15 / 135 / 150 g`、无在途、`intensity = 1`、`dt = 60` → 头颈消耗 `0.025 g`、躯干消耗 `0.225 g`、四肢消耗 `0.25 g`；三区域合计 `0.5 g`。轮初某区域 `glycogenG = 0.2`、`uptakeG = 0`、`dt = 60` 且按份额需耗 `0.25 g` → 该区域实际消耗 `0.2 g`，糖原为 0。
 
 ### 6.3 消费者与质量账
 
@@ -186,7 +192,7 @@ write { uptakeG: 0, glycogenG, glycogenConsumedG: consumed }
 ### 6.4 旧档、重启、变体与未建模
 
 - 旧档只有 `muscleGlucose.glycogenG`（总量）时，各区域在第一轮按已加载区域的份额把总量并入 `glycogenG`（头 0.05 / 躯干 0.45 / 四肢 0.50；缺区域按剩余份额归一）；聚合器第一次 write 不再保留旧总量。旧档在途 `uptakeG` 不改写，仍由聚合器在重启后的第一轮转给区域，区域下一轮入账。旧 `glycogenConsumedG` 丢弃，不反推历史消耗。
-- 旧档缺 `muscleGlucose` 时补两个 0；已有部位缺 `uptakeRequestG` 时补 0；区域缺失时由 `regions` 的 `initialState` 补三个 0，不反推历史糖原。重启保留已提交的 `uptakeRequestG`、`muscleGlucose.uptakeG`、区域 `uptakeG` / `glycogenG` / `glycogenConsumedG`，下一轮各自只处理一次。
+- 旧档缺 `muscleGlucose` 时补两个 0；已有部位缺 `uptakeRequestG` 时补 0；区域缺失时由 `regions` 的 `initialState` 补 `uptakeG = 0`、`glycogenConsumedG = 0` 及按份额分配的初始 `glycogenG`（头颈 `15 g` / 躯干 `135 g` / 四肢 `150 g`），不反推历史糖原。重启保留已提交的 `uptakeRequestG`、`muscleGlucose.uptakeG`、区域 `uptakeG` / `glycogenG` / `glycogenConsumedG`，下一轮各自只处理一次。
 - 缺区域变体：复制清单，去掉 `regions/limbs.ts`，把聚合器换成 `glucose-uptake.no-limbs.ts`；只声明剩余区域，份额按剩余区域归一。不能只删区域脚本而保留正常入口，否则 `transferOut` 目标未声明会拒绝启动；同一清单不能同时加载两个聚合器入口。更细的左右臂/左右腿拆分、缺失肢体的质量推断与残肢局部代谢不在本切片内。
 - 不建肌糖原容量上限、静息周转、运动类型/MET、能量消耗、乳酸/Cori 循环、区域耗竭对活动或疲劳的反馈、肝糖原释放、胰岛素浓度或脂肪组织分区；肌肉不向血液释放葡萄糖。
-- 参数全部 `design`、`source: null`；`SRC-DALLAMAN-2007` §III.C.3 只支撑组织利用可分的结构方向，不支撑 0.5 g/min 最大速率、20 g 半饱和、1.0 敏感度、0.5 g/min 区域消耗速率或 0.05/0.45/0.50 份额。未做真实 DSH 会话、独立肌糖原/血糖数据或临床验证；区域质量分布、共享消耗速率和归一化都是工程假设。
+- 参数全部 `design`、`source: null`；`SRC-DALLAMAN-2007` §III.C.3 只支撑组织利用可分的结构方向，不支撑 0.5 g/min 最大速率、20 g 半饱和、1.0 敏感度、0.15 g/min 运动摄糖速率、0.5 g/min 总糖原消耗速率或 0.05/0.45/0.50 份额。未做真实 DSH 会话、独立肌糖原/血糖数据或临床验证；区域质量分布、按份额缩放的消耗速率和归一化都是工程假设。

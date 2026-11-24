@@ -234,3 +234,26 @@ test('adrenal output is finite and JSON-safe', () => {
     assert.deepEqual(JSON.parse(JSON.stringify(written)), written, label);
   }
 });
+
+test('adrenal guards malformed prev and clamps cortisol to [0, 3]', () => {
+  const fromNaN = round({ state: { cortisolRelative: Number.NaN } }).written;
+  assert.equal(fromNaN.cortisolRelative, 1);
+
+  const clampedHigh = round({
+    state: { cortisolRelative: 10 },
+    pituitary: pituitaryAt(10),
+    dt: 900,
+  }).written;
+  assert.equal(clampedHigh.cortisolRelative, 3);
+
+  const clampedLow = round({
+    state: { cortisolRelative: -3 },
+    pituitary: pituitaryAt(0),
+    dt: 0,
+  }).written;
+  assert.equal(clampedLow.cortisolRelative, 0);
+
+  const writes = [];
+  assert.throws(() => round({ state: initialState, pituitary: null, writes }), Error);
+  assert.equal(writes.length, 0);
+});

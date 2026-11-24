@@ -50,11 +50,11 @@
     {
       "id": "lungsVentilation.inspiredO2Fraction",
       "unit": "1",
-      "value": 0.21,
+      "value": 0.058333,
       "status": "design",
-      "range": [0.1, 1],
+      "range": [0.01, 1],
       "source": null,
-      "note": "吸入氧分数，室内空气量级；工程默认值，不是环境测量，也不建模高原或吸氧"
+      "note": "肺泡净氧提取分数（对应静息 250 mL/min 需氧与死腔系数 1.4 下约 6000 mL/min 通气量、60000 mL/min 上限下约 2500 mL/min 供氧能力）；工程默认值，不是血气或高原/吸氧模型"
     },
     {
       "id": "lungsVentilation.deadSpaceFactor",
@@ -68,9 +68,9 @@
     {
       "id": "lungsVentilation.pantingGain",
       "unit": "mL/(min·°C)",
-      "value": 0.5,
+      "value": 1500,
       "status": "design",
-      "range": [0, 5],
+      "range": [0, 5000],
       "source": null,
       "note": "核心温度每高于设定点 37°C 1°C 时叠加到通气目标的喘息增益；工程假设，不是实测体温—通气斜率或喘息模型"
     }

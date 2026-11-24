@@ -79,7 +79,7 @@ function prepareLowCapacityManifest(dir) {
     (parameter) => parameter.id === 'lungsVentilation.maxVentilationMlMin',
   );
   assert.equal(maxVentilation.value, 60000, 'low-capacity variant starts from the root default');
-  maxVentilation.value = 6000;
+  maxVentilation.value = 21600;
   writeFileSync(join(targetDir, 'ventilation.parameters.json'), JSON.stringify(parameters));
 
   const manifest = {
@@ -121,7 +121,7 @@ test('exercise and sex raise demand and ventilation with SpO2 at baseline from t
       );
       assert.equal(interoception.dyspneaMm, 0, `${type} round ${round}: dyspnea`);
     }
-    assert.equal(peakDemandMlMin, 1300, `${type}: peak demand`);
+    assert.equal(peakDemandMlMin, 1250, `${type}: peak demand`);
     assert.ok(
       peakVentilationMlMin > 6000,
       `${type}: ventilation must rise above resting, got ${peakVentilationMlMin}`,
@@ -148,7 +148,7 @@ test('a meal raises duodenum nutrient exposure and the digestive oxygen demand',
     const exposureBefore = gateway.getState().parts.duodenum.nutrientExposure;
     await gateway.tick();
     const { bloodOxygen, duodenum } = gateway.getState().parts;
-    const expectedDemandMlMin = 250 * (0.8 + 0.4) + 0.1 * exposureBefore * 250;
+    const expectedDemandMlMin = 250 * (0.6 + 0.4) + 0.1 * exposureBefore * 250;
     assert.ok(
       Math.abs(bloodOxygen.oxygenConsumptionMlMin - expectedDemandMlMin) < 1e-9,
       `round ${round}: demand ${bloodOxygen.oxygenConsumptionMlMin} != ${expectedDemandMlMin}`,
@@ -175,26 +175,27 @@ test('a low ventilation capacity caps supply and raises dyspnea above zero', asy
     202,
   );
 
+  const expectedCapacity = (21600 * 0.058333) / 1.4;
   for (let round = 1; round <= 5; round++) {
     await gateway.tick();
     const { bloodOxygen, lungsVentilation, interoception } = gateway.getState().parts;
     if (round === 1) {
-      assert.equal(bloodOxygen.oxygenConsumptionMlMin, 250 * (0.8 + 0.4));
+      assert.equal(bloodOxygen.oxygenConsumptionMlMin, 250 * (0.6 + 0.4));
       assert.equal(bloodOxygen.spo2Percent, 97);
       assert.equal(interoception.dyspneaMm, 0);
     }
     if (round >= 2) {
-      assert.equal(bloodOxygen.oxygenConsumptionMlMin, 1300);
-      assert.equal(bloodOxygen.oxygenSupplyMlMin, 900);
-      assert.equal(bloodOxygen.oxygenDeficit, 400 / 1300);
-      assert.equal(bloodOxygen.spo2Percent, 97 * (900 / 1300));
-      assert.equal(lungsVentilation.ventilationMlMin, 6000);
-      assert.equal(lungsVentilation.alveolarO2MlMin, 900);
-      assert.equal(lungsVentilation.alveolarO2CapacityMlMin, 900);
+      assert.equal(bloodOxygen.oxygenConsumptionMlMin, 1250);
+      assert.equal(bloodOxygen.oxygenSupplyMlMin, expectedCapacity);
+      assert.equal(bloodOxygen.oxygenDeficit, (1250 - expectedCapacity) / 1250);
+      assert.equal(bloodOxygen.spo2Percent, 97 * (expectedCapacity / 1250));
+      assert.equal(lungsVentilation.alveolarO2CapacityMlMin, expectedCapacity);
     }
     if (round >= 3) {
+      assert.equal(lungsVentilation.ventilationMlMin, 21600);
+      assert.equal(lungsVentilation.alveolarO2MlMin, expectedCapacity);
       assert.ok(
-        Math.abs(interoception.dyspneaMm - (100 * 400) / 1300) < 1e-9,
+        Math.abs(interoception.dyspneaMm - (100 * (1250 - expectedCapacity)) / 1250) < 1e-9,
         `round ${round}: dyspnea ${interoception.dyspneaMm}`,
       );
     }
@@ -216,13 +217,13 @@ test('restarting on the same statePath continues the supply and demand chain', a
   for (let round = 1; round <= 5; round++) await gateway.tick();
 
   const before = gateway.getState();
-  assert.equal(before.parts.bloodOxygen.oxygenConsumptionMlMin, 1300);
-  assert.equal(before.parts.bloodOxygen.oxygenSupplyMlMin, 1300);
+  assert.equal(before.parts.bloodOxygen.oxygenConsumptionMlMin, 1250);
+  assert.equal(before.parts.bloodOxygen.oxygenSupplyMlMin, 1250);
   assert.equal(before.parts.bloodOxygen.spo2Percent, 97);
   assert.ok(
-    before.parts.lungsVentilation.ventilationMlMin > 8666.6
-      && before.parts.lungsVentilation.ventilationMlMin < 8668,
-    `thermoregulation adds a small panting term: ${before.parts.lungsVentilation.ventilationMlMin}`,
+    before.parts.lungsVentilation.ventilationMlMin > 30000
+      && before.parts.lungsVentilation.ventilationMlMin < 31000,
+    `thermoregulation adds a panting term on top of metabolic ventilation: ${before.parts.lungsVentilation.ventilationMlMin}`,
   );
   await gateway.stop();
 
@@ -233,8 +234,8 @@ test('restarting on the same statePath continues the supply and demand chain', a
 
   await gateway.tick();
   const parts = gateway.getState().parts;
-  assert.equal(parts.bloodOxygen.oxygenConsumptionMlMin, 1300);
-  assert.equal(parts.bloodOxygen.oxygenSupplyMlMin, 1300);
+  assert.equal(parts.bloodOxygen.oxygenConsumptionMlMin, 1250);
+  assert.equal(parts.bloodOxygen.oxygenSupplyMlMin, 1250);
   assert.equal(parts.bloodOxygen.spo2Percent, 97);
   assert.equal(
     parts.physicalActivity.remainingExerciseMin,
@@ -250,10 +251,15 @@ test('the root body boots the endocrine parts at baseline and keeps resting dema
   assert.deepEqual(booted.pituitary, { tshRelative: 1, acthRelative: 1, prolactinRelative: 1 });
   assert.deepEqual(booted.thyroid, { thyroxineRelative: 1 });
   assert.deepEqual(booted.adrenal, { cortisolRelative: 1 });
+  const initialRegionGlycogen = {
+    muscleHead: 15,
+    muscleTrunk: 135,
+    muscleLimbs: 150,
+  };
   for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
     assert.deepEqual(booted[region], {
       uptakeG: 0,
-      glycogenG: 0,
+      glycogenG: initialRegionGlycogen[region],
       glycogenConsumedG: 0,
     }, region);
   }
@@ -261,13 +267,13 @@ test('the root body boots the endocrine parts at baseline and keeps resting dema
   assert.deepEqual(booted.salivaryGlands, {
     salivaRateMlPerMin: 0.5,
     mealStimulusMin: 0,
-    mouthMoistureMm: 100 / 3,
+    mouthMoistureMm: 100,
   });
 
   await gateway.tick();
   assert.equal(
     gateway.getState().parts.bloodOxygen.oxygenConsumptionMlMin,
-    250 * (0.8 + 0.4),
+    250 * (0.6 + 0.4),
   );
   assert.equal(gateway.getState().parts.bloodOxygen.oxygenDeficit, 0);
 });

@@ -375,3 +375,20 @@ test('pituitary output is finite and JSON-safe', () => {
     assert.deepEqual(JSON.parse(JSON.stringify(written)), written);
   }
 });
+
+test('malformed prev fields fall back cleanly and clamp within [0, 3]', () => {
+  const fromNaN = round({
+    state: {
+      tshRelative: Number.NaN,
+      acthRelative: Number.POSITIVE_INFINITY,
+      prolactinRelative: undefined,
+    },
+  });
+  assert.deepEqual(fromNaN, { tshRelative: 1, acthRelative: 1, prolactinRelative: 1 });
+
+  const fromOutOfRange = round({
+    state: { tshRelative: -2, acthRelative: 9, prolactinRelative: 9 },
+    dt: 0,
+  });
+  assert.deepEqual(fromOutOfRange, { tshRelative: 0, acthRelative: 3, prolactinRelative: 3 });
+});

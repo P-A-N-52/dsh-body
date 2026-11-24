@@ -388,36 +388,39 @@ test('body_state returns all parts or one part', async (t) => {
   assert.deepEqual(all.parts.blood, {
     bloodVolumeMl: 5000,
     cardiacOutputMlMin: 4900,
-    systolicMmHg: 120 * (4900 / 5000) ** 0.5,
-    diastolicMmHg: 80 * (4900 / 5000) ** 0.3,
+    systolicMmHg: 120,
+    diastolicMmHg: 80,
     oxygenDeliveryMlMin: 4900 * (97 * 2) / 1000,
     maxOxygenDeliveryMlPerMin: 3666.6,
     gfrMlMin: 100,
   });
   assert.ok(
-    all.parts.thermoregulation.coreTemperatureC > 37,
-    'basal heat production warms the core above the setpoint in the first model round',
+    Math.abs(
+      all.parts.thermoregulation.coreTemperatureC
+        - (37 + (0.005 * 250 - 0.104167 * 12) / 60),
+    ) < 1e-12,
+    'basal heat production balances resting heat loss near 37 °C in the first model round',
   );
   assert.deepEqual(all.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
   assert.deepEqual(all.parts.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
   assert.deepEqual(all.parts.bloodOxygen, {
-    oxygenConsumptionMlMin: 250 * (0.8 + 0.4),
-    oxygenSupplyMlMin: 250 * (0.8 + 0.4),
+    oxygenConsumptionMlMin: 250,
+    oxygenSupplyMlMin: 250,
     spo2Percent: 97,
     oxygenDeficit: 0,
   });
   assert.deepEqual(all.parts.lungsVentilation, {
     tidalVolumeMl: 500,
-    respiratoryRatePerMin: 12,
-    ventilationMlMin: 6000,
-    alveolarO2MlMin: 900,
-    alveolarO2CapacityMlMin: 9000,
+    respiratoryRatePerMin: (250 * 1.4 / 0.058333) / 500,
+    ventilationMlMin: 250 * 1.4 / 0.058333,
+    alveolarO2MlMin: 250,
+    alveolarO2CapacityMlMin: 60000 * (0.058333 / 1.4),
   });
   assert.equal(all.parts.interoception.dyspneaMm, 0);
   assert.deepEqual(all.parts.glucose, {
     glucoseMassG: 12.69,
     concentrationMgDl: 90,
-    disposedGlucoseG: 0,
+    disposedGlucoseG: 0.12,
     excessMassG: 0,
   });
   assert.deepEqual(all.parts.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
@@ -429,19 +432,24 @@ test('body_state returns all parts or one part', async (t) => {
   assert.equal(all.parts.interoception.sleepinessMm, 50);
   assert.deepEqual(all.parts.liver, {
     glycogenCapacityG: 100,
-    glycogenG: 80,
+    glycogenG: 80 - 0.096,
     storageG: 0,
     storageRequestG: 0,
-    outputG: 0,
+    outputG: 0.096,
   });
   assert.deepEqual(all.parts.muscleGlucose, {
     uptakeG: 0,
     uptakeRequestG: 0,
   });
+  const initialRegionGlycogen = {
+    muscleHead: 15,
+    muscleTrunk: 135,
+    muscleLimbs: 150,
+  };
   for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
     assert.deepEqual(all.parts[region], {
       uptakeG: 0,
-      glycogenG: 0,
+      glycogenG: initialRegionGlycogen[region],
       glycogenConsumedG: 0,
     }, region);
   }
@@ -621,4 +629,15 @@ test('tool definitions expose JSON Schema and register through ctx.effect', () =
   assert.equal(registered[0], registeredTools.body_act);
   assert.equal(registered[1], registeredTools.body_state);
   assert.equal(disposers.length, 2);
+});
+
+test('body_state ignores prototype property names and returns null', async (t) => {
+  const { tools } = await startBody(t);
+
+  for (const part of ['toString', 'constructor', '__proto__']) {
+    const result = await tools.body_state.execute({ part }, fakeExec({ callId: `proto-${part}` }));
+    assert.equal(result.simulatedSeconds, 0);
+    assert.equal(Object.hasOwn(result.parts, part), true);
+    assert.equal(result.parts[part], null);
+  }
 });

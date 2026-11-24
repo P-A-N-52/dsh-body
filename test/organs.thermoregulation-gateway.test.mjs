@@ -56,22 +56,42 @@ function createBody(t, { parts = {} } = {}) {
   };
 }
 
-function exercise(gateway, id) {
+function exercise(gateway, id, durationMin = 10) {
   assert.equal(
-    gateway.submitAction({ id, type: 'exercise', intensity: 1, durationMin: 10 }).statusCode,
+    gateway.submitAction({ id, type: 'exercise', intensity: 1, durationMin }).statusCode,
     202,
   );
 }
 
-test('exercise raises core temperature and sweating damps the rise', async (t) => {
+test('resting body stays at ~37 C without hyperthermia runaway or sweating', async (t) => {
   const body = createBody(t);
   const gateway = await body.start();
-  exercise(gateway, 'exercise-thermoregulation');
+
+  for (let round = 1; round <= 60; round++) {
+    await gateway.tick();
+  }
+  const parts = gateway.getState().parts;
+  assert.ok(
+    Math.abs(parts.thermoregulation.coreTemperatureC - 37) < 0.01,
+    `resting core temp should stay near 37 C, got ${parts.thermoregulation.coreTemperatureC}`,
+  );
+  assert.equal(parts.skin.sweatRequestMl, 0);
+  assert.equal(parts.skin.sweatVolumeMl, 0);
+  assert.ok(
+    Math.abs(parts.lungsVentilation.ventilationMlMin - 6000) < 1,
+    `resting ventilation should stay near 6000 mL/min, got ${parts.lungsVentilation.ventilationMlMin}`,
+  );
+});
+
+test('exercise raises core temperature, stabilizes below 39.5 C, and sweating damps the rise', async (t) => {
+  const body = createBody(t);
+  const gateway = await body.start();
+  exercise(gateway, 'exercise-thermoregulation', 120);
 
   const temperatures = [gateway.getState().parts.thermoregulation.coreTemperatureC];
   const sweatRequests = [gateway.getState().parts.skin.sweatRequestMl];
   const sweatVolumes = [gateway.getState().parts.skin.sweatVolumeMl];
-  for (let round = 1; round <= 4; round++) {
+  for (let round = 1; round <= 10; round++) {
     await gateway.tick();
     const parts = gateway.getState().parts;
     temperatures.push(parts.thermoregulation.coreTemperatureC);
@@ -79,22 +99,22 @@ test('exercise raises core temperature and sweating damps the rise', async (t) =
     sweatVolumes.push(parts.skin.sweatVolumeMl);
   }
 
-  for (let round = 1; round < temperatures.length; round++) {
+  for (let round = 3; round < temperatures.length; round++) {
     assert.ok(
       temperatures[round] > temperatures[round - 1],
       `round ${round}: core temperature must rise`,
     );
   }
-  assert.ok(temperatures[4] > 37.5, 'exercise must warm the core well above the setpoint');
+  assert.ok(temperatures[10] > 37.5, 'exercise must warm the core well above the setpoint');
   assert.ok(
-    sweatRequests[3] > sweatRequests[2],
-    `sweat request ${sweatRequests[3]} must exceed ${sweatRequests[2]}`,
+    sweatRequests[4] > sweatRequests[3],
+    `sweat request ${sweatRequests[4]} must exceed ${sweatRequests[3]}`,
   );
-  assert.ok(sweatRequests[4] > sweatRequests[3]);
+  assert.ok(sweatRequests[5] > sweatRequests[4]);
   assert.ok(sweatVolumes[4] > 0, 'paid sweat must appear after the request');
 
-  const riseWithoutSweat = (0.02 * 1300 - 0.05 * (temperatures[3] - 25)) / 60;
-  const actualRise = temperatures[4] - temperatures[3];
+  const riseWithoutSweat = (0.005 * 1250 - 0.104167 * (temperatures[9] - 25)) / 60;
+  const actualRise = temperatures[10] - temperatures[9];
   assert.ok(
     actualRise < riseWithoutSweat,
     `evaporative loss must reduce the rise: ${actualRise} < ${riseWithoutSweat}`,
@@ -102,9 +122,15 @@ test('exercise raises core temperature and sweating damps the rise', async (t) =
   assert.ok(actualRise < temperatures[3] - temperatures[2], 'sweat must damp the rise');
   assert.ok(gateway.getState().parts.interoception.heatMm > 0);
   assert.equal(gateway.getState().parts.interoception.coldMm, 0);
+
+  for (let round = 11; round <= 120; round++) {
+    await gateway.tick();
+  }
+  const steadyTemp = gateway.getState().parts.thermoregulation.coreTemperatureC;
+  assert.ok(steadyTemp > 38 && steadyTemp < 39.5, `hard exercise stabilizes < 39.5 C, got ${steadyTemp}`);
 });
 
-test('a preseeded hot save cools down with its evaporating sweat', async (t) => {
+test('a preseeded hot save at rest triggers sweating and panting while cooling down', async (t) => {
   const body = createBody(t, {
     parts: {
       thermoregulation: { coreTemperatureC: 39 },
@@ -119,6 +145,9 @@ test('a preseeded hot save cools down with its evaporating sweat', async (t) => 
   const parts = gateway.getState().parts;
   assert.ok(parts.thermoregulation.coreTemperatureC < 39);
   assert.ok(parts.thermoregulation.coreTemperatureC > 37);
+  assert.ok(parts.skin.sweatRequestMl > 0, 'resting hyperthermia must trigger sweat request');
+  assert.ok(parts.lungsVentilation.ventilationMlMin > 6000, 'resting hyperthermia must trigger panting');
+  assert.ok(parts.lungsVentilation.respiratoryRatePerMin > 12, 'panting must raise respiratory rate');
   assert.equal(parts.interoception.heatMm, 100);
   assert.equal(parts.interoception.coldMm, 0);
 });

@@ -1,7 +1,9 @@
 /*
- * 乳腺泌乳脚本（mammaryGlands，仅女性清单）：按轮初垂体相对催乳素生成乳汁水与乳糖请求，
- * 并把未排空的累积写成 0–100 mm 的胀奶代理。部位 `mammaryGlands` 的唯一写者；无动作、
- * 不调用 transfer、不读取自己的旧请求字段。消费者有三处：
+ * 乳腺泌乳脚本（mammaryGlands，仅女性清单）：按布尔状态 `lactating` 与轮初垂体相对催乳素生成
+ * 乳汁水与乳糖请求，并把未排空的累积写成 0–100 mm 的胀奶代理（带一阶回落，避免一轮结算滞后
+ * 造成永久棘轮累积）。部位 `mammaryGlands` 的唯一写者；无动作、不调用 transfer、不读取自己的旧请求字段。
+ * 默认非泌乳（`lactating: false`），因此默认女性身体没有每天 1.44 L 的泌乳失水，垂体催乳素维持 1.0。
+ * 消费者有三处：
  * - `bodyFluid` 女性变体 `water.female.ts` 在第五出口（最后一出口）读 `milkRequestMl`，
  *   本轮 write 之后把 `bodyFluid.waterVolumeMl` 转入 `milkMl`；
  * - `glucose` 在最后一个汇读 `lactoseRequestG`，本轮 write 之后把 `glucose.glucoseMassG`
@@ -12,19 +14,23 @@
  *
  * 全部数值都是 `design`、`source: null`（同目录 `milk.parameters.json`），没有实测泌乳率、
  * 乳汁乳糖浓度或胀奶量表。公式（dtMin = io.dt / 60，prolactinRelative 为轮初相对量，
- * prev 为本部位轮初状态）：
- *   rateMlPerMin = basalMilkRateMlPerMin × prolactinRelative
- *   milkRequestMl = rateMlPerMin × dtMin
- *   lactoseRequestG = milkRequestMl × lactoseGPerMl
- *   fullnessMm = clamp(prev.fullnessMm + fullnessGainPerMl × (milkRequestMl − prev.milkMl), 0, 100)
- * 胀奶只在“本轮产奶请求 > 上一轮实际泌乳量”时累积，实际泌乳量更大时回落；它不是乳腺压力、
- * 容量或疼痛测量，也不反馈到产奶速率。`milkMl > 0` 同时被 `pituitary` 用作吸吮/排空代理。
+ * prev 为本部位轮初状态，decay = 2^(−dtMin / fullnessDecayHalfTimeMin)）：
+ *   若 prev.lactating !== true：
+ *     lactating = false, milkRequestMl = 0, lactoseRequestG = 0
+ *     fullnessMm = clamp(prev.fullnessMm × decay, 0, 100)
+ *   若 prev.lactating === true：
+ *     rateMlPerMin = basalMilkRateMlPerMin × prolactinRelative
+ *     milkRequestMl = rateMlPerMin × dtMin
+ *     lactoseRequestG = milkRequestMl × lactoseGPerMl
+ *     fullnessMm = clamp(prev.fullnessMm × decay + fullnessGainPerMl × (milkRequestMl − prev.milkMl), 0, 100)
+ * 胀奶只在“本轮产奶请求 > 上一轮实际泌乳量”时累积，实际泌乳量更大或停滞时按半时回落；它不是
+ * 乳腺压力、容量或疼痛测量，也不反馈到产奶速率。`milkMl > 0` 同时被 `pituitary` 用作吸吮/排空代理。
  *
- * 缺失与非法：`pituitary` 未加载按 `prolactinRelative = 1`（基础产奶）；已加载但
+ * 缺失与非法：`pituitary` 未加载按 `prolactinRelative = 1`；已加载但
  * `prolactinRelative` 缺失、非数字、非有限或为负时抛错，校验在 io.write 之前完成，本轮
  * 不写状态。`bodyFluid` 与 `glucose` 不是本脚本的读取对象，缺它们不影响请求；实际不足由
- * 两个消费者按各自出口顺序钳位。旧档缺字段时由 initialState 补 0；自身历史字段非有限时
- * 按 0 读取，输出保持有限与 JSON-safe。
+ * 两个消费者按各自出口顺序钳位。旧档缺字段时由 initialState 补默认（`lactating: false`、数值 0）；
+ * 自身历史字段非有限时按 0 读取，输出保持有限与 JSON-safe。
  *
  * 不能推出：不建婴儿、吸吮动作、哺乳行为、排空事件、孕期/产后阶段、乳腺病变、乳汁脂肪/
  * 蛋白/免疫成分、受体动力学或个体差异；单位 `mL` 与 `g` 只是本仿真的请求/到账量。
@@ -35,6 +41,7 @@ export const id = 'mammaryGlands';
 export const actionTypes: string[] = [];
 
 type MammaryGlandsState = {
+  lactating: boolean;
   milkRequestMl: number;
   milkMl: number;
   lactoseRequestG: number;
@@ -42,12 +49,21 @@ type MammaryGlandsState = {
   fullnessMm: number;
 };
 
+type SavedMammaryGlandsState = {
+  readonly lactating?: unknown;
+  readonly milkRequestMl?: unknown;
+  readonly milkMl?: unknown;
+  readonly lactoseRequestG?: unknown;
+  readonly lactoseG?: unknown;
+  readonly fullnessMm?: unknown;
+};
+
 type PituitaryReading = {
   prolactinRelative?: unknown;
 };
 
 type IO = {
-  read(id: 'mammaryGlands'): Readonly<MammaryGlandsState> | undefined;
+  read(id: 'mammaryGlands'): Readonly<SavedMammaryGlandsState> | undefined;
   read(id: 'pituitary'): Readonly<PituitaryReading> | undefined;
   readonly dt: number;
   write(next: MammaryGlandsState): void;
@@ -60,12 +76,17 @@ const basalMilkRateMlPerMin = requireParameter(
 );
 const lactoseGPerMl = requireParameter(parameters, 'mammaryGlands.lactoseGPerMl');
 const fullnessGainPerMl = requireParameter(parameters, 'mammaryGlands.fullnessGainPerMl');
+const fullnessDecayHalfTimeMin = requireParameter(
+  parameters,
+  'mammaryGlands.fullnessDecayHalfTimeMin',
+);
 
 const PROLACTIN_BASELINE_RELATIVE = 1;
 const MIN_FULLNESS_MM = 0;
 const MAX_FULLNESS_MM = 100;
 
 export const initialState: MammaryGlandsState = {
+  lactating: false,
   milkRequestMl: 0,
   milkMl: 0,
   lactoseRequestG: 0,
@@ -74,6 +95,7 @@ export const initialState: MammaryGlandsState = {
 };
 
 export const fields = {
+  lactating: { unit: '1', mode: 'absolute' },
   milkRequestMl: { unit: 'mL', mode: 'absolute' },
   milkMl: {
     unit: 'mL',
@@ -115,17 +137,33 @@ export function heartbeat(io: IO): void {
   const prolactinRelative = readProlactin(io);
   const prev = io.read(id) ?? initialState;
   const dtMin = io.dt / 60;
+  const lactating = prev.lactating === true;
+  const prevFullnessMm = finiteOr(prev.fullnessMm, 0);
+  const decay = 2 ** (-dtMin / fullnessDecayHalfTimeMin);
+
+  if (!lactating) {
+    io.write({
+      lactating: false,
+      milkRequestMl: 0,
+      milkMl: 0,
+      lactoseRequestG: 0,
+      lactoseG: 0,
+      fullnessMm: clamp(prevFullnessMm * decay, MIN_FULLNESS_MM, MAX_FULLNESS_MM),
+    });
+    return;
+  }
 
   const milkRequestMl = basalMilkRateMlPerMin * prolactinRelative * dtMin;
   const lactoseRequestG = milkRequestMl * lactoseGPerMl;
   const fullnessMm = clamp(
-    finiteOr(prev.fullnessMm, 0)
+    prevFullnessMm * decay
       + fullnessGainPerMl * (milkRequestMl - finiteOr(prev.milkMl, 0)),
     MIN_FULLNESS_MM,
     MAX_FULLNESS_MM,
   );
 
   io.write({
+    lactating: true,
     milkRequestMl,
     milkMl: 0,
     lactoseRequestG,

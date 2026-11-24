@@ -264,3 +264,81 @@ test('two adds give the same total whatever the module order', async (t) => {
   assert.equal(first.state().snapshot.parts.pool.amount, 1.2);
   assert.equal(second.state().snapshot.parts.pool.amount, 1.2);
 });
+
+test('add overflow to Infinity is fatal and commits nothing', async (t) => {
+  const app = await launch(t, {
+    modules: {
+      'pool.mjs': poolSource(),
+      'source.mjs': contributorSource({ id: 'source', deltas: [Number.MAX_VALUE] }),
+      'sink.mjs': contributorSource({ id: 'sink', deltas: [Number.MAX_VALUE] }),
+    },
+  });
+
+  const outcome = await app.tick();
+  assert.equal(outcome.failed, true);
+
+  const state = app.state();
+  assert.equal(state.snapshot.simulatedSeconds, 0);
+  assert.equal(state.snapshot.parts.pool.amount, 0);
+
+  const report = await health(app);
+  assert.equal(report.status, 'fatal');
+  assert.equal(report.fatal.operation, 'add');
+  assert.equal(report.fatal.partId, 'pool');
+  assert.equal(report.fatal.field, 'amount');
+  assert.match(report.fatal.reason, /finite/);
+});
+
+test('transfer accumulation overflow to Infinity is fatal and commits nothing', async (t) => {
+  const doubleMaxTransfer = `
+export const id = 'source';
+export const actionTypes = [];
+export const initialState = { volumeMl: ${Number.MAX_VALUE} };
+export const fields = { volumeMl: { unit: 'mL', mode: 'absolute', transferOut: ['sink.volumeMl'] } };
+
+export function heartbeat(io) {
+  io.transfer('source', 'volumeMl', 'sink', 'volumeMl', ${Number.MAX_VALUE});
+  io.transfer('source', 'volumeMl', 'sink', 'volumeMl', ${Number.MAX_VALUE});
+}
+`;
+  const first = await launch(t, {
+    modules: {
+      'source.mjs': doubleMaxTransfer,
+      'sink.mjs': transferSink(),
+    },
+  });
+
+  const firstOutcome = await first.tick();
+  assert.equal(firstOutcome.failed, true);
+  assert.equal(first.state().snapshot.simulatedSeconds, 0);
+  assert.equal(first.state().snapshot.parts.sink.volumeMl, 0);
+  const firstHealth = await health(first);
+  assert.equal(firstHealth.status, 'fatal');
+  assert.equal(firstHealth.fatal.operation, 'transfer');
+  assert.match(firstHealth.fatal.reason, /finite/);
+
+  const second = await launch(t, {
+    modules: {
+      'source.mjs': transferSource({ initialMl: Number.MAX_VALUE, amount: Number.MAX_VALUE }),
+      'sink.mjs': transferSink(),
+    },
+    seed: checkpoint({
+      parts: {
+        source: { volumeMl: Number.MAX_VALUE },
+        sink: { volumeMl: Number.MAX_VALUE },
+      },
+    }),
+  });
+
+  const secondOutcome = await second.tick();
+  assert.equal(secondOutcome.failed, true);
+  assert.equal(second.state().snapshot.simulatedSeconds, 0);
+  assert.equal(second.state().snapshot.parts.source.volumeMl, Number.MAX_VALUE);
+  assert.equal(second.state().snapshot.parts.sink.volumeMl, Number.MAX_VALUE);
+  const secondHealth = await health(second);
+  assert.equal(secondHealth.status, 'fatal');
+  assert.equal(secondHealth.fatal.operation, 'transfer');
+  assert.equal(secondHealth.fatal.partId, 'sink');
+  assert.equal(secondHealth.fatal.field, 'volumeMl');
+  assert.match(secondHealth.fatal.reason, /finite/);
+});

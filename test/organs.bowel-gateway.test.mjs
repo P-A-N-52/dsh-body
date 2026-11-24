@@ -117,14 +117,11 @@ test('intestinal residue reaches the colon, is reclaimed into body fluid and kee
     lungsMl += after.lungs.respiratoryWaterLossMl;
 
     const absorbedMl = after.smallIntestine.absorbedWaterMl;
-    const residueInMl = 0.05 * Math.max(
-      0,
-      before.smallIntestine.waterVolumeMl - absorbedMl,
+    const residueInMl = Math.min(
+      Math.max(0, before.smallIntestine.waterVolumeMl - absorbedMl),
+      absorbedMl * (0.05 / 0.95),
     );
-    const reclaimedMl = Math.min(
-      before.colon.residueWaterMl * 0.001,
-      before.colon.residueWaterMl,
-    );
+    const reclaimedMl = before.colon.residueWaterMl * (1 - Math.exp(-0.01));
     const kidneyMl = Math.min(
       before.kidney.urineProductionRequestMl,
       before.bodyFluid.waterVolumeMl,
@@ -167,7 +164,7 @@ test('defecate clears the stool and bowel urgency falls one round later', async 
         stoolG: 100,
         defecatedG: 0,
         reclaimedWaterMl: 0,
-        bowelUrgencyMm: 0,
+        bowelUrgencyMm: 50,
       },
     },
   });
@@ -235,7 +232,7 @@ test('restart continues the esophageal bolus, colon residue and bowel urgency', 
         stoolG: 100,
         defecatedG: 0,
         reclaimedWaterMl: 0,
-        bowelUrgencyMm: 0,
+        bowelUrgencyMm: 50,
       },
     },
   });
@@ -245,9 +242,11 @@ test('restart continues the esophageal bolus, colon residue and bowel urgency', 
   );
   await first.tick();
   const beforeRestart = first.getState().parts;
+  const reclaimedRound1 = 1000 * (1 - Math.exp(-0.01));
+  const residueAfterRound1 = 1000 - reclaimedRound1;
   assert.equal(beforeRestart.esophagus.bolusVolumeMl, 500);
   assert.equal(beforeRestart.interoception.bowelUrgencyMm, 50);
-  assertClose(beforeRestart.colon.residueWaterMl, 999, 'reclaim from the seeded residue');
+  assertClose(beforeRestart.colon.residueWaterMl, residueAfterRound1, 'reclaim from the seeded residue');
   assert.equal(first.getState().simulatedSeconds, 60);
   await first.stop();
 
@@ -261,14 +260,15 @@ test('restart continues the esophageal bolus, colon residue and bowel urgency', 
   assert.equal(second.getState().simulatedSeconds, 60);
   assert.equal(loaded.esophagus.bolusVolumeMl, 500);
   assert.equal(loaded.esophagus.transitMin, 0.2);
-  assertClose(loaded.colon.residueWaterMl, 999, 'the restart must keep the committed residue');
+  assertClose(loaded.colon.residueWaterMl, residueAfterRound1, 'the restart must keep the committed residue');
   assert.equal(loaded.colon.stoolG, 100.01);
   assert.equal(loaded.interoception.bowelUrgencyMm, 50);
 
   await second.tick();
   const after = second.getState().parts;
+  const reclaimedRound2 = residueAfterRound1 * (1 - Math.exp(-0.01));
   assert.equal(second.getState().simulatedSeconds, 120);
   assert.deepEqual(after.esophagus, esophagusInitial);
-  assertClose(after.colon.residueWaterMl, 999 * 0.999, 'reclaim continues after restart');
+  assertClose(after.colon.residueWaterMl, residueAfterRound1 - reclaimedRound2, 'reclaim continues after restart');
   assertClose(after.colon.stoolG, 100.02, 'stool formation continues after restart');
 });

@@ -24,12 +24,13 @@ function oxygenAt(spo2Percent) {
   return { spo2Percent };
 }
 
-function round({ state, heart, bloodOxygen, sink = [] } = {}) {
+function round({ state, heart, bloodOxygen, bodyFluid, sink = [] } = {}) {
   heartbeat({
     read: (partId) => {
       if (partId === 'blood') return state;
       if (partId === 'heart') return heart;
       if (partId === 'bloodOxygen') return bloodOxygen;
+      if (partId === 'bodyFluid') return bodyFluid;
       return undefined;
     },
     write: (next) => { sink.push(next); },
@@ -50,7 +51,7 @@ function clamp(value, min, max) {
 
 function expectedSystolic(cardiacOutputMlMin) {
   return clamp(
-    120 * (cardiacOutputMlMin / 5000) ** 0.5,
+    120 * (cardiacOutputMlMin / 4900) ** 0.5,
     80,
     200,
   );
@@ -58,7 +59,7 @@ function expectedSystolic(cardiacOutputMlMin) {
 
 function expectedDiastolic(cardiacOutputMlMin) {
   return clamp(
-    80 * (cardiacOutputMlMin / 5000) ** 0.3,
+    80 * (cardiacOutputMlMin / 4900) ** 0.3,
     40,
     120,
   );
@@ -79,10 +80,10 @@ test('blood exports the compartment contract without actions', () => {
   });
   assert.deepEqual(initialState, {
     bloodVolumeMl: 5000,
-    cardiacOutputMlMin: 5000,
+    cardiacOutputMlMin: 4900,
     systolicMmHg: 120,
     diastolicMmHg: 80,
-    oxygenDeliveryMlMin: 970,
+    oxygenDeliveryMlMin: 4900 * (97 * 2) / 1000,
     maxOxygenDeliveryMlPerMin: 3666.6,
     gfrMlMin: 100,
   });
@@ -126,16 +127,16 @@ test('the blood parameters are design defaults with no source', () => {
   );
 });
 
-test('a missing heart falls back to the 5000 mL/min reference output', () => {
+test('a missing heart falls back to the 4900 mL/min reference output', () => {
   const { written } = round({
     state: initialState,
     bloodOxygen: oxygenAt(97),
   });
 
-  assert.equal(written.cardiacOutputMlMin, 5000);
+  assert.equal(written.cardiacOutputMlMin, 4900);
   assert.equal(written.systolicMmHg, 120);
   assert.equal(written.diastolicMmHg, 80);
-  assert.equal(written.oxygenDeliveryMlMin, 970);
+  assert.equal(written.oxygenDeliveryMlMin, 4900 * (97 * 2) / 1000);
   assert.equal(written.gfrMlMin, 100);
 });
 
@@ -226,9 +227,9 @@ test('maximum oxygen delivery is the cardiac capacity at maximum drive', () => {
 
 test('systolic and diastolic are power proxies of cardiac output with clamps', () => {
   const cases = [
-    ['baseline', 5000],
-    ['half output', 2500],
-    ['low output', 1250],
+    ['baseline', 4900],
+    ['half output', 2450],
+    ['low output', 1225],
     ['very low output', 100],
     ['high output', 10000],
     ['very high output', 20000],
@@ -259,9 +260,11 @@ test('systolic and diastolic are power proxies of cardiac output with clamps', (
   }).written;
   const resting = round({
     state: initialState,
-    heart: heartAt(5000),
+    heart: heartAt(4900),
     bloodOxygen: oxygenAt(97),
   }).written;
+  assert.equal(resting.systolicMmHg, 120);
+  assert.equal(resting.diastolicMmHg, 80);
   assert.ok(exercise.systolicMmHg > resting.systolicMmHg, 'systolic rises with output');
   assert.ok(exercise.diastolicMmHg > resting.diastolicMmHg, 'diastolic rises with output');
 
@@ -311,12 +314,33 @@ test('GFR scales with blood volume between the 0.5 and 1.2 clamps', () => {
 
 test('a missing blood state starts from the reference volume', () => {
   const { written } = round({
-    heart: heartAt(5000),
+    heart: heartAt(4900),
     bloodOxygen: oxygenAt(97),
   });
 
   assert.equal(written.bloodVolumeMl, 5000);
   assert.equal(written.gfrMlMin, 100);
+});
+
+test('bodyFluid waterVolumeMl couples bloodVolumeMl within [2500, 6000] when present', () => {
+  const normal = round({ state: initialState, bodyFluid: { waterVolumeMl: 30000 } }).written;
+  assert.equal(normal.bloodVolumeMl, 5000);
+
+  const dehydrated = round({ state: initialState, bodyFluid: { waterVolumeMl: 21000 } }).written;
+  assert.equal(dehydrated.bloodVolumeMl, 3500);
+  assert.equal(dehydrated.gfrMlMin, 70);
+
+  const lowClamp = round({ state: initialState, bodyFluid: { waterVolumeMl: 5000 } }).written;
+  assert.equal(lowClamp.bloodVolumeMl, 2500);
+
+  const highClamp = round({ state: initialState, bodyFluid: { waterVolumeMl: 50000 } }).written;
+  assert.equal(highClamp.bloodVolumeMl, 6000);
+
+  for (const bodyFluid of [null, {}, { waterVolumeMl: -1 }, { waterVolumeMl: Number.NaN }]) {
+    const sink = [];
+    assert.throws(() => round({ state: initialState, bodyFluid, sink }), /bodyFluid/);
+    assert.equal(sink.length, 0);
+  }
 });
 
 test('a loaded heart with an invalid output fails the round without writes', () => {

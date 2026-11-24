@@ -11,14 +11,17 @@
  *   stimulated = mealStimulusMin > 0 ? mealGain : 1
  *   dehydration = 1 − dehydrationFactor × clamp(bodyFluid.waterDeficit, 0, 1)
  *   salivaRateMlPerMin = basalRateMlPerMin × stimulated × dehydration
- *   mouthMoistureMm = clamp(100 × salivaRateMlPerMin / (basalRateMlPerMin × mealGain), 0, 100)
- * 因此无刺激、无脱水时产率为基线，湿润度是 100 / mealGain；满刺激且无脱水时湿润度为 100。
+ *   mouthMoistureMm = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100)
+ * 因此水合静息时湿润度为 100 mm（对应口干 0 mm），最大脱水时为 50 mm（口干 50 mm），
+ * 进食刺激时钳在 100 mm。
  *
  * design（不是人体测量、拟合或独立验证；参数全部 `source: null`）
  * - `salivaryGlands.basalRateMlPerMin = 0.5 mL/min`、`mealGain = 3`、`mealWindowMin = 5 min`、
  *   `dehydrationFactor = 0.5` 都是工程假设，没有实测唾液流率或刺激持续时间支撑。
- * - 饮食刺激只看动作类型与正有限 `volumeMl`；餐型、能量、碳水的合法性仍由 `stomach` 判定，
- *   本脚本不重复校验。同轮多条合法动作只把窗口重置一次，不叠加或延长。
+ * - 饮食刺激沿用 `stomach`/`esophagus` 的摄入输入契约：正有限 `volumeMl`、可选非负有限
+ *   `durationMin`/`carbohydrateG`；`drink` 的 `energyKcal` 可选且非负有限；`eat` 必须具备
+ *   合法 `mealKind`（`liquid`/`solid`/`mixed`）与非负有限 `energyKcal`，避免畸形 `eat`
+ *   触发唾液刺激。同轮多条合法动作只把窗口重置一次，不叠加或延长。
  * - `bodyFluid` 缺失（undefined/null）时 deficit 按 0；部位存在但 `waterDeficit` 缺失、非数或
  *   非有限时抛错，且本轮不写任何状态。deficit 超出 [0, 1] 由公式钳位，不报错。
  * - 只读轮初快照与本轮原始动作，刺激窗口用 `io.dt` 递减，不用现实时间；当轮新到的动作
@@ -44,6 +47,10 @@ type SalivaryState = {
 type Action = {
   readonly type?: unknown;
   readonly volumeMl?: unknown;
+  readonly energyKcal?: unknown;
+  readonly mealKind?: unknown;
+  readonly durationMin?: unknown;
+  readonly carbohydrateG?: unknown;
 };
 
 type BodyFluidReading = {
@@ -76,7 +83,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function mouthMoistureMm(salivaRateMlPerMin: number): number {
-  return clamp((100 * salivaRateMlPerMin) / (basalRateMlPerMin * mealGain), MIN_MM, MAX_MM);
+  return clamp((100 * salivaRateMlPerMin) / basalRateMlPerMin, MIN_MM, MAX_MM);
 }
 
 export const initialState: SalivaryState = {
@@ -95,12 +102,38 @@ function finiteOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function isMealKind(value: unknown): value is 'liquid' | 'solid' | 'mixed' {
+  return value === 'liquid' || value === 'solid' || value === 'mixed';
+}
+
 function isIntake(action: Action | null | undefined): boolean {
   if (action === null || action === undefined || typeof action !== 'object') return false;
   if (action.type !== 'eat' && action.type !== 'drink') return false;
-  return typeof action.volumeMl === 'number'
-    && Number.isFinite(action.volumeMl)
-    && action.volumeMl > 0;
+  if (typeof action.volumeMl !== 'number' || !Number.isFinite(action.volumeMl) || action.volumeMl <= 0) {
+    return false;
+  }
+  if (action.durationMin !== undefined
+    && (typeof action.durationMin !== 'number'
+      || !Number.isFinite(action.durationMin)
+      || action.durationMin < 0)) {
+    return false;
+  }
+  if (action.carbohydrateG !== undefined
+    && (typeof action.carbohydrateG !== 'number'
+      || !Number.isFinite(action.carbohydrateG)
+      || action.carbohydrateG < 0)) {
+    return false;
+  }
+  if (action.type === 'drink') {
+    return action.energyKcal === undefined
+      || (typeof action.energyKcal === 'number'
+        && Number.isFinite(action.energyKcal)
+        && action.energyKcal >= 0);
+  }
+  return typeof action.energyKcal === 'number'
+    && Number.isFinite(action.energyKcal)
+    && action.energyKcal >= 0
+    && isMealKind(action.mealKind);
 }
 
 function readDeficit(io: IO): number {

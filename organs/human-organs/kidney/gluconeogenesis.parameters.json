@@ -5,20 +5,20 @@
     {
       "id": "kidneyGluconeogenesis.maxOutputRateGPerMin",
       "unit": "g/min",
-      "value": 0.3,
+      "value": 0.5,
       "status": "design",
       "range": [0, 1],
       "source": null,
-      "note": "glucagonRelative = 1 时肾糖异生产糖速率的工程占位；实际产糖还乘相对胰高血糖素信号与 dtMin，并按 maxOutputPerRoundG 钳位。不是实测肾糖异生速率、底物通量或胰高血糖素剂量反应，无登记来源。range 是工程调参范围，不是人体测量范围"
+      "note": "肾糖异生产糖速率上限的工程占位；平滑反调节计算后的产糖速率钳位到 [0, maxOutputRateGPerMin]，再按 dtMin 与 maxOutputPerRoundG 钳位。不是实测肾糖异生速率、底物通量或胰高血糖素剂量反应，无登记来源。range 是工程调参范围，不是人体测量范围"
     },
     {
       "id": "kidneyGluconeogenesis.maxOutputPerRoundG",
       "unit": "g",
-      "value": 0.3,
+      "value": 0.6,
       "status": "design",
-      "range": [0, 1],
+      "range": [0, 2],
       "source": null,
-      "note": "单轮产糖上限的工程占位，防止高胰高血糖素或长 dt 让一个轮次转入过多葡萄糖；不是实测肾糖异生每轮产量、底物池容量或临床上限，无登记来源。range 是工程调参范围，不是人体测量范围"
+      "note": "单轮产糖上限的工程占位，防止高胰高血糖素或长 dt 让一个轮次转入过多葡萄糖；提高到 0.6 g 以免正常一分钟轮次在胰高血糖素升高时被截断。不是实测肾糖异生每轮产量、底物池容量或临床上限，无登记来源。range 是工程调参范围，不是人体测量范围"
     },
     {
       "id": "kidneyGluconeogenesis.baselineMgDl",
@@ -27,7 +27,34 @@
       "status": "design",
       "range": [60, 110],
       "source": null,
-      "note": "肾糖异生触发参考血糖浓度的工程占位，与 glucose.baselineConcentrationMgDl、liver 的释放参考一致；低于该值或胰高血糖素高于基线时产糖。不是实测低血糖阈值、肾糖阈或临床诊断界值，无登记来源。range 是工程调参范围，不是人体测量范围"
+      "note": "肾糖异生反调节参考血糖浓度的工程占位，与 glucose.baselineConcentrationMgDl、liver 的释放参考一致；高于该值时基础产糖平滑抑制，低于该值时按缺口比例增加。不是实测低血糖阈值、肾糖阈或临床诊断界值，无登记来源。range 是工程调参范围，不是人体测量范围"
+    },
+    {
+      "id": "kidneyGluconeogenesis.basalOutputRateGPerMin",
+      "unit": "g/min",
+      "value": 0.024,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": null,
+      "note": "空腹基线（90 mg/dL、glucagonRelative = 1）时的基础肾糖异生速率工程占位，约占静息总内源产糖 0.12 g/min 的 20%。不是实测肾糖异生速率，无登记来源。range 是工程调参范围"
+    },
+    {
+      "id": "kidneyGluconeogenesis.hypoglycemiaOutputGainGPerMinPerMgDl",
+      "unit": "g/(min·mg/dL)",
+      "value": 0.005,
+      "status": "design",
+      "range": [0, 0.1],
+      "source": null,
+      "note": "血糖低于基线 90 mg/dL 时每 mg/dL 缺口对应的肾糖异生增量增益工程占位。不是实测剂量反应，无登记来源。range 是工程调参范围"
+    },
+    {
+      "id": "kidneyGluconeogenesis.glucagonOutputGainGPerMin",
+      "unit": "g/min",
+      "value": 0.05,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "glucagonRelative 高于基线 1 时每单位超额胰高血糖素信号对应的肾糖异生增量工程占位。不是实测剂量反应，无登记来源。range 是工程调参范围"
     }
   ]
 }

@@ -11,7 +11,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rootManifestPath = join(root, 'body-modules.json');
 const BASAL_RATE_ML_PER_MIN = 0.5;
 const MEAL_GAIN = 3;
-const BASAL_MOISTURE_MM = 100 / MEAL_GAIN;
+const BASAL_MOISTURE_MM = 100;
 
 function silence(t) {
   for (const method of ['log', 'error', 'warn']) {
@@ -99,14 +99,14 @@ test('eat and drink raise saliva threefold for five rounds and then return to ba
       `${label}: rate returns to basal, got ${saliva.salivaRateMlPerMin}`,
     );
     assert.ok(
-      saliva.mouthMoistureMm > 30 && saliva.mouthMoistureMm < 40,
+      saliva.mouthMoistureMm > 99 && saliva.mouthMoistureMm <= 100,
       `${label}: moisture returns to the basal readout, got ${saliva.mouthMoistureMm}`,
     );
 
     await gateway.tick();
     assert.ok(
-      gateway.getState().parts.interoception.dryMouthMm > 60,
-      `${label}: dry mouth returns once the stimulus expires`,
+      gateway.getState().parts.interoception.dryMouthMm < 1,
+      `${label}: hydrated dry mouth stays near 0`,
     );
   }
 });
@@ -145,13 +145,13 @@ test('a dehydrated checkpoint lowers saliva and raises dry mouth on the next rou
   await gateway.tick();
   let parts = gateway.getState().parts;
   assertClose(parts.salivaryGlands.salivaRateMlPerMin, BASAL_RATE_ML_PER_MIN * 0.75, 'dehydrated rate');
-  assertClose(parts.salivaryGlands.mouthMoistureMm, 25, 'dehydrated moisture');
+  assertClose(parts.salivaryGlands.mouthMoistureMm, 75, 'dehydrated moisture');
   assertClose(parts.interoception.dryMouthMm, 100 - BASAL_MOISTURE_MM, 'dry mouth still reads the round-start moisture');
 
   await gateway.tick();
   parts = gateway.getState().parts;
   assert.ok(parts.salivaryGlands.salivaRateMlPerMin < BASAL_RATE_ML_PER_MIN, 'saliva stays below basal');
-  assertClose(parts.interoception.dryMouthMm, 75, 'dry mouth follows the reduced moisture');
+  assertClose(parts.interoception.dryMouthMm, 25, 'dry mouth follows the reduced moisture');
   assert.ok(parts.interoception.dryMouthMm > 100 - BASAL_MOISTURE_MM, 'dry mouth rises above the hydrated baseline');
 });
 

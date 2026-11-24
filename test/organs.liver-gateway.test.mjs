@@ -10,13 +10,27 @@ import { checkpoint } from '../test-support/harness.mjs';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rootManifestPath = join(root, 'body-modules.json');
 const baselineMassG = 12.69;
+const baselineConcentrationMgDl = 90;
 const distributionVolumeDl = 141;
 const initialLiverGlycogenG = 80;
+const initialMuscleGlycogenG = 300;
 const ledgerToleranceG = 1e-6;
 const muscleRegions = ['muscleHead', 'muscleTrunk', 'muscleLimbs'];
 
 function muscleSum(parts, field) {
   return muscleRegions.reduce((sum, region) => sum + parts[region][field], 0);
+}
+
+function renalOutputG(parts) {
+  const concentrationMgDl = parts.glucose?.concentrationMgDl ?? baselineConcentrationMgDl;
+  const glucagonRelative = parts.pancreasEndocrine?.glucagonRelative ?? 1;
+  const deficitMgDl = Math.max(0, baselineConcentrationMgDl - concentrationMgDl);
+  const excessMgDl = Math.max(0, concentrationMgDl - baselineConcentrationMgDl);
+  const suppression = 1 / (1 + excessMgDl / 30);
+  const rawRate = 0.024 * suppression
+    + 0.005 * deficitMgDl
+    + 0.05 * Math.max(0, glucagonRelative - 1);
+  return Math.min(0.6, Math.min(0.5, Math.max(0, rawRate)));
 }
 
 function silence(t) {
@@ -67,12 +81,13 @@ function carbohydrateLedgerG(parts, cumulative) {
     + (parts.glucose.glucoseMassG - baselineMassG)
     + cumulative.disposedG
     + cumulative.excretedG
-    + muscleSum(parts, 'glycogenG')
+    + (muscleSum(parts, 'glycogenG') - initialMuscleGlycogenG)
     + muscleSum(parts, 'uptakeG')
     + parts.muscleGlucose.uptakeG
     + cumulative.muscleConsumedG
     + (parts.liver.glycogenG - initialLiverGlycogenG)
-    + parts.liver.storageG;
+    + parts.liver.storageG
+    - cumulative.kidneyOutputG;
 }
 
 test('a carb-rich meal raises glucose, then disposal lowers it while the liver stores glycogen', async (t) => {
@@ -90,13 +105,16 @@ test('a carb-rich meal raises glucose, then disposal lowers it while the liver s
     202,
   );
 
-  const cumulative = { disposedG: 0, excretedG: 0, muscleConsumedG: 0 };
+  const cumulative = { disposedG: 0, excretedG: 0, muscleConsumedG: 0, kidneyOutputG: 0 };
   let peakMgDl = 0;
   let peakRound = 0;
   let maxStorageG = 0;
   let maxStorageRound = 0;
+  let peakGlycogenG = initialLiverGlycogenG;
 
   for (let round = 1; round <= 240; round++) {
+    const before = gateway.getState().parts;
+    cumulative.kidneyOutputG += renalOutputG(before);
     await gateway.tick();
     const parts = gateway.getState().parts;
     if (parts.glucose.concentrationMgDl > peakMgDl) {
@@ -107,6 +125,7 @@ test('a carb-rich meal raises glucose, then disposal lowers it while the liver s
       maxStorageG = parts.liver.storageG;
       maxStorageRound = round;
     }
+    peakGlycogenG = Math.max(peakGlycogenG, parts.liver.glycogenG);
     cumulative.disposedG += parts.glucose.disposedGlucoseG;
     cumulative.excretedG += parts.kidneyGlucose.excretedGlucoseG;
     cumulative.muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
@@ -128,10 +147,14 @@ test('a carb-rich meal raises glucose, then disposal lowers it while the liver s
     `liver storage ${maxStorageG} g in round ${maxStorageRound} must be positive`,
   );
   assert.ok(
-    final.liver.glycogenG > initialLiverGlycogenG + 5,
-    `liver glycogen ${final.liver.glycogenG} g must accumulate above ${initialLiverGlycogenG} g`,
+    peakGlycogenG > initialLiverGlycogenG,
+    `peak liver glycogen ${peakGlycogenG} g must accumulate above ${initialLiverGlycogenG} g during absorption`,
   );
-  assert.equal(final.liver.outputG, 0, 'a glucose-rich final round must not release liver glycogen');
+  assert.ok(
+    final.liver.glycogenG > initialLiverGlycogenG - 240 * 0.096 + 10,
+    `post-absorptive liver glycogen ${final.liver.glycogenG} g must stay well above fasting depletion`,
+  );
+  assert.ok(final.liver.outputG <= 0.1, 'basal liver output stays near or below basal');
 });
 
 test('high glucose disposes into muscle and liver, then low glucose releases liver glycogen', async (t) => {
@@ -169,12 +192,12 @@ test('high glucose disposes into muscle and liver, then low glucose releases liv
   const high3 = high.getState().parts;
   assert.ok(high3.muscleGlucose.uptakeG > 0, 'requests written after the lag must reach muscle');
   assert.ok(high3.liver.storageG > 0, 'requests written after the lag must reach the liver');
-  assert.equal(high3.liver.glycogenG, initialLiverGlycogenG, 'storage is booked one round after transfer');
+  assert.ok(high3.liver.glycogenG < initialLiverGlycogenG, 'suppressed basal release precedes storage booking');
 
   await high.tick();
   const high4 = high.getState().parts;
   assert.ok(
-    high4.liver.glycogenG > initialLiverGlycogenG,
+    high4.liver.glycogenG > high3.liver.glycogenG,
     'the liver must book the previous round storage',
   );
   assert.ok(
@@ -185,7 +208,7 @@ test('high glucose disposes into muscle and liver, then low glucose releases liv
   await high.tick();
   const high5 = high.getState().parts;
   assert.ok(
-    muscleSum(high5, 'glycogenG') > 0,
+    muscleSum(high5, 'glycogenG') > initialMuscleGlycogenG,
     'the muscle regions must book the previous round uptake',
   );
 
@@ -216,7 +239,6 @@ test('high glucose disposes into muscle and liver, then low glucose releases liv
   assert.ok(low1.pancreasEndocrine.insulinRelative < 1, 'low glucose must lower insulin');
 
   let peakConcentrationMgDl = 0;
-  let peakMassG = 0;
   let releaseRounds = 0;
   for (let round = 2; round <= 40; round++) {
     await low.tick();
@@ -224,20 +246,21 @@ test('high glucose disposes into muscle and liver, then low glucose releases liv
     if (parts.liver.outputG > 0) releaseRounds += 1;
     if (parts.glucose.concentrationMgDl > peakConcentrationMgDl) {
       peakConcentrationMgDl = parts.glucose.concentrationMgDl;
-      peakMassG = parts.glucose.glucoseMassG;
     }
   }
   const low40 = low.getState().parts;
-  assert.ok(releaseRounds > 0, 'the release must continue after the first round');
+  assert.ok(releaseRounds > 0, 'the release must continue smoothly');
   assert.ok(
-    peakConcentrationMgDl > 120,
-    `the refill must overshoot to ${peakConcentrationMgDl} mg/dL before disposal`,
+    peakConcentrationMgDl < 105,
+    `smooth recovery must not overshoot into >120 mg/dL sawtooth, got peak ${peakConcentrationMgDl} mg/dL`,
   );
-  assert.ok(low40.pancreasEndocrine.insulinRelative > 1, 'the overshoot must raise insulin');
-  assert.ok(low40.pancreasEndocrine.glucagonRelative < 1, 'the overshoot must lower glucagon');
   assert.ok(
-    low40.glucose.glucoseMassG < peakMassG,
-    `disposal must lower mass from the overshoot ${peakMassG} to ${low40.glucose.glucoseMassG}`,
+    Math.abs(low40.glucose.concentrationMgDl - 90) < 5,
+    `round 40 concentration ${low40.glucose.concentrationMgDl} must settle near 90 mg/dL`,
+  );
+  assert.ok(
+    low40.liver.glycogenG < initialLiverGlycogenG,
+    'glycogen must remain spent after recovery',
   );
 });
 

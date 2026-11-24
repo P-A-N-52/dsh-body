@@ -64,7 +64,11 @@ export function createBodyHttpServer({ store, getHealth, getCapabilities, enqueu
   }
 
   function checkRequest(request) {
-    const { port } = server.address();
+    const address = server.address();
+    if (!address) {
+      return { statusCode: 503, body: { error: 'Body Gateway is stopping' } };
+    }
+    const { port } = address;
     const hostHeader = request.headers.host;
     const allowedHosts = new Set([
       `127.0.0.1:${port}`,
@@ -106,7 +110,11 @@ export function createBodyHttpServer({ store, getHealth, getCapabilities, enqueu
     if (!isRecord(payload) || typeof payload.id !== 'string' || !payload.id) {
       return reply(response, 400, { error: 'Expected a nonempty id' });
     }
-    return reply(response, 200, ackNotification(payload.id));
+    try {
+      return reply(response, 200, ackNotification(payload.id));
+    } catch (error) {
+      return reply(response, error.statusCode ?? 500, { error: error.message });
+    }
   }
 
   async function handleRequest(request, response) {
@@ -127,7 +135,9 @@ export function createBodyHttpServer({ store, getHealth, getCapabilities, enqueu
 
     if (pathname === '/health') {
       if (request.method !== 'GET') return methodNotAllowed(response, 'GET');
-      return reply(response, 200, getHealth(server.address().port));
+      const address = server.address();
+      if (!address) return reply(response, 503, { error: 'Body Gateway is stopping' });
+      return reply(response, 200, getHealth(address.port));
     }
     if (pathname === '/state') {
       if (request.method !== 'GET') return methodNotAllowed(response, 'GET');

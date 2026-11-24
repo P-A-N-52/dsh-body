@@ -19,30 +19,31 @@
 ### Task 1: 唾液腺模块（TDD，后台先行）
 
 **Files:** Create `organs/human-organs/salivary-glands/saliva.ts` + `saliva.parameters.json`、`test/organs.salivary.test.mjs`
-- [ ] Step 1: 失败测试（基础产率 0.5、进食刺激 ×3 与 5 min 窗口、脱水减半、口干读数、缺体液按 deficit 0、JSON-safe）。
-- [ ] Step 2: 运行预期失败。
-- [ ] Step 3: 实现（公式见 spec，`mealStimulusMin` 递减、`eat`/`drink` 触发置 5）。
-- [ ] Step 4: 参数文件（`salivaryGlands.*` 与 `duodenum.salivaryAmylaseGain = 0.05`）。
-- [ ] Step 5: 运行预期通过。
+- [x] Step 1: 失败测试（基础产率 0.5、进食刺激 ×3 与 5 min 窗口、脱水减半、口干读数、缺体液按 deficit 0、JSON-safe）。
+- [x] Step 2: 运行预期失败。
+- [x] Step 3: 实现（公式见 spec，`mealStimulusMin` 递减、`eat`/`drink` 触发置 5）。
+- [x] Step 4: 参数文件（`salivaryGlands.*` 与 `duodenum.salivaryAmylaseGain = 0.05`）。
+- [x] Step 5: 运行预期通过。
 
 ### Task 2: duodenum 淀粉酶增益 + interoception 口干（内分泌切片落地后做）
 
 **Files:** Modify `organs/human-organs/duodenum/nutrient-exposure.ts`（实际文件名以仓库为准）、`organs/human-organs/brain/interoception.ts` 及各自测试
-- [ ] Step 1: 失败测试（含碳水餐暴露含增益、不含碳水不变、未加载唾液腺增益 0；`dryMouthMm` 软读缺省 0）。
-- [ ] Step 2: 运行预期失败。
-- [ ] Step 3: 实现并跑绿。
+- [x] Step 1: 失败测试（含碳水餐暴露含增益、不含碳水不变、未加载唾液腺增益 0；`dryMouthMm` 软读缺省 0）。
+- [x] Step 2: 运行预期失败。
+- [x] Step 3: 实现并跑绿。
 
 ### Task 3: 清单、计数、真实 Gateway 与文档
 
 **Files:** Modify 两份清单、相关计数/列表测试；Create `test/organs.salivary-gateway.test.mjs`、`organs/human-organs/salivary-glands/README.md`；Modify `organs/human-organs/duodenum/README.md`、`organs/human-organs/brain/README.md`、`docs/gateway-and-scripts.md`、`docs/virtual-body.md`
-- [ ] Step 1: 两份清单加唾液腺；根 29 部位 / 31 参数、女性 31 / 33。
-- [ ] Step 2: 真实 Gateway：进食后产率上升、暴露含增益；预置脱水 → 产率下降、口干上升；重启接续。
-- [ ] Step 3: 文档。
-- [ ] Step 4: `npm test` 与 `git diff --check`。
+- [x] Step 1: 两份清单加唾液腺；根 29 部位 / 31 参数、女性 31 / 33。
+- [x] Step 2: 真实 Gateway：进食后产率上升、暴露含增益；预置脱水 → 产率下降、口干上升；重启接续。
+- [x] Step 3: 文档。
+- [x] Step 4: `npm test` 与 `git diff --check`。
 
 ## 交付记录（2026-11-24）
 
-- **已实现：** `salivaryGlands` 唾液产率（基础 0.5 mL/min、进食刺激 ×3 持续 5 min、`bodyFluid.waterDeficit` 脱水减半）与 `mouthMoistureMm`；`duodenum` 对含碳水餐按 `1 + 0.05 × salivaRate / basalRate` 增益营养暴露（唾液淀粉酶）；`interoception` 新增 `dryMouthMm`（软读缺省 0）。根清单 29 部位 / 31 参数、女性 31 / 33。
-- **已验证：** 模块单元测试全绿；真实 Gateway 4 用例：`eat`/`drink` 后产率 ×3 并于 5 轮后回落、碳水餐暴露含淀粉酶增益、预置脱水存档产率下降且 `dryMouthMm` 上升、重启接续。隔离副本 147/147。
-- **仍未实现/未验证：** 唾液水账、淀粉酶浓度、吞咽/食管、口腔疾病、味觉、口咽解渴支路、独立生理数据、真实 DSH 会话、29 部位性能。
+- **已实现：** `salivaryGlands` 唾液产率（基础 0.5 mL/min、进食刺激 ×3 持续 5 min、`bodyFluid.waterDeficit` 脱水减半）与 `mouthMoistureMm`；`duodenum` 对含碳水餐按 `1 + 0.05 × salivaRate / basalRate` 增益营养暴露（唾液淀粉酶）；`interoception` 新增 `dryMouthMm`（软读缺省 0）。当时根清单 29 部位 / 31 参数（现 38 部位 / 34 份唯一参数）。
+- **P0 修正：** `saliva.ts` 改为以 `basalRateMlPerMin` 归一化 `mouthMoistureMm`（水合静息 `100 mm` → `dryMouthMm = 0 mm`、最大脱水 `50 mm` → `dryMouthMm = 50 mm`），并对齐 `eat` 动作合法性校验（要求有效 `mealKind` 与非负有限 `energyKcal`）。
+- **已验证：** 模块单元测试全绿；真实 Gateway 4 用例与 `test/organs.steady-state-24h.test.mjs` 通过。
+- **仍未实现/未验证：** 唾液水账、淀粉酶浓度、完整吞咽分期、口腔疾病、味觉、口咽解渴支路、独立生理数据、真实 DSH 会话、性能基线。
 - **工作区：** 与内分泌轴、乳腺合入本地提交 `e0b2ae9`。

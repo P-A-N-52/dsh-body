@@ -7,8 +7,10 @@
  *
  * 公式（design）：
  *   dtMin 不使用；全部按轮初快照计算
- *   referenceCardiacOutputMlMin = 5000（脚本内 design 常量）
- *   cardiacOutputMlMin = heart.cardiacOutputMlMin（heart 未加载时回退 5000）
+ *   referenceCardiacOutputMlMin = 4900（脚本内 design 常量，与 heart 静息 70×70 一致）
+ *   cardiacOutputMlMin = heart.cardiacOutputMlMin（heart 未加载时回退 4900）
+ *   bloodVolumeMl = bodyFluid 存在时按 clamp(referenceBloodVolumeMl × bodyFluid.waterVolumeMl / 30000, 2500, 6000)
+ *                   耦合；未加载时原样带出轮初自身状态（缺字段回退 referenceBloodVolumeMl）
  *   arterialContent = bloodOxygen.spo2Percent × oxygenContentPerPercentMlPerL
  *   oxygenDeliveryMlMin = cardiacOutputMlMin × arterialContent / 1000（读数）
  *   maxDrive = 1 + heart.activityGain + heart.catecholamineGain × (maxCortisolRelative − 1)
@@ -30,20 +32,20 @@
  * `heart.maxHeartRatePerMin`，与 heart 自身 `clamp(restingHeartRatePerMin × drive, …)`
  * 在默认参数下等价（70 × 3.5 > 180）。
  *
- * `bloodVolumeMl` 从轮初自身状态原样带出，本切片不建体液—血管搬水、毛细血管滤过/重吸收
- * 或失血/输血动力学；旧档或缺字段时回退到 `referenceBloodVolumeMl`。未加载 `heart` 时
- * 心输出按 5000 回退；未加载 `bloodOxygen` 时 SpO2 按 97% 回退（与
- * `bloodOxygen.baselineSpo2Percent` 的 design 默认值同步，不另立参数）。已加载的
- * `heart` / `bloodOxygen` 若缺字段、非数值、非有限或为负，抛错使本轮失败且不写状态。
+ * `bodyFluid` 存在时 `bloodVolumeMl` 随 `bodyFluid.waterVolumeMl / 30000` 比例缩放并钳到
+ * `[2500, 6000] mL`（`design` 血管-体液耦合代理）；`bodyFluid` 未加载时原样带出轮初
+ * 自身状态，旧档或缺字段回退到 `referenceBloodVolumeMl`。未加载 `heart` 时心输出按
+ * 4900 回退，使静息态血压精确为 `120.0 / 80.0 mmHg`；未加载 `bloodOxygen` 时 SpO2 按
+ * 97% 回退（与 `bloodOxygen.baselineSpo2Percent` 的 design 默认值同步，不另立参数）。已加载的
+ * `heart` / `bloodOxygen` / `bodyFluid` 若缺字段、非数值、非有限或为负，抛错使本轮失败且不写状态。
  * `heart` 的四个参数从 `heart.parameters.json` 只读加载；替换 heart 脚本时需保持这些
- * 参数 id。`heart` 静息态自身算出 70 × 70 = 4900，而血压代理的参考心输出是 5000，所以
- * 装了 heart 的静息血压略低于初始 120/80；这是两个 design 占位的口径差，不是生理证据。
+ * 参数 id。
  *
  * 血压与 GFR 都是代理读数：血压不是袖带或动脉压测量，GFR 不是菊粉/肌酐清除率、肾血浆
  * 流量或临床肾功能，氧输送也不是血气或氧耗实测。参数来自同目录
  * `blood.parameters.json` 与只读的 `heart.parameters.json`，状态 `design`、
- * `source: null`；5000 / 120 / 80 / 100 / 2、指数 0.5 与 0.3、钳位
- * 80–200 / 40–120 / 0.5–1.2 都是工程占位，不是人体测量或拟合结果，不能称 `validated`。
+ * `source: null`；4900 / 30000 / 120 / 80 / 100 / 2、指数 0.5 与 0.3、钳位
+ * 2500–6000 / 80–200 / 40–120 / 0.5–1.2 都是工程占位，不是人体测量或拟合结果，不能称 `validated`。
  * 不建模血管分区、微循环、血细胞/血红蛋白、CO2/酸碱、血压分级诊断或运动性高血压。
  * 输出只含七个有限数字段，JSON-safe。
  */
@@ -70,6 +72,10 @@ type BloodOxygenReading = {
   spo2Percent?: unknown;
 };
 
+type BodyFluidReading = {
+  waterVolumeMl?: unknown;
+};
+
 const parameters = loadParameters(new URL('./blood.parameters.json', import.meta.url));
 const referenceBloodVolumeMl = requireParameter(
   parameters,
@@ -83,7 +89,9 @@ const oxygenContentPerPercentMlPerL = requireParameter(
   'blood.oxygenContentPerPercentMlPerL',
 );
 
-const referenceCardiacOutputMlMin = 5000;
+const referenceCardiacOutputMlMin = 4900;
+const referenceBodyWaterMl = 30000;
+const bloodVolumeRange = { min: 2500, max: 6000 };
 const fallbackSpo2Percent = 97;
 const strokeVolumeGain = 0.2;
 const maxCortisolRelative = 3;
@@ -135,6 +143,7 @@ type IO = {
   read(id: 'blood'): Readonly<BloodState> | undefined;
   read(id: 'heart'): Readonly<HeartReading> | undefined;
   read(id: 'bloodOxygen'): Readonly<BloodOxygenReading> | undefined;
+  read(id: 'bodyFluid'): Readonly<BodyFluidReading> | undefined;
   write(next: BloodState): void;
 };
 
@@ -149,7 +158,27 @@ function requireFinite(value: unknown, name: string): number {
   return value;
 }
 
-function readBloodVolume(prev: Readonly<BloodState>): number {
+function readBloodVolume(
+  prev: Readonly<BloodState>,
+  bodyFluid: Readonly<BodyFluidReading> | undefined,
+): number {
+  if (bodyFluid !== undefined) {
+    if (typeof bodyFluid !== 'object' || bodyFluid === null) {
+      throw new Error('blood: bodyFluid must be an object');
+    }
+    const waterVolumeMl = requireFinite(
+      bodyFluid.waterVolumeMl,
+      'bodyFluid.waterVolumeMl',
+    );
+    if (waterVolumeMl < 0) {
+      throw new Error('blood: bodyFluid.waterVolumeMl must not be negative');
+    }
+    return clamp(
+      referenceBloodVolumeMl * (waterVolumeMl / referenceBodyWaterMl),
+      bloodVolumeRange.min,
+      bloodVolumeRange.max,
+    );
+  }
   const value = prev.bloodVolumeMl;
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
     return value;
@@ -188,7 +217,7 @@ function readSpo2Percent(bloodOxygen: Readonly<BloodOxygenReading> | undefined):
 }
 
 export function heartbeat(io: IO): void {
-  const bloodVolumeMl = readBloodVolume(io.read(id) ?? initialState);
+  const bloodVolumeMl = readBloodVolume(io.read(id) ?? initialState, io.read('bodyFluid'));
   const cardiacOutputMlMin = readCardiacOutput(io.read('heart'));
   const spo2Percent = readSpo2Percent(io.read('bloodOxygen'));
 

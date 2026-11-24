@@ -5,11 +5,11 @@
     {
       "id": "colon.reclamationRatePerMin",
       "unit": "1/min",
-      "value": 0.001,
+      "value": 0.01,
       "status": "design",
       "range": [0, 0.05],
       "source": null,
-      "note": "每仿真分钟回收轮初残渣水的比例；0.001 是工程假设，不是结肠吸水率或转运时间的人体测量。回收量 min(残渣 × 该值 × dtMin, 残渣)，转回 bodyFluid.waterVolumeMl；range 是工程调参范围，不是人体百分位"
+      "note": "结肠残渣水一阶指数回收速率常数；0.01 /min（半时约 69 min）是工程假设，不是结肠吸水率或转运时间的人体测量。回收量 clamp(残渣 × (1 − exp(−该值 × dtMin)), 0, 残渣)，转回 bodyFluid.waterVolumeMl；range 是工程调参范围，不是人体百分位"
     },
     {
       "id": "colon.stoolFormationGPerMin",

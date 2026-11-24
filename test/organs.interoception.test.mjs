@@ -723,10 +723,14 @@ test('dry mouth is a readout: other readings and discomfort stay point-identical
   );
 });
 
-test('colon stool mass drives bowel urgency and clamps to 0-100 mm', () => {
+test('colon bowelUrgencyMm is preferred when finite, falling back to stool mass when absent', () => {
   assert.deepEqual(fields.bowelUrgencyMm, { unit: 'mm', mode: 'absolute' });
   assert.equal(initialState.bowelUrgencyMm, 0);
   assert.equal(round().bowelUrgencyMm, 0);
+  assert.equal(round({ colon: { bowelUrgencyMm: 42, stoolG: 0 } }).bowelUrgencyMm, 42);
+  assert.equal(round({ colon: { bowelUrgencyMm: -10, stoolG: 100 } }).bowelUrgencyMm, 0);
+  assert.equal(round({ colon: { bowelUrgencyMm: 150, stoolG: 0 } }).bowelUrgencyMm, 100);
+  assert.equal(round({ colon: { bowelUrgencyMm: Number.NaN, stoolG: 100 } }).bowelUrgencyMm, 50);
   assert.equal(round({ colon: { stoolG: 0 } }).bowelUrgencyMm, 0);
   assert.equal(round({ colon: { stoolG: 100 } }).bowelUrgencyMm, 50);
   assert.equal(round({ colon: { stoolG: 200 } }).bowelUrgencyMm, 100);

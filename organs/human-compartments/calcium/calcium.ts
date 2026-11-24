@@ -8,22 +8,21 @@
  *   release = pthRelative > 1
  *     ? min(boneReleaseRateGPerMin × (pthRelative − 1) × dtMin, boneStoreG)
  *     : 0
- *   deposit = pthRelative < 1
+ *   rawDeposit = pthRelative < 1
  *     ? boneDepositRateGPerMin × (1 − pthRelative) × dtMin
  *     : 0
+ *   deposit = min(rawDeposit, max(0, boneCapacityG − prevBoneStoreG))
  *   excretion = blood.gfrMlMin × calciumExcretionPerMlG
  *               × max(0, 1 − pthRelative) × dtMin
  *   boneStoreG = clamp(prevBoneStoreG − release + deposit, 0, boneCapacityG)
- *   mgDl = clamp(prevMgDl + (release − deposit − excretion) / distributionVolumeDl / 1000,
+ *   mgDl = clamp(prevMgDl + (release − deposit − excretion) × 1000 / distributionVolumeDl,
  *                0, 20)
  *
- * `release` 以骨钙库当前量为上限，骨钙库不会为负；`deposit` 由骨容量 200 g 钳位。
- * 排泄只在 PTH 低于 1 时出现：PTH = 1 时为 0，因此 9.5 mg/dL 是稳定设定点；PTH < 1
- * 时随 (1 − pthRelative) 线性增加，PTH ≥ 1 时视为完全重吸收。这是 PTH 调节肾小管钙
- * 重吸收的 `design` 代理，不是实测肾钙排泄或转运体动力学。
- * 浓度积分沿用本切片规范的 `/ distributionVolumeDl / 1000`（`design` 口径）：它使
- * 每克钙带来的 `mgDl` 变化约为 7e-6，因此 60 秒轮次内的浓度变化很小，不能当作把
- * 克换算为毫克的标准量纲运算，也不是实测血钙动力学。
+ * `release` 以骨钙库当前量为上限，骨钙库不会为负；`deposit` 在扣除血钙前先按骨容量上限
+ * `boneCapacityG − prevBoneStoreG` 钳位以保证钙质量守恒。排泄只在 PTH 低于 1 时出现：
+ * PTH = 1 时为 0，因此 9.5 mg/dL 是稳定设定点；PTH < 1 时随 (1 − pthRelative) 线性增加，
+ * PTH ≥ 1 时视为完全重吸收。这是 PTH 调节肾小管钙重吸收的 `design` 代理，不是实测肾钙
+ * 排泄或转运体动力学。`× 1000 / distributionVolumeDl` 把 g 换算为 mg 并除以 dL 得到 mg/dL。
  *
  * 参数从同目录 `calcium.parameters.json` 只读加载，全部 `design`、`source: null`：
  * `referenceMgDl = 9.5`、`boneStoreInitialG = 100`、`boneCapacityG = 200`、
@@ -149,9 +148,10 @@ export function heartbeat(io: IO): void {
   const releaseG = pthRelative > fallbackPthRelative
     ? Math.min(boneReleaseRateGPerMin * (pthRelative - fallbackPthRelative) * dtMin, prevBoneStoreG)
     : 0;
-  const depositG = pthRelative < fallbackPthRelative
+  const rawDepositG = pthRelative < fallbackPthRelative
     ? boneDepositRateGPerMin * (fallbackPthRelative - pthRelative) * dtMin
     : 0;
+  const depositG = Math.min(rawDepositG, Math.max(0, boneCapacityG - prevBoneStoreG));
   const excretionG = gfrMlMin
     * calciumExcretionPerMlG
     * Math.max(0, fallbackPthRelative - pthRelative)
@@ -159,7 +159,7 @@ export function heartbeat(io: IO): void {
 
   io.write({
     mgDl: clamp(
-      prevMgDl + (releaseG - depositG - excretionG) / distributionVolumeDl / 1000,
+      prevMgDl + ((releaseG - depositG - excretionG) * 1000) / distributionVolumeDl,
       mgDlRange.min,
       mgDlRange.max,
     ),

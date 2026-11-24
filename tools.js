@@ -150,7 +150,7 @@ export function createBodyTools(gateway) {
       async execute(args = {}) {
         const state = gateway.getState();
         const parts = typeof args.part === 'string'
-          ? { [args.part]: state.parts[args.part] ?? null }
+          ? { [args.part]: Object.hasOwn(state.parts, args.part) ? state.parts[args.part] : null }
           : state.parts;
         return { simulatedSeconds: state.simulatedSeconds, parts };
       },

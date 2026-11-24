@@ -9,14 +9,19 @@
  * 区域各自持有糖原、按轮初活动消耗，见同目录 `regions/region-core.ts`。
  *
  * 请求公式（design，`dtMin = io.dt / 60`）：
- *   response = 1 + insulinSensitivity × (insulinRelative − 1)
- *   request  = maxUptakeRateGPerMin
- *            × excessMassG / (excessMassG + halfMaxExcessG)
- *            × response
- *            × dtMin
+ *   response = max(0, 1 + insulinSensitivity × (insulinRelative − 1))
+ *   insulinUptakeG = maxUptakeRateGPerMin
+ *                  × excessMassG / (excessMassG + halfMaxExcessG)
+ *                  × response
+ *                  × dtMin
+ *   exerciseUptakeG = physicalActivity.remainingExerciseMin > 0
+ *                   ? exerciseUptakeRateGPerMin × clamp(intensity, 0, 1) × dtMin
+ *                     × clamp(concentrationMgDl / 90, 0, 1.5)
+ *                   : 0
+ *   request = insulinUptakeG + exerciseUptakeG
  * `excessMassG` 是 `glucose` 轮初高于基线的质量（g），`insulinRelative` 是无量纲相对信号，
- * 1 为基线。`insulinSensitivity = 1` 时请求与相对信号同比例，`0` 时对信号不敏感；
- * `excessMassG = 0` 时请求为 0，半饱和过剩量越小，同一过剩量越快接近最大速率。请求只是
+ * 1 为基线。`insulinSensitivity = 1` 时胰岛素响应与相对信号同比例，`0` 时对信号不敏感；
+ * `excessMassG = 0` 且未运动时请求为 0，运动收缩介导摄糖在空腹时仍可从血糖摄取葡萄糖。请求只是
  * 请求，本脚本不支付：余额不足由 `glucose` 钳位，实际到账量才写进 `uptakeG`。请求每轮按
  * 轮初快照重算，不沿用上一轮值。
  *
@@ -79,10 +84,16 @@ type SavedMuscleGlucoseState = {
 
 type GlucoseReading = {
   excessMassG?: unknown;
+  concentrationMgDl?: unknown;
 };
 
 type PancreasReading = {
   insulinRelative?: unknown;
+};
+
+type ActivityReading = {
+  remainingExerciseMin?: unknown;
+  intensity?: unknown;
 };
 
 type IO = {
@@ -90,6 +101,7 @@ type IO = {
   read(partId: MuscleRegionId): Readonly<Record<string, unknown>> | undefined;
   read(partId: 'glucose'): Readonly<GlucoseReading> | undefined;
   read(partId: 'pancreasEndocrine'): Readonly<PancreasReading> | undefined;
+  read(partId: 'physicalActivity'): Readonly<ActivityReading> | undefined;
   readonly dt: number;
   write(next: MuscleGlucoseState): void;
   transfer(
@@ -113,6 +125,17 @@ const insulinSensitivity = requireParameter(
   parameters,
   'muscleGlucose.insulinSensitivity',
 );
+const exerciseUptakeRateGPerMin = requireParameter(
+  parameters,
+  'muscleGlucose.exerciseUptakeRateGPerMin',
+);
+
+const REFERENCE_GLUCOSE_MG_DL = 90;
+const MAX_EXERCISE_CONCENTRATION_FACTOR = 1.5;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 function finiteOrZero(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -123,6 +146,25 @@ function requireReading(value: unknown, name: string): number {
     throw new Error(`${name} must be a finite non-negative number`);
   }
   return value;
+}
+
+function readActivity(
+  io: IO,
+): { remainingExerciseMin: number; intensity: number } | undefined {
+  const activity = io.read('physicalActivity') as ActivityReading | null | undefined;
+  if (activity === undefined || activity === null) return undefined;
+  if (typeof activity !== 'object') {
+    throw new Error('physicalActivity must be an object');
+  }
+  const remainingExerciseMin = requireReading(
+    activity.remainingExerciseMin,
+    'physicalActivity.remainingExerciseMin',
+  );
+  const intensity = requireReading(activity.intensity, 'physicalActivity.intensity');
+  if (intensity > 1) {
+    throw new Error('physicalActivity.intensity must be between 0 and 1');
+  }
+  return { remainingExerciseMin, intensity };
 }
 
 export function createMuscleGlucose(regionShares: readonly MuscleRegionShare[]) {
@@ -153,12 +195,27 @@ export function createMuscleGlucose(regionShares: readonly MuscleRegionShare[]) 
     const insulinRelative = pancreas === undefined
       ? 1
       : requireReading(pancreas.insulinRelative, 'pancreasEndocrine.insulinRelative');
+    const activity = readActivity(io);
 
-    const insulinResponse = 1 + insulinSensitivity * (insulinRelative - 1);
-    const uptakeRequestG = maxUptakeRateGPerMin
+    const dtMin = io.dt / 60;
+    const insulinResponse = Math.max(0, 1 + insulinSensitivity * (insulinRelative - 1));
+    const insulinUptakeG = maxUptakeRateGPerMin
       * (excessMassG / (excessMassG + halfMaxExcessG))
       * insulinResponse
-      * (io.dt / 60);
+      * dtMin;
+
+    let exerciseUptakeG = 0;
+    if (activity !== undefined && activity.remainingExerciseMin > 0) {
+      const concentrationMgDl = glucose === undefined
+        ? 0
+        : requireReading(glucose.concentrationMgDl, 'glucose.concentrationMgDl');
+      exerciseUptakeG = exerciseUptakeRateGPerMin
+        * clamp(activity.intensity, 0, 1)
+        * dtMin
+        * clamp(concentrationMgDl / REFERENCE_GLUCOSE_MG_DL, 0, MAX_EXERCISE_CONCENTRATION_FACTOR);
+    }
+
+    const uptakeRequestG = insulinUptakeG + exerciseUptakeG;
 
     const presentRegions = regionShares.filter((region) => io.read(region.id) !== undefined);
     const totalShare = presentRegions.reduce((sum, region) => sum + region.share, 0);

@@ -2,11 +2,11 @@
 
 **功能标签：** 消化（结肠残渣水回收、粪便形成、排便动作、便意读数）。
 
-`colon` 目前只有一个部位写者 `colon.ts`。它接收小肠按比例转入的未吸收残渣水，按固定回收速率把一部分水转回 `bodyFluid.waterVolumeMl`，同时按固定速率形成粪便、响应 `defecate` 动作排出轮初粪便，并写出 0–100 mm 的便意代理。`interoception.bowelUrgencyMm` 以软读方式取该读数。
+`colon` 目前只有一个部位写者 `colon.ts`。它接收小肠按通量比例分流转入的未吸收残渣水，按一阶指数回收速率把一部分水转回 `bodyFluid.waterVolumeMl`，同时按固定速率形成粪便、响应 `defecate` 动作排出轮初粪便，并写出 0–100 mm 的便意代理。`interoception.bowelUrgencyMm` 优先软读本部位的 `colon.bowelUrgencyMm`（缺失或非有限时再按 `colon.stoolG` 回落）。
 
-实现状态：脚本、参数与定向测试已在 `organs/human-organs/colon/`，并已加入根清单 `body-modules.json`、女性清单与男性清单。加入本切片后根清单 38 部位、37 份参数文件，女性清单 41 / 40，男性清单 40 / 39。旧存档缺 `colon` 时由 `initialState` 补 0。
+实现状态：脚本、参数与定向测试已在 `organs/human-organs/colon/`，并已加入根清单 `body-modules.json`、女性清单与男性清单。当前根清单 38 部位、34 份唯一参数文件，女性清单 41 / 37，男性清单 40 / 36。旧存档缺 `colon` 时由 `initialState` 补 0。
 
-**清单依赖。** `colon.residueWaterMl` 声明 `transferIn: ["smallIntestine.waterVolumeMl"]`，与小肠的 `transferOut` 配对；`colon.reclaimedWaterMl` 声明 `transferOut: ["bodyFluid.waterVolumeMl"]`，与体液的 `transferIn` 配对。因此完整清单必须同时加载 `smallIntestine` 与 `bodyFluid`：缺 `colon` 时启动报 `Body module "smallIntestine" field "waterVolumeMl": transferOut target "colon.residueWaterMl" is not declared`；缺 `bodyFluid` 时报 `colon.reclaimedWaterMl` 的 `transferOut` 目标未声明。本切片把根清单的硬 transfer 闭包从 13 个部位扩到 14 个（女性 15 → 16）；`esophagus` 不在闭包内。
+**清单依赖。** `colon.residueWaterMl` 声明 `transferIn: ["smallIntestine.waterVolumeMl"]`，与小肠的 `transferOut` 配对；`colon.reclaimedWaterMl` 声明 `transferOut: ["bodyFluid.waterVolumeMl"]`，与体液的 `transferIn` 配对。因此完整清单必须同时加载 `smallIntestine` 与 `bodyFluid`：缺 `colon` 时启动报 `Body module "smallIntestine" field "waterVolumeMl": transferOut target "colon.residueWaterMl" is not declared`；缺 `bodyFluid` 时报 `colon.reclaimedWaterMl` 的 `transferOut` 目标未声明。当前根与男性清单的硬 transfer 闭包为 15 个部位，女性清单为 17 个部位；`esophagus` 不在闭包内。
 
 ## 1. 脚本与部位
 
@@ -36,7 +36,7 @@
 
 ```text
 startResidue = max(0, prev.residueWaterMl)
-reclaimed = min(startResidue × reclamationRatePerMin × dtMin, startResidue)
+reclaimed = clamp(startResidue × (1 − exp(−reclamationRatePerMin × dtMin)), 0, startResidue)
 startStoolG = max(0, prev.stoolG)
 本轮有 defecate：defecatedG = startStoolG；stoolG = 0
 否则：defecatedG = 0；stoolG = startStoolG + stoolFormationGPerMin × dtMin
@@ -47,7 +47,7 @@ transfer colon.reclaimedWaterMl → bodyFluid.waterVolumeMl: reclaimed
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | ---: | --- | --- | --- |
-| `colon.reclamationRatePerMin` | 0.001 | `1/min` | `design` | —（无直接证据） |
+| `colon.reclamationRatePerMin` | 0.01 | `1/min` | `design` | —（无直接证据；半时约 69 min） |
 | `colon.stoolFormationGPerMin` | 0.01 | `g/min` | `design` | —（无直接证据） |
 | `colon.referenceStoolG` | 200 | `g` | `design` | —（无直接证据） |
 
@@ -63,7 +63,7 @@ transfer colon.reclaimedWaterMl → bodyFluid.waterVolumeMl: reclaimed
 
 ## 5. 消费与水账
 
-- `interoception.bowelUrgencyMm` 软读轮初 `colon.stoolG`，按 200 g 归一化到 0–100 mm；`colon` 未加载时按 0。它不进入 `discomfort`，也不触发 `brainNotify`。
+- `interoception.bowelUrgencyMm` 优先软读轮初 `colon.bowelUrgencyMm`（有限时钳到 0–100 mm）；若该字段缺失或非有限，再回落到 `clamp(100 × colon.stoolG / 200, 0, 100)`；`colon` 未加载时按 0。它不进入 `discomfort`，也不触发 `brainNotify`。
 - 水账新增“结肠残渣水”项：`胃水 + 队列水 + 小肠水 + 结肠残渣水 + (体液水 − 初始体液水) + 膀胱尿 + 累计 voidedMl + 累计汗液 + 累计呼吸失水 = 累计饮水`。结肠回收是残渣水池到体液的内部回流，只在残渣水项里体现，不另加外部流入；`reclaimedWaterMl` 提交后为 0，不是可累计读数。
 - 本切片不改 `brainNotify` 的四类信号，也不改 `discomfort` 的七路组成；便意只有 `body_state` / `GET /state` 读数。
 
@@ -73,7 +73,7 @@ transfer colon.reclaimedWaterMl → bodyFluid.waterVolumeMl: reclaimed
 - 定向测试：[`test/organs.colon.test.mjs`](../../../test/organs.colon.test.mjs)；真实 Gateway 在 [`test/organs.bowel-gateway.test.mjs`](../../../test/organs.bowel-gateway.test.mjs)
 - 共享登记簿：[`../references/source-index.csv`](../references/source-index.csv)（本切片未新增来源行）
 
-**证据边界：** 0.001 /min、0.01 g/min 与 200 g 都是 `design`、`source: null` 的工程假设，不是结肠转运时间、结肠吸水率、粪便形成率或便意阈值的人体测量，也不是对任何研究的拟合。实际结肠转运约以小时计，本切片用 60 s 轮上的固定比例代理，不能称 `validated`。
+**证据边界：** `0.01 /min`（解析指数回收，半时约 69 min）、0.01 g/min 与 200 g 都是 `design`、`source: null` 的工程假设，不是结肠转运时间、结肠吸水率、粪便形成率或便意阈值的人体测量，也不是对任何研究的拟合。实际结肠转运约以小时计，本切片用 60 s 轮上的指数回收代理，不能称 `validated`。
 
 ## 7. 当前限制
 

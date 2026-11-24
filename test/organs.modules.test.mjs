@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { readManifest } from '../gateway/config.js';
+import { createFieldRegistry } from '../gateway/operations.js';
+import { initialize as resetPartsInitialize } from '../startup/reset-parts.js';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const organModules = [
   ['legacy stomach motility', 'stomach', '../organs/human-organs/stomach/motility.ts'],
@@ -277,4 +285,136 @@ test('duodenum rejects an invalid saliva rate for carbohydrate meals', async () 
     );
     assert.equal(writes.length, 0, `${label}: must not write`);
   }
+});
+
+function collectParameterFilesLoadedByScripts(scriptPaths) {
+  const visited = new Set();
+  const parameterFiles = new Set();
+  const queue = scriptPaths.map((scriptPath) => resolve(scriptPath));
+
+  while (queue.length > 0) {
+    const file = queue.pop();
+    if (visited.has(file)) continue;
+    visited.add(file);
+
+    const source = readFileSync(file, 'utf8');
+    const dir = dirname(file);
+    for (const match of source.matchAll(/import\s+(?:[\s\S]*?\s+from\s+)?['"](\.[^'"]+)['"]/g)) {
+      const target = resolve(dir, match[1]);
+      if (target.endsWith('.ts') || target.endsWith('.js') || target.endsWith('.mjs')) {
+        queue.push(target);
+      }
+    }
+    for (const match of source.matchAll(/new URL\(\s*['"]([^'"]+\.parameters\.json)['"]\s*,\s*import\.meta\.url\s*\)/g)) {
+      parameterFiles.add(resolve(dir, match[1]));
+    }
+  }
+
+  return parameterFiles;
+}
+
+function collectAllParameterFiles(dir) {
+  const files = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...collectAllParameterFiles(fullPath));
+    else if (entry.isFile() && entry.name.endsWith('.parameters.json')) files.push(fullPath);
+  }
+  return files;
+}
+
+for (const { file, scriptCount, parameterCount, transferPartCount } of [
+  { file: 'body-modules.json', scriptCount: 38, parameterCount: 34, transferPartCount: 15 },
+  { file: 'body-modules.female.json', scriptCount: 41, parameterCount: 37, transferPartCount: 17 },
+  { file: 'body-modules.male.json', scriptCount: 40, parameterCount: 36, transferPartCount: 15 },
+]) {
+  test(`${file} passes createFieldRegistry, parameter inventory, and transfer closure checks`, async () => {
+    const manifestPath = join(root, file);
+    const manifest = readManifest(manifestPath);
+    const loadedModules = [];
+    for (const { url } of manifest.scripts) {
+      loadedModules.push(await import(url));
+    }
+
+    assert.equal(loadedModules.length, scriptCount);
+
+    const registry = createFieldRegistry(loadedModules);
+    assert.equal(registry.size, scriptCount);
+
+    let actualTransferParts = 0;
+    for (const declared of registry.values()) {
+      const hasTransfer = [...declared.values()].some(
+        (declaration) => declaration.transferOut.length > 0 || declaration.transferIn.length > 0,
+      );
+      if (hasTransfer) actualTransferParts += 1;
+    }
+    assert.equal(actualTransferParts, transferPartCount);
+
+    const loadedParameters = collectParameterFilesLoadedByScripts(
+      manifest.scripts.map(({ url }) => fileURLToPath(url)),
+    );
+    assert.equal(loadedParameters.size, parameterCount);
+  });
+}
+
+test('organs directory contains exact total parameter inventory', () => {
+  const allParameters = collectAllParameterFiles(join(root, 'organs'));
+  assert.equal(allParameters.length, 44);
+});
+
+test('every organ and compartment directory has a non-empty README.md', () => {
+  const directories = [];
+  for (const parent of ['human-organs', 'human-compartments']) {
+    const baseDir = join(root, 'organs', parent);
+    for (const entry of readdirSync(baseDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      if (parent === 'human-organs' && entry.name === 'references') continue;
+      directories.push(join(baseDir, entry.name));
+    }
+  }
+
+  for (const dir of directories) {
+    const readmePath = join(dir, 'README.md');
+    const stats = statSync(readmePath, { throwIfNoEntry: false });
+    assert.ok(stats && stats.isFile(), `missing README.md in ${dir}`);
+    const content = readFileSync(readmePath, 'utf8');
+    assert.ok(content.trim().length > 0, `empty README.md in ${dir}`);
+  }
+});
+
+test('startup/reset-parts.js resets only declared resetOnStart fields while preserving other fields', () => {
+  const snapshot = {
+    simulatedSeconds: 3600,
+    parts: {
+      stomach: { volumeMl: 250, transientFlag: true, pendingMl: 120 },
+      blood: { volumeMl: 5100 },
+      bladder: { volumeMl: 180, voidedMl: 95 },
+    },
+  };
+  const initialParts = {
+    stomach: { volumeMl: 0, transientFlag: false, pendingMl: 0 },
+    blood: { volumeMl: 5000 },
+    bladder: { volumeMl: 0, voidedMl: 0 },
+  };
+  const resetOnStart = {
+    stomach: ['transientFlag', 'pendingMl'],
+    blood: [],
+    bladder: ['voidedMl'],
+  };
+
+  const patches = resetPartsInitialize(snapshot, { initialParts, resetOnStart });
+  assert.deepEqual(patches, {
+    stomach: { transientFlag: false, pendingMl: 0 },
+    bladder: { voidedMl: 0 },
+  });
+  assert.equal(Object.hasOwn(patches, 'blood'), false);
+
+  const merged = Object.fromEntries(
+    Object.entries(snapshot.parts).map(([id, part]) => [id, { ...part, ...(patches[id] ?? {}) }]),
+  );
+  assert.deepEqual(merged, {
+    stomach: { volumeMl: 250, transientFlag: false, pendingMl: 0 },
+    blood: { volumeMl: 5100 },
+    bladder: { volumeMl: 180, voidedMl: 0 },
+  });
 });

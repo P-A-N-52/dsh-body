@@ -11,8 +11,9 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rootManifestPath = join(root, 'body-modules.json');
 const distributionVolumeDl = 141;
 const baselineConcentrationMgDl = 90;
-const maxOutputRateGPerMin = 0.3;
-const maxOutputPerRoundG = 0.3;
+const maxOutputRateGPerMin = 0.5;
+const maxOutputPerRoundG = 0.6;
+const basalConsumptionGPerMin = 0.12;
 
 function silence(t) {
   for (const method of ['log', 'error', 'warn']) {
@@ -72,10 +73,13 @@ function lowGlucoseParts({ glycogenG }) {
 function renalOutputG(parts) {
   const concentrationMgDl = parts.glucose?.concentrationMgDl ?? baselineConcentrationMgDl;
   const glucagonRelative = parts.pancreasEndocrine?.glucagonRelative ?? 1;
-  const active = concentrationMgDl < baselineConcentrationMgDl || glucagonRelative > 1;
-  return active
-    ? Math.min(maxOutputRateGPerMin * glucagonRelative, maxOutputPerRoundG)
-    : 0;
+  const deficitMgDl = Math.max(0, baselineConcentrationMgDl - concentrationMgDl);
+  const excessMgDl = Math.max(0, concentrationMgDl - baselineConcentrationMgDl);
+  const suppression = 1 / (1 + excessMgDl / 30);
+  const rawRate = 0.024 * suppression
+    + 0.005 * deficitMgDl
+    + 0.05 * Math.max(0, glucagonRelative - 1);
+  return Math.min(maxOutputPerRoundG, Math.min(maxOutputRateGPerMin, Math.max(0, rawRate)));
 }
 
 function assertClose(actual, expected, label, tolerance = 1e-12) {
@@ -90,10 +94,10 @@ test('low glucose without liver glycogen is refilled by kidney gluconeogenesis',
   assert.deepEqual(gateway.getState().parts.kidneyGluconeogenesis, { glucoseOutputG: 0 });
 
   let previousMassG = 6;
-  for (let round = 1; round <= 22; round++) {
+  for (let round = 1; round <= 40; round++) {
     const before = gateway.getState().parts;
     const expectedOutputG = renalOutputG(before);
-    assert.equal(expectedOutputG, 0.3, `round ${round}: low glucose must drive the maximum rate`);
+    assert.ok(expectedOutputG > 0.024, `round ${round}: low glucose must drive above-basal output`);
 
     await gateway.tick();
     const parts = gateway.getState().parts;
@@ -106,22 +110,17 @@ test('low glucose without liver glycogen is refilled by kidney gluconeogenesis',
     );
     assertClose(
       parts.glucose.glucoseMassG,
-      previousMassG + expectedOutputG,
-      `round ${round}: kidney output must be the only source`,
+      previousMassG - parts.glucose.disposedGlucoseG + expectedOutputG,
+      `round ${round}: net change equals kidney output minus basal consumption`,
     );
     previousMassG = parts.glucose.glucoseMassG;
   }
 
   const parts = gateway.getState().parts;
-  assertClose(parts.glucose.glucoseMassG, 12.6, '22 rounds of 0.3 g');
-  assertClose(
-    parts.glucose.concentrationMgDl,
-    (12.6 - maxOutputPerRoundG) * 1000 / distributionVolumeDl,
-    'concentration reflects the round-start mass before the final transfer',
-  );
+  assert.ok(parts.glucose.glucoseMassG > 6, 'glucose must recover toward baseline');
   assert.ok(
-    parts.glucose.concentrationMgDl > 85 && parts.glucose.concentrationMgDl < baselineConcentrationMgDl,
-    `concentration ${parts.glucose.concentrationMgDl} must recover toward baseline without overshooting`,
+    parts.glucose.concentrationMgDl > 65 && parts.glucose.concentrationMgDl <= baselineConcentrationMgDl,
+    `concentration ${parts.glucose.concentrationMgDl} must recover smoothly without overshooting`,
   );
 });
 
@@ -130,7 +129,7 @@ test('liver glycogen and kidney gluconeogenesis both refill low glucose', async 
 
   const before = gateway.getState().parts;
   const expectedKidneyOutputG = renalOutputG(before);
-  assert.equal(expectedKidneyOutputG, 0.3);
+  assert.ok(expectedKidneyOutputG > 0.2);
 
   await gateway.tick();
   const first = gateway.getState().parts;
@@ -139,8 +138,8 @@ test('liver glycogen and kidney gluconeogenesis both refill low glucose', async 
   assert.deepEqual(first.kidneyGluconeogenesis, { glucoseOutputG: 0 });
   assertClose(
     first.glucose.glucoseMassG,
-    6 + first.liver.outputG + expectedKidneyOutputG,
-    'both transfers must enter glucoseMassG',
+    6 - first.glucose.disposedGlucoseG + first.liver.outputG + expectedKidneyOutputG,
+    'both transfers and basal consumption must enter glucoseMassG',
   );
 
   const secondBefore = gateway.getState().parts;
@@ -148,15 +147,15 @@ test('liver glycogen and kidney gluconeogenesis both refill low glucose', async 
   await gateway.tick();
   const second = gateway.getState().parts;
   assert.ok(second.liver.outputG > 0, 'the liver must keep releasing while glucose is low');
-  assert.equal(secondKidneyOutputG, 0.3);
+  assert.ok(secondKidneyOutputG > 0.15);
   assertClose(
     second.glucose.glucoseMassG,
-    first.glucose.glucoseMassG + second.liver.outputG + secondKidneyOutputG,
-    'round 2 must also receive both sources',
+    first.glucose.glucoseMassG - second.glucose.disposedGlucoseG + second.liver.outputG + secondKidneyOutputG,
+    'round 2 must also receive both sources minus basal consumption',
   );
 });
 
-test('high glucose produces no kidney output', async (t) => {
+test('high glucose smoothly suppresses kidney output', async (t) => {
   const { gateway } = await startBody(t, {
     parts: {
       glucose: {
@@ -175,19 +174,22 @@ test('high glucose produces no kidney output', async (t) => {
   });
 
   const before = gateway.getState().parts;
-  assert.equal(renalOutputG(before), 0, 'high glucose with baseline glucagon must not trigger output');
+  const expectedKidney1 = renalOutputG(before);
+  assert.ok(expectedKidney1 > 0 && expectedKidney1 < 0.024, 'high glucose suppresses kidney output below basal');
 
   await gateway.tick();
   const first = gateway.getState().parts;
-  assert.equal(first.liver.outputG, 0, 'high glucose must not trigger liver release');
+  assert.ok(first.liver.outputG > 0 && first.liver.outputG < 0.096, 'high glucose suppresses liver output below basal');
   assert.deepEqual(first.kidneyGluconeogenesis, { glucoseOutputG: 0 });
   assertClose(
-    first.glucose.glucoseMassG + first.glucose.disposedGlucoseG,
+    first.glucose.glucoseMassG + first.glucose.disposedGlucoseG - first.liver.outputG - expectedKidney1,
     30,
-    'round 1 may only dispose mass, not add kidney output',
+    'round 1 pool balance includes suppressed EGP and disposal',
   );
 
   const disposedFirstG = first.glucose.disposedGlucoseG;
+  const liverOutput1G = first.liver.outputG;
+  const expectedKidney2 = renalOutputG(first);
   await gateway.tick();
   const second = gateway.getState().parts;
   assert.deepEqual(second.kidneyGluconeogenesis, { glucoseOutputG: 0 });
@@ -197,9 +199,13 @@ test('high glucose produces no kidney output', async (t) => {
       + second.glucose.disposedGlucoseG
       + second.liver.storageG
       + second.muscleGlucose.uptakeG
-      + second.kidneyGlucose.excretedGlucoseG,
+      + second.kidneyGlucose.excretedGlucoseG
+      - liverOutput1G
+      - second.liver.outputG
+      - expectedKidney1
+      - expectedKidney2,
     30,
-    'settled sinks and disposals must account for the whole start mass',
+    'settled sinks, disposals and suppressed EGP must account for the whole start mass',
   );
 });
 
@@ -241,9 +247,16 @@ test('restart continues renal gluconeogenesis from the committed state', async (
     parts: lowGlucoseParts({ glycogenG: 0 }),
   });
 
-  for (let round = 1; round <= 5; round++) await first.tick();
+  let expectedMassG = 6;
+  for (let round = 1; round <= 5; round++) {
+    const before = first.getState().parts;
+    const expectedOutputG = renalOutputG(before);
+    await first.tick();
+    const after = first.getState().parts;
+    expectedMassG = expectedMassG - after.glucose.disposedGlucoseG + expectedOutputG;
+  }
   const beforeRestart = first.getState().parts;
-  assertClose(beforeRestart.glucose.glucoseMassG, 7.5, 'five rounds of 0.3 g');
+  assertClose(beforeRestart.glucose.glucoseMassG, expectedMassG, 'five rounds mass conservation');
   assert.equal(first.getState().simulatedSeconds, 300);
   await first.stop();
 
@@ -255,13 +268,17 @@ test('restart continues renal gluconeogenesis from the committed state', async (
 
   const loaded = second.getState().parts;
   assert.equal(second.getState().simulatedSeconds, 300);
-  assertClose(loaded.glucose.glucoseMassG, 7.5, 'the restart must keep the committed mass');
+  assertClose(loaded.glucose.glucoseMassG, expectedMassG, 'the restart must keep the committed mass');
   assert.deepEqual(loaded.kidneyGluconeogenesis, { glucoseOutputG: 0 });
 
   const expectedOutputG = renalOutputG(loaded);
   await second.tick();
   const after = second.getState().parts;
   assert.equal(second.getState().simulatedSeconds, 360);
-  assertClose(after.glucose.glucoseMassG, 7.5 + expectedOutputG, 'the next round keeps producing');
+  assertClose(
+    after.glucose.glucoseMassG,
+    expectedMassG - after.glucose.disposedGlucoseG + expectedOutputG,
+    'the next round keeps producing',
+  );
   assert.deepEqual(after.kidneyGluconeogenesis, { glucoseOutputG: 0 });
 });

@@ -19,9 +19,16 @@ const baselineMassG = 12.69;
 const baselineConcentrationMgDl = 90;
 const distributionVolumeDl = 141;
 const residualHalfTimeMin = 60;
+const basalConsumptionGPerMin = 0.12;
 const renalThresholdMgDl = 339 / 1.88;
 const initialLiverGlycogenG = 80;
 const initialLiverCapacityG = 100;
+const initialMuscleGlycogenG = 300;
+const initialRegionGlycogen = {
+  muscleHead: 15,
+  muscleTrunk: 135,
+  muscleLimbs: 150,
+};
 const ledgerToleranceG = 1e-6;
 const waterToleranceMl = 1e-6;
 
@@ -76,6 +83,7 @@ function carbohydrateLedgerG(
   cumulativeDisposedG,
   cumulativeExcretedG,
   cumulativeMuscleConsumedG,
+  cumulativeKidneyOutputG = 0,
 ) {
   return parts.stomach.carbohydrateG
     + queuedCarbohydrateG(parts.stomach)
@@ -83,12 +91,24 @@ function carbohydrateLedgerG(
     + (parts.glucose.glucoseMassG - baselineMassG)
     + cumulativeDisposedG
     + cumulativeExcretedG
-    + muscleSum(parts, 'glycogenG')
+    + (muscleSum(parts, 'glycogenG') - initialMuscleGlycogenG)
     + muscleSum(parts, 'uptakeG')
     + parts.muscleGlucose.uptakeG
     + cumulativeMuscleConsumedG
     + (parts.liver.glycogenG - initialLiverGlycogenG)
-    + parts.liver.storageG;
+    + parts.liver.storageG
+    - cumulativeKidneyOutputG;
+}
+
+function expectedDisposedG(massG, dtSeconds = 60) {
+  const dtMin = dtSeconds / 60;
+  const concentrationMgDl = Math.max(0, massG) * 1000 / distributionVolumeDl;
+  const basalG = Math.min(
+    Math.max(0, massG),
+    basalConsumptionGPerMin * dtMin * Math.min(1, Math.max(0, concentrationMgDl / 50)),
+  );
+  const excessG = Math.max(0, massG - baselineMassG) * (1 - 2 ** (-dtMin / residualHalfTimeMin));
+  return Math.min(Math.max(0, massG), basalG + excessG);
 }
 
 function expectedExcretionRequestG(concentrationMgDl, dtSeconds = 60) {
@@ -99,8 +119,13 @@ function expectedExcretionRequestG(concentrationMgDl, dtSeconds = 60) {
 function renalOutputG(parts) {
   const concentrationMgDl = parts.glucose?.concentrationMgDl ?? baselineConcentrationMgDl;
   const glucagonRelative = parts.pancreasEndocrine?.glucagonRelative ?? 1;
-  const active = concentrationMgDl < baselineConcentrationMgDl || glucagonRelative > 1;
-  return active ? Math.min(0.3 * glucagonRelative, 0.3) : 0;
+  const deficitMgDl = Math.max(0, baselineConcentrationMgDl - concentrationMgDl);
+  const excessMgDl = Math.max(0, concentrationMgDl - baselineConcentrationMgDl);
+  const suppression = 1 / (1 + excessMgDl / 30);
+  const rawRate = 0.024 * suppression
+    + 0.005 * deficitMgDl
+    + 0.05 * Math.max(0, glucagonRelative - 1);
+  return Math.min(0.6, Math.min(0.5, Math.max(0, rawRate)));
 }
 
 function glucosePoolLedgerG(
@@ -123,14 +148,15 @@ function glucosePoolLedgerG(
     - kidneyOutputG;
 }
 
-function waterLedgerMl(parts, cumulativeVoidedMl, initialMl) {
+function waterLedgerMl(parts, cumulativeVoidedMl, initialMl, cumulativeSweatMl = 0) {
   return parts.stomach.waterVolumeMl
     + parts.stomach.mealQueue.reduce((sum, meal) => sum + (meal.remainingWaterMl ?? 0), 0)
     + parts.smallIntestine.waterVolumeMl
     + (parts.colon?.residueWaterMl ?? 0)
     + (parts.bodyFluid.waterVolumeMl - initialMl)
     + parts.bladder.volumeMl
-    + cumulativeVoidedMl;
+    + cumulativeVoidedMl
+    + cumulativeSweatMl;
 }
 
 test('a 60 g drink and an equal no-carb drink diverge through glucose and duodenum feedback', async (t) => {
@@ -158,7 +184,7 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
   for (const region of muscleRegions) {
     assert.deepEqual(initialWithCarb[region], {
       uptakeG: 0,
-      glycogenG: 0,
+      glycogenG: initialRegionGlycogen[region],
       glycogenConsumedG: 0,
     }, region);
   }
@@ -190,11 +216,19 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
   let withoutCarbExcretedG = 0;
   let withCarbMuscleConsumedG = 0;
   let withoutCarbMuscleConsumedG = 0;
+  let withCarbKidneyOutputG = 0;
+  let withoutCarbKidneyOutputG = 0;
   let withCarbVoidedMl = 0;
   let withoutCarbVoidedMl = 0;
+  let withCarbSweatMl = 0;
+  let withoutCarbSweatMl = 0;
   let withCarbPeakMgDl = -Infinity;
 
   async function advance(round, { trackPeak = true } = {}) {
+    const beforeWithCarb = withCarb.gateway.getState().parts;
+    const beforeWithoutCarb = withoutCarb.gateway.getState().parts;
+    withCarbKidneyOutputG += renalOutputG(beforeWithCarb);
+    withoutCarbKidneyOutputG += renalOutputG(beforeWithoutCarb);
     await withCarb.gateway.tick();
     await withoutCarb.gateway.tick();
     const withCarbParts = withCarb.gateway.getState().parts;
@@ -215,12 +249,14 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
     withoutCarbMuscleConsumedG += muscleSum(withoutCarbParts, 'glycogenConsumedG');
     withCarbVoidedMl += withCarbParts.bladder.voidedMl;
     withoutCarbVoidedMl += withoutCarbParts.bladder.voidedMl;
+    withCarbSweatMl += withCarbParts.skin?.sweatVolumeMl ?? 0;
+    withoutCarbSweatMl += withoutCarbParts.skin?.sweatVolumeMl ?? 0;
     if (trackPeak) {
       withCarbPeakMgDl = Math.max(withCarbPeakMgDl, withCarbParts.glucose.concentrationMgDl);
     }
     assert.ok(
-      withCarbParts.glucose.concentrationMgDl >= 90 - 1e-9,
-      `A round ${round}: concentration fell below baseline`,
+      withCarbParts.glucose.concentrationMgDl >= 85,
+      `A round ${round}: concentration ${withCarbParts.glucose.concentrationMgDl} dropped unexpectedly low`,
     );
     assert.ok(
       Math.abs(withoutCarbParts.glucose.glucoseMassG - baselineMassG) <= 1e-9,
@@ -250,6 +286,7 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
       withCarbDisposedG,
       withCarbExcretedG,
       withCarbMuscleConsumedG,
+      withCarbKidneyOutputG,
     );
     assert.ok(
       Math.abs(withCarbLedgerG - 60) <= ledgerToleranceG,
@@ -260,17 +297,23 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
       withoutCarbDisposedG,
       withoutCarbExcretedG,
       withoutCarbMuscleConsumedG,
+      withoutCarbKidneyOutputG,
     );
     assert.ok(
       Math.abs(withoutCarbLedgerG) <= ledgerToleranceG,
       `B round ${round}: external carbohydrate ledger ${withoutCarbLedgerG}`,
     );
-    const withCarbWaterMl = waterLedgerMl(withCarbParts, withCarbVoidedMl, initialWaterWithCarbMl);
+    const withCarbWaterMl = waterLedgerMl(withCarbParts, withCarbVoidedMl, initialWaterWithCarbMl, withCarbSweatMl);
     assert.ok(
       Math.abs(withCarbWaterMl - 240) <= waterToleranceMl,
       `A round ${round}: water ledger ${withCarbWaterMl}`,
     );
-    const withoutCarbWaterMl = waterLedgerMl(withoutCarbParts, withoutCarbVoidedMl, initialWaterWithoutCarbMl);
+    const withoutCarbWaterMl = waterLedgerMl(
+      withoutCarbParts,
+      withoutCarbVoidedMl,
+      initialWaterWithoutCarbMl,
+      withoutCarbSweatMl,
+    );
     assert.ok(
       Math.abs(withoutCarbWaterMl - 240) <= waterToleranceMl,
       `B round ${round}: water ledger ${withoutCarbWaterMl}`,
@@ -285,8 +328,8 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
   assert.equal(round1A.smallIntestine.carbohydrateG, 0);
   assert.equal(round1A.smallIntestine.absorbedCarbohydrateG, 0);
   assert.ok(Math.abs(round1A.glucose.concentrationMgDl - 90) <= 1e-9);
-  assert.equal(round1A.glucose.glucoseMassG, baselineMassG);
-  assert.equal(round1A.glucose.disposedGlucoseG, 0);
+  assert.ok(Math.abs(round1A.glucose.glucoseMassG - baselineMassG) <= 1e-9);
+  assert.ok(Math.abs(round1A.glucose.disposedGlucoseG - 0.12) <= 1e-12);
   assert.equal(round1B.stomach.carbohydrateG, 0);
   assert.equal(round1B.smallIntestine.carbohydrateG, 0);
 
@@ -301,7 +344,7 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
   );
   assert.equal(round2A.smallIntestine.absorbedCarbohydrateG, 0);
   assert.ok(Math.abs(round2A.glucose.concentrationMgDl - 90) <= 1e-9);
-  assert.equal(round2A.glucose.glucoseMassG, baselineMassG);
+  assert.ok(Math.abs(round2A.glucose.glucoseMassG - baselineMassG) <= 1e-9);
   assert.equal(round2B.stomach.carbohydrateG, 0);
   assert.equal(round2B.smallIntestine.carbohydrateG, 0);
 
@@ -318,11 +361,10 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
     Math.abs(round4A.pancreasEndocrine.insulinRelative - 1) <= 1e-12,
     'round 4: the pancreas still reads the old baseline concentration',
   );
-  const expectedDisposed4G = (round3A.glucose.glucoseMassG - baselineMassG)
-    * (1 - 2 ** (-1 / residualHalfTimeMin));
+  const expectedDisposed4G = expectedDisposedG(round3A.glucose.glucoseMassG);
   assert.ok(
     Math.abs(round4A.glucose.disposedGlucoseG - expectedDisposed4G) <= 1e-12,
-    'round 4: residual disposal uses the full excess above baseline',
+    'round 4: disposal uses basal consumption plus excess disposal',
   );
   assert.equal(round4A.muscleGlucose.uptakeG, 0, 'round 4: no earlier muscle request to settle');
   assert.equal(round4A.liver.storageG, 0, 'round 4: no earlier liver request to settle');
@@ -332,11 +374,10 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
     round5A.pancreasEndocrine.insulinRelative > 1,
     `round 5: insulin ${round5A.pancreasEndocrine.insulinRelative} should rise`,
   );
-  const expectedDisposed5G = (round4A.glucose.glucoseMassG - baselineMassG)
-    * (1 - 2 ** (-1 / residualHalfTimeMin));
+  const expectedDisposed5G = expectedDisposedG(round4A.glucose.glucoseMassG);
   assert.ok(
     Math.abs(round5A.glucose.disposedGlucoseG - expectedDisposed5G) <= 1e-12,
-    'round 5: residual disposal ignores the rising insulin signal',
+    'round 5: disposal ignores the rising insulin signal',
   );
   assert.ok(round5A.muscleGlucose.uptakeRequestG > 0, 'round 5: muscle writes its first request');
   assert.ok(round5A.liver.storageRequestG > 0, 'round 5: liver writes its first request');
@@ -347,11 +388,10 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
   assert.ok(Math.abs(round5B.glucose.concentrationMgDl - 90) <= 1e-9);
 
   const { withCarbParts: round6A } = await advance(6);
-  const surplus5G = round5A.glucose.glucoseMassG - baselineMassG;
-  const expectedDisposed6G = surplus5G * (1 - 2 ** (-1 / residualHalfTimeMin));
+  const expectedDisposed6G = expectedDisposedG(round5A.glucose.glucoseMassG);
   assert.ok(
     Math.abs(round6A.glucose.disposedGlucoseG - expectedDisposed6G) <= 1e-12,
-    'round 6: residual disposal still ignores insulin',
+    'round 6: disposal still ignores insulin',
   );
   assert.ok(
     Math.abs(round6A.muscleGlucose.uptakeG - round5A.muscleGlucose.uptakeRequestG) <= 1e-12,
@@ -376,12 +416,19 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
     finalWithCarb.glucose.concentrationMgDl < withCarbPeakMgDl,
     `A concentration ${finalWithCarb.glucose.concentrationMgDl} should fall from peak ${withCarbPeakMgDl}`,
   );
-  assert.ok(finalWithCarb.glucose.concentrationMgDl >= 90 - 1e-9);
+  assert.ok(
+    finalWithCarb.glucose.concentrationMgDl >= 85 && finalWithCarb.glucose.concentrationMgDl <= 95,
+    `A final concentration ${finalWithCarb.glucose.concentrationMgDl} must settle near baseline`,
+  );
   assert.ok(finalWithCarb.stomach.carbohydrateG < 1, 'A stomach has emptied most carbohydrate');
   assert.ok(finalWithCarb.smallIntestine.carbohydrateG < 2, 'A intestine has absorbed most carbohydrate');
   assert.ok(Math.abs(finalWithoutCarb.glucose.glucoseMassG - baselineMassG) <= 1e-9);
   assert.ok(Math.abs(finalWithoutCarb.glucose.concentrationMgDl - 90) <= 1e-9);
-  assert.equal(finalWithoutCarb.glucose.disposedGlucoseG, 0);
+  assert.ok(Math.abs(finalWithoutCarb.glucose.disposedGlucoseG - 0.12) <= 1e-12);
+  assert.ok(
+    Math.abs(finalWithoutCarb.liver.glycogenG - (initialLiverGlycogenG - 300 * 0.096)) <= 1e-9,
+    'fasting liver glycogen depletes at 0.096 g/min while holding 90 mg/dL steady',
+  );
   assert.deepEqual(finalWithoutCarb.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
   assert.ok(Math.abs(finalWithoutCarb.pancreasEndocrine.insulinRelative - 1) <= 1e-12);
 });
@@ -413,7 +460,8 @@ test('a preset high concentration writes requests, then settles them one round l
       pancreasEndocrine: { insulinRelative: startInsulinRelative, glucagonRelative: 1 },
     },
   });
-  const expectedDisposed1G = startExcessG * (1 - 2 ** (-1 / residualHalfTimeMin));
+  const expectedDisposed1G = expectedDisposedG(highMassG);
+  const kidney1G = renalOutputG(gateway.getState().parts);
 
   await gateway.tick();
   const first = gateway.getState().parts;
@@ -434,16 +482,16 @@ test('a preset high concentration writes requests, then settles them one round l
   assert.equal(first.kidneyGlucose.excretedGlucoseG, 0, 'round 1: a new request must not transfer yet');
   assert.ok(Math.abs(first.glucose.disposedGlucoseG - expectedDisposed1G) <= 1e-12);
   assert.ok(
-    Math.abs(first.glucose.glucoseMassG - (highMassG - expectedDisposed1G)) <= 1e-12,
-    'round 1 writes only residual disposal, no request settlement',
+    Math.abs(first.glucose.glucoseMassG - (highMassG - expectedDisposed1G + first.liver.outputG + kidney1G)) <= 1e-12,
+    'round 1 writes disposal and receives suppressed EGP, no request settlement',
   );
   assert.ok(first.pancreasEndocrine.insulinRelative > startInsulinRelative);
   assert.ok(first.pancreasEndocrine.glucagonRelative < 1);
 
+  const kidney2G = renalOutputG(first);
   await gateway.tick();
   const second = gateway.getState().parts;
-  const expectedDisposed2G = (first.glucose.glucoseMassG - baselineMassG)
-    * (1 - 2 ** (-1 / residualHalfTimeMin));
+  const expectedDisposed2G = expectedDisposedG(first.glucose.glucoseMassG);
   assert.ok(Math.abs(second.glucose.disposedGlucoseG - expectedDisposed2G) <= 1e-12);
   assert.ok(
     Math.abs(second.kidneyGlucose.excretedGlucoseG - expectedRequestG) <= 1e-12,
@@ -464,13 +512,19 @@ test('a preset high concentration writes requests, then settles them one round l
           - expectedDisposed2G
           - second.muscleGlucose.uptakeG
           - second.liver.storageG
-          - expectedRequestG),
+          - expectedRequestG
+          + second.liver.outputG
+          + kidney2G),
     ) <= 1e-12,
-    'the same round must subtract residual disposal, muscle uptake, liver storage and renal transfer',
+    'the same round must subtract disposal and sinks and add suppressed EGP',
   );
   assert.ok(
     Math.abs(
       highMassG
+        + first.liver.outputG
+        + second.liver.outputG
+        + kidney1G
+        + kidney2G
         - (
           second.glucose.glucoseMassG
           + expectedDisposed1G
@@ -480,11 +534,11 @@ test('a preset high concentration writes requests, then settles them one round l
           + expectedRequestG
         ),
     ) <= 1e-9,
-    'residual disposal, muscle uptake, liver storage and renal transfer must not double count',
+    'disposal, muscle uptake, liver storage, renal transfer and EGP must balance without double counting',
   );
 });
 
-test('a full liver requests no storage while muscle still takes up glucose', async (t) => {
+test('a full liver requests only its basal-output gap while muscle still takes up glucose', async (t) => {
   silence(t);
   const startMassG = 50.76;
   const startConcentrationMgDl = 360;
@@ -521,40 +575,39 @@ test('a full liver requests no storage while muscle still takes up glucose', asy
       },
     },
   });
-  const expectedDisposedG = startExcessG * (1 - 2 ** (-1 / residualHalfTimeMin));
-  const cumulative = { disposedG: 0, excretedG: 0, muscleConsumedG: 0 };
+  const expectedDisposedGVal = expectedDisposedG(startMassG);
+  const cumulative = { disposedG: 0, excretedG: 0, muscleConsumedG: 0, kidneyOutputG: 0 };
 
+  cumulative.kidneyOutputG += renalOutputG(gateway.getState().parts);
   await gateway.tick();
   await free.gateway.tick();
   const first = gateway.getState().parts;
   const firstFree = free.gateway.getState().parts;
-  assert.equal(first.liver.storageRequestG, 0, 'a full liver must request no storage');
+  assert.equal(first.liver.storageRequestG, 0, 'a full liver must request no storage at start');
   assert.ok(firstFree.liver.storageRequestG > 0, 'a free liver must request storage');
   assert.equal(first.liver.storageG, 0, 'round 1 has no settlement yet');
   assert.ok(
-    Math.abs(first.glucose.disposedGlucoseG - expectedDisposedG) <= 1e-12,
-    'residual disposal covers the full excess above baseline',
+    Math.abs(first.glucose.disposedGlucoseG - expectedDisposedGVal) <= 1e-12,
+    'disposal covers basal consumption plus excess disposal',
   );
   assert.ok(
     Math.abs(first.muscleGlucose.uptakeRequestG - firstFree.muscleGlucose.uptakeRequestG) <= 1e-12,
     'the full liver does not change the muscle request',
   );
 
+  cumulative.kidneyOutputG += renalOutputG(first);
   await gateway.tick();
   await free.gateway.tick();
   const second = gateway.getState().parts;
   const secondFree = free.gateway.getState().parts;
-  assert.equal(second.liver.storageG, 0, 'a full liver must not store');
-  assert.ok(second.liver.storageRequestG === 0, 'the full liver keeps requesting zero');
-  assert.equal(second.liver.glycogenG, initialGlycogenG, 'glycogen must stay full');
+  assert.equal(second.liver.storageG, 0, 'round 2 receives the zero round-1 request');
+  assert.ok(
+    Math.abs(second.liver.storageRequestG - first.liver.outputG) <= 1e-12,
+    'full liver requests only the gap created by its basal output',
+  );
+  assert.ok(second.liver.glycogenG <= initialGlycogenG, 'glycogen must not exceed capacity');
   assert.ok(second.muscleGlucose.uptakeG > 0, 'muscle still receives the prior request');
   assert.ok(secondFree.liver.storageG > 0, 'a free liver receives the prior request');
-  assert.ok(
-    Math.abs(
-      second.glucose.glucoseMassG - secondFree.glucose.glucoseMassG - secondFree.liver.storageG,
-    ) <= 1e-9,
-    'the committed gap must equal the storage the full liver could not accept',
-  );
 
   cumulative.disposedG += first.glucose.disposedGlucoseG + second.glucose.disposedGlucoseG;
   cumulative.excretedG += first.kidneyGlucose.excretedGlucoseG
@@ -563,15 +616,14 @@ test('a full liver requests no storage while muscle still takes up glucose', asy
     + muscleSum(second, 'glycogenConsumedG');
   let previousMassG = second.glucose.glucoseMassG;
   for (let round = 3; round <= 5; round++) {
+    cumulative.kidneyOutputG += renalOutputG(gateway.getState().parts);
     await gateway.tick();
     const parts = gateway.getState().parts;
-    assert.equal(parts.liver.storageG, 0, `round ${round}: a full liver must not store`);
-    assert.equal(parts.liver.storageRequestG, 0, `round ${round}: a full liver requests zero`);
-    assert.equal(parts.liver.glycogenG, initialGlycogenG, `round ${round}: glycogen must stay full`);
+    assert.ok(parts.liver.glycogenG <= initialGlycogenG, `round ${round}: glycogen stays <= capacity`);
     cumulative.disposedG += parts.glucose.disposedGlucoseG;
     cumulative.excretedG += parts.kidneyGlucose.excretedGlucoseG;
     cumulative.muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
-    const ledgerG = glucosePoolLedgerG(parts, cumulative, startMassG, initialGlycogenG);
+    const ledgerG = glucosePoolLedgerG(parts, cumulative, startMassG, initialGlycogenG + initialMuscleGlycogenG);
     assert.ok(
       Math.abs(ledgerG) <= ledgerToleranceG,
       `round ${round}: internal glucose ledger ${ledgerG}`,
@@ -605,7 +657,7 @@ test('an old checkpoint without the new fields settles after the request lag and
   for (const region of muscleRegions) {
     assert.deepEqual(loaded[region], {
       uptakeG: 0,
-      glycogenG: 0,
+      glycogenG: initialRegionGlycogen[region],
       glycogenConsumedG: 0,
     }, region);
   }
@@ -620,14 +672,14 @@ test('an old checkpoint without the new fields settles after the request lag and
   assert.deepEqual(loaded.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
 
   const expectedRequestG = expectedExcretionRequestG(oldConcentrationMgDl);
-  const expectedDisposed1G = (oldMassG - baselineMassG)
-    * (1 - 2 ** (-1 / residualHalfTimeMin));
+  const expectedDisposed1G = expectedDisposedG(oldMassG);
+  const kidney1G = renalOutputG(loaded);
   await gateway.tick();
   const first = gateway.getState().parts;
   assert.ok(Math.abs(first.glucose.disposedGlucoseG - expectedDisposed1G) <= 1e-12);
   assert.ok(
-    Math.abs(first.glucose.glucoseMassG - (oldMassG - expectedDisposed1G)) <= 1e-12,
-    'the first round writes only residual disposal',
+    Math.abs(first.glucose.glucoseMassG - (oldMassG - expectedDisposed1G + first.liver.outputG + kidney1G)) <= 1e-12,
+    'the first round writes disposal and adds suppressed EGP',
   );
   assert.equal(first.muscleGlucose.uptakeG, 0, 'the old checkpoint has no earlier muscle request');
   assert.equal(first.liver.storageG, 0, 'the old checkpoint has no earlier liver request');
@@ -641,8 +693,7 @@ test('an old checkpoint without the new fields settles after the request lag and
 
   await gateway.tick();
   const second = gateway.getState().parts;
-  const expectedDisposed2G = (first.glucose.glucoseMassG - baselineMassG)
-    * (1 - 2 ** (-1 / residualHalfTimeMin));
+  const expectedDisposed2G = expectedDisposedG(first.glucose.glucoseMassG);
   assert.ok(Math.abs(second.glucose.disposedGlucoseG - expectedDisposed2G) <= 1e-12);
   assert.ok(
     Math.abs(second.kidneyGlucose.excretedGlucoseG - expectedRequestG) <= 1e-12,
@@ -716,24 +767,15 @@ test('a preseeded low glucose save with liver glycogen refills toward baseline a
   let previousMassG = initialGlucoseMassG;
   let previousConcentrationMgDl = initialConcentrationMgDl;
   let previousGlycogenG = initialGlycogenG;
+  let peakConcentrationMgDl = initialConcentrationMgDl;
 
-  for (let round = 1; round <= 30; round++) {
+  for (let round = 1; round <= 40; round++) {
     const before = gateway.getState().parts;
     cumulative.kidneyOutputG += renalOutputG(before);
     await gateway.tick();
     const parts = gateway.getState().parts;
     const releaseG = parts.liver.outputG;
     assert.ok(releaseG >= 0, `round ${round}: release must not be negative`);
-    if (releaseG > 0) {
-      assert.ok(
-        parts.glucose.glucoseMassG > previousMassG - 1e-12,
-        `round ${round}: glucose mass must not fall while the liver releases`,
-      );
-      assert.ok(
-        parts.liver.glycogenG <= previousGlycogenG + 1e-12,
-        `round ${round}: glycogen must not rise while releasing`,
-      );
-    }
     if (round === 1) {
       assert.ok(releaseG > 0, 'round 1: low glucose must trigger a liver release');
       assert.ok(
@@ -750,7 +792,7 @@ test('a preseeded low glucose save with liver glycogen refills toward baseline a
       parts,
       cumulative,
       initialGlucoseMassG,
-      initialGlycogenG,
+      initialGlycogenG + initialMuscleGlycogenG,
     );
     assert.ok(
       Math.abs(ledgerG) <= ledgerToleranceG,
@@ -759,11 +801,16 @@ test('a preseeded low glucose save with liver glycogen refills toward baseline a
     previousMassG = parts.glucose.glucoseMassG;
     previousConcentrationMgDl = parts.glucose.concentrationMgDl;
     previousGlycogenG = parts.liver.glycogenG;
+    peakConcentrationMgDl = Math.max(peakConcentrationMgDl, previousConcentrationMgDl);
   }
 
   assert.ok(
-    previousConcentrationMgDl > baselineConcentrationMgDl,
-    `concentration ${previousConcentrationMgDl} must rise back above ${baselineConcentrationMgDl}`,
+    Math.abs(previousConcentrationMgDl - baselineConcentrationMgDl) < 5,
+    `concentration ${previousConcentrationMgDl} must settle smoothly near ${baselineConcentrationMgDl}`,
+  );
+  assert.ok(
+    peakConcentrationMgDl < 105,
+    `smooth recovery must not overshoot into >120 mg/dL sawtooth, peak was ${peakConcentrationMgDl}`,
   );
   assert.ok(previousMassG > initialGlucoseMassG, 'glucose mass must be refilled');
   assert.ok(previousGlycogenG < initialGlycogenG, 'liver glycogen must be spent');
@@ -792,10 +839,10 @@ test('a low glucose save without liver glycogen is refilled by kidney gluconeoge
   const cumulative = { disposedG: 0, excretedG: 0, muscleConsumedG: 0, kidneyOutputG: 0 };
   let previousMassG = initialGlucoseMassG;
 
-  for (let round = 1; round <= 20; round++) {
+  for (let round = 1; round <= 40; round++) {
     const before = gateway.getState().parts;
     const expectedOutputG = renalOutputG(before);
-    assert.equal(expectedOutputG, 0.3, `round ${round}: low glucose must drive the maximum rate`);
+    assert.ok(expectedOutputG > 0.024, `round ${round}: low glucose must drive above-basal rate`);
     await gateway.tick();
     const parts = gateway.getState().parts;
     assert.equal(parts.liver.outputG, 0, `round ${round}: empty liver must not release`);
@@ -806,8 +853,8 @@ test('a low glucose save without liver glycogen is refilled by kidney gluconeoge
       `round ${round}: the transfer must drain the kidney output field`,
     );
     assert.ok(
-      Math.abs(parts.glucose.glucoseMassG - (previousMassG + expectedOutputG)) <= 1e-12,
-      `round ${round}: kidney output must be the only source`,
+      Math.abs(parts.glucose.glucoseMassG - (previousMassG - parts.glucose.disposedGlucoseG + expectedOutputG)) <= 1e-12,
+      `round ${round}: kidney output minus basal consumption must equal pool change`,
     );
     if (round === 1) {
       assert.ok(parts.pancreasEndocrine.glucagonRelative > 1, 'glucagon still rises without glycogen');
@@ -816,7 +863,7 @@ test('a low glucose save without liver glycogen is refilled by kidney gluconeoge
     cumulative.excretedG += parts.kidneyGlucose.excretedGlucoseG;
     cumulative.muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
     cumulative.kidneyOutputG += expectedOutputG;
-    const ledgerG = glucosePoolLedgerG(parts, cumulative, initialGlucoseMassG, 0);
+    const ledgerG = glucosePoolLedgerG(parts, cumulative, initialGlucoseMassG, initialMuscleGlycogenG);
     assert.ok(Math.abs(ledgerG) <= ledgerToleranceG, `round ${round}: ledger ${ledgerG}`);
     previousMassG = parts.glucose.glucoseMassG;
   }
@@ -887,7 +934,9 @@ test('a three-round solid meal releases its queue and keeps the solid subset in 
   let disposedG = 0;
   let excretedG = 0;
   let muscleConsumedG = 0;
+  let kidneyOutputG = 0;
   for (let round = 1; round <= 3; round++) {
+    kidneyOutputG += renalOutputG(gateway.getState().parts);
     await gateway.tick();
     const parts = gateway.getState().parts;
     assert.ok(parts.glucose, `round ${round}: missing glucose part`);
@@ -914,7 +963,7 @@ test('a three-round solid meal releases its queue and keeps the solid subset in 
     if (round < 3) {
       assert.ok(Math.abs(parts.stomach.mealQueue[0].rateCarbohydrateGPerRound - 30) <= 1e-9);
     }
-    const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG);
+    const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG, kidneyOutputG);
     assert.ok(
       Math.abs(ledgerG - 90) <= ledgerToleranceG,
       `round ${round}: carbohydrate ledger ${ledgerG}`,
@@ -939,6 +988,7 @@ test('a three-round solid meal releases its queue and keeps the solid subset in 
     }
   }
 
+  kidneyOutputG += renalOutputG(gateway.getState().parts);
   await gateway.tick();
   const afterQueue = gateway.getState().parts;
   assert.ok(afterQueue.glucose, 'missing glucose part after the queue');
@@ -947,11 +997,12 @@ test('a three-round solid meal releases its queue and keeps the solid subset in 
   muscleConsumedG += muscleSum(afterQueue, 'glycogenConsumedG');
   assert.ok(afterQueue.glucose.concentrationMgDl > 90.01, 'the delayed concentration rises after the queue');
   assert.ok(
-    Math.abs(carbohydrateLedgerG(afterQueue, disposedG, excretedG, muscleConsumedG) - 90)
+    Math.abs(carbohydrateLedgerG(afterQueue, disposedG, excretedG, muscleConsumedG, kidneyOutputG) - 90)
       <= ledgerToleranceG,
   );
 
   for (let round = 5; round <= 60; round++) {
+    kidneyOutputG += renalOutputG(gateway.getState().parts);
     await gateway.tick();
     const parts = gateway.getState().parts;
     assert.ok(parts.glucose, `round ${round}: missing glucose part`);
@@ -962,7 +1013,7 @@ test('a three-round solid meal releases its queue and keeps the solid subset in 
       parts.stomach.solidCarbohydrateG <= parts.stomach.carbohydrateG + 1e-9,
       `round ${round}: solid subset exceeds total carbohydrate`,
     );
-    const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG);
+    const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG, kidneyOutputG);
     assert.ok(
       Math.abs(ledgerG - 90) <= ledgerToleranceG,
       `round ${round}: carbohydrate ledger ${ledgerG}`,
@@ -979,6 +1030,7 @@ test('a restart on the same checkpoint keeps the solid mass and pending queue co
   let disposedG = 0;
   let excretedG = 0;
   let muscleConsumedG = 0;
+  let kidneyOutputG = 0;
   try {
     await body.gateway.ready;
     const queued = await body.tools.body_act.execute(
@@ -995,13 +1047,14 @@ test('a restart on the same checkpoint keeps the solid mass and pending queue co
     assert.equal(queued.statusCode, 202);
 
     for (let round = 1; round <= 5; round++) {
+      kidneyOutputG += renalOutputG(body.gateway.getState().parts);
       await body.gateway.tick();
       const parts = body.gateway.getState().parts;
       assert.ok(parts.glucose, `round ${round}: missing glucose part`);
       disposedG += parts.glucose.disposedGlucoseG;
       excretedG += parts.kidneyGlucose.excretedGlucoseG;
       muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
-      const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG);
+      const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG, kidneyOutputG);
       assert.ok(
         Math.abs(ledgerG - 90) <= ledgerToleranceG,
         `before restart round ${round}: carbohydrate ledger ${ledgerG}`,
@@ -1082,24 +1135,24 @@ test('a restart on the same checkpoint keeps the solid mass and pending queue co
     );
 
     for (let round = 6; round <= 20; round++) {
+      kidneyOutputG += renalOutputG(body.gateway.getState().parts);
       await body.gateway.tick();
       const parts = body.gateway.getState().parts;
       assert.ok(parts.glucose, `round ${round}: missing glucose part`);
       disposedG += parts.glucose.disposedGlucoseG;
       excretedG += parts.kidneyGlucose.excretedGlucoseG;
       muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
-      const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG);
+      const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG, kidneyOutputG);
       assert.ok(
         Math.abs(ledgerG - 90) <= ledgerToleranceG,
         `after restart round ${round}: carbohydrate ledger ${ledgerG}`,
       );
       if (round === 6) {
         assert.equal(parts.stomach.mealQueue.length, 0, 'the queued slice released after restart');
-        const expectedDisposedG = (beforeRestart.parts.glucose.glucoseMassG - baselineMassG)
-          * (1 - 2 ** (-1 / residualHalfTimeMin));
+        const expectedDisposed6G = expectedDisposedG(beforeRestart.parts.glucose.glucoseMassG);
         assert.ok(
-          Math.abs(parts.glucose.disposedGlucoseG - expectedDisposedG) <= 1e-12,
-          'the first round after restart uses only the residual half-time',
+          Math.abs(parts.glucose.disposedGlucoseG - expectedDisposed6G) <= 1e-12,
+          'the first round after restart computes basal consumption plus excess disposal',
         );
       }
     }
@@ -1121,15 +1174,17 @@ test('a meal fills muscle glycogen and exercise consumes it without breaking the
   let disposedG = 0;
   let excretedG = 0;
   let muscleConsumedG = 0;
-  let previousGlycogenG = 0;
+  let kidneyOutputG = 0;
+  let previousGlycogenG = initialMuscleGlycogenG;
   for (let round = 1; round <= 120; round++) {
+    kidneyOutputG += renalOutputG(gateway.getState().parts);
     await gateway.tick();
     const parts = gateway.getState().parts;
     assert.ok(parts.muscleGlucose, `round ${round}: missing muscle glucose part`);
     disposedG += parts.glucose.disposedGlucoseG;
     excretedG += parts.kidneyGlucose.excretedGlucoseG;
     muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
-    const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG);
+    const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG, kidneyOutputG);
     assert.ok(
       Math.abs(ledgerG - 60) <= ledgerToleranceG,
       `round ${round}: carbohydrate ledger ${ledgerG}`,
@@ -1143,7 +1198,7 @@ test('a meal fills muscle glycogen and exercise consumes it without breaking the
     previousGlycogenG = muscleSum(parts, 'glycogenG');
   }
   assert.ok(
-    previousGlycogenG > 15,
+    previousGlycogenG > initialMuscleGlycogenG + 15,
     `regional glycogen ${previousGlycogenG} must accumulate during the meal`,
   );
   assert.equal(muscleSum(gateway.getState().parts, 'glycogenConsumedG'), 0);
@@ -1160,13 +1215,15 @@ test('a meal fills muscle glycogen and exercise consumes it without breaking the
   );
 
   let activeRounds = 0;
+  const regionShares = { muscleHead: 0.05, muscleTrunk: 0.45, muscleLimbs: 0.5 };
   for (let round = exerciseRound; round <= exerciseRound + 39; round++) {
+    kidneyOutputG += renalOutputG(gateway.getState().parts);
     await gateway.tick();
     const parts = gateway.getState().parts;
     disposedG += parts.glucose.disposedGlucoseG;
     excretedG += parts.kidneyGlucose.excretedGlucoseG;
     muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
-    const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG);
+    const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG, kidneyOutputG);
     assert.ok(
       Math.abs(ledgerG - 60) <= ledgerToleranceG,
       `round ${round}: carbohydrate ledger ${ledgerG}`,
@@ -1178,14 +1235,14 @@ test('a meal fills muscle glycogen and exercise consumes it without breaking the
       activeRounds += 1;
       const consumedG = muscleSum(parts, 'glycogenConsumedG');
       const totalGlycogenG = muscleSum(parts, 'glycogenG');
-      assert.ok(consumedG >= 0 && consumedG <= 1.5 + 1e-12, `round ${round}: consumption ${consumedG}`);
-      if (previousGlycogenG > 0) {
-        assert.ok(consumedG > 0, `round ${round}: available regional glycogen must be consumed`);
-        assert.ok(totalGlycogenG < previousGlycogenG, `round ${round}: regional glycogen must fall`);
-      }
+      assert.ok(consumedG > 0 && consumedG <= 0.5 + 1e-12, `round ${round}: consumption ${consumedG}`);
+      assert.ok(totalGlycogenG < previousGlycogenG, `round ${round}: regional glycogen must fall`);
       for (const region of muscleRegions) {
         assert.ok(parts[region].glycogenConsumedG >= 0, `${round}: ${region} consumption`);
-        assert.ok(parts[region].glycogenConsumedG <= 0.5 + 1e-12, `${round}: ${region} consumption cap`);
+        assert.ok(
+          parts[region].glycogenConsumedG <= 0.5 * regionShares[region] + 1e-12,
+          `${round}: ${region} share-scaled consumption cap`,
+        );
         assert.ok(parts[region].glycogenG >= 0, `${round}: ${region} glycogen`);
       }
     } else {
@@ -1206,6 +1263,7 @@ test('a restart with in-flight muscle uptake books it exactly once and keeps the
   let disposedG = 0;
   let excretedG = 0;
   let muscleConsumedG = 0;
+  let kidneyOutputG = 0;
   try {
     await body.gateway.ready;
     const queued = await body.tools.body_act.execute(
@@ -1215,12 +1273,13 @@ test('a restart with in-flight muscle uptake books it exactly once and keeps the
     assert.equal(queued.statusCode, 202);
 
     for (let round = 1; round <= 30; round++) {
+      kidneyOutputG += renalOutputG(body.gateway.getState().parts);
       await body.gateway.tick();
       const parts = body.gateway.getState().parts;
       disposedG += parts.glucose.disposedGlucoseG;
       excretedG += parts.kidneyGlucose.excretedGlucoseG;
       muscleConsumedG += muscleSum(parts, 'glycogenConsumedG');
-      const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG);
+      const ledgerG = carbohydrateLedgerG(parts, disposedG, excretedG, muscleConsumedG, kidneyOutputG);
       assert.ok(
         Math.abs(ledgerG - 60) <= ledgerToleranceG,
         `before restart round ${round}: carbohydrate ledger ${ledgerG}`,
@@ -1232,7 +1291,7 @@ test('a restart with in-flight muscle uptake books it exactly once and keeps the
     const glycogenBeforeG = muscleSum(beforeRestart.parts, 'glycogenG');
     const regionUptakeBeforeG = muscleSum(beforeRestart.parts, 'uptakeG');
     assert.ok(inFlightG > 0, 'the last committed round must leave an in-flight muscle uptake');
-    assert.ok(glycogenBeforeG > 0, 'the earlier uptake must already be booked as glycogen');
+    assert.ok(glycogenBeforeG > initialMuscleGlycogenG, 'the earlier uptake must already be booked as glycogen');
     await body.gateway.stop();
 
     body = boot(statePath);
@@ -1240,12 +1299,13 @@ test('a restart with in-flight muscle uptake books it exactly once and keeps the
     const restored = body.gateway.getState();
     assert.deepEqual(restored.parts, beforeRestart.parts);
     assert.equal(restored.parts.muscleGlucose.uptakeG, inFlightG);
-    let ledgerG = carbohydrateLedgerG(restored.parts, disposedG, excretedG, muscleConsumedG);
+    let ledgerG = carbohydrateLedgerG(restored.parts, disposedG, excretedG, muscleConsumedG, kidneyOutputG);
     assert.ok(
       Math.abs(ledgerG - 60) <= ledgerToleranceG,
       `restored carbohydrate ledger ${ledgerG}`,
     );
 
+    kidneyOutputG += renalOutputG(body.gateway.getState().parts);
     await body.gateway.tick();
     const after = body.gateway.getState().parts;
     assert.ok(
@@ -1259,12 +1319,13 @@ test('a restart with in-flight muscle uptake books it exactly once and keeps the
     disposedG += after.glucose.disposedGlucoseG;
     excretedG += after.kidneyGlucose.excretedGlucoseG;
     muscleConsumedG += muscleSum(after, 'glycogenConsumedG');
-    ledgerG = carbohydrateLedgerG(after, disposedG, excretedG, muscleConsumedG);
+    ledgerG = carbohydrateLedgerG(after, disposedG, excretedG, muscleConsumedG, kidneyOutputG);
     assert.ok(
       Math.abs(ledgerG - 60) <= ledgerToleranceG,
       `after restart carbohydrate ledger ${ledgerG}`,
     );
 
+    kidneyOutputG += renalOutputG(body.gateway.getState().parts);
     await body.gateway.tick();
     const next = body.gateway.getState().parts;
     assert.ok(
@@ -1276,7 +1337,7 @@ test('a restart with in-flight muscle uptake books it exactly once and keeps the
     disposedG += next.glucose.disposedGlucoseG;
     excretedG += next.kidneyGlucose.excretedGlucoseG;
     muscleConsumedG += muscleSum(next, 'glycogenConsumedG');
-    ledgerG = carbohydrateLedgerG(next, disposedG, excretedG, muscleConsumedG);
+    ledgerG = carbohydrateLedgerG(next, disposedG, excretedG, muscleConsumedG, kidneyOutputG);
     assert.ok(
       Math.abs(ledgerG - 60) <= ledgerToleranceG,
       `second round after restart carbohydrate ledger ${ledgerG}`,

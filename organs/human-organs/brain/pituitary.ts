@@ -107,6 +107,10 @@ function milkMlOrZero(part: Readonly<MammaryGlandsReading> | null | undefined): 
   return value;
 }
 
+function finiteOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -141,14 +145,29 @@ export function heartbeat(io: IO): void {
     : PROLACTIN_BASELINE_RELATIVE;
 
   const prev = io.read(id) ?? initialState;
-  const prevProlactin = typeof prev.prolactinRelative === 'number'
-    && Number.isFinite(prev.prolactinRelative)
-    ? prev.prolactinRelative
-    : PROLACTIN_BASELINE_RELATIVE;
+  const prevTsh = clamp(
+    finiteOr(prev.tshRelative, initialState.tshRelative),
+    MIN_RELATIVE,
+    MAX_RELATIVE,
+  );
+  const prevActh = clamp(
+    finiteOr(prev.acthRelative, initialState.acthRelative),
+    MIN_RELATIVE,
+    MAX_RELATIVE,
+  );
+  const prevProlactin = clamp(
+    finiteOr(prev.prolactinRelative, PROLACTIN_BASELINE_RELATIVE),
+    MIN_RELATIVE,
+    MAX_RELATIVE,
+  );
   const retention = 2 ** (-(io.dt / 60) / RESPONSE_HALF_TIME_MIN);
   io.write({
-    tshRelative: tshTarget + (prev.tshRelative - tshTarget) * retention,
-    acthRelative: acthTarget + (prev.acthRelative - acthTarget) * retention,
-    prolactinRelative: prolactinTarget + (prevProlactin - prolactinTarget) * retention,
+    tshRelative: clamp(tshTarget + (prevTsh - tshTarget) * retention, MIN_RELATIVE, MAX_RELATIVE),
+    acthRelative: clamp(acthTarget + (prevActh - acthTarget) * retention, MIN_RELATIVE, MAX_RELATIVE),
+    prolactinRelative: clamp(
+      prolactinTarget + (prevProlactin - prolactinTarget) * retention,
+      MIN_RELATIVE,
+      MAX_RELATIVE,
+    ),
   });
 }

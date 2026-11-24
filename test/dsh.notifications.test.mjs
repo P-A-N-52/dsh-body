@@ -209,3 +209,43 @@ test('a notification read error is logged instead of thrown', async () => {
   assert.deepEqual(await pump.run(), []);
   assert.equal(errors.length, 1);
 });
+
+test('overlapping pump.run() calls do not deliver the same notification twice', async () => {
+  const gateway = fakeGateway([notification({ id: 'n1', mode: 'wake', sessionId: 'session-a' })]);
+  let releaseFollowup;
+  const followupGate = new Promise((resolve) => {
+    releaseFollowup = resolve;
+  });
+  let followupCalls = 0;
+  const agent = {
+    async inject() {
+      throw new Error('unexpected inject');
+    },
+    async followup() {
+      followupCalls += 1;
+      await followupGate;
+    },
+  };
+  const pump = createNotificationPump({
+    gateway,
+    agentFor: () => agent,
+    makeId: () => 'message-1',
+    logger: silentLogger,
+  });
+
+  const first = pump.run();
+  await Promise.resolve();
+  assert.equal(followupCalls, 1);
+
+  const second = pump.run();
+  assert.equal(followupCalls, 1);
+
+  releaseFollowup();
+  const [firstResults, secondResults] = await Promise.all([first, second]);
+
+  assert.equal(followupCalls, 1);
+  assert.deepEqual(firstResults, [{ id: 'n1', status: 'delivered' }]);
+  assert.deepEqual(secondResults, [{ id: 'n1', status: 'delivered' }]);
+  assert.deepEqual(gateway.state.acks, ['n1']);
+  assert.deepEqual(gateway.queue, []);
+});

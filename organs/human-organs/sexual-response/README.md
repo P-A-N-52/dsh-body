@@ -9,13 +9,13 @@
 - [`physicalActivity`](../skeletal-muscle/README.md) 把 `sex` 与 `exercise` 同样计入剩余活动；后续 `skin` 的汗液、`lungs` 的运动相关呼吸失水与 `muscleGlucose` 的肌糖原消耗沿用既有时序。
 - [`interoception`](../brain/README.md) 软读 `arousalMm` 写 `sexualArousalMm`；该读数只进 `body_state` / `GET /state`，不进 `discomfort`，不发通知。
 
-**状态口径。** 当前实现（2026-11-23）：脚本与参数在 `organs/human-organs/sexual-response/`，根清单 `body-modules.json` 与女性清单 `body-modules.female.json` 都注册同一脚本。加入本脚本后根清单为 20 部位、22 份参数文件，女性清单为 22 部位、24 份参数文件；女性清单仍必须使用独立 `statePath`。六个参数全部 `design`、`source: null`，没有登记来源；反应周期分期只作工程结构，数值不是人体测量、拟合或独立验证。尚未做真实 DSH 会话、独立人体性反应数据、临床验证或 20 部位性能基线。
+**状态口径。** 当前实现（2026-11-24）：脚本与参数在 `organs/human-organs/sexual-response/`，根清单 `body-modules.json`、女性清单 `body-modules.female.json` 与男性清单 `body-modules.male.json` 都注册同一脚本。当前根清单为 38 部位、34 份唯一参数文件，女性清单为 41 部位、37 份，男性清单为 40 部位、36 份；女性清单与男性清单仍必须各自使用独立 `statePath`。六个参数全部 `design`、`source: null`，没有登记来源；反应周期分期只作工程结构，数值不是人体测量、拟合或独立验证。尚未做真实 DSH 会话、独立人体性反应数据、临床验证或 38 部位性能基线。
 
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `response.ts` | `sexualResponse` | `arousalMm`、`phase`、`remainingSexMin`、`sexIntensity`、`lastOrgasmAtSimMin` | 自己的轮初状态；`io.actions` 中的 `sex` / `orgasm`；`io.dt`；`io.simulatedSeconds` | `response.parameters.json` |
+| `response.ts` | `sexualResponse` | `arousalMm`、`phase`、`remainingSexMin`、`sexIntensity`、`lastOrgasmAtSimMin` | 自己的轮初状态；轮初 `testes.testosteroneRelative`（可选，未加载按 1）；`io.actions` 中的 `sex` / `orgasm`；`io.dt`；`io.simulatedSeconds` | `response.parameters.json` |
 
 - `actionTypes = ['sex', 'orgasm']`；无通知、无 `transfer`，不写其他部位。
 - `orgasm` 只由本部位处理，`physicalActivity` 只接受 `exercise` / `sex`，不把 `orgasm` 计入体力活动。
@@ -55,7 +55,7 @@
 
 ## 4. 状态机与方程
 
-设轮初自身状态为 `prev`，`dtMin = io.dt / 60`，`simMin = io.simulatedSeconds / 60`：
+设轮初自身状态为 `prev`（`prevArousal = clamp(finiteOr(prev.arousalMm, 0), 0, 100)`），`dtMin = io.dt / 60`，`simMin = io.simulatedSeconds / 60`：
 
 ```text
 remainingSexMin = max(0, prev.remainingSexMin − dtMin)
@@ -64,33 +64,38 @@ remainingSexMin = max(0, prev.remainingSexMin − dtMin)
 active = remainingSexMin > 0 && sexIntensity > 0
 sinceOrgasmBefore = lastOrgasmAtSimMin === null ? Infinity : simMin − lastOrgasmAtSimMin
 refractory = sinceOrgasmBefore < refractoryMin
-target = active && !refractory ? 100 × sexIntensity : 0
-halfTime = target > prev.arousalMm ? arousalHalfTimeMin : resolutionHalfTimeMin
-arousalMm = target + (prev.arousalMm − target) × 2^(−dtMin / halfTime)
 
-release = (本轮存在 orgasm 动作 && prev.arousalMm >= orgasmAllowedMm)
-          || prev.arousalMm >= orgasmForcedMm
+voluntaryRelease = !refractory && (本轮存在 orgasm 动作) && prevArousal >= orgasmAllowedMm
+forcedRelease    = !refractory && prevArousal >= orgasmForcedMm
+released         = voluntaryRelease || forcedRelease
+若 released：lastOrgasmAtSimMin = simMin
 
-若 release：
-  lastOrgasmAtSimMin = simMin
-  sinceOrgasm = 0
-否则：
-  sinceOrgasm = sinceOrgasmBefore
+testosteroneRelative = max(0, finiteOr(testes.testosteroneRelative, 1))
+testosteroneFactor   = 0.5 + 0.5 × testosteroneRelative
+target = active && !refractory && !released
+  ? clamp(100 × sexIntensity × testosteroneFactor, 0, 100)
+  : 0
+riseHalfTimeMin = testosteroneRelative > 1
+  ? arousalHalfTimeMin / testosteroneFactor
+  : arousalHalfTimeMin
+halfTimeMin = target > prevArousal ? riseHalfTimeMin : resolutionHalfTimeMin
+arousalMm   = clamp(target + (prevArousal − target) × 2^(−dtMin / halfTimeMin), 0, 100)
 
+sinceOrgasm = lastOrgasmAtSimMin === null ? Infinity : simMin − lastOrgasmAtSimMin
 phase = sinceOrgasm < orgasmDurationMin ? 'orgasm'
-      : refractory ? 'refractory'
-      : active ? (arousalMm < 60 ? 'excitement' : 'plateau')
-      : arousalMm >= 10 ? 'resolution' : 'rest'
+      : sinceOrgasm < refractoryMin     ? 'refractory'
+      : active                          ? (arousalMm < 60 ? 'excitement' : 'plateau')
+      : arousalMm >= 10                 ? 'resolution' : 'rest'
 ```
 
-- `active` 只要求剩余分钟和强度都大于 0；`sexIntensity = 0` 或剩余分钟为 0 时目标为 0，唤醒按消退半时回落。两条释放路径不要求 `active`，也不要求同轮有 `sex`，都只按轮初 `prev.arousalMm` 判定。
-- 主动路径：本轮存在 `orgasm` 动作，且轮初 `prev.arousalMm >= orgasmAllowedMm = 70`。低于 70 时动作被忽略，`lastOrgasmAtSimMin`、`phase`、`remainingSexMin` 与 `sexIntensity` 都不因该动作改变；同轮合法 `sex` 仍按自身规则更新剩余分钟与强度。
-- 强制路径：轮初 `prev.arousalMm >= orgasmForcedMm = 95`，无需任何动作。两条路径每轮最多记录一次 `lastOrgasmAtSimMin = simMin`。
+- `active` 只要求剩余分钟和强度都大于 0；`sexIntensity = 0` 或剩余分钟为 0 时目标为 0，唤醒按消退半时回落。
+- **不应期门控与释放轮回落：** 两条释放路径都要求 `!refractory`（不应期内既不触发主动 `orgasm` 也不触发强制释放）；而且在释放当轮（`released === true`）即把 `target` 置为 `0`，使唤醒当轮就开始按消退半时下降、不会在释放轮仍向高潮前目标推升。`arousalMm` 写入与轮初读取均按 `[0, 100]` 钳位。
+- **睾酮可选缩放：** 仅当加载 `testes` 时（如男性清单）才影响唤醒幅度和上升速度：`testosteroneFactor = 0.5 + 0.5 × testosteroneRelative`（`testosteroneRelative = 1` 时因子为 `1`，与无睾酮清单完全一致）；当 `testosteroneRelative > 1` 时上升半时缩短为 `arousalHalfTimeMin / testosteroneFactor`，高睾酮上升更快。未加载或非有限按 `1`。
 - 释放判定用**轮初**唤醒：本轮 `sex` 写入的 `arousalMm` 不会在同一轮触发释放。例如轮初 69 mm、同轮 `sex` 把它推到 75 mm，主动 `orgasm` 仍被忽略；若升到 95 mm 以上，也要等到下一轮轮初才强制释放。
-- 事件轮 `sinceOrgasm = 0`，相位为 `orgasm`；下一轮 `sinceOrgasm = dtMin`（60 s 轮下为 1 min），不再满足 `sinceOrgasm < orgasmDurationMin = 1`，进入 `refractory`，目标变为 0，唤醒按 15 min 半时下降。文档不要写成“下一轮 `sinceOrgasm = 0`”。
-- `target = 100 × sexIntensity`。强度 0.8 的目标是 80 mm：第 15 轮写出的唤醒约 70 mm，下一轮轮初才达到 70 mm，可提交主动 `orgasm`；目标不到 95 mm，不会强制释放。强度 1 的目标是 100 mm：第 9 轮写出约 71 mm，下一轮轮初 ≥70 可主动释放；第 22 轮写出约 95 mm，下一轮轮初由强制路径释放。具体轮次由 `dt` 与轮初状态决定。
-- 上升与下降使用不同半时：目标高于当前唤醒时用 `arousalHalfTimeMin = 5`；目标低于或等于当前唤醒时用 `resolutionHalfTimeMin = 15`。这是工程反应速度，不是人体性反应潜伏期或消退时间。
-- 不应期内（`sinceOrgasmBefore < 20` min）新到的合法 `sex` 仍更新 `remainingSexMin` 与 `sexIntensity`，但 `target = 0`，唤醒不上升；不应期结束后若仍有剩余活动，目标恢复为 `100 × sexIntensity`。
+- 事件轮 `sinceOrgasm = 0`，相位为 `orgasm`；下一轮 `sinceOrgasm = dtMin`（60 s 轮下为 1 min），不再满足 `sinceOrgasm < orgasmDurationMin = 1`，进入 `refractory`，目标保持 0，唤醒继续按 15 min 半时下降。
+- `target = 100 × sexIntensity`（无睾酮偏移时）。强度 0.8 的目标是 80 mm：第 15 轮写出的唤醒约 70 mm，下一轮轮初才达到 70 mm，可提交主动 `orgasm`；目标不到 95 mm，不会强制释放。强度 1 的目标是 100 mm：第 9 轮写出约 71 mm，下一轮轮初 ≥70 可主动释放；第 22 轮写出约 95 mm，下一轮轮初由强制路径释放。具体轮次由 `dt`、睾酮水平与轮初状态决定。
+- 上升与下降使用不同半时：目标高于当前唤醒时用 `riseHalfTimeMin`（基线 5 min，高睾酮时更快）；目标低于或等于当前唤醒时用 `resolutionHalfTimeMin = 15`。这是工程反应速度，不是人体性反应潜伏期或消退时间。
+- 不应期内（`sinceOrgasmBefore < 20` min）新到的合法 `sex` 仍更新 `remainingSexMin` 与 `sexIntensity`，但 `target = 0`，唤醒不上升且不再次释放；不应期结束后若仍有剩余活动，目标恢复。
 - 相位优先级固定为：`orgasm`（事件轮，`sinceOrgasm = 0`）→ `refractory`（`sinceOrgasm < 20` min）→ `excitement` / `plateau`（`active`，以 60 mm 分界）→ `resolution`（无活动且 `arousalMm >= 10`）→ `rest`（无活动且 `arousalMm < 10`）。不应期内即使 `active` 仍为真，相位也显示 `refractory`。
 - 60 s 轮下，`phase = 'orgasm'` 只在释放事件轮出现；下一轮 `sinceOrgasm = 1 min`，进入 20 min 不应期。`sinceOrgasm` 到 20 min 时 `refractory` 为假，若仍有活动则回到 `excitement` / `plateau`，否则按唤醒水平进入 `resolution` 或 `rest`。
 - 没有活动时，唤醒只按消退半时下降；降到 10 mm 以下时相位为 `rest`。相位的 60 mm 与 10 mm 分界、`orgasmDurationMin = 1` 与不应期 20 min 都是 `design` 策略，不是诊断标准。
@@ -142,8 +147,8 @@ orgasm 动作（轮初 arousalMm >= 70）或轮初 arousalMm >= 95（无需动�
 
 ## 8. 清单、计数与 transfer 边界
 
-- 根清单 `body-modules.json` 加入 `./organs/human-organs/sexual-response/response.ts` 后为 20 部位、22 份参数文件；女性清单 `body-modules.female.json` 也加入同一脚本后为 22 部位、24 份参数文件。
-- 本部位不声明 `transferOut` / `transferIn`，不参与硬 transfer 闭包；根清单的 9 部位硬闭包、女性清单的 10 部位硬闭包都不因本切片改变。
+- 根清单 `body-modules.json` 注册 `./organs/human-organs/sexual-response/response.ts`（当前 38 部位、34 份唯一参数文件）；女性清单为 41 部位、37 份参数文件；男性清单为 40 部位、36 份参数文件。
+- 本部位不声明 `transferOut` / `transferIn`，不参与硬 transfer 闭包；根与男性清单的 15 部位硬闭包、女性清单的 17 部位硬闭包都不因本切片改变。
 - `package.json` 的 `files` 已收录 `organs/`，脚本与同目录参数文件随包发布；不需要新增入口或依赖。
 - `body_act` 的 `type` 枚举增加 `sex` 与无载荷 `orgasm`；`sex` 复用已有的 `intensity` / `durationMin` 字段，`orgasm` 不接收载荷。`body_state` 返回 `sexualResponse` 的五个字段与 `interoception.sexualArousalMm`。
 

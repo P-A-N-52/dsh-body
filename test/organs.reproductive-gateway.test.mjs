@@ -81,10 +81,15 @@ test('the female manifest boots 41 parts and pays menses and milk into the water
   assert.ok(booted.ovaries, 'ovaries must be loaded');
   assert.ok(booted.uterus, 'uterus must be loaded');
   assert.ok(booted.liver, 'liver must be loaded');
+  const initialRegionGlycogen = {
+    muscleHead: 15,
+    muscleTrunk: 135,
+    muscleLimbs: 150,
+  };
   for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
     assert.deepEqual(booted[region], {
       uptakeG: 0,
-      glycogenG: 0,
+      glycogenG: initialRegionGlycogen[region],
       glycogenConsumedG: 0,
     }, region);
   }
@@ -99,6 +104,7 @@ test('the female manifest boots 41 parts and pays menses and milk into the water
   assert.ok(booted.salivaryGlands, 'salivaryGlands must be loaded');
   assert.ok(booted.mammaryGlands, 'mammaryGlands must be loaded');
   assert.deepEqual(booted.mammaryGlands, {
+    lactating: false,
     milkRequestMl: 0,
     milkMl: 0,
     lactoseRequestG: 0,
@@ -115,9 +121,10 @@ test('the female manifest boots 41 parts and pays menses and milk into the water
     tidalVolumeMl: 500,
     respiratoryRatePerMin: 12,
     ventilationMlMin: 6000,
-    alveolarO2MlMin: 900,
-    alveolarO2CapacityMlMin: 9000,
+    alveolarO2MlMin: 6000 * (0.058333 / 1.4),
+    alveolarO2CapacityMlMin: 60000 * (0.058333 / 1.4),
   });
+  assert.equal(booted.pituitary.prolactinRelative, 1);
   assert.equal(booted.ovaries.cycleDay, 0);
   assert.deepEqual(booted.uterus, {
     endometriumRelative: 0.1,
@@ -145,10 +152,56 @@ test('the female manifest boots 41 parts and pays menses and milk into the water
   assert.deepEqual(bleedingRounds, [2, 3, 4, 5], 'round one writes the request, the next round pays it');
   assert.deepEqual(discomfortRounds, [2, 3, 4, 5], 'discomfort reads the previous round cramp');
   assert.ok(accumulator.bleedingMl > 0);
-  assert.ok(accumulator.milkMl > 0, 'the baseline mammary request must be paid into milk');
+  assert.equal(accumulator.milkMl, 0, 'non-lactating default female has zero milk drain');
+  assert.equal(gateway.getState().parts.pituitary.prolactinRelative, 1);
   assert.ok(
     Math.abs(waterLedgerMl(gateway.getState().parts, accumulator)) <= 1e-6,
     'the ledger must still include every paid bleed',
+  );
+});
+
+test('a lactating female pays milk and lactose and raises prolactin while conserving water', async (t) => {
+  silence(t);
+  const { gateway } = await startBody(t, {
+    parts: {
+      ovaries: { cycleDay: 10 },
+      mammaryGlands: { lactating: true },
+    },
+  });
+  const accumulator = emptyAccumulator();
+
+  await gateway.tick();
+  let parts = gateway.getState().parts;
+  accumulate(accumulator, parts);
+  assert.equal(parts.mammaryGlands.lactating, true);
+  assert.equal(parts.mammaryGlands.milkRequestMl, 0.5);
+  assert.equal(parts.mammaryGlands.milkMl, 0);
+  assert.equal(parts.mammaryGlands.lactoseG, 0);
+
+  await gateway.tick();
+  parts = gateway.getState().parts;
+  accumulate(accumulator, parts);
+  assert.equal(parts.mammaryGlands.milkMl, 0.5);
+  assert.ok(Math.abs(parts.mammaryGlands.lactoseG - 0.035) <= 1e-12);
+
+  await gateway.tick();
+  parts = gateway.getState().parts;
+  accumulate(accumulator, parts);
+  assert.ok(parts.pituitary.prolactinRelative > 1, 'milk payout raises prolactin');
+
+  await gateway.tick();
+  parts = gateway.getState().parts;
+  accumulate(accumulator, parts);
+  assert.ok(parts.mammaryGlands.milkRequestMl > 0.5, 'elevated prolactin raises milk request');
+
+  await gateway.tick();
+  parts = gateway.getState().parts;
+  accumulate(accumulator, parts);
+  assert.ok(parts.mammaryGlands.milkMl > 0.5, 'elevated prolactin raises milk payout');
+  assert.ok(parts.mammaryGlands.lactoseG > 0.035, 'elevated prolactin raises lactose payout');
+  assert.ok(
+    Math.abs(waterLedgerMl(parts, accumulator)) <= 1e-6,
+    'lactating water ledger must stay conserved',
   );
 });
 
@@ -169,7 +222,7 @@ test('a non-menses seed keeps bleeding, cramps and requests at zero', async (t) 
   }
 
   assert.equal(accumulator.bleedingMl, 0);
-  assert.ok(accumulator.milkMl > 0, 'baseline milk must still be paid outside menses');
+  assert.equal(accumulator.milkMl, 0, 'non-lactating default female has zero milk drain outside menses');
 });
 
 test('a restart on the same state path continues the cycle and pays the pending bleed', async (t) => {

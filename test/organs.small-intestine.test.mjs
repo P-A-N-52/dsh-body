@@ -28,9 +28,14 @@ function round(state, dt = 60, parts = {}) {
 
 const halfTimeMin = 20;
 const carbohydrateHalfTimeMin = 20;
+const residueFraction = 0.05;
 const absorbedFrom = (waterMl, dt = 60) => waterMl * (1 - 2 ** (-(dt / 60) / halfTimeMin));
 const absorbedCarbohydrateFrom = (carbohydrateG, dt = 60) =>
   carbohydrateG * (1 - 2 ** (-(dt / 60) / carbohydrateHalfTimeMin));
+const residueFrom = (waterMl, absorbedMl) => Math.min(
+  Math.max(0, waterMl - absorbedMl),
+  absorbedMl * (residueFraction / (1 - residueFraction)),
+);
 
 function assertOnlyZeroSmallIntestineCarbohydrateTransfers(transfers) {
   for (const transfer of transfers) {
@@ -144,7 +149,7 @@ test('carbohydrate absorption has its own 20 minute design half-time', () => {
 test('one 60 s round absorbs from the round-start pool and writes it before transferring', () => {
   const { written, transfers } = round({ ...initialState, waterVolumeMl: 100 });
   const expected = absorbedFrom(100);
-  const residue = (100 - expected) * 0.05;
+  const residue = residueFrom(100, expected);
   assert.equal(written.waterVolumeMl, 100);
   assert.ok(Math.abs(written.absorbedWaterMl - expected) < 1e-12);
   assert.deepEqual(transfers.filter((transfer) => transfer.fromField === 'waterVolumeMl'), [{
@@ -165,10 +170,10 @@ test('one 60 s round absorbs from the round-start pool and writes it before tran
   assertOnlyZeroSmallIntestineCarbohydrateTransfers(transfers);
 });
 
-test('the unabsorbed residue fraction goes to the colon without changing absorption', () => {
+test('the residue transfer is flux-proportional to absorption and scales with dtMin', () => {
   const { written, transfers } = round({ ...initialState, waterVolumeMl: 1000 });
   const expected = absorbedFrom(1000);
-  const residue = (1000 - expected) * 0.05;
+  const residue = residueFrom(1000, expected);
   assert.ok(Math.abs(written.absorbedWaterMl - expected) < 1e-12);
   assert.deepEqual(transfers.filter((transfer) => transfer.toPart === 'colon'), [{
     caller: 'smallIntestine',
@@ -178,8 +183,18 @@ test('the unabsorbed residue fraction goes to the colon without changing absorpt
     toField: 'residueWaterMl',
     amount: residue,
   }]);
+  assert.ok(
+    Math.abs(residue / (expected + residue) - residueFraction) < 1e-12,
+    'leaving flux splits 95% absorbed / 5% colon residue',
+  );
   assert.equal(round({ ...initialState, waterVolumeMl: 0 }).transfers
     .find((transfer) => transfer.toPart === 'colon').amount, 0);
+
+  const shortRound = round({ ...initialState, waterVolumeMl: 1000 }, 6);
+  const shortAbsorbed = shortRound.written.absorbedWaterMl;
+  const shortResidue = shortRound.transfers.find((transfer) => transfer.toPart === 'colon').amount;
+  assert.ok(shortResidue < residue / 5, 'residue scales with dtMin rather than dumping 5% of pool per tick');
+  assert.ok(Math.abs(shortResidue / (shortAbsorbed + shortResidue) - residueFraction) < 1e-12);
 });
 
 test('one round absorbs carbohydrate from the round-start pool and transfers it to glucose', () => {
@@ -238,7 +253,7 @@ test('carbohydrate delivered by the stomach in the same round is added after abs
   const start = { ...initialState, waterVolumeMl: 100, carbohydrateG: 60 };
   const { written, transfers } = round(start);
   const expectedWaterMl = absorbedFrom(100);
-  const residueWaterMl = (100 - expectedWaterMl) * 0.05;
+  const residueWaterMl = residueFrom(100, expectedWaterMl);
   const expectedCarbohydrateG = absorbedCarbohydrateFrom(60);
   const carbTransfers = transfers.filter((transfer) => transfer.fromField === 'carbohydrateG');
   assert.deepEqual(carbTransfers, [{
@@ -333,7 +348,7 @@ test('water delivered by the stomach in the same round is added after absorption
   const start = { ...initialState, waterVolumeMl: 100 };
   const { written, transfers } = round(start);
   const expected = absorbedFrom(100);
-  const residue = (100 - expected) * 0.05;
+  const residue = residueFrom(100, expected);
   assert.deepEqual(transfers.filter((transfer) => transfer.fromField === 'waterVolumeMl'), [{
     caller: 'smallIntestine',
     fromPart: 'smallIntestine',
@@ -375,7 +390,7 @@ test('water delivered by the stomach in the same round is added after absorption
   assert.equal(next.glucose.glucoseMassG, 12.69);
 });
 
-test('the existing pool plus cumulative absorption and residue is conserved over 200 rounds', () => {
+test('the existing pool plus cumulative absorption and residue is conserved with a 95/5 split over 200 rounds', () => {
   let state = { ...initialState, waterVolumeMl: 200 };
   let absorbed = 0;
   let residue = 0;
@@ -390,6 +405,8 @@ test('the existing pool plus cumulative absorption and residue is conserved over
     };
   }
   assert.ok(Math.abs(state.waterVolumeMl + absorbed + residue - 200) < 1e-6);
+  assert.ok(Math.abs(absorbed / (absorbed + residue) - 0.95) < 1e-9);
+  assert.ok(Math.abs(residue / (absorbed + residue) - 0.05) < 1e-9);
 });
 
 test('the carbohydrate pool plus cumulative absorption is conserved over 200 rounds', () => {
@@ -406,13 +423,13 @@ test('the carbohydrate pool plus cumulative absorption is conserved over 200 rou
   assert.ok(Math.abs(state.carbohydrateG + absorbed - 60) < 1e-6);
 });
 
-test('dehydration scales water absorption by the dehydration factor', () => {
+test('dehydration mildly preserves/aids water absorption without dumping into the colon', () => {
   const start = { ...initialState, waterVolumeMl: 100 };
   const baseline = absorbedFrom(100);
-  const half = round(start, 60, { bodyFluid: { waterDeficit: 1 } }).written;
-  assert.ok(Math.abs(half.absorbedWaterMl - baseline * 0.5) < 1e-12);
-  const quarter = round(start, 60, { bodyFluid: { waterDeficit: 0.5 } }).written;
-  assert.ok(Math.abs(quarter.absorbedWaterMl - baseline * 0.75) < 1e-12);
+  const fullDeficit = round(start, 60, { bodyFluid: { waterDeficit: 1 } }).written;
+  assert.ok(Math.abs(fullDeficit.absorbedWaterMl - baseline * 1.1) < 1e-12);
+  const halfDeficit = round(start, 60, { bodyFluid: { waterDeficit: 0.5 } }).written;
+  assert.ok(Math.abs(halfDeficit.absorbedWaterMl - baseline * 1.05) < 1e-12);
 });
 
 test('water deficit clamps to the unit interval and missing bodyFluid keeps the rate', () => {
@@ -424,32 +441,71 @@ test('water deficit clamps to the unit interval and missing bodyFluid keeps the 
   assert.deepEqual(round(start, 60, { bodyFluid: { waterDeficit: 0 } }).written, baseline);
 });
 
-test('insulin and the glucose gradient raise carbohydrate absorption', () => {
+test('hyperglycemia lowers carbohydrate absorption via negative gradient feedback while insulin is neutral', () => {
   const start = { ...initialState, carbohydrateG: 60 };
   const baseline = absorbedCarbohydrateFrom(60);
   const both = round(start, 60, {
     pancreasEndocrine: { insulinRelative: 2 },
     glucose: { concentrationMgDl: 180 },
   }).written;
-  assert.ok(Math.abs(both.absorbedCarbohydrateG - baseline * 1.4) < 1e-12);
+  assert.ok(Math.abs(both.absorbedCarbohydrateG - baseline * 0.8) < 1e-12);
 
   const insulinOnly = round(start, 60, {
     pancreasEndocrine: { insulinRelative: 2 },
     glucose: { concentrationMgDl: 90 },
   }).written;
-  assert.ok(Math.abs(insulinOnly.absorbedCarbohydrateG - baseline * 1.2) < 1e-12);
+  assert.ok(Math.abs(insulinOnly.absorbedCarbohydrateG - baseline) < 1e-12);
 
-  const gradientOnly = round(start, 60, {
+  const highGlucoseOnly = round(start, 60, {
     pancreasEndocrine: { insulinRelative: 1 },
     glucose: { concentrationMgDl: 180 },
   }).written;
-  assert.ok(Math.abs(gradientOnly.absorbedCarbohydrateG - baseline * 1.2) < 1e-12);
+  assert.ok(Math.abs(highGlucoseOnly.absorbedCarbohydrateG - baseline * 0.8) < 1e-12);
+
+  const lowGlucose = round(start, 60, {
+    pancreasEndocrine: { insulinRelative: 1 },
+    glucose: { concentrationMgDl: 45 },
+  }).written;
+  assert.ok(Math.abs(lowGlucose.absorbedCarbohydrateG - baseline * 1.1) < 1e-12);
 
   const baselineRound = round(start, 60, {
     pancreasEndocrine: { insulinRelative: 1 },
     glucose: { concentrationMgDl: 90 },
   }).written;
   assert.ok(Math.abs(baselineRound.absorbedCarbohydrateG - baseline) < 1e-12);
+});
+
+test('absorption factors and transfers clamp to non-negative and never overdraft the pool', () => {
+  const extremeHyperglycemia = round(
+    { ...initialState, carbohydrateG: 60 },
+    60,
+    { glucose: { concentrationMgDl: 900 } },
+  );
+  assert.equal(extremeHyperglycemia.written.absorbedCarbohydrateG, 0);
+  assert.equal(
+    extremeHyperglycemia.transfers.find((t) => t.fromField === 'carbohydrateG').amount,
+    0,
+  );
+
+  const hugeDtCarb = round(
+    { ...initialState, carbohydrateG: 60 },
+    60 * 1000,
+    { glucose: { concentrationMgDl: 0 } },
+  );
+  assert.equal(hugeDtCarb.written.absorbedCarbohydrateG, 60);
+  assert.equal(
+    hugeDtCarb.transfers.find((t) => t.fromField === 'carbohydrateG').amount,
+    60,
+  );
+
+  const hugeDtWater = round(
+    { ...initialState, waterVolumeMl: 100 },
+    60 * 1000,
+    { bodyFluid: { waterDeficit: 1 } },
+  );
+  assert.equal(hugeDtWater.written.absorbedWaterMl, 100);
+  assert.equal(hugeDtWater.transfers.find((t) => t.toPart === 'bodyFluid').amount, 100);
+  assert.equal(hugeDtWater.transfers.find((t) => t.toPart === 'colon').amount, 0);
 });
 
 test('missing glucose and pancreas parts keep the original carbohydrate rate', () => {
@@ -500,8 +556,8 @@ test('absorption feedback parameters are design placeholders', () => {
   ));
   const byId = Object.fromEntries(data.parameters.map((parameter) => [parameter.id, parameter]));
   for (const [parameterId, value, unit] of [
-    ['smallIntestine.waterAbsorptionDehydrationFactor', 0.5, '1'],
-    ['smallIntestine.carbAbsorptionInsulinGain', 0.2, '1'],
+    ['smallIntestine.waterAbsorptionDehydrationFactor', 0.1, '1'],
+    ['smallIntestine.carbAbsorptionInsulinGain', 0, '1'],
     ['smallIntestine.carbAbsorptionGradientGain', 0.2, '1'],
   ]) {
     const parameter = byId[parameterId];

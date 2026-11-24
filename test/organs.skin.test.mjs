@@ -111,8 +111,8 @@ test('skin sweat parameters are design defaults with no measurements', () => {
     ['skin.sweat.ambientTemperatureC', 25, '°C'],
     ['skin.sweat.referenceRateMlPerMin', 0.6, 'mL/min'],
     ['skin.sweat.ambientGainPerC', 0.04, '1/°C'],
-    ['skin.sweat.maxRateMlPerMin', 2, 'mL/min'],
-    ['skin.heatGain', 1, '1/°C'],
+    ['skin.sweat.maxRateMlPerMin', 15, 'mL/min'],
+    ['skin.heatGain', 5, 'mL/(min·°C)'],
   ];
   for (const [parameterId, value, unit] of expected) {
     assert.equal(byId[parameterId].value, value, parameterId);
@@ -125,8 +125,8 @@ test('skin sweat parameters are design defaults with no measurements', () => {
     'skin.sweat.ambientTemperatureC': 25,
     'skin.sweat.referenceRateMlPerMin': 0.6,
     'skin.sweat.ambientGainPerC': 0.04,
-    'skin.sweat.maxRateMlPerMin': 2,
-    'skin.heatGain': 1,
+    'skin.sweat.maxRateMlPerMin': 15,
+    'skin.heatGain': 5,
   });
 });
 
@@ -148,14 +148,26 @@ test('the request follows the design intensity, temperature, cap and dt', () => 
       expected: 0.84,
     },
     {
-      label: 'the rate caps at 2 mL/min',
-      input: { remainingExerciseMin: 10, intensity: 1, dtMin: 1, ambientTemperatureC: 100 },
-      expected: 2,
+      label: 'the rate caps at 15 mL/min',
+      input: {
+        remainingExerciseMin: 10,
+        intensity: 1,
+        dtMin: 1,
+        ambientTemperatureC: 100,
+        coreTemperatureC: 40,
+      },
+      expected: 15,
     },
     {
       label: 'the cap is on the rate, not the request',
-      input: { remainingExerciseMin: 10, intensity: 1, dtMin: 2, ambientTemperatureC: 100 },
-      expected: 4,
+      input: {
+        remainingExerciseMin: 10,
+        intensity: 1,
+        dtMin: 2,
+        ambientTemperatureC: 100,
+        coreTemperatureC: 40,
+      },
+      expected: 30,
     },
     {
       label: 'dt scales the request',
@@ -163,12 +175,23 @@ test('the request follows the design intensity, temperature, cap and dt', () => 
       expected: 0.3,
     },
     {
-      label: 'zero remaining minutes requests nothing',
+      label: 'zero remaining minutes at 37 C requests nothing',
       input: { remainingExerciseMin: 0, intensity: 1, dtMin: 1, ambientTemperatureC: 25 },
       expected: 0,
     },
     {
-      label: 'zero intensity requests nothing',
+      label: 'zero remaining minutes at 38 C triggers thermal sweating',
+      input: {
+        remainingExerciseMin: 0,
+        intensity: 0,
+        dtMin: 1,
+        ambientTemperatureC: 25,
+        coreTemperatureC: 38,
+      },
+      expected: 5,
+    },
+    {
+      label: 'zero intensity at 37 C requests nothing',
       input: { remainingExerciseMin: 10, intensity: 0, dtMin: 1, ambientTemperatureC: 25 },
       expected: 0,
     },
@@ -178,7 +201,7 @@ test('the request follows the design intensity, temperature, cap and dt', () => 
       expected: 0,
     },
     {
-      label: 'a 38 C core temperature doubles the request',
+      label: 'a 38 C core temperature adds 5 mL/min thermal sweat',
       input: {
         remainingExerciseMin: 10,
         intensity: 1,
@@ -186,7 +209,7 @@ test('the request follows the design intensity, temperature, cap and dt', () => 
         ambientTemperatureC: 25,
         coreTemperatureC: 38,
       },
-      expected: 1.2,
+      expected: 5.6,
     },
     {
       label: 'a core temperature below the setpoint does not reduce the request',
@@ -206,7 +229,7 @@ test('the request follows the design intensity, temperature, cap and dt', () => 
   }
 });
 
-test('a missing physicalActivity requests no sweat', () => {
+test('a missing physicalActivity requests no sweat at 37 C, but sweats when coreTemperatureC > 37', () => {
   const { written } = round({
     state: { sweatRequestMl: 2, sweatVolumeMl: 1 },
   });
@@ -215,6 +238,12 @@ test('a missing physicalActivity requests no sweat', () => {
     round({ state: {} }).written,
     { sweatRequestMl: 0, sweatVolumeMl: 0 },
   );
+
+  const hyperthermicRest = round({
+    thermoregulation: { coreTemperatureC: 38.5 },
+  }).written;
+  assertClose(hyperthermicRest.sweatRequestMl, 7.5, 'resting hyperthermia sweats');
+  assert.equal(hyperthermicRest.sweatVolumeMl, 0);
 });
 
 test('25 C and intensity 1 request 0.6 mL in a 60 s round', () => {
@@ -225,7 +254,7 @@ test('25 C and intensity 1 request 0.6 mL in a 60 s round', () => {
   assertClose(half.sweatRequestMl, 0.3, 'half intensity');
 });
 
-test('a hot core temperature multiplies the sweat request, cold does not', () => {
+test('a hot core temperature adds thermal sweat rate, cold does not', () => {
   const atSetpoint = round({
     activity: active(),
     thermoregulation: { coreTemperatureC: 37 },
@@ -238,14 +267,19 @@ test('a hot core temperature multiplies the sweat request, cold does not', () =>
     activity: active(),
     thermoregulation: { coreTemperatureC: 39 },
   }).written;
+  const extreme = round({
+    activity: active(),
+    thermoregulation: { coreTemperatureC: 42 },
+  }).written;
   const cold = round({
     activity: active(),
     thermoregulation: { coreTemperatureC: 35 },
   }).written;
 
   assertClose(atSetpoint.sweatRequestMl, 0.6, 'at the setpoint');
-  assertClose(hot.sweatRequestMl, 1.2, 'one degree above the setpoint');
-  assertClose(hotter.sweatRequestMl, 1.8, 'two degrees above the setpoint');
+  assertClose(hot.sweatRequestMl, 5.6, 'one degree above the setpoint');
+  assertClose(hotter.sweatRequestMl, 10.6, 'two degrees above the setpoint');
+  assertClose(extreme.sweatRequestMl, 15, 'capped at 15 mL/min');
   assertClose(cold.sweatRequestMl, 0.6, 'below the setpoint has no reduction');
 });
 

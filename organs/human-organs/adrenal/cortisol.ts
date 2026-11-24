@@ -7,8 +7,8 @@
  *
  * 公式（design）：
  *   dtMin = io.dt / 60
- *   cortisolRelative = acthRelative + (prevCortisol − acthRelative) × 2^(−dtMin / 15)
- * 读轮初 `pituitary.acthRelative`；`pituitary` 未加载时按 1 回退。15 min 半时来自
+ *   cortisolRelative = clamp(acthRelative + (prevCortisol − acthRelative) × 2^(−dtMin / 15), 0, 3)
+ * 读轮初 `pituitary.acthRelative`；`pituitary` 未加载时按 1 回退，`prevCortisol` 非有限时回退 1 并钳在 [0, 3]。15 min 半时来自
  * 同目录 `cortisol.parameters.json` 的 `adrenal.responseHalfTimeMin`，不是实测 HPA 轴
  * 动力学、皮质醇半衰期或 ACTH 剂量反应。ACTH 高于基线时皮质醇上移、低于基线时下移，
  * 两者都是一阶趋近；不建模脉冲分泌、昼夜节律、结合蛋白、受体、上游负反馈（在垂体与
@@ -41,6 +41,8 @@ const responseHalfTimeMin = requireParameter(
   parameters,
   'adrenal.responseHalfTimeMin',
 );
+const MIN_RELATIVE = 0;
+const MAX_RELATIVE = 3;
 
 export const initialState: AdrenalState = {
   cortisolRelative: 1,
@@ -57,12 +59,23 @@ type IO = {
   write(next: AdrenalState): void;
 };
 
+function finiteOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 export function heartbeat(io: IO): void {
   const prev = io.read(id) ?? initialState;
   const pituitary = io.read('pituitary');
 
   let acthRelative = 1;
   if (pituitary !== undefined) {
+    if (typeof pituitary !== 'object' || pituitary === null) {
+      throw new Error('adrenal: pituitary must be an object');
+    }
     const reading = pituitary.acthRelative;
     if (typeof reading !== 'number' || !Number.isFinite(reading) || reading < 0) {
       throw new Error(
@@ -72,10 +85,18 @@ export function heartbeat(io: IO): void {
     acthRelative = reading;
   }
 
+  const prevCortisol = clamp(
+    finiteOr(prev.cortisolRelative, initialState.cortisolRelative),
+    MIN_RELATIVE,
+    MAX_RELATIVE,
+  );
   const dtMin = io.dt / 60;
   const retention = 2 ** (-dtMin / responseHalfTimeMin);
-  const cortisolRelative =
-    acthRelative + (prev.cortisolRelative - acthRelative) * retention;
+  const cortisolRelative = clamp(
+    acthRelative + (prevCortisol - acthRelative) * retention,
+    MIN_RELATIVE,
+    MAX_RELATIVE,
+  );
 
   io.write({ cortisolRelative });
 }

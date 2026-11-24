@@ -23,18 +23,19 @@
  *   active = remainingSexMin > 0 && sexIntensity > 0
  *   sinceOrgasm = lastOrgasmAtSimMin === null ? Infinity : simMin − lastOrgasmAtSimMin
  *   refractory = sinceOrgasm < refractoryMin（释放判定用更新前的记录）
- *   testosteroneRelative = finiteOr(testes.testosteroneRelative, 1)
- *   target = active && !refractory
- *     ? 100 × sexIntensity × (0.5 + 0.5 × testosteroneRelative)
+ *   testosteroneRelative = max(0, finiteOr(testes.testosteroneRelative, 1))
+ *   factor = 0.5 + 0.5 × testosteroneRelative
+ *   release（高潮，两条路径，都用轮初 arousalMm 且非不应期判定）：
+ *     主动：!refractory && 本轮含 orgasm 动作 && prevArousal >= orgasmAllowedMm
+ *     强制：!refractory && prevArousal >= orgasmForcedMm，无需动作
+ *     任一成立 → released = true, lastOrgasmAtSimMin = simMin（每轮最多记一次）
+ *     主动动作在 prevArousal < orgasmAllowedMm 或不应期内被忽略，不改变状态
+ *   target = active && !refractory && !released
+ *     ? clamp(100 × sexIntensity × factor, 0, 100)
  *     : 0
- *   halfTime = target > prevArousal ? arousalHalfTimeMin : resolutionHalfTimeMin
- *   arousalMm = target + (prevArousal − target) × 2^(−dtMin / halfTime)
- *
- *   release（高潮，两条路径，都用轮初 arousalMm 判定）：
- *     主动：本轮含 orgasm 动作且 prevArousal >= orgasmAllowedMm
- *     强制：prevArousal >= orgasmForcedMm，无需动作
- *     任一成立 → lastOrgasmAtSimMin = simMin（每轮最多记一次）
- *     主动动作在 prevArousal < orgasmAllowedMm 时被忽略，不改变状态
+ *   riseHalfTime = testosteroneRelative > 1 ? arousalHalfTimeMin / factor : arousalHalfTimeMin
+ *   halfTime = target > prevArousal ? riseHalfTime : resolutionHalfTimeMin
+ *   arousalMm = clamp(target + (prevArousal − target) × 2^(−dtMin / halfTime), 0, 100)
  *
  *   phase 在记录释放之后求值（sinceOrgasm 用更新后的值）：
  *     sinceOrgasm < orgasmDurationMin → 'orgasm'
@@ -124,6 +125,10 @@ export const fields = {
   lastOrgasmAtSimMin: { unit: 'min', mode: 'absolute' },
 };
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 function finiteOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -171,7 +176,7 @@ export function heartbeat(io: IO): void {
     }
   }
 
-  const prevArousal = finiteOr(prev.arousalMm, 0);
+  const prevArousal = clamp(finiteOr(prev.arousalMm, 0), 0, 100);
   let lastOrgasmAtSimMin = savedOrgasmMinute(prev.lastOrgasmAtSimMin);
 
   const active = remainingSexMin > 0 && sexIntensity > 0;
@@ -179,18 +184,30 @@ export function heartbeat(io: IO): void {
     ? Number.POSITIVE_INFINITY
     : simMin - lastOrgasmAtSimMin;
   const refractory = sincePreviousOrgasm < refractoryMin;
-  const testosteroneRelative = finiteOr(io.read('testes')?.testosteroneRelative, 1);
-  const target = active && !refractory
-    ? 100 * sexIntensity * (0.5 + 0.5 * testosteroneRelative)
-    : 0;
-  const halfTimeMin = target > prevArousal ? arousalHalfTimeMin : resolutionHalfTimeMin;
-  const arousalMm = target + (prevArousal - target) * 2 ** (-dtMin / halfTimeMin);
 
-  const voluntaryRelease = hasOrgasmAction(io.actions) && prevArousal >= orgasmAllowedMm;
-  const forcedRelease = prevArousal >= orgasmForcedMm;
-  if (voluntaryRelease || forcedRelease) {
+  const voluntaryRelease = !refractory
+    && hasOrgasmAction(io.actions)
+    && prevArousal >= orgasmAllowedMm;
+  const forcedRelease = !refractory && prevArousal >= orgasmForcedMm;
+  const released = voluntaryRelease || forcedRelease;
+  if (released) {
     lastOrgasmAtSimMin = simMin;
   }
+
+  const testosteroneRelative = Math.max(0, finiteOr(io.read('testes')?.testosteroneRelative, 1));
+  const testosteroneFactor = 0.5 + 0.5 * testosteroneRelative;
+  const target = active && !refractory && !released
+    ? clamp(100 * sexIntensity * testosteroneFactor, 0, 100)
+    : 0;
+  const riseHalfTimeMin = testosteroneRelative > 1
+    ? arousalHalfTimeMin / testosteroneFactor
+    : arousalHalfTimeMin;
+  const halfTimeMin = target > prevArousal ? riseHalfTimeMin : resolutionHalfTimeMin;
+  const arousalMm = clamp(
+    target + (prevArousal - target) * 2 ** (-dtMin / halfTimeMin),
+    0,
+    100,
+  );
 
   const sinceOrgasm = lastOrgasmAtSimMin === null
     ? Number.POSITIVE_INFINITY

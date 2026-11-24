@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadParameters, requireParameter } from '../lib/parameters.js';
 
 const parametersFiles = [
@@ -50,6 +52,7 @@ const parametersFiles = [
   { label: 'organs/human-organs/epididymis/storage.parameters.json', url: new URL('../organs/human-organs/epididymis/storage.parameters.json', import.meta.url) },
 ];
 
+const allowedStatuses = new Set(['design', 'policy', 'prior', 'fitted_dev', 'validated', 'unset']);
 const sourcedStatuses = new Set(['prior', 'fitted_dev', 'validated']);
 
 function readParameters(url) {
@@ -68,6 +71,10 @@ for (const { label, url } of parametersFiles) {
 
     for (const parameter of data.parameters) {
       assert.ok(parameter.id.startsWith(`${data.owner}.`), `${parameter.id} must start with ${data.owner}.`);
+      assert.ok(
+        allowedStatuses.has(parameter.status),
+        `${parameter.id}: unexpected status ${parameter.status}`,
+      );
       assert.equal(parameter.status === 'unset', parameter.value === null, `${parameter.id}: unset status and null value must match`);
       if (sourcedStatuses.has(parameter.status)) {
         assert.ok(typeof parameter.source === 'string' && parameter.source.length > 0, `${parameter.id} needs a source`);
@@ -120,12 +127,18 @@ test('glucose parameters keep the fixed design defaults', () => {
   ));
   const byId = Object.fromEntries(data.parameters.map((parameter) => [parameter.id, parameter]));
   assert.deepEqual(Object.keys(byId).sort(), [
+    'glucose.basalConsumptionGPerMin',
     'glucose.baselineConcentrationMgDl',
     'glucose.distributionVolumeDlPerKg',
     'glucose.referenceBodyMassKg',
     'glucose.residualDisposalHalfTimeMin',
   ]);
 
+  assert.equal(byId['glucose.basalConsumptionGPerMin'].value, 0.12);
+  assert.equal(byId['glucose.basalConsumptionGPerMin'].unit, 'g/min');
+  assert.equal(byId['glucose.basalConsumptionGPerMin'].status, 'design');
+  assert.equal(byId['glucose.basalConsumptionGPerMin'].source, null);
+  assert.deepEqual(byId['glucose.basalConsumptionGPerMin'].range, [0, 0.5]);
   assert.equal(byId['glucose.referenceBodyMassKg'].value, 75);
   assert.equal(byId['glucose.referenceBodyMassKg'].unit, 'kg');
   assert.equal(byId['glucose.referenceBodyMassKg'].status, 'design');
@@ -202,9 +215,9 @@ test('heart, blood and thermoregulation parameters are design defaults with no s
       'thermoregulation.setpointC': [37, '°C'],
       'thermoregulation.ambientTemperatureC': [25, '°C'],
       'thermoregulation.heatCapacityKcalPerC': [60, 'kcal/°C'],
-      'thermoregulation.metabolicFactor': [0.02, 'kcal/mL'],
+      'thermoregulation.metabolicFactor': [0.005, 'kcal/mL'],
       'thermoregulation.shiveringGain': [2, 'kcal/(min·°C)'],
-      'thermoregulation.lossGain': [0.05, 'kcal/(min·°C)'],
+      'thermoregulation.lossGain': [0.104167, 'kcal/(min·°C)'],
       'thermoregulation.evaporationKcalPerMl': [0.58, 'kcal/mL'],
     },
   };
@@ -362,15 +375,15 @@ test('skin sweat parameters keep the design defaults and units', () => {
     'skin.sweat.maxRateMlPerMin',
     'skin.sweat.referenceRateMlPerMin',
   ]);
-  assert.equal(byId['skin.heatGain'].value, 1);
-  assert.equal(byId['skin.heatGain'].unit, '1/°C');
+  assert.equal(byId['skin.heatGain'].value, 5);
+  assert.equal(byId['skin.heatGain'].unit, 'mL/(min·°C)');
   assert.equal(byId['skin.sweat.ambientTemperatureC'].value, 25);
   assert.equal(byId['skin.sweat.ambientTemperatureC'].unit, '°C');
   assert.equal(byId['skin.sweat.referenceRateMlPerMin'].value, 0.6);
   assert.equal(byId['skin.sweat.referenceRateMlPerMin'].unit, 'mL/min');
   assert.equal(byId['skin.sweat.ambientGainPerC'].value, 0.04);
   assert.equal(byId['skin.sweat.ambientGainPerC'].unit, '1/°C');
-  assert.equal(byId['skin.sweat.maxRateMlPerMin'].value, 2);
+  assert.equal(byId['skin.sweat.maxRateMlPerMin'].value, 15);
   assert.equal(byId['skin.sweat.maxRateMlPerMin'].unit, 'mL/min');
   for (const parameter of data.parameters) {
     assert.equal(parameter.status, 'design', `${parameter.id}: status`);
@@ -443,9 +456,9 @@ test('blood oxygen and lung ventilation parameters keep the design defaults', ()
     ['lungsVentilation.maxRatePerMin', 40, '1/min'],
     ['lungsVentilation.restingVentilationMlMin', 6000, 'mL/min'],
     ['lungsVentilation.maxVentilationMlMin', 60000, 'mL/min'],
-    ['lungsVentilation.inspiredO2Fraction', 0.21, '1'],
+    ['lungsVentilation.inspiredO2Fraction', 0.058333, '1'],
     ['lungsVentilation.deadSpaceFactor', 1.4, '1'],
-    ['lungsVentilation.pantingGain', 0.5, 'mL/(min·°C)'],
+    ['lungsVentilation.pantingGain', 1500, 'mL/(min·°C)'],
   ]) {
     const parameter = ventilationById[parameterId];
     assert.equal(parameter.value, value, `${parameterId}: value`);
@@ -525,8 +538,11 @@ test('liver glycogen parameters stay design placeholders', () => {
   ));
   const byId = Object.fromEntries(data.parameters.map((parameter) => [parameter.id, parameter]));
   assert.deepEqual(Object.keys(byId).sort(), [
+    'liver.basalOutputRateGPerMin',
+    'liver.glucagonOutputGainGPerMin',
     'liver.glycogenCapacityG',
     'liver.halfMaxExcessG',
+    'liver.hypoglycemiaOutputGainGPerMinPerMgDl',
     'liver.initialGlycogenG',
     'liver.insulinSensitivity',
     'liver.maxOutputRateGPerMin',
@@ -534,6 +550,9 @@ test('liver glycogen parameters stay design placeholders', () => {
   ]);
   for (const [parameterId, value, unit] of [
     ['liver.maxOutputRateGPerMin', 1, 'g/min'],
+    ['liver.basalOutputRateGPerMin', 0.096, 'g/min'],
+    ['liver.hypoglycemiaOutputGainGPerMinPerMgDl', 0.015, 'g/(min·mg/dL)'],
+    ['liver.glucagonOutputGainGPerMin', 0.15, 'g/min'],
     ['liver.initialGlycogenG', 80, 'g'],
     ['liver.glycogenCapacityG', 100, 'g'],
     ['liver.maxUptakeRateGPerMin', 0.2, 'g/min'],
@@ -545,6 +564,76 @@ test('liver glycogen parameters stay design placeholders', () => {
     assert.equal(parameter.unit, unit, `${parameterId}: unit`);
     assert.equal(parameter.status, 'design', `${parameterId}: status`);
     assert.equal(parameter.source, null, `${parameterId}: source`);
+  }
+});
+
+test('muscleGlucose, kidneyGluconeogenesis, mammaryGlands, smallIntestine, colon and brainNotify keep expected baselines and policy statuses', () => {
+  const muscle = loadParameters(new URL(
+    '../organs/human-organs/skeletal-muscle/glucose-uptake.parameters.json',
+    import.meta.url,
+  ));
+  assert.deepEqual(muscle, {
+    'muscleGlucose.glycogenUseRateGPerMin': 0.5,
+    'muscleGlucose.maxUptakeRateGPerMin': 0.5,
+    'muscleGlucose.halfMaxExcessG': 20,
+    'muscleGlucose.insulinSensitivity': 1,
+    'muscleGlucose.exerciseUptakeRateGPerMin': 0.15,
+  });
+
+  const kidneyGng = loadParameters(new URL(
+    '../organs/human-organs/kidney/gluconeogenesis.parameters.json',
+    import.meta.url,
+  ));
+  assert.deepEqual(kidneyGng, {
+    'kidneyGluconeogenesis.maxOutputRateGPerMin': 0.5,
+    'kidneyGluconeogenesis.maxOutputPerRoundG': 0.6,
+    'kidneyGluconeogenesis.baselineMgDl': 90,
+    'kidneyGluconeogenesis.basalOutputRateGPerMin': 0.024,
+    'kidneyGluconeogenesis.hypoglycemiaOutputGainGPerMinPerMgDl': 0.005,
+    'kidneyGluconeogenesis.glucagonOutputGainGPerMin': 0.05,
+  });
+
+  const mammary = loadParameters(new URL(
+    '../organs/human-organs/mammary-glands/milk.parameters.json',
+    import.meta.url,
+  ));
+  assert.deepEqual(mammary, {
+    'mammaryGlands.basalMilkRateMlPerMin': 0.5,
+    'mammaryGlands.lactoseGPerMl': 0.07,
+    'mammaryGlands.fullnessGainPerMl': 4,
+    'mammaryGlands.fullnessDecayHalfTimeMin': 30,
+  });
+
+  const intestine = loadParameters(new URL(
+    '../organs/human-organs/small-intestine/water-absorption.parameters.json',
+    import.meta.url,
+  ));
+  assert.deepEqual(intestine, {
+    'smallIntestine.absorption.halfTimeMin': 20,
+    'smallIntestine.residueFraction': 0.05,
+    'smallIntestine.carbohydrateAbsorption.halfTimeMin': 20,
+    'smallIntestine.waterAbsorptionDehydrationFactor': 0.1,
+    'smallIntestine.carbAbsorptionInsulinGain': 0,
+    'smallIntestine.carbAbsorptionGradientGain': 0.2,
+  });
+
+  const colon = loadParameters(new URL(
+    '../organs/human-organs/colon/colon.parameters.json',
+    import.meta.url,
+  ));
+  assert.deepEqual(colon, {
+    'colon.reclamationRatePerMin': 0.01,
+    'colon.stoolFormationGPerMin': 0.01,
+    'colon.referenceStoolG': 200,
+  });
+
+  const notify = readParameters(new URL(
+    '../organs/human-organs/brain/notify.parameters.json',
+    import.meta.url,
+  ));
+  for (const parameter of notify.parameters) {
+    assert.equal(parameter.status, 'policy', `${parameter.id}: status`);
+    assert.equal(parameter.source, null, `${parameter.id}: source`);
   }
 });
 
@@ -599,9 +688,77 @@ test('parameter ids are unique across all parameter files', () => {
   assert.equal(new Set(ids).size, ids.length, 'parameter ids must be unique across files');
 });
 
-test('requireParameter rejects missing and unset ids with the id in the message', () => {
+test('requireParameter rejects missing, unset and prototype-named ids with the id in the message', () => {
   const values = { 'interoception.unset': null };
 
   assert.throws(() => requireParameter(values, 'interoception.missing'), (error) => error.message.includes('interoception.missing'));
   assert.throws(() => requireParameter(values, 'interoception.unset'), (error) => error.message.includes('interoception.unset'));
+  assert.throws(() => requireParameter(values, 'toString'), (error) => error.message.includes('toString'));
+});
+
+test('loadParameters validates schemaVersion, owner, parameters array, ids, duplicates, and values', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-params-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  function writeParams(name, data) {
+    const path = join(dir, `${name}.json`);
+    writeFileSync(path, JSON.stringify(data));
+    return path;
+  }
+
+  assert.throws(
+    () => loadParameters(writeParams('bad-version', { schemaVersion: 2, owner: 'x', parameters: [] })),
+    /schemaVersion/,
+  );
+  assert.throws(
+    () => loadParameters(writeParams('empty-owner', { schemaVersion: 1, owner: '', parameters: [] })),
+    /owner/,
+  );
+  assert.throws(
+    () => loadParameters(writeParams('bad-array', { schemaVersion: 1, owner: 'x', parameters: {} })),
+    /array/,
+  );
+  assert.throws(
+    () => loadParameters(writeParams('bad-prefix', {
+      schemaVersion: 1,
+      owner: 'x',
+      parameters: [{ id: 'y.a', status: 'design', value: 1 }],
+    })),
+    /must start with x\./,
+  );
+  assert.throws(
+    () => loadParameters(writeParams('dup', {
+      schemaVersion: 1,
+      owner: 'x',
+      parameters: [
+        { id: 'x.a', status: 'design', value: 1 },
+        { id: 'x.a', status: 'design', value: 2 },
+      ],
+    })),
+    /Duplicate parameter x\.a/,
+  );
+  assert.throws(
+    () => loadParameters(writeParams('missing-value', {
+      schemaVersion: 1,
+      owner: 'x',
+      parameters: [{ id: 'x.a', status: 'design' }],
+    })),
+    /missing value/,
+  );
+  assert.throws(
+    () => loadParameters(writeParams('unset-mismatch', {
+      schemaVersion: 1,
+      owner: 'x',
+      parameters: [{ id: 'x.a', status: 'unset', value: 1 }],
+    })),
+    /status unset and value null must match/,
+  );
+  assert.throws(
+    () => loadParameters(writeParams('null-mismatch', {
+      schemaVersion: 1,
+      owner: 'x',
+      parameters: [{ id: 'x.a', status: 'design', value: null }],
+    })),
+    /status unset and value null must match/,
+  );
 });

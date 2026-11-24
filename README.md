@@ -34,48 +34,59 @@
 
 ## 当前实现范围
 
-根清单 `body-modules.json`（38 部位、37 份参数文件）：
+根清单 `body-modules.json`（38 部位、34 份唯一参数文件，硬 transfer 闭包 15 部位）：
 
 | 器官 | 已实现功能 |
 | --- | --- |
-| 胃 | 固/液餐排空、碳水记账、相对饥饿素、胃壁机械感受 |
+| 胃 | 固/液餐排空（受十二指肠营养暴露反馈抑制）、碳水记账、相对饥饿素（受胃扩张、肠内营养与摄入剂量抑制）、胃壁机械感受 |
 | 食管 | 食团转运时延与呛咳风险代理（并入 `discomfort` 第七路） |
 | 十二指肠 | 近期营养暴露代理 |
-| 小肠 | 水与碳水一阶吸收；未吸收残渣水按固定比例转入结肠 |
-| 骨骼肌 | 活动计时、肌糖原储存与运动消耗 |
-| 皮肤 | 活动相关汗液请求与实际汗量 |
-| 肺 | 运动相关呼吸失水、自动通气 |
+| 唾液腺 | 进食/饮水后 5 min 刺激窗口内的唾液产率、脱水时产率下降与湿润度/口干读数（水合静息 100 mm / `dryMouthMm = 0`）；有碳水到达十二指肠时按唾液产率放大淀粉酶增益；唾液不进水账 |
+| 小肠 | 水与碳水一阶吸收（脱水时微调水吸收，高血糖经梯度负反馈减慢碳水吸收）；离开通量按 95% 吸收 / 5% 残渣分流转入结肠 |
+| 皮肤 | 活动相关汗液请求与实际汗量，高核心温度时叠加加性热致出汗（总上限 15 mL/min） |
+| 肺 | 运动相关呼吸失水、自动通气，核心温度高时叠加喘息 |
 | 胰腺 | 血糖驱动的相对胰岛素与胰高血糖素信号 |
-| 肝 | 肝糖原储存（上限 100 g）与低血糖释放 |
-| 骨骼肌 | 活动状态、摄糖聚合器、头/躯干/四肢三个区域糖原 |
-| 肾 | ADH 驱动产尿、肾糖质量排泄；可选中枢/肾性 DI 变体（独立清单） |
+| 肝 | 肝糖原储存（上限 100 g）与平滑比例 + 低血糖/胰高血糖素/皮质醇驱动的释放（静息基线 0.096 g/min） |
+| 骨骼肌 | 活动状态、胰岛素与运动收缩摄糖聚合器、头/躯干/四肢三个区域糖原（初值合计 300 g、总消耗 0.5 g/min） |
+| 肾 | ADH 驱动产尿（受 GFR 缩放）、肾糖质量排泄；肾糖异生按平滑比例在空腹/低血糖或胰高血糖素高于基线时向葡萄糖隔室产糖（静息基线 0.024 g/min）；可选中枢/肾性 DI 变体（独立清单） |
 | 膀胱 | 储尿、主动排尿、过度充盈非自主排空 |
-| 结肠 | 残渣水回收回流体液、粪便储存、`defecate` 排出与便意读数 |
-| 脑 | 下丘脑 ADH、口渴与内分泌轴（TRH/CRH、TSH/ACTH）、体感读出、四类体感提醒 |
+| 结肠 | 残渣水指数回收（`0.01 /min`）回流体液、粪便储存、`defecate` 排出与便意读数 |
+| 脑 | 下丘脑 ADH（含血容量驱动）、口渴与内分泌轴（TRH/CRH 含低温/低血糖/高强度运动驱动，TSH/ACTH）、体温调节（静息 24h 稳态约 37.0°C、运动升温并在恢复期回落）、体感读出、四类体感提醒（`resetBelow = 40 mm` 滞回） |
 | 甲状腺 | TSH 驱动的 T4 相对信号，缩放基础氧耗并负反馈抑制 TRH/TSH |
 | 肾上腺 | ACTH 驱动的皮质醇相对信号，缩放肝糖释放、产生 `stressMm` 并负反馈抑制 CRH/ACTH |
 | 松果体 | 仿真昼夜褪黑素相对信号，驱动 `sleepinessMm` |
-| 体液隔室 | 体液水与水分亏缺，按肾 → 肺 → 汗结算 |
-| 葡萄糖隔室 | 可及池质量与浓度代理，按肾 → 肝 → 肌结算摄糖请求；女性变体末位加乳腺乳糖汇 |
-| 血氧隔室 | 行为与消化氧耗、供需平衡与 SpO2 代理 |
+| 心脏 | 活动强度、皮质醇与血容量前负荷驱动的心率、搏出量与心输出量代理 |
+| 体液隔室 | 体液水与水分亏缺，按肾 → 肺 → 汗结算（女性清单再加子宫 → 乳腺） |
+| 葡萄糖隔室 | 可及池质量与浓度代理，含基础非胰岛素耗糖（0.12 g/min），按肾 → 肝 → 肌结算摄糖请求；女性变体末位加乳腺乳糖汇 |
+| 血液隔室 | 血容量与体液水联动（`waterVolumeMl / 30000`，钳位 2500–6000 mL），由心输出与 SpO2 推出氧输送能力、血压（静息 120/80 mmHg）与肾滤过（GFR）代理 |
+| 血氧隔室 | 行为、消化与 T4 缩放基础氧耗（T4=1 时 1.0× = 250 mL/min）、受通气与循环上限约束的供需平衡与 SpO2 代理 |
 
-女性清单 `body-modules.female.json`（41 部位、40 份参数文件，独立存档）在此基础上增加：
+女性清单 `body-modules.female.json`（41 部位、37 份唯一参数文件，硬 transfer 闭包 17 部位，独立存档）在此基础上增加：
 
 | 器官 | 已实现功能 |
 | --- | --- |
 | 卵巢 | 周期日与相位、雌二醇/孕酮相对量（周期长度取 Bull 2019） |
 | 子宫 | 内膜相对量、月经失水、痛经（并入 `discomfort` 第五路） |
-| 乳腺 | 催乳素驱动的乳汁水与乳糖请求、胀奶（并入 `discomfort` 第六路；乳汁水走 `bodyFluid` 第五出口，乳糖走女性 `glucose` 变体） |
+| 乳腺 | 默认非泌乳（`lactating: false`、0 泌乳、`prolactinRelative = 1`）；显式开启泌乳后由催乳素驱动乳汁水与乳糖请求、带半时回落的胀奶读数（并入 `discomfort` 第六路；乳汁水走 `bodyFluid` 第五出口，乳糖走女性 `glucose` 变体） |
 
-完整部位与动作清单以 `body-modules.json`、`tools.js` 及各器官 README 为准。
+男性清单 `body-modules.male.json`（40 部位、36 份唯一参数文件，硬 transfer 闭包 15 部位，独立存档）在根清单上只增加：
+
+| 器官 | 已实现功能 |
+| --- | --- |
+| 睾丸 | 睾酮相对量（基线 1、昼夜波动、60 min 半时），放大性反应的唤醒目标与上升速率并产生 `libidoMm` |
+| 附睾 | 精液储存（上限 5 mL，按速率回补），高潮后排空为 `ejaculatedMl` |
+
+仓库共有 44 份 `.parameters.json` 文件（根清单 34 份 + 女性新增 3 份 + 男性新增 2 份 + 3 份未挂入主清单的 DI 变体 + 2 份未挂载的甲状旁腺/血钙）。女性与男性清单不要和根清单共用同一份存档。[`parathyroid`](organs/human-organs/parathyroid/README.md)（PTH）与 [`bloodCalcium`](organs/human-compartments/calcium/README.md)（含 `* 1000` 量纲修正与骨库满容守恒）的脚本、参数、README 和单测已在仓库中，但尚未挂入任何清单，运行时不生效。
+
+完整部位与动作清单以三份 `body-modules*.json`、`tools.js` 及各器官 README 为准。
 
 ### Agent 行为
 
-- `body_act` 提交结构化动作：`drink`（体积、能量、碳水）、`eat`（另含餐型）、`urinate`、`defecate`、`exercise`（强度、时长）。动作进入队列，下一轮结算；同 ID 同载荷重试复用回执。
+- `body_act` 提交结构化动作：`drink`（体积，可带能量与碳水）、`eat`（另含餐型）、`exercise` 与 `sex`（强度、时长），以及无载荷的 `urinate`、`defecate`、`orgasm`。动作进入队列，下一轮结算；同 ID 同载荷重试复用回执。
 - `body_state` 读取已提交的身体快照。
 - `brainNotify` 对饥饿、饱满、口渴、尿意按明显/强档投递提醒，带滞回、冷却与配额。
 - LLM 通过提交动作驱动身体，状态由器官脚本计算并整轮提交。
-- 参数分 `prior`（有登记文献支撑）与 `design`（工程假设）两类。M1、M3 水链与 M19 已做真实 DSH 会话验收，其余切片有离线单元与真实 Gateway 集成测试。
+- 参数分 `prior`（有登记文献支撑）、`fitted_dev`（开发集拟合，不是独立验证）、`design`（工程假设）与 `policy`（提醒策略，如 `notify.parameters.json` 的 14 项参数）四类，目前没有 `validated`。真实 DSH 会话验收覆盖 M1 与 M3 水链的 Task 10、M19；Task 10 与 M19 的证据目录在仓库外，M1 的验收日志未入库，三者都早于尿意／口渴提醒合并。其余切片与 P0 24 小时稳态回归测试只有离线单元与真实 Gateway 集成测试。
 
 ## 开发与验证
 
@@ -87,16 +98,17 @@
 
 ## 快速开始
 
-需要 **Node.js ≥ 22.18**。在源码目录下即可运行测试和离线重放，不需要安装第三方依赖或启动 DSH：
+需要 **Node.js ≥ 22.18**。在源码目录下即可运行测试和离线重放，不需要安装第三方依赖或启动 DSH（注意 Node 类型擦除只支持本地源码路径下的 `.ts`，若安装进 `node_modules` 需先预编译为 `.js`）：
 
 ```sh
 git clone https://github.com/P-A-N-52/dsh-body.git
 cd dsh-body
 npm test
 node tools/replay.mjs scenarios/p1-cola-330.json
+node tools/replay.mjs --manifest body-modules.json scenarios/m1-water-240.json
 ```
 
-示例重放 330 mL、140 kcal 的含糖饮料，输出胃内体积、能量及饥饿／饱满等观测点的 JSON。它不会写身体存档，也不验证真实会话里的通知投递。
+示例支持默认 5 模块 P0/P1 子集重放（如 `p1-cola-330.json`），也支持通过 `--manifest` 按完整清单（`body-modules.json` / `.female.json` / `.male.json`）运行含 `transfer` 守恒的全部位离线重放。它们都不会写身体存档，也不验证真实会话里的通知投递。
 
 ### 接入 DSH
 
@@ -114,9 +126,9 @@ dsh web
 | 入口 | 内容 |
 | --- | --- |
 | [`index.js`](index.js)、[`gateway/`](gateway/) | DSH 插件入口；本地 HTTP、动作队列、轮次结算和存档。 |
-| [`body-modules.json`](body-modules.json)、[`body-modules.female.json`](body-modules.female.json)、[`organs/human-organs/`](organs/human-organs/) | 脚本清单；[胃](organs/human-organs/stomach/README.md)、[十二指肠](organs/human-organs/duodenum/README.md)、[小肠](organs/human-organs/small-intestine/README.md)、[骨骼肌活动与肌糖原](organs/human-organs/skeletal-muscle/README.md)、[皮肤](organs/human-organs/skin/README.md)、[肺](organs/human-organs/lungs/README.md)、[胰腺](organs/human-organs/pancreas/README.md)、[肝](organs/human-organs/liver/README.md)、[肾](organs/human-organs/kidney/README.md)、[膀胱](organs/human-organs/bladder/README.md)、[卵巢](organs/human-organs/ovaries/README.md)、[子宫](organs/human-organs/uterus/README.md)、[乳腺](organs/human-organs/mammary-glands/README.md)、[甲状腺](organs/human-organs/thyroid/README.md)、[肾上腺](organs/human-organs/adrenal/README.md)、[松果体](organs/human-organs/pineal/README.md)、[体感和提醒](organs/human-organs/brain/README.md)的模块、参数与证据；[体液隔室](organs/human-compartments/body-water/README.md)、[葡萄糖隔室](organs/human-compartments/glucose/README.md)与[血氧隔室](organs/human-compartments/blood-oxygen/README.md)是隔室而不是器官。女性清单另用独立存档。 |
+| [`body-modules.json`](body-modules.json)、[`body-modules.female.json`](body-modules.female.json)、[`body-modules.male.json`](body-modules.male.json)、[`organs/human-organs/`](organs/human-organs/) | 脚本清单；[胃](organs/human-organs/stomach/README.md)、[食管](organs/human-organs/esophagus/README.md)、[唾液腺](organs/human-organs/salivary-glands/README.md)、[十二指肠](organs/human-organs/duodenum/README.md)、[小肠](organs/human-organs/small-intestine/README.md)、[结肠](organs/human-organs/colon/README.md)、[骨骼肌活动与肌糖原](organs/human-organs/skeletal-muscle/README.md)、[分区骨骼肌](organs/human-organs/skeletal-muscle/regions/README.md)、[性反应](organs/human-organs/sexual-response/README.md)、[睾丸](organs/human-organs/testes/README.md)、[附睾](organs/human-organs/epididymis/README.md)、[皮肤](organs/human-organs/skin/README.md)、[肺](organs/human-organs/lungs/README.md)、[胰腺](organs/human-organs/pancreas/README.md)、[肝](organs/human-organs/liver/README.md)、[肾](organs/human-organs/kidney/README.md)、[膀胱](organs/human-organs/bladder/README.md)、[卵巢](organs/human-organs/ovaries/README.md)、[子宫](organs/human-organs/uterus/README.md)、[乳腺](organs/human-organs/mammary-glands/README.md)、[甲状腺](organs/human-organs/thyroid/README.md)、[甲状旁腺（未挂载）](organs/human-organs/parathyroid/README.md)、[肾上腺](organs/human-organs/adrenal/README.md)、[松果体](organs/human-organs/pineal/README.md)、[心脏](organs/human-organs/heart/README.md)、[体感和提醒](organs/human-organs/brain/README.md)的模块、参数与证据；[体液隔室](organs/human-compartments/body-water/README.md)、[葡萄糖隔室](organs/human-compartments/glucose/README.md)、[血液隔室](organs/human-compartments/blood/README.md)、[血氧隔室](organs/human-compartments/blood-oxygen/README.md)与[血钙隔室（未挂载）](organs/human-compartments/calcium/README.md)是隔室而不是器官。女性与男性清单各用独立存档。 |
 | [`docs/gateway-and-scripts.md`](docs/gateway-and-scripts.md)、[`docs/gateway-operations.md`](docs/gateway-operations.md) | 当前接口、脚本接入，以及 `write` / `add` / `transfer` 的边界。 |
-| [`docs/superpowers/specs/`](docs/superpowers/specs/) | 已批准的设计文档：器官模型、固／液餐、水链、碳水—血糖、胰腺相对胰岛素、肾糖、口渴提醒、活动—皮肤出汗、运动相关呼吸失水、过度充盈与不适、女性生殖周期、肝糖原与胰高血糖素、血氧池与肺通气、内分泌轴与松果体、可选 DI 样代理。 |
+| [`docs/superpowers/specs/`](docs/superpowers/specs/) | 设计文档，批准状态以各文档的状态行为准：器官模型、固／液餐、水链、碳水—血糖、胰腺相对胰岛素、肾糖、口渴提醒、活动—皮肤出汗、运动相关呼吸失水、过度充盈与不适、女性生殖周期、肝糖原与胰高血糖素、血氧池与肺通气、内分泌轴与松果体、可选 DI 样代理，以及后续的分区骨骼肌、性反应、自主摄糖、食管与结肠、循环、体温调节、肾糖异生、唾液腺、乳腺、男性生殖、甲状旁腺与血钙、消化反馈。 |
 | [`docs/virtual-body.md`](docs/virtual-body.md) | 设计草案与路线图，设计目标不等于已实现功能。 |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 开发与协作约定：脚本、参数、证据与提交。 |
 

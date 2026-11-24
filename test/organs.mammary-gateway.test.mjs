@@ -74,12 +74,45 @@ function assertClose(actual, expected, label, tolerance = 1e-9) {
   );
 }
 
-test('seeded prolactin drives milk, the lactose sink and mammary discomfort in the female manifest', async (t) => {
+test('default female manifest does not lactate, keeps zero water drain and prolactin at 1', async (t) => {
+  silence(t);
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-mammary-default-'));
+  const statePath = writeState(dir);
+  const gateway = boot(femaleManifestPath, statePath);
+  t.after(async () => {
+    await gateway.stop();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  await gateway.ready;
+
+  const booted = gateway.getState().parts;
+  assert.equal(booted.mammaryGlands.lactating, false);
+  assert.equal(booted.pituitary.prolactinRelative, 1);
+
+  const accumulator = emptyAccumulator();
+  for (let round = 1; round <= 10; round++) {
+    await gateway.tick();
+    const parts = gateway.getState().parts;
+    assert.equal(parts.mammaryGlands.lactating, false);
+    assert.equal(parts.mammaryGlands.milkRequestMl, 0);
+    assert.equal(parts.mammaryGlands.milkMl, 0);
+    assert.equal(parts.mammaryGlands.lactoseRequestG, 0);
+    assert.equal(parts.mammaryGlands.lactoseG, 0);
+    assert.equal(parts.mammaryGlands.fullnessMm, 0);
+    assert.equal(parts.pituitary.prolactinRelative, 1);
+    assertClose(parts.glucose.concentrationMgDl, 90, `round ${round}: fasting glucose`);
+    accumulate(accumulator, parts);
+    assertClose(waterLedgerMl(parts, accumulator), 0, `round ${round}: water ledger`);
+  }
+  assert.equal(accumulator.milkMl, 0);
+});
+
+test('seeded lactating female with prolactin drives milk, the lactose sink and discomfort without ratcheting', async (t) => {
   silence(t);
   const dir = mkdtempSync(join(tmpdir(), 'dsh-mammary-'));
   const statePath = writeState(dir, {
     pituitary: { prolactinRelative: 3 },
-    mammaryGlands: { fullnessMm: 68 },
+    mammaryGlands: { lactating: true, fullnessMm: 68 },
   });
   const gateway = boot(femaleManifestPath, statePath);
   t.after(async () => {
@@ -91,6 +124,7 @@ test('seeded prolactin drives milk, the lactose sink and mammary discomfort in t
   const booted = gateway.getState().parts;
   assert.equal(Object.keys(booted).length, 41);
   assert.ok(booted.mammaryGlands, 'the female manifest must load mammaryGlands');
+  assert.equal(booted.mammaryGlands.lactating, true);
   assert.equal(booted.pituitary.prolactinRelative, 3);
   assert.equal(booted.mammaryGlands.fullnessMm, 68);
 
@@ -102,7 +136,8 @@ test('seeded prolactin drives milk, the lactose sink and mammary discomfort in t
   assertClose(first.mammaryGlands.lactoseRequestG, 0.105, 'round 1 lactose request');
   assert.equal(first.mammaryGlands.milkMl, 0, 'round 1 pays the round-start request of zero');
   assert.equal(first.mammaryGlands.lactoseG, 0);
-  assertClose(first.mammaryGlands.fullnessMm, 74, 'fullness rises by 4 mm per unremoved mL');
+  const expectedFullness1 = 68 * (2 ** (-1 / 30)) + 4 * 1.5;
+  assertClose(first.mammaryGlands.fullnessMm, expectedFullness1, 'fullness decays and adds unemptied milk');
   assert.equal(first.interoception.discomfort, 0, 'round 1 still reads the seeded fullness 68');
   assert.ok(first.pituitary.prolactinRelative > 2.9, 'prolactin decays toward its target');
   accumulate(accumulator, first);
@@ -112,21 +147,30 @@ test('seeded prolactin drives milk, the lactose sink and mammary discomfort in t
   const second = gateway.getState().parts;
   assertClose(second.mammaryGlands.milkMl, 1.5, 'round 2 pays the 1.5 mL milk request');
   assertClose(second.mammaryGlands.lactoseG, 0.105, 'round 2 pays the lactose request');
-  assertClose(second.glucose.glucoseMassG, 12.69 - 0.105, 'the lactose sink leaves the glucose pool');
   assert.ok(second.mammaryGlands.lactoseG > 0);
-  assert.ok(second.mammaryGlands.fullnessMm > 74, 'fullness keeps rising while production exceeds payout');
-  assertClose(second.interoception.discomfort, (100 * (74 - 70)) / (100 - 70), 'round 2 discomfort reads fullness 74');
+  assertClose(
+    second.interoception.discomfort,
+    (100 * (expectedFullness1 - 70)) / (100 - 70),
+    'round 2 discomfort reads round 1 fullness',
+  );
   accumulate(accumulator, second);
   assert.ok(accumulator.milkMl > 0, 'the water ledger must accumulate actual milk');
   assertClose(waterLedgerMl(second, accumulator), 0, 'round 2 water ledger includes mammaryGlands.milkMl');
 
   await gateway.tick();
   const third = gateway.getState().parts;
-  assert.ok(third.mammaryGlands.milkMl > 0, 'milk keeps being paid');
-  assert.ok(third.mammaryGlands.lactoseG > 0, 'the lactose sink keeps being paid');
-  assert.ok(third.interoception.discomfort > second.interoception.discomfort, 'discomfort follows the higher fullness');
+  assert.ok(third.mammaryGlands.fullnessMm < second.mammaryGlands.fullnessMm, 'fullness decays once previous milk payout is observed');
   accumulate(accumulator, third);
-  assertClose(waterLedgerMl(third, accumulator), 0, 'round 3 water ledger');
+
+  for (let round = 4; round <= 60; round++) {
+    await gateway.tick();
+    accumulate(accumulator, gateway.getState().parts);
+  }
+  const later = gateway.getState().parts;
+  assert.ok(later.mammaryGlands.milkMl > 0, 'milk keeps being paid');
+  assert.ok(later.mammaryGlands.lactoseG > 0, 'the lactose sink keeps being paid');
+  assert.ok(later.mammaryGlands.fullnessMm < 30, 'fullness does not ratchet permanently');
+  assertClose(waterLedgerMl(later, accumulator), 0, 'round 60 water ledger');
 });
 
 test('the root manifest has no mammary part and still boots with the three-sink glucose entry', async (t) => {
@@ -149,12 +193,10 @@ test('the root manifest has no mammary part and still boots with the three-sink 
   await gateway.tick();
   const after = gateway.getState().parts;
   assert.equal(Object.hasOwn(after, 'mammaryGlands'), false);
-  assert.deepEqual(after.glucose, {
-    glucoseMassG: 12.69,
-    concentrationMgDl: 90,
-    disposedGlucoseG: 0,
-    excessMassG: 0,
-  });
+  assertClose(after.glucose.glucoseMassG, 12.69, 'fasting glucose mass holds steady');
+  assertClose(after.glucose.concentrationMgDl, 90, 'fasting glucose concentration holds steady');
+  assertClose(after.glucose.disposedGlucoseG, 0.12, 'basal consumption per minute');
+  assert.equal(after.glucose.excessMassG, 0);
   assert.equal(after.pituitary.prolactinRelative, 1);
   assert.equal(after.interoception.discomfort, 0);
 });
@@ -184,10 +226,13 @@ test('a female manifest without mammaryGlands fails at startup on the undeclared
   );
 });
 
-test('a restart on the same state path continues mammary requests and payouts', async (t) => {
+test('a restart on the same state path continues lactating mammary requests and payouts', async (t) => {
   silence(t);
   const dir = mkdtempSync(join(tmpdir(), 'dsh-mammary-restart-'));
-  const statePath = writeState(dir, { pituitary: { prolactinRelative: 3 } });
+  const statePath = writeState(dir, {
+    pituitary: { prolactinRelative: 3 },
+    mammaryGlands: { lactating: true },
+  });
   let gateway = boot(femaleManifestPath, statePath);
   t.after(async () => {
     await gateway.stop();

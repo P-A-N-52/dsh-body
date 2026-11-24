@@ -121,6 +121,8 @@ test('exercise raises heart rate, cardiac output and oxygen delivery while SpO2 
     strokeVolumeMl: 70,
     cardiacOutputMlMin: 4900,
   });
+  assert.equal(resting.blood.systolicMmHg, 120);
+  assert.equal(resting.blood.diastolicMmHg, 80);
 
   exercise(gateway, 'exercise-circulation');
   await gateway.tick();
@@ -130,8 +132,8 @@ test('exercise raises heart rate, cardiac output and oxygen delivery while SpO2 
   assert.equal(active.heart.heartRatePerMin, 175);
   assert.equal(active.heart.cardiacOutputMlMin, 15925);
   assert.ok(active.heart.cardiacOutputMlMin > resting.heart.cardiacOutputMlMin);
-  assert.equal(active.bloodOxygen.oxygenConsumptionMlMin, 1300);
-  assert.equal(active.bloodOxygen.oxygenSupplyMlMin, 1300);
+  assert.equal(active.bloodOxygen.oxygenConsumptionMlMin, 1250);
+  assert.equal(active.bloodOxygen.oxygenSupplyMlMin, 1250);
   assert.equal(active.bloodOxygen.spo2Percent, 97);
 
   const deliveryBefore = active.blood.oxygenDeliveryMlMin;
@@ -148,7 +150,9 @@ test('exercise raises heart rate, cardiac output and oxygen delivery while SpO2 
 
 test('a low blood volume lowers GFR and urine while raising ADH', async (t) => {
   const normalBody = createBody(t);
-  const lowBody = createBody(t, { parts: { blood: { bloodVolumeMl: 3000 } } });
+  const lowBody = createBody(t, {
+    parts: { bodyFluid: { waterVolumeMl: 18000, waterDeficit: 0.4 } },
+  });
   const normal = await normalBody.start();
   const low = await lowBody.start();
 
@@ -159,11 +163,13 @@ test('a low blood volume lowers GFR and urine while raising ADH', async (t) => {
 
   const normalParts = normal.getState().parts;
   const lowParts = low.getState().parts;
-  assert.equal(normalParts.blood.bloodVolumeMl, 5000);
-  assert.equal(normalParts.blood.gfrMlMin, 100);
-  assert.equal(lowParts.blood.bloodVolumeMl, 3000);
-  assert.equal(lowParts.blood.gfrMlMin, 60);
+  assert.ok(normalParts.blood.bloodVolumeMl > 4990 && normalParts.blood.bloodVolumeMl <= 5000);
+  assert.ok(normalParts.blood.gfrMlMin > 99 && normalParts.blood.gfrMlMin <= 100);
+  assert.ok(lowParts.blood.bloodVolumeMl > 2990 && lowParts.blood.bloodVolumeMl <= 3000);
+  assert.ok(lowParts.blood.gfrMlMin > 59 && lowParts.blood.gfrMlMin <= 60);
   assert.ok(lowParts.blood.gfrMlMin < normalParts.blood.gfrMlMin);
+  assert.ok(lowParts.heart.cardiacOutputMlMin < normalParts.heart.cardiacOutputMlMin);
+  assert.ok(lowParts.blood.systolicMmHg < normalParts.blood.systolicMmHg);
   assert.ok(
     lowParts.kidney.urineProductionRequestMl < normalParts.kidney.urineProductionRequestMl,
     `low-volume request ${lowParts.kidney.urineProductionRequestMl} must be below ${normalParts.kidney.urineProductionRequestMl}`,
@@ -188,9 +194,9 @@ test('a low-output heart desaturates blood oxygen during exercise', async (t) =>
   await gateway.tick();
   await gateway.tick();
   const desaturated = gateway.getState().parts;
-  assert.ok(desaturated.heart.cardiacOutputMlMin < 5000, 'the variant heart has low output');
-  assert.equal(desaturated.bloodOxygen.oxygenConsumptionMlMin, 1300);
-  assert.ok(desaturated.bloodOxygen.oxygenSupplyMlMin < 1300);
+  assert.ok(desaturated.heart.cardiacOutputMlMin < 6000, 'the variant heart has low output');
+  assert.equal(desaturated.bloodOxygen.oxygenConsumptionMlMin, 1250);
+  assert.ok(desaturated.bloodOxygen.oxygenSupplyMlMin < 1250);
   assert.ok(desaturated.bloodOxygen.spo2Percent < 97);
   assert.ok(desaturated.bloodOxygen.spo2Percent > 0);
   assert.ok(desaturated.bloodOxygen.oxygenDeficit > 0);
@@ -224,7 +230,10 @@ test('restarting on the same state path continues the circulation chain', async 
   await gateway.tick();
   const after = gateway.getState().parts;
   assert.equal(after.heart.heartRatePerMin, 175);
-  assert.equal(after.heart.cardiacOutputMlMin, 15925);
+  assert.ok(
+    after.heart.cardiacOutputMlMin <= 15925 && after.heart.cardiacOutputMlMin > 15900,
+    `cardiac output reflects slight preload water loss: ${after.heart.cardiacOutputMlMin}`,
+  );
   assert.equal(after.bloodOxygen.spo2Percent, 97);
   assert.equal(
     after.physicalActivity.remainingExerciseMin,

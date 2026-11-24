@@ -32,20 +32,20 @@
     {
       "id": "skin.sweat.maxRateMlPerMin",
       "unit": "mL/min",
-      "value": 2,
+      "value": 15,
       "status": "design",
-      "range": [0.6, 10],
+      "range": [0, 35],
       "source": null,
       "note": "工程出汗率上限，不是人体最大出汗率或任何实测上限；上限只作用于速率，请求量仍按 dt 缩放"
     },
     {
       "id": "skin.heatGain",
-      "unit": "1/°C",
-      "value": 1,
+      "unit": "mL/(min·°C)",
+      "value": 5,
       "status": "design",
-      "range": [0, 5],
+      "range": [0, 20],
       "source": null,
-      "note": "核心温度每高于设定点 37°C 1°C 时出汗请求的相对增益；工程假设，不是实测体温—出汗斜率，设定点 37°C 为模型常量"
+      "note": "核心温度每高于设定点 37°C 1°C 时叠加的热致出汗率增益（mL/(min·°C)），静息与运动均生效；工程假设，不是实测体温—出汗斜率，设定点 37°C 为模型常量"
     }
   ]
 }

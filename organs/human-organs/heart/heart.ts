@@ -9,19 +9,22 @@
  *         + catecholamineGain × (adrenal.cortisolRelative − 1)
  *   heartRatePerMin = clamp(restingHeartRatePerMin × drive,
  *                           restingHeartRatePerMin, maxHeartRatePerMin)
- *   strokeVolumeMl = restingStrokeVolumeMl × (1 + 0.2 × (drive − 1))
+ *   preloadFactor = blood 存在时 clamp(blood.bloodVolumeMl / 5000, 0.5, 1.15)；否则 1
+ *   strokeVolumeMl = clamp(restingStrokeVolumeMl × (1 + 0.2 × (drive − 1)) × preloadFactor,
+ *                          30, 140)
  *   cardiacOutputMlMin = heartRatePerMin × strokeVolumeMl
  *
- * 读轮初 `physicalActivity.remainingExerciseMin` / `intensity` 与
- * `adrenal.cortisolRelative`。`physicalActivity` 未加载时按无活动（intensity 0）回退；
- * `adrenal` 未加载时按 cortisolRelative = 1 回退。已加载但字段缺失、非有限、为负或
- * intensity 超出 [0, 1] 时抛错使本轮失败，不写状态。皮质醇合法 0 是有效相对信号。
- * 本脚本不读 `io.dt`：驱动是轮初快照的瞬时映射，不建心率趋近或恢复动力学。
+ * 读轮初 `physicalActivity.remainingExerciseMin` / `intensity`、`adrenal.cortisolRelative`
+ * 与 `blood.bloodVolumeMl`。`physicalActivity` 未加载时按无活动（intensity 0）回退；
+ * `adrenal` 未加载时按 cortisolRelative = 1 回退；`blood` 未加载时按 preloadFactor = 1 回退。
+ * 已加载但字段缺失、非有限、为负或 intensity 超出 [0, 1] 时抛错使本轮失败，不写状态。
+ * 皮质醇合法 0 是有效相对信号。本脚本不读 `io.dt`：驱动是轮初快照的瞬时映射，不建心率趋近或恢复动力学。
  *
- * 0.2 的搏出量随 drive 的增益是本脚本的 design 常量，未列入参数文件；它只表示模型内
- * 相对变化，不是每搏量—交感张力斜率、超声或血流动力学测量。心率钳位只到
+ * 0.2 的搏出量随 drive 的增益、30–140 mL 搏出量安全钳位及 `preloadFactor`（0.5–1.15）
+ * 是本脚本的 design 常量，未列入参数文件；它们只表示模型内相对变化，不是每搏量—交感张力
+ * 斜率、Frank-Starling 实测曲线、超声或血流动力学测量。心率钳位只到
  * restingHeartRatePerMin 下限与 maxHeartRatePerMin 上限；drive < 1 时心率停在静息值，
- * 而搏出量仍按公式低于静息值。不建模心电、瓣膜、心律、前负荷/后负荷、每搏量调节机制、
+ * 而搏出量仍按公式低于静息值并受 30–140 mL 钳位。不建模心电、瓣膜、心律、后负荷、
  * 运动性高血压或心衰。
  *
  * 证据与未验证：无直接人体来源。静息 70 次/min、最大 180 次/min、搏出 70 mL、1.5 与 0.5
@@ -49,6 +52,10 @@ type AdrenalReading = {
   cortisolRelative?: unknown;
 };
 
+type BloodReading = {
+  bloodVolumeMl?: unknown;
+};
+
 const parameters = loadParameters(new URL('./heart.parameters.json', import.meta.url));
 const restingHeartRatePerMin = requireParameter(
   parameters,
@@ -63,6 +70,9 @@ const activityGain = requireParameter(parameters, 'heart.activityGain');
 const catecholamineGain = requireParameter(parameters, 'heart.catecholamineGain');
 
 const strokeVolumeGain = 0.2;
+const referenceBloodVolumeMl = 5000;
+const strokeVolumeRange = { min: 30, max: 140 };
+const preloadFactorRange = { min: 0.5, max: 1.15 };
 
 export const initialState: HeartState = {
   heartRatePerMin: restingHeartRatePerMin,
@@ -80,6 +90,7 @@ type IO = {
   read(id: 'heart'): Readonly<HeartState> | undefined;
   read(id: 'physicalActivity'): Readonly<ActivityReading> | undefined;
   read(id: 'adrenal'): Readonly<AdrenalReading> | undefined;
+  read(id: 'blood'): Readonly<BloodReading> | undefined;
   write(next: HeartState): void;
 };
 
@@ -128,9 +139,26 @@ function readCortisolRelative(adrenal: Readonly<AdrenalReading> | undefined): nu
   return cortisolRelative;
 }
 
+function readPreloadFactor(blood: Readonly<BloodReading> | undefined): number {
+  if (blood === undefined) return 1;
+  if (typeof blood !== 'object' || blood === null) {
+    throw new Error('heart: blood must be an object');
+  }
+  const bloodVolumeMl = requireFinite(blood.bloodVolumeMl, 'blood.bloodVolumeMl');
+  if (bloodVolumeMl < 0) {
+    throw new Error('heart: blood.bloodVolumeMl must not be negative');
+  }
+  return clamp(
+    bloodVolumeMl / referenceBloodVolumeMl,
+    preloadFactorRange.min,
+    preloadFactorRange.max,
+  );
+}
+
 export function heartbeat(io: IO): void {
   const intensity = readIntensity(io.read('physicalActivity'));
   const cortisolRelative = readCortisolRelative(io.read('adrenal'));
+  const preloadFactor = readPreloadFactor(io.read('blood'));
 
   const drive = 1
     + activityGain * intensity
@@ -140,7 +168,11 @@ export function heartbeat(io: IO): void {
     restingHeartRatePerMin,
     maxHeartRatePerMin,
   );
-  const strokeVolumeMl = restingStrokeVolumeMl * (1 + strokeVolumeGain * (drive - 1));
+  const strokeVolumeMl = clamp(
+    restingStrokeVolumeMl * (1 + strokeVolumeGain * (drive - 1)) * preloadFactor,
+    strokeVolumeRange.min,
+    strokeVolumeRange.max,
+  );
   const cardiacOutputMlMin = heartRatePerMin * strokeVolumeMl;
 
   io.write({ heartRatePerMin, strokeVolumeMl, cardiacOutputMlMin });

@@ -32,11 +32,15 @@
  *   非器官组织清除模型替换。分布体积参数 `source: SRC-DALLAMAN-2007` 只是定义与量级锚点。
  * - 浓度是本轮轮初质量读数：`concentrationMgDl = M_start × 1000 / V`。小肠同轮 transfer 的
  *   新吸收量在 write 之后才加入 `glucoseMassG`，因此当轮浓度仍读旧质量，下一轮才上升。
- * - 本核心只持血池、计算自身残余清除，并按入口给出的汇顺序结算各部位上一轮写出的摄糖请求：
+ * - 本核心只持血池、计算自身基础消耗与残余清除，并按入口给出的汇顺序结算各部位上一轮写出的摄糖请求：
  *   1. `E = max(0, M_start − B)` 写成只读字段 `excessMassG`，唯一写者为本部位；肌肉与肝
  *      读取它计算自己的请求，本脚本不反向读取它们的容量或参数。
- *   2. `D = E × (1 − 2^(−dtMin / residualDisposalHalfTimeMin))` 是本轮自身残余清除，写入
- *      `disposedGlucoseG`；低于基线时 `E = 0`、`D = 0`，不产生清除。
+ *   2. `basalDisposedG = min(M_start, basalConsumptionGPerMin × dtMin × clamp(C_start / 50, 0, 1))`
+ *      是非胰岛素依赖的基础利用（脑与红细胞，方向背景见 `SRC-DALLAMAN-2007` §III.C.3）；
+ *      `excessDisposedG = E × (1 − 2^(−dtMin / residualDisposalHalfTimeMin))` 是超基线残余清除；
+ *      总清除 `D = min(M_start, basalDisposedG + excessDisposedG)` 写入 `disposedGlucoseG`。
+ *      空腹稳态时（90 mg/dL），基础消耗 0.12 g/min 与肝（0.096 g/min）+ 肾（0.024 g/min）
+ *      基础输出精确平衡，血糖稳态维持在约 90 mg/dL。
  *   3. 轮初请求按入口给出的顺序读取并结算（顺序是 `policy`，不是人体优先级证据）：
  *      正常入口为 `R = kidneyGlucose.excretionRequestG`（缺部位按 0）、
  *      `L_req = liver.storageRequestG`、`U_req = muscleGlucose.uptakeRequestG`；
@@ -128,6 +132,10 @@ const residualDisposalHalfTimeMin = requireParameter(
   parameters,
   'glucose.residualDisposalHalfTimeMin',
 );
+const basalConsumptionGPerMin = requireParameter(
+  parameters,
+  'glucose.basalConsumptionGPerMin',
+);
 
 const distributionVolumeDl = referenceBodyMassKg * distributionVolumeDlPerKg;
 const baselineMassG = baselineConcentrationMgDl * distributionVolumeDl / 1000;
@@ -138,6 +146,10 @@ const glucoseInitialState: GlucoseState = {
   disposedGlucoseG: 0,
   excessMassG: 0,
 };
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 function finiteOrZero(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -187,8 +199,13 @@ export function createGlucose(sinks: readonly GlucoseSink[]): GlucoseModule {
       return requestOf(part[sink.requestField], `${sink.requestPart}.${sink.requestField}`);
     });
 
-    const disposedGlucoseG = excessMassG
+    const basalDisposedG = Math.min(
+      startMassG,
+      basalConsumptionGPerMin * dtMin * clamp(concentrationMgDl / 50, 0, 1),
+    );
+    const excessDisposedG = excessMassG
       * (1 - 2 ** (-dtMin / residualDisposalHalfTimeMin));
+    const disposedGlucoseG = Math.min(startMassG, basalDisposedG + excessDisposedG);
     const afterResidualG = startMassG - disposedGlucoseG;
     let remainingG = afterResidualG;
     const amountsG = requestsG.map((requestG) => {

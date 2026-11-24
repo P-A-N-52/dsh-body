@@ -336,13 +336,11 @@ export function createCheckpointStore({
   }
 
   function commit(next, { reserveForAction = false } = {}) {
-    const serialized = reserveForAction ? JSON.stringify(next) : undefined;
+    const pruned = prune(next);
+    const serialized = reserveForAction ? JSON.stringify(pruned) : undefined;
     if (reserveForAction) assertSize(serialized, statePath, maxCheckpointBytes - actionReserveBytes);
 
-    const pruned = prune(next);
-    const contents = encodeCheckpoint(
-      pruned, statePath, maxCheckpointBytes, pruned === next ? serialized : undefined,
-    );
+    const contents = encodeCheckpoint(pruned, statePath, maxCheckpointBytes, serialized);
     mkdirSync(directory, { recursive: true });
     writeFileSync(temporaryPath, `${contents}\n`);
     renameSync(temporaryPath, statePath);

@@ -35,25 +35,27 @@
  *
  * 结肠残渣出口（design，见 docs/superpowers/specs/2026-11-24-bowel-design.md）：水字段的
  * `transferOut` 同时声明 `bodyFluid.waterVolumeMl` 与 `colon.residueWaterMl`，分别与体液的
- * `transferIn` 和结肠的 `transferIn` 配对；`colon` 必须加载，否则启动校验失败。本轮未吸收的
- * 轮初肠水按 `smallIntestine.residueFraction = 0.05`（同目录参数文件，`design`、`source: null`）
- * 转入结肠：
- *   unabsorbedMl = max(0, waterVolumeMl − absorbedWaterMl)
- *   residueMl = clamp(residueFraction, 0, 1) × unabsorbedMl
- * 吸收量仍按上方一阶公式与反馈因子计算，不因残渣出口改变；转入结肠的是“未吸收部分”的固定
- * 比例，不是每日排空量、粪便水实测值或吸收分数。残渣与吸收量之和不超过轮初肠水，因此同轮
- * 两个 transfer 不会透支源字段。结肠在下一轮才回收其中一部分回流 `bodyFluid`；本轮回收量
- * 按结肠轮初残渣计算，不参与本轮小肠吸收。`colon` 未加载时直接调用本模块不报错，但完整清单
- * 启动会因 `transferOut` 目标未声明而失败。
+ * `transferIn` 和结肠的 `transferIn` 配对；`colon` 必须加载，否则启动校验失败。按离开通量
+ * 的比例分流，使累计约 `smallIntestine.residueFraction = 0.05`（同目录参数文件，`design`、
+ * `source: null`）进入结肠、约 `95%` 经小肠吸收并自然随 `dtMin` 缩放：
+ *   absorbedWaterMl = clamp(waterVolumeMl × (1 − 2^(−dtMin / halfTimeMin)) × waterFactor, 0, waterVolumeMl)
+ *   f = clamp(residueFraction, 0, 1)
+ *   f <= 0 时 residueWaterMl = 0；f >= 1 时 residueWaterMl = max(0, waterVolumeMl − absorbedWaterMl)
+ *   否则 residueWaterMl = min(max(0, waterVolumeMl − absorbedWaterMl), absorbedWaterMl × f / (1 − f))
+ * 残渣与吸收量之和不超过轮初肠水且均非负，因此同轮两个 transfer 不会透支源字段。结肠在下一轮才
+ * 回收其中一部分回流 `bodyFluid`；本轮回收量按结肠轮初残渣计算，不参与本轮小肠吸收。`colon`
+ * 未加载时直接调用本模块不报错，但完整清单启动会因 `transferOut` 目标未声明而失败。
  *
- * 吸收反馈（design，见 docs/superpowers/specs/2026-11-24-digestive-feedback-design.md）：
- *   waterFactor = 1 − waterAbsorptionDehydrationFactor × clamp(bodyFluid.waterDeficit, 0, 1)
- *   carbFactor  = 1 + carbAbsorptionInsulinGain × (pancreasEndocrine.insulinRelative − 1)
- *                 + carbAbsorptionGradientGain × (glucose.concentrationMgDl / 90 − 1)
- * 吸收量 = 原一阶吸收 × 对应 factor。90 mg/dL 是硬编码的工程参考浓度（与
- * `glucose.baselineConcentrationMgDl = 90` 对齐），不跨模块读取参数。三个增益参数全部为
- * design、`source: null`，不是水合-吸收或胰岛素-吸收的人体实测斜率；转运体、渗透压、血流与
- * 肠段差异不建模。
+ * 吸收反馈（design，修正自 docs/superpowers/specs/2026-11-24-digestive-feedback-design.md）：
+ *   waterFactor = max(0, 1 + waterAbsorptionDehydrationFactor × clamp(bodyFluid.waterDeficit, 0, 1))
+ *   carbFactor  = max(0, 1 + carbAbsorptionInsulinGain × (pancreasEndocrine.insulinRelative − 1)
+ *                 − carbAbsorptionGradientGain × (glucose.concentrationMgDl / 90 − 1))
+ * 吸收量均按 [0, 轮初池] 严格钳位，防止负值或透支。90 mg/dL 是硬编码的工程参考浓度（与
+ * `glucose.baselineConcentrationMgDl = 90` 对齐），不跨模块读取参数。脱水时不抑制水吸收（默认
+ * `waterAbsorptionDehydrationFactor = 0.1`）；肠腔 SGLT1 吸收不依赖胰岛素（默认
+ * `carbAbsorptionInsulinGain = 0`）；高血糖降低肠腔-血液浓度梯度（负反馈，默认
+ * `carbAbsorptionGradientGain = 0.2`）。三个增益参数全部为 design、`source: null`，不是人体实测
+ * 斜率；转运体、渗透压、血流与肠段差异不建模。
  *
  * 上游契约：`bodyFluid` / `glucose` / `pancreasEndocrine` 未加载（undefined/null）时对应 factor
  * 按 1（原速率）；部位已加载但字段缺失、非有限或为负时抛错，本轮不写状态也不发 transfer。
@@ -207,16 +209,40 @@ export function heartbeat(io: IO): void {
   const carbohydrateG = Math.max(0, finiteOrZero(prev.carbohydrateG));
   const dtMin = io.dt / 60;
 
-  const waterFactor = 1 - waterAbsorptionDehydrationFactor * readWaterDeficit(io.read('bodyFluid'));
-  const carbFactor = 1
-    + carbAbsorptionInsulinGain * (readInsulinRelative(io.read('pancreasEndocrine')) - 1)
-    + carbAbsorptionGradientGain
-      * (readConcentrationMgDl(io.read('glucose')) / CARBOHYDRATE_BASELINE_MG_DL - 1);
+  const waterFactor = Math.max(
+    0,
+    1 + waterAbsorptionDehydrationFactor * readWaterDeficit(io.read('bodyFluid')),
+  );
+  const carbFactor = Math.max(
+    0,
+    1
+      + carbAbsorptionInsulinGain * (readInsulinRelative(io.read('pancreasEndocrine')) - 1)
+      - carbAbsorptionGradientGain
+        * (readConcentrationMgDl(io.read('glucose')) / CARBOHYDRATE_BASELINE_MG_DL - 1),
+  );
 
-  const absorbedWaterMl = absorbedFrom(waterVolumeMl, dtMin, halfTimeMin) * waterFactor;
-  const absorbedCarbohydrateG = absorbedFrom(carbohydrateG, dtMin, carbohydrateHalfTimeMin) * carbFactor;
-  const residueWaterMl = clamp(residueFraction, 0, 1)
-    * Math.max(0, waterVolumeMl - absorbedWaterMl);
+  const absorbedWaterMl = clamp(
+    absorbedFrom(waterVolumeMl, dtMin, halfTimeMin) * waterFactor,
+    0,
+    waterVolumeMl,
+  );
+  const absorbedCarbohydrateG = clamp(
+    absorbedFrom(carbohydrateG, dtMin, carbohydrateHalfTimeMin) * carbFactor,
+    0,
+    carbohydrateG,
+  );
+
+  const clampedResidueFraction = clamp(residueFraction, 0, 1);
+  const remainingWaterMl = Math.max(0, waterVolumeMl - absorbedWaterMl);
+  let residueWaterMl = 0;
+  if (clampedResidueFraction >= 1) {
+    residueWaterMl = remainingWaterMl;
+  } else if (clampedResidueFraction > 0) {
+    residueWaterMl = Math.min(
+      remainingWaterMl,
+      absorbedWaterMl * (clampedResidueFraction / (1 - clampedResidueFraction)),
+    );
+  }
 
   io.write({
     waterVolumeMl,

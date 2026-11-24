@@ -12,14 +12,16 @@
  *   uptake   = 轮初 uptakeG（字段缺失按 0）
  *   active   = physicalActivity 已加载且 remainingExerciseMin > 0
  *   consumed = active
- *     ? min(glycogenUseRateGPerMin × intensity × dtMin,
+ *     ? min(glycogenUseRateGPerMin × regionShare × intensity × dtMin,
  *           max(0, glycogenG) + uptake + legacy)
  *     : 0
  *   glycogenG = max(0, glycogenG) + uptake + legacy − consumed
  *   write { uptakeG: 0, glycogenG, glycogenConsumedG: consumed }
- * `glycogenUseRateGPerMin` 来自同目录上一级的 `glucose-uptake.parameters.json`，三个区域共享，
- * 不新增区域参数。`glycogenG` 是区域糖原储量，`glycogenConsumedG` 是本轮实际消耗；`uptakeG`
- * 是仅由 `transferIn` 增加的到账通量，每轮 write 归 0。
+ * `glycogenUseRateGPerMin`（0.5 g/min）来自同目录上一级的 `glucose-uptake.parameters.json`，
+ * 按区域份额（头颈 0.05 / 躯干 0.45 / 四肢 0.50）拆分，三区全负荷合计恰好 0.5 g/min，不新增区域参数。
+ * 各区域静息初始糖原按 300 g 总量依份额分配（头颈 15 g / 躯干 135 g / 四肢 150 g）。
+ * `glycogenG` 是区域糖原储量，`glycogenConsumedG` 是本轮实际消耗；`uptakeG` 是仅由
+ * `transferIn` 增加的到账通量，每轮 write 归 0。
  *
  * 旧档迁移（design）：旧档只有 `muscleGlucose.glycogenG`（总量）时，区域在自己的第一轮读该
  * 总量，并按**已加载区域**的份额重新归一后把份额并入本轮糖原；聚合器第一次 write 不再保留
@@ -85,6 +87,7 @@ const regionShares: Readonly<Record<MuscleRegionId, number>> = {
   muscleLimbs: 0.5,
 };
 
+const INITIAL_TOTAL_GLYCOGEN_G = 300;
 const regionIds = Object.keys(regionShares) as MuscleRegionId[];
 
 const parameters = loadParameters(
@@ -143,9 +146,10 @@ function readLegacyGlycogenShareG(io: IO, id: MuscleRegionId): number {
 }
 
 export function createMuscleRegion(id: MuscleRegionId) {
+  const regionShare = regionShares[id];
   const initialState: MuscleRegionState = {
     uptakeG: 0,
-    glycogenG: 0,
+    glycogenG: INITIAL_TOTAL_GLYCOGEN_G * regionShare,
     glycogenConsumedG: 0,
   };
   const fields = {
@@ -168,7 +172,7 @@ export function createMuscleRegion(id: MuscleRegionId) {
 
     const consumedG = activity !== undefined && activity.remainingExerciseMin > 0
       ? Math.min(
-          glycogenUseRateGPerMin * activity.intensity * (io.dt / 60),
+          glycogenUseRateGPerMin * regionShare * activity.intensity * (io.dt / 60),
           availableG,
         )
       : 0;

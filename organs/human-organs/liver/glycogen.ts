@@ -21,19 +21,21 @@
  *
  * 公式（design，`dtMin = io.dt / 60`）：
  *   baselineMgDl = 90
- *   response = 1 + insulinSensitivity × (insulinRelative − 1)
+ *   response = max(0, 1 + insulinSensitivity × (insulinRelative − 1))
  *   storageRequestG = min(
  *     maxUptakeRateGPerMin × (excessMassG / (excessMassG + halfMaxExcessG)) × response × dtMin,
  *     remainingCapacityG,
  *   )
- *   stored   = prev.glycogenG + prev.storageG
- *   releasing = G < baselineMgDl || glucagonRelative > 1
- *   release  = releasing
- *     ? min(
- *         maxOutputRateGPerMin × glucagonRelative × cortisolRelative × dtMin,
- *         max(0, stored),
- *       )
- *     : 0
+ *   stored      = prev.glycogenG + prev.storageG
+ *   deficitMgDl = max(0, baselineMgDl − G)
+ *   excessMgDl  = max(0, G − baselineMgDl)
+ *   suppression = 1 / (1 + excessMgDl / 30)
+ *   rawRate     = (basalOutputRateGPerMin × suppression
+ *                 + hypoglycemiaOutputGainGPerMinPerMgDl × deficitMgDl
+ *                 + glucagonOutputGainGPerMin × max(0, glucagonRelative − 1))
+ *                 × max(0, cortisolRelative)
+ *   rate        = clamp(rawRate, 0, maxOutputRateGPerMin)
+ *   release     = min(rate × dtMin, max(0, stored))
  *   write {
  *     glycogenG: max(0, stored),
  *     storageG: 0,
@@ -44,7 +46,7 @@
  *   transfer liver.glycogenG → glucose.glucoseMassG: release（release > 0 时）
  * `excessMassG`、`concentrationMgDl`、`insulinRelative`、`glucagonRelative` 与
  * `cortisolRelative` 都是轮初快照；90 mg/dL 参考值与 `glucose.baselineConcentrationMgDl`、
- * `pancreasEndocrine.referenceGlucoseMgDl` 的工程基线一致，只是释放触发参考，不是实测低血糖
+ * `pancreasEndocrine.referenceGlucoseMgDl` 的工程基线一致，只是反调节参考，不是实测低血糖
  * 阈值。
  *
  * 时序（design）：第 N 轮本脚本写出 `storageRequestG`；`glucose` 在同轮读到的仍是轮初
@@ -54,10 +56,10 @@
  * 实际释放记录，不参与外源碳水质量账（释放是内部转移）。
  *
  * 证据与未验证：本切片没有肝糖原储量、容量、摄糖速率、半饱和量、胰岛素敏感度或胰高血糖素—
- * 肝糖输出剂量反应的实测数据。同目录 `glycogen.parameters.json` 的六个参数都是
+ * 肝糖输出剂量反应的实测数据。同目录 `glycogen.parameters.json` 的九个参数都是
  * `status: design`、`source: null` 的工程占位，不是拟合值、实测值或临床阈值，不能称
  * validated。未建模：容量随个体/年龄/进食状态变化、餐后糖原再合成细节、胰岛素对肝糖输出的
- * 抑制（本切片只按敏感度放大摄糖请求，释放只看血糖、胰高血糖素与皮质醇）、糖异生、胆汁/解毒/
+ * 直接信号抑制（本切片对释放采用血糖超基线平滑抑制）、糖异生、胆汁/解毒/
  * 蛋白合成/脂肪代谢、激素绝对浓度与个体差异。
  *
  * 边界：`glucose` 未加载时释放按参考 90 mg/dL、`excessMassG` 按 0 回退；
@@ -100,6 +102,15 @@ type AdrenalReading = {
 
 const parameters = loadParameters(new URL('./glycogen.parameters.json', import.meta.url));
 const maxOutputRateGPerMin = requireParameter(parameters, 'liver.maxOutputRateGPerMin');
+const basalOutputRateGPerMin = requireParameter(parameters, 'liver.basalOutputRateGPerMin');
+const hypoglycemiaOutputGainGPerMinPerMgDl = requireParameter(
+  parameters,
+  'liver.hypoglycemiaOutputGainGPerMinPerMgDl',
+);
+const glucagonOutputGainGPerMin = requireParameter(
+  parameters,
+  'liver.glucagonOutputGainGPerMin',
+);
 const initialGlycogenG = requireParameter(parameters, 'liver.initialGlycogenG');
 const glycogenCapacityG = requireParameter(parameters, 'liver.glycogenCapacityG');
 const maxUptakeRateGPerMin = requireParameter(parameters, 'liver.maxUptakeRateGPerMin');
@@ -107,6 +118,7 @@ const halfMaxExcessG = requireParameter(parameters, 'liver.halfMaxExcessG');
 const insulinSensitivity = requireParameter(parameters, 'liver.insulinSensitivity');
 
 const baselineMgDl = 90;
+const suppressionScaleMgDl = 30;
 
 export const initialState: LiverState = {
   glycogenG: initialGlycogenG,
@@ -238,16 +250,19 @@ export function heartbeat(io: IO): void {
 
   const dtMin = io.dt / 60;
 
-  const releasing = glucoseMgDl < baselineMgDl || glucagonRelative > 1;
-  const releaseG = releasing
-    ? Math.min(
-        maxOutputRateGPerMin * glucagonRelative * cortisolRelative * dtMin,
-        availableG,
-      )
-    : 0;
+  const deficitMgDl = Math.max(0, baselineMgDl - glucoseMgDl);
+  const excessMgDl = Math.max(0, glucoseMgDl - baselineMgDl);
+  const suppression = 1 / (1 + excessMgDl / suppressionScaleMgDl);
+  const rawRate = (
+    basalOutputRateGPerMin * suppression
+    + hypoglycemiaOutputGainGPerMinPerMgDl * deficitMgDl
+    + glucagonOutputGainGPerMin * Math.max(0, glucagonRelative - 1)
+  ) * Math.max(0, cortisolRelative);
+  const rate = Math.min(maxOutputRateGPerMin, Math.max(0, rawRate));
+  const releaseG = Math.min(rate * dtMin, availableG);
 
   const remainingCapacityG = Math.max(0, glycogenCapacityG - availableG);
-  const insulinResponse = 1 + insulinSensitivity * (insulinRelative - 1);
+  const insulinResponse = Math.max(0, 1 + insulinSensitivity * (insulinRelative - 1));
   const storageRequestG = Math.min(
     maxUptakeRateGPerMin
       * (excessMassG / (excessMassG + halfMaxExcessG))

@@ -111,12 +111,17 @@ test('sex raises arousal, feeds interoception and pays sweat, lung water and reg
   assert.equal(parts.physicalActivity.remainingExerciseMin, 29, 'sex is counted as activity');
   assertClose(
     parts.skin.sweatRequestMl,
-    0.6 * (1 + (0.02 * 250 - 0.05 * 12) / 60),
-    'the heat factor scales the baseline request',
+    0.6,
+    'near-37C resting temperature produces zero thermal sweat bonus over the exercise baseline request',
   );
   assert.equal(parts.lungs.respiratoryWaterLossRequestMl, 0.3);
+  const expectedConsumedByRegion = {
+    muscleHead: 0.025,
+    muscleTrunk: 0.225,
+    muscleLimbs: 0.25,
+  };
   for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
-    assert.equal(parts[region].glycogenConsumedG, 0.5, region);
+    assertClose(parts[region].glycogenConsumedG, expectedConsumedByRegion[region], region);
     assert.ok(parts[region].glycogenG < 10, `${region}: the seeded glycogen is consumed`);
   }
 

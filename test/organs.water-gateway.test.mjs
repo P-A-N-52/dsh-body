@@ -227,10 +227,15 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
     involuntaryVoidedMl: 0,
   });
   assert.deepEqual(loaded.physicalActivity, { remainingExerciseMin: 0, intensity: 0 });
+  const initialRegionGlycogen = {
+    muscleHead: 15,
+    muscleTrunk: 135,
+    muscleLimbs: 150,
+  };
   for (const region of ['muscleHead', 'muscleTrunk', 'muscleLimbs']) {
     assert.deepEqual(loaded[region], {
       uptakeG: 0,
-      glycogenG: 0,
+      glycogenG: initialRegionGlycogen[region],
       glycogenConsumedG: 0,
     }, region);
   }
@@ -257,7 +262,7 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
   assert.deepEqual(after.glucose, {
     glucoseMassG: 12.69,
     concentrationMgDl: 90,
-    disposedGlucoseG: 0,
+    disposedGlucoseG: 0.12,
     excessMassG: 0,
   });
   assert.deepEqual(after.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
@@ -338,6 +343,20 @@ test('240 mL drink over 120 rounds conserves water and moves every signal', asyn
   assert.ok(
     drinkParts.stomach.waterVolumeMl
       <= drinkParts.stomach.volumeMl - drinkParts.stomach.solidVolumeMl + 1e-9,
+  );
+  assert.ok(
+    drinkParts.colon.residueWaterMl < 15,
+    `expected colon residue to stay small (~5% split minus reclamation), got ${drinkParts.colon.residueWaterMl}`,
+  );
+  assert.ok(
+    drinkParts.stomach.waterVolumeMl + drinkParts.smallIntestine.waterVolumeMl < 10,
+    'almost all 240 mL water should have left stomach and small intestine by 120 min',
+  );
+  const systemicGainMl = (drinkParts.bodyFluid.waterVolumeMl - controlParts.bodyFluid.waterVolumeMl)
+    + (drinkParts.bladder.volumeMl - controlParts.bladder.volumeMl);
+  assert.ok(
+    systemicGainMl > 215,
+    `expected ~95% (~225 mL) of 240 mL drink in systemic bodyFluid/bladder, got ${systemicGainMl}`,
   );
 });
 
@@ -421,11 +440,14 @@ test('a mixed meal keeps non-water stomach content separate from the water ledge
 
   let cumulativeEmptiedMl = 0;
   let cumulativeEmptiedWaterMl = 0;
+  let cumulativeSweatMl = 0;
   for (let round = 1; round <= 20; round++) {
     await gateway.tick();
-    const stomach = gateway.getState().parts.stomach;
+    const roundParts = gateway.getState().parts;
+    const stomach = roundParts.stomach;
     cumulativeEmptiedMl += stomach.emptiedMl;
     cumulativeEmptiedWaterMl += stomach.emptiedWaterMl;
+    cumulativeSweatMl += roundParts.skin.sweatVolumeMl;
     assert.ok(stomach.volumeMl >= stomach.waterVolumeMl, `round ${round}: water exceeds total`);
     assert.ok(
       stomach.waterVolumeMl <= stomach.volumeMl - stomach.solidVolumeMl + 1e-9,
@@ -438,7 +460,7 @@ test('a mixed meal keeps non-water stomach content separate from the water ledge
   assert.ok(cumulativeEmptiedWaterMl < 240);
   const parts = gateway.getState().parts;
   assert.ok(parts.stomach.solidVolumeMl > 0);
-  assert.ok(Math.abs(waterTotal(parts) - 240) <= 1e-6);
+  assert.ok(Math.abs(waterTotal(parts, initialBodyWaterMl, cumulativeSweatMl) - 240) <= 1e-6);
 });
 
 test('urinate voids the round-start bladder once and same-round urine stays', async (t) => {
@@ -599,14 +621,11 @@ test('a non-zero urinate keeps the drink ledger and leaves the same-round urine'
           + parts.stomach.emptiedWaterMl) <= 1e-9,
         `round ${round}: only normal emptying left the stomach`,
       );
-      const residueMl = 0.05 * Math.max(
-        0,
-        voidBefore.smallIntestine.waterVolumeMl - parts.smallIntestine.absorbedWaterMl,
+      const residueMl = Math.min(
+        Math.max(0, voidBefore.smallIntestine.waterVolumeMl - parts.smallIntestine.absorbedWaterMl),
+        parts.smallIntestine.absorbedWaterMl * (0.05 / 0.95),
       );
-      const reclaimedMl = Math.min(
-        voidBefore.colon.residueWaterMl * 0.001,
-        voidBefore.colon.residueWaterMl,
-      );
+      const reclaimedMl = voidBefore.colon.residueWaterMl * (1 - Math.exp(-0.01));
       assert.ok(
         Math.abs(parts.smallIntestine.waterVolumeMl - voidBefore.smallIntestine.waterVolumeMl
           - (parts.stomach.emptiedWaterMl - parts.smallIntestine.absorbedWaterMl - residueMl)) <= 1e-9,
@@ -631,10 +650,7 @@ test('a non-zero urinate keeps the drink ledger and leaves the same-round urine'
         retryBefore.bodyFluid.waterVolumeMl,
       );
       assert.equal(parts.bladder.volumeMl, retryBefore.bladder.volumeMl + newUrineMl);
-      const reclaimedMl = Math.min(
-        retryBefore.colon.residueWaterMl * 0.001,
-        retryBefore.colon.residueWaterMl,
-      );
+      const reclaimedMl = retryBefore.colon.residueWaterMl * (1 - Math.exp(-0.01));
       assert.ok(
         Math.abs(parts.bodyFluid.waterVolumeMl - retryBefore.bodyFluid.waterVolumeMl
           + newUrineMl - parts.smallIntestine.absorbedWaterMl - reclaimedMl) <= 1e-9,

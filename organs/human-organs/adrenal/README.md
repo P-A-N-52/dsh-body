@@ -4,7 +4,7 @@
 
 `adrenal/` 目前只有一个部位 `adrenal`，脚本为 `cortisol.ts`，没有动作、通知或 `transfer`，也不写其他部位。它把轮初 `pituitary.acthRelative` 一阶趋近成 `cortisolRelative`（皮质醇相对量，1 为工程基线）：ACTH 高于基线时皮质醇上升，低于基线时下降。皮质醇的消费者是 `liver`（低血糖释放速率乘该信号）与 `interoception`（转成 `stressMm` 读数）；皮质醇还经 `hypothalamusEndocrine` / `pituitary` 反向抑制 CRH/ACTH。本切片只建相对信号与一阶时滞，不是血浆皮质醇、ACTH 剂量反应、HPA 轴时程或临床应激模型。
 
-实现状态：脚本、参数与模块契约测试已落地；根清单为 28 部位、30 份参数文件，女性清单为 30 部位、32 份；本切片不新增 `transfer`，硬闭包仍为根 10 / 女性 11 个部位。`adrenal.responseHalfTimeMin` 是 `design`、`source: null`，没有登记人体来源。本文只描述离线模型与契约，未做真实 DSH 会话、激素实测或临床验证。
+实现状态：脚本、参数与模块契约测试已落地；当前根清单为 38 部位、34 份唯一参数文件，女性清单为 41 部位、37 份，男性清单为 40 部位、36 份；硬闭包为根与男性 15 个部位、女性 17 个部位，本切片不新增 `transfer`。`adrenal.responseHalfTimeMin` 是 `design`、`source: null`，没有登记人体来源。本文只描述离线模型与契约，未做真实 DSH 会话、激素实测或临床验证。
 
 ## 1. 脚本与读写关系
 
@@ -27,13 +27,16 @@
 
 ## 3. 方程与参数
 
-设 `prev` 为轮初自身状态，`ACTH = 轮初 pituitary.acthRelative`（未加载垂体时按 1），`dtMin = io.dt / 60`：
+设 `prevCortisol = clamp(finiteOr(prev.cortisolRelative, 1), 0, 3)`，`ACTH = 轮初 pituitary.acthRelative`（未加载垂体时按 1），`dtMin = io.dt / 60`：
 
 ```text
-cortisolRelative = ACTH + (prev.cortisolRelative − ACTH) × 2^(−dtMin / responseHalfTimeMin)
+cortisolRelative = clamp(
+  ACTH + (prevCortisol − ACTH) × 2^(−dtMin / responseHalfTimeMin),
+  0, 3
+)
 ```
 
-- 一阶趋近的目标就是轮初 ACTH；没有额外的增益、容量或饱和项。ACTH 的钳位范围由垂体侧决定，本脚本不另行钳位。
+- 一阶趋近的目标就是轮初 ACTH；脚本对轮初 `prev.cortisolRelative` 先经 `finiteOr(..., 1)` 回退非有限值再钳位，同时对输出 `cortisolRelative` 显式钳在 `[0, 3]`，确保旧档异常或极端上游输入不越界。
 - `dtMin = responseHalfTimeMin` 时距离减半；60 s 一轮时每轮保留 `2^(−1/15)` 的距离。
 - `ACTH = 1` 且 `prev = 1` 时皮质醇精确保持 1。ACTH 高于 1 时皮质醇单调上移，低于 1 时下移。
 
@@ -52,7 +55,7 @@ cortisolRelative = ACTH + (prev.cortisolRelative − ACTH) × 2^(−dtMin / resp
 | `hypothalamusEndocrine` | `cortisolRelative` | 皮质醇高于 1 时压低 CRH 目标，低于 1 时抬高目标 |
 | `pituitary` | `cortisolRelative` | 皮质醇高于 1 时压低 ACTH 目标，低于 1 时抬高目标 |
 
-`liver` 只有在本轮满足 `glucose.concentrationMgDl < 90` 或 `glucagonRelative > 1` 时才释放；皮质醇只是释放速率的乘数，不会单独启动释放，也不会直接改血糖质量。`stressMm` 只是 0–100 mm 代理读数，不进入 `discomfort`，不触发通知或动作。负反馈闭合顺序与 HPT 轴相同：第 N 轮写出的皮质醇最早第 N+1 轮被下丘脑、垂体和消费者读到；新 CRH/ACTH 再晚一轮进入下游。
+`liver` 采用平滑比例内源产糖速率公式，整体乘以 `max(0, cortisolRelative)` 并受存量与速率上限钳位；皮质醇只是释放速率的乘数，不会单独启动或直接改写血糖质量。`stressMm` 只是 0–100 mm 代理读数，不进入 `discomfort`，不触发通知或动作。负反馈闭合顺序与 HPT 轴相同：第 N 轮写出的皮质醇最早第 N+1 轮被下丘脑、垂体和消费者读到；新 CRH/ACTH 再晚一轮进入下游。
 
 ## 5. 旧档、重启与异常
 

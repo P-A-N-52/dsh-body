@@ -31,61 +31,61 @@
 ### Task 1: hypothalamusEndocrine
 
 **Files:** Create `organs/human-organs/brain/hypothalamus-endocrine.ts` + 参数、`test/organs.hypothalamus-endocrine.test.mjs`
-- [ ] Step 1: 失败测试（T4=2 → TRH/TSH 下降、T4=0.5 → 上升、皮质醇同、30 min 半时、缺部位按 1）。
-- [ ] Step 2: 运行预期失败。
-- [ ] Step 3: 实现（公式见 spec，读 `thyroid.thyroxineRelative` / `adrenal.cortisolRelative`）。
-- [ ] Step 4: 参数文件（`hypothalamusEndocrine.trhFeedbackGain = 1`、`crhFeedbackGain = 1`）。
-- [ ] Step 5: 运行预期通过。
+- [x] Step 1: 失败测试（T4=2 → TRH/TSH 下降、T4=0.5 → 上升、皮质醇同、30 min 半时、缺部位按 1）。
+- [x] Step 2: 运行预期失败。
+- [x] Step 3: 实现（公式见 spec，读 `thyroid.thyroxineRelative` / `adrenal.cortisolRelative`）。
+- [x] Step 4: 参数文件（`hypothalamusEndocrine.trhFeedbackGain = 1`、`crhFeedbackGain = 1`）。
+- [x] Step 5: 运行预期通过。
 
 ### Task 2: pituitary
 
 **Files:** Create `organs/human-organs/brain/pituitary.ts` + 参数、`test/organs.pituitary.test.mjs`
-- [ ] Step 1: 失败测试（TRH 驱动 TSH、T4 负反馈、ACTH 同、30 min 半时、缺部位按 1）。
-- [ ] Step 2: 运行预期失败。
-- [ ] Step 3: 实现（读 `hypothalamusEndocrine.trhRelative/crhRelative`、`thyroid.thyroxineRelative`、`adrenal.cortisolRelative`）。
-- [ ] Step 4: 参数文件（`pituitary.tshFeedbackGain = 1`、`acthFeedbackGain = 1`）。
-- [ ] Step 5: 运行预期通过。
+- [x] Step 1: 失败测试（TRH 驱动 TSH、T4 负反馈、ACTH 同、30 min 半时、缺部位按 1）。
+- [x] Step 2: 运行预期失败。
+- [x] Step 3: 实现（读 `hypothalamusEndocrine.trhRelative/crhRelative`、`thyroid.thyroxineRelative`、`adrenal.cortisolRelative`）。
+- [x] Step 4: 参数文件（`pituitary.tshFeedbackGain = 1`、`acthFeedbackGain = 1`）。
+- [x] Step 5: 运行预期通过。
 
 ### Task 3: thyroid + bloodOxygen 基础代谢
 
 **Files:** Create `organs/human-organs/thyroid/thyroid.ts` + 参数、`test/organs.thyroid.test.mjs`；Modify `organs/human-compartments/blood-oxygen/oxygen.ts` 与其测试
-- [ ] Step 1: 失败测试（TSH 驱动 T4、60 min 半时、缺垂体按 1；`bloodOxygen` 基础氧耗随 T4 缩放 0.8+0.4×T4，缺甲状腺按 1）。
-- [ ] Step 2: 运行预期失败。
-- [ ] Step 3: 实现 `thyroid` 并改 `bloodOxygen.basalMlMin` 的用法（保留原参数名，基础值改按 T4 缩放）。
-- [ ] Step 4: 参数文件（`thyroid.*` 按 spec，无额外增益参数时只写 owner/版本说明亦可，但要有参数文件）。
-- [ ] Step 5: 运行预期通过。
+- [x] Step 1: 失败测试（TSH 驱动 T4、60 min 半时、缺垂体按 1；`bloodOxygen` 基础氧耗随 T4 缩放 0.8+0.4×T4，缺甲状腺按 1）。
+- [x] Step 2: 运行预期失败。
+- [x] Step 3: 实现 `thyroid` 并改 `bloodOxygen.basalMlMin` 的用法（保留原参数名，基础值改按 T4 缩放）。
+- [x] Step 4: 参数文件（`thyroid.*` 按 spec，无额外增益参数时只写 owner/版本说明亦可，但要有参数文件）。
+- [x] Step 5: 运行预期通过。
 
 ### Task 4: adrenal + liver 释放
 
 **Files:** Create `organs/human-organs/adrenal/cortisol.ts` + 参数、`test/organs.adrenal.test.mjs`；Modify `organs/human-organs/liver/glycogen.ts` 与其测试
-- [ ] Step 1: 失败测试（ACTH 驱动皮质醇、15 min 半时、缺垂体按 1；`liver` 释放速率乘皮质醇，缺肾上腺按 1）。
-- [ ] Step 2: 运行预期失败。
-- [ ] Step 3: 实现 `adrenal` 并改 `liver` 释放公式（`maxOutputRateGPerMin × glucagonRelative × cortisolRelative × dtMin`，仍钳到存量）。
-- [ ] Step 4: 参数文件（`adrenal.*`）。
-- [ ] Step 5: 运行预期通过。
+- [x] Step 1: 失败测试（ACTH 驱动皮质醇、15 min 半时、缺垂体按 1；`liver` 释放速率乘皮质醇，缺肾上腺按 1）。
+- [x] Step 2: 运行预期失败。
+- [x] Step 3: 实现 `adrenal` 并改 `liver` 释放公式（`maxOutputRateGPerMin × glucagonRelative × cortisolRelative × dtMin`，仍钳到存量）。
+- [x] Step 4: 参数文件（`adrenal.*`）。
+- [x] Step 5: 运行预期通过。
 
 ### Task 5: pineal + interoception 读数
 
 **Files:** Create `organs/human-organs/pineal/melatonin.ts` + 参数、`test/organs.pineal.test.mjs`；Modify `organs/human-organs/brain/interoception.ts` 与其测试
-- [ ] Step 1: 失败测试（`hour = 2` → 1.8、`hour = 14` → 0.2；`stressMm`/`sleepinessMm` 软读与缺省 0；其余读数不变）。
-- [ ] Step 2: 运行预期失败。
-- [ ] Step 3: 实现 `pineal`（用 `io.simulatedSeconds`，不用现实时间）；`interoception` 加 `stressMm`、`sleepinessMm`（`mm`、`absolute`）。
-- [ ] Step 4: 参数文件（`pineal.*`，如需要 amplitude/base，按 spec 固定曲线写常量）。
-- [ ] Step 5: 运行预期通过。
+- [x] Step 1: 失败测试（`hour = 2` → 1.8、`hour = 14` → 0.2；`stressMm`/`sleepinessMm` 软读与缺省 0；其余读数不变）。
+- [x] Step 2: 运行预期失败。
+- [x] Step 3: 实现 `pineal`（用 `io.simulatedSeconds`，不用现实时间）；`interoception` 加 `stressMm`、`sleepinessMm`（`mm`、`absolute`）。
+- [x] Step 4: 参数文件（`pineal.*`，如需要 amplitude/base，按 spec 固定曲线写常量）。
+- [x] Step 5: 运行预期通过。
 
 ### Task 6: 清单、计数、真实 Gateway 与文档
 
 **Files:** Modify 两份清单、`test/organs.gateway.test.mjs`、`organs.modules.test.mjs`、`parameters.test.mjs`、`dsh.tools.test.mjs`、`organs.di.test.mjs`、`organs.reproductive-gateway.test.mjs`、`organs.water-gateway.test.mjs`、`organs.sexual-response-gateway.test.mjs`、`organs.blood-oxygen-gateway.test.mjs`（计数/列表）；Create `test/organs.endocrine-gateway.test.mjs`、五份新部位 README；Modify `organs/human-compartments/blood-oxygen/README.md`、`organs/human-organs/liver/README.md`、`organs/human-organs/brain/README.md`、`docs/gateway-and-scripts.md`、`docs/virtual-body.md`
-- [ ] Step 1: 两份清单各加 5 个脚本；根 28 部位 / 30 参数、女性 30 / 32。
-- [ ] Step 2: 同步计数、部位列表与初值。
-- [ ] Step 3: 真实 Gateway：预置高 TSH → T4 升、基础氧耗升、TRH/TSH 回落；预置高 ACTH → 皮质醇升、肝糖释放增、`stressMm` 升；跨仿真昼夜 `sleepinessMm` 变化；重启接续。
-- [ ] Step 4: 文档（新部位 README + 上述修改文件）。
-- [ ] Step 5: `npm test` 与 `git diff --check`。
+- [x] Step 1: 两份清单各加 5 个脚本；根 28 部位 / 30 参数、女性 30 / 32。
+- [x] Step 2: 同步计数、部位列表与初值。
+- [x] Step 3: 真实 Gateway：预置高 TSH → T4 升、基础氧耗升、TRH/TSH 回落；预置高 ACTH → 皮质醇升、肝糖释放增、`stressMm` 升；跨仿真昼夜 `sleepinessMm` 变化；重启接续。
+- [x] Step 4: 文档（新部位 README + 上述修改文件）。
+- [x] Step 5: `npm test` 与 `git diff --check`。
 
 ## 交付记录（2026-11-24）
 
-- **已实现：** 下丘脑 `hypothalamusEndocrine`（TRH/CRH）→ `pituitary`（TSH/ACTH/催乳素）→ `thyroid`（T4）/ `adrenal`（皮质醇）两条轴，含 T4 与皮质醇对上游的负反馈；`pineal` 按仿真昼夜产褪黑素。消费者：`bloodOxygen` 基础氧耗 × `(0.8 + 0.4 × T4)`、`liver` 释放 × 皮质醇、`interoception` 新增 `stressMm` / `sleepinessMm`。根清单 28 部位 / 30 参数、女性 30 / 32。
+- **已实现：** 下丘脑 `hypothalamusEndocrine`（TRH/CRH）→ `pituitary`（TSH/ACTH/催乳素）→ `thyroid`（T4）/ `adrenal`（皮质醇）两条轴，含 T4 与皮质醇对上游的负反馈；`pineal` 按仿真昼夜产褪黑素。消费者：`bloodOxygen` 基础氧耗、`liver` 释放 × 皮质醇、`interoception` 新增 `stressMm` / `sleepinessMm`。根清单 28 部位 / 30 参数、女性 30 / 32（当时计数）。
 - **已验证：** 五部位单元测试全绿；真实 Gateway：预置高 TSH → T4 升、基础氧耗升、TRH/TSH 回落（负反馈）；预置高 ACTH → 皮质醇升、肝糖释放增、`stressMm` 升；跨仿真昼夜 `sleepinessMm` 曲线；重启接续。`npm test` 670/670。
-- **实施中修正：** T4=1 时基础需氧按公式为 300（`250 × (0.8 + 0.4 × 1)`），相关断言从 250/1250 同步为 300/1300。
-- **仍未实现/未验证：** 甲状旁腺/血钙、T3、肾上腺素/去甲肾上腺素、绝对激素浓度、睡眠行为、免疫（胸腺/脾/淋巴）、独立生理数据、真实 DSH 会话、28 部位性能。
+- **P0 修正：** `bloodOxygen` 将基础氧耗缩放由 `0.8 + 0.4 × T4` 修正为 `max(0.2, 0.6 + 0.4 × T4)`（`T4=1` 恢复 `1.0× = 250 mL/min`）；`hypothalamus-endocrine.ts` / `pituitary.ts` / `thyroid.ts` / `cortisol.ts` 补齐 `finiteOr` 与 `[0, 3]` 钳位，且 `hypothalamusEndocrine` 接入低温（`< 36.8°C`）→ TRH、低血糖（`< 80 mg/dL`）与高强运动（`intensity > 0.5`）→ CRH 上游驱动（静息基线精确保持 `1.0`）。
+- **仍未实现/未验证：** 甲状旁腺/血钙（脚本/参数/单测已入库但尚未挂入清单）、T3、肾上腺素/去甲肾上腺素、绝对激素浓度、睡眠行为、免疫（胸腺/脾/淋巴）、独立生理数据、真实 DSH 会话、性能基线。
 - **工作区：** 与唾液腺、乳腺合入本地提交 `e0b2ae9`。

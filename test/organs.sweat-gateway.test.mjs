@@ -204,12 +204,12 @@ test('without exercise the ten-round trajectory matches the existing golden base
 
   const parts = gateway.getState().parts;
   const expected = {
-    adh: 1.0044262289516583,
-    request: 0.9965802716913408,
-    bodyWater: 29991.006062492746,
-    deficit: 0.015992909993670763,
-    thirst: 50.699818558396146,
-    bladder: 8.99393750725631,
+    adh: 1.0044629908699707,
+    request: 0.9963193794666958,
+    bodyWater: 29991.006811928368,
+    deficit: 0.015991851951519493,
+    thirst: 50.699783734416634,
+    bladder: 8.993188071632254,
   };
   for (const [actual, want] of [
     [parts.hypothalamusAdh.relativeConcentration, expected.adh],
@@ -326,4 +326,39 @@ test('restarting keeps the remaining exercise and continues the same sweat and l
   assert.equal(finalParts.skin.sweatVolumeMl, 0);
   assert.equal(finalParts.lungs.respiratoryWaterLossMl, 0);
   assertLedger(finalParts, 'round 33');
+});
+
+test('with thermoregulation loaded, resting hyperthermia sweats while preserving the water ledger', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-sweat-thermo-'));
+  const statePath = writeState(dir, {
+    thermoregulation: { coreTemperatureC: 38.5 },
+  });
+  silence(t);
+  const gateway = boot(rootManifestPath, statePath);
+  t.after(async () => {
+    await gateway.stop();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  await gateway.ready;
+
+  let cumulativeVoidedMl = 0;
+  let cumulativeSweatMl = 0;
+  let cumulativeLungMl = 0;
+  for (let round = 1; round <= 3; round++) {
+    await gateway.tick();
+    const parts = gateway.getState().parts;
+    cumulativeVoidedMl += parts.bladder.voidedMl;
+    cumulativeSweatMl += parts.skin.sweatVolumeMl;
+    cumulativeLungMl += parts.lungs.respiratoryWaterLossMl;
+    const ledgerMl = waterLedgerMl(parts, {
+      cumulativeVoidedMl,
+      cumulativeSweatMl,
+      cumulativeLungMl,
+    });
+    assert.ok(Math.abs(ledgerMl) <= 1e-6, `round ${round}: water ledger ${ledgerMl}`);
+  }
+
+  const parts = gateway.getState().parts;
+  assert.ok(parts.skin.sweatRequestMl > 0, 'resting hyperthermia requests sweat');
+  assert.ok(cumulativeSweatMl > 0, 'resting hyperthermia pays sweat from body water');
 });

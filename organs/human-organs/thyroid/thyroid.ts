@@ -56,9 +56,15 @@ type IO = {
 
 const parameters = loadParameters(new URL('./thyroid.parameters.json', import.meta.url));
 const thyroxineHalfTimeMin = requireParameter(parameters, 'thyroid.thyroxineHalfTimeMin');
+const MIN_RELATIVE = 0;
+const MAX_RELATIVE = 3;
 
 function finiteOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function readTshRelative(io: IO): number {
@@ -76,12 +82,20 @@ function readTshRelative(io: IO): number {
 
 export function heartbeat(io: IO): void {
   const prev = io.read(id) ?? initialState;
-  const prevThyroxine = finiteOr(prev.thyroxineRelative, initialState.thyroxineRelative);
+  const prevThyroxine = clamp(
+    finiteOr(prev.thyroxineRelative, initialState.thyroxineRelative),
+    MIN_RELATIVE,
+    MAX_RELATIVE,
+  );
   const tshRelative = readTshRelative(io);
 
   const dtMin = io.dt / 60;
   const retention = 2 ** (-dtMin / thyroxineHalfTimeMin);
   io.write({
-    thyroxineRelative: tshRelative + (prevThyroxine - tshRelative) * retention,
+    thyroxineRelative: clamp(
+      tshRelative + (prevThyroxine - tshRelative) * retention,
+      MIN_RELATIVE,
+      MAX_RELATIVE,
+    ),
   });
 }

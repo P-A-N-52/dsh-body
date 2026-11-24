@@ -69,9 +69,9 @@ test('thermoregulation parameters are design defaults with no source', () => {
     'thermoregulation.setpointC': { value: 37, unit: '°C' },
     'thermoregulation.ambientTemperatureC': { value: 25, unit: '°C' },
     'thermoregulation.heatCapacityKcalPerC': { value: 60, unit: 'kcal/°C' },
-    'thermoregulation.metabolicFactor': { value: 0.02, unit: 'kcal/mL' },
+    'thermoregulation.metabolicFactor': { value: 0.005, unit: 'kcal/mL' },
     'thermoregulation.shiveringGain': { value: 2, unit: 'kcal/(min·°C)' },
-    'thermoregulation.lossGain': { value: 0.05, unit: 'kcal/(min·°C)' },
+    'thermoregulation.lossGain': { value: 0.104167, unit: 'kcal/(min·°C)' },
     'thermoregulation.evaporationKcalPerMl': { value: 0.58, unit: 'kcal/mL' },
   };
   assert.deepEqual(
@@ -97,39 +97,49 @@ test('thermoregulation parameters are design defaults with no source', () => {
 });
 
 test('heat production follows oxygen consumption and shivering below the setpoint', () => {
-  assertClose(heatProductionKcalMin(250, 37), 5, 'basal oxygen at the setpoint');
-  assertClose(heatProductionKcalMin(1000, 37), 20, '1000 mL/min oxygen');
-  assertClose(heatProductionKcalMin(250, 36), 7, 'one degree below the setpoint');
-  assertClose(heatProductionKcalMin(250, 35.5), 8, '1.5 degrees below the setpoint');
-  assertClose(heatProductionKcalMin(250, 38), 5, 'no shivering above the setpoint');
+  assertClose(heatProductionKcalMin(250, 37), 1.25, 'basal oxygen at the setpoint');
+  assertClose(heatProductionKcalMin(1000, 37), 5, '1000 mL/min oxygen');
+  assertClose(heatProductionKcalMin(250, 36), 3.25, 'one degree below the setpoint');
+  assertClose(heatProductionKcalMin(250, 35.5), 4.25, '1.5 degrees below the setpoint');
+  assertClose(heatProductionKcalMin(250, 38), 1.25, 'no shivering above the setpoint');
   assertClose(heatProductionKcalMin(0, 36), 2, 'shivering without oxygen demand');
 
+  const restingLoss = 0.104167 * 12;
   const basal = round({ bloodOxygen: consumption(250), skin: sweat(0) }).written;
   const doubled = round({ bloodOxygen: consumption(1000), skin: sweat(0) }).written;
-  assertClose(basal.coreTemperatureC, 37 + (5 - 0.6) / 60, 'basal temperature rise');
-  assertClose(doubled.coreTemperatureC, 37 + (20 - 0.6) / 60, 'higher oxygen demand');
+  assertClose(basal.coreTemperatureC, 37 + (1.25 - restingLoss) / 60, 'basal steady state at 37 C');
+  assertClose(basal.coreTemperatureC, 37, 'resting 37 C stays ~37 C', 1e-6);
+  assertClose(doubled.coreTemperatureC, 37 + (5 - restingLoss) / 60, 'higher oxygen demand');
   assert.ok(doubled.coreTemperatureC > basal.coreTemperatureC, 'more oxygen consumes more heat');
 });
 
 test('sweat evaporation and the temperature gradient remove heat', () => {
-  assertClose(heatLossKcalMin(0, 37), 0.6, 'gradient loss at 37 C');
-  assertClose(heatLossKcalMin(10, 37), 6.4, '10 mL evaporating sweat');
+  const restingLoss = 0.104167 * 12;
+  assertClose(heatLossKcalMin(0, 37), restingLoss, 'gradient loss at 37 C');
+  assertClose(heatLossKcalMin(10, 37), 5.8 + restingLoss, '10 mL evaporating sweat in 1 min');
+  assertClose(
+    heatLossKcalMin(10, 37, 0.5),
+    0.58 * 20 + restingLoss,
+    '10 mL evaporating sweat over 0.5 min converts to 20 mL/min',
+  );
+  assertClose(heatLossKcalMin(10, 37, 0), restingLoss, 'zero dt gives zero evaporation rate');
   assertClose(heatLossKcalMin(0, 25), 0, 'no gradient at the ambient temperature');
-  assertClose(heatLossKcalMin(0, 20), -0.25, 'colder ambient gains heat');
+  assertClose(heatLossKcalMin(0, 20), -0.104167 * 5, 'colder ambient gains heat');
 
   const dry = round({ bloodOxygen: consumption(250), skin: sweat(0) }).written;
   const wet = round({ bloodOxygen: consumption(250), skin: sweat(10) }).written;
-  assertClose(wet.coreTemperatureC, 37 + (5 - 6.4) / 60, 'evaporative cooling');
+  assertClose(wet.coreTemperatureC, 37 + (1.25 - (5.8 + restingLoss)) / 60, 'evaporative cooling');
   assert.ok(wet.coreTemperatureC < dry.coreTemperatureC, 'sweat cools the body');
 });
 
 test('the core temperature integrates production minus loss over dt', () => {
+  const gradientLoss = 0.104167 * (38 - 25);
   const oneMinute = round({
     state: { coreTemperatureC: 38 },
     bloodOxygen: consumption(250),
     skin: sweat(10),
   }).written;
-  assertClose(oneMinute.coreTemperatureC, 38 + (5 - 6.45) / 60, 'one minute');
+  assertClose(oneMinute.coreTemperatureC, 38 + (1.25 - (5.8 + gradientLoss)) / 60, 'one minute');
 
   const halfMinute = round({
     state: { coreTemperatureC: 38 },
@@ -137,7 +147,11 @@ test('the core temperature integrates production minus loss over dt', () => {
     skin: sweat(10),
     dt: 30,
   }).written;
-  assertClose(halfMinute.coreTemperatureC, 38 + 0.5 * (5 - 6.45) / 60, 'half a minute');
+  assertClose(
+    halfMinute.coreTemperatureC,
+    38 + 0.5 * (1.25 - (0.58 * (10 / 0.5) + gradientLoss)) / 60,
+    'half a minute converts sweatVolumeMl by dtMin',
+  );
 
   const zero = round({
     state: { coreTemperatureC: 38 },
@@ -154,25 +168,43 @@ test('cold temperatures add shivering heat and hot temperatures do not', () => {
     bloodOxygen: consumption(0),
     skin: sweat(0),
   }).written;
-  assertClose(cold.coreTemperatureC, 36 + (2 - 0.55) / 60, 'one degree below the setpoint');
+  assertClose(cold.coreTemperatureC, 36 + (2 - 0.104167 * 11) / 60, 'one degree below the setpoint');
 
   const colder = round({
     state: { coreTemperatureC: 35.5 },
     bloodOxygen: consumption(0),
     skin: sweat(0),
   }).written;
-  assertClose(colder.coreTemperatureC, 35.5 + (3 - 0.525) / 60, '1.5 degrees below');
+  assertClose(colder.coreTemperatureC, 35.5 + (3 - 0.104167 * 10.5) / 60, '1.5 degrees below');
 
   const warm = round({
     state: { coreTemperatureC: 38 },
     bloodOxygen: consumption(0),
     skin: sweat(0),
   }).written;
-  assertClose(warm.coreTemperatureC, 38 - 0.65 / 60, 'no shivering above the setpoint');
+  assertClose(warm.coreTemperatureC, 38 - (0.104167 * 13) / 60, 'no shivering above the setpoint');
+});
+
+test('extreme inputs clamp coreTemperatureC within [25, 45] C', () => {
+  const hyper = round({
+    state: { coreTemperatureC: 44.5 },
+    bloodOxygen: consumption(50000),
+    skin: sweat(0),
+    dt: 600,
+  }).written;
+  assert.equal(hyper.coreTemperatureC, 45, 'clamps high temperature to 45 C');
+
+  const hypo = round({
+    state: { coreTemperatureC: 25.5 },
+    bloodOxygen: consumption(0),
+    skin: sweat(100),
+    dt: 60,
+  }).written;
+  assert.equal(hypo.coreTemperatureC, 25, 'clamps low temperature to 25 C');
 });
 
 test('missing upstream parts and old state fall back without NaN', () => {
-  const expected = 37 + (5 - 0.6) / 60;
+  const expected = 37 + (1.25 - 0.104167 * 12) / 60;
 
   assertClose(round().written.coreTemperatureC, expected, 'missing bloodOxygen and skin');
   assertClose(

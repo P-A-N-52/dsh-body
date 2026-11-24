@@ -4,7 +4,7 @@
 
 肾脏目录包含三个相互独立的部位：`kidney` 只写产尿请求，`kidneyGlucose` 只持有肾糖请求与实际质量通量，`kidneyGluconeogenesis` 只写肾糖异生产糖并转入血糖。`kidney` 目前有一个正常脚本和两个可选的尿崩样（DI-like）变体入口：根据下丘脑 ADH 的相对水平计算下一轮产尿请求，或在 DI 样情景中固定请求。它们都不持有水、不调用 `transfer`，也不写体液或膀胱；真正的排尿转移由 `bodyFluid` 的所有者结算。`kidneyGlucose` 不产生尿水，也不改变 `kidney`、`bodyFluid` 或 `bladder`；它的质量由 `glucose` 结算，见 §6。`kidneyGluconeogenesis` 不建底物池或糖原，只按速率上限产糖，见 §7。
 
-实现状态：正常脚本、参数与定向测试已在 `organs/human-organs/kidney/`，并已加入根清单（加入循环、体温与肾糖异生切片后根清单 36 个部位、35 份参数文件，女性清单 39 个部位、38 份，男性清单 38 个部位、37 份，均含 3 份 DI 变体）。DI 样变体只在独立清单/独立存档中显式加载，根清单与正常参数不含变体。单独加载正常脚本时不需要 `transfer` 配对，但没有 `hypothalamusAdh` 时请求会回落到基线。M19 真实 DSH 会话已补验正常与两组 DI 清单（2026-11-22，33/33 verdicts）：sim 300 正常请求 0.9998 mL、中枢 ADH 0 请求 4 mL、肾性 ADH 1.0022 但请求固定 4 mL，通知 0；证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`（仓库外未入库）。M19 只覆盖 2–5 轮短会话；4 mL/min 仍是 `design` 代理，不是诊断或治疗依据。肾糖排泄是独立部位，契约见 §6；`glucose-excretion.ts`、参数、模块契约测试和根清单注册均已落地，`glucose` 侧的请求—结算已接入；同一切片还加入 `liver` 的肝糖储存/释放，肾糖异生切片再加入 `kidneyGluconeogenesis`，含 `glucose` 的硬 transfer 闭包因此为根 11 部位、女性 13 部位。肾糖链与肾糖异生链尚未做真实 DSH 会话或临床验证。
+实现状态：正常脚本、参数与定向测试已在 `organs/human-organs/kidney/`，并已加入根清单（当前根清单 38 个部位、34 份唯一参数文件，女性清单 41 个部位、37 份，男性清单 40 个部位、36 份；另有 3 份 DI 变体与 1 份缺区域变体不随根清单加载）。DI 样变体只在独立清单/独立存档中显式加载，根清单与正常参数不含变体。单独加载正常脚本时不需要 `transfer` 配对，但没有 `hypothalamusAdh` 时请求会回落到基线。M19 真实 DSH 会话已补验正常与两组 DI 清单（2026-11-22，33/33 verdicts）：sim 300 正常请求 0.9998 mL、中枢 ADH 0 请求 4 mL、肾性 ADH 1.0022 但请求固定 4 mL，通知 0；证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`（仓库外未入库）。M19 只覆盖 2–5 轮短会话；4 mL/min 仍是 `design` 代理，不是诊断或治疗依据。肾糖排泄是独立部位，契约见 §6；`glucose-excretion.ts`、参数、模块契约测试和根清单注册均已落地，`glucose` 侧的请求—结算已接入；同一切片还加入 `liver` 的肝糖储存/释放，肾糖异生切片再加入 `kidneyGluconeogenesis`，含 `glucose` 的硬 transfer 闭包因此为根与男性 15 部位、女性 17 部位。肾糖链与肾糖异生链尚未做真实 DSH 会话或临床验证。
 
 ## 1. 脚本与部位
 
@@ -161,36 +161,37 @@ write.excretedGlucoseG = 0                 // 等待本轮实际 transfer
 
 1. **第 N 轮轮末：** `glucose` 根据本轮轮初质量写出浓度代理读数 `C`。它从第 N+1 轮起才对其他部位可见。
 2. **第 N+1 轮：** `kidneyGlucose` 读到 `C`，按 `C` 和 `io.dt` 写出 `excretionRequestG = R`；本轮 `excretedGlucoseG` 仍为 0。
-3. **第 N+2 轮：** `glucose` 从轮初快照读到 `R`，同时读到 `liver.storageRequestG` 与 `muscleGlucose.uptakeRequestG`。它先算 `E = max(0, M_start − B)` 与自身残余清除 `D = E × (1 − 2^(−dtMin / residualDisposalHalfTimeMin))`（与胰岛素无关），取 `M_after = M_start − D`；再按“肾 → 肝 → 肌”结算：`X = min(max(0, R), M_after)`（旧表达式）、`L_paid = min(liver.storageRequestG, M_after − X)`、`U_paid = min(muscleGlucose.uptakeRequestG, M_after − X − L_paid)`。它 write 转移前质量 `W = M_after + L_paid + U_paid`、`disposedGlucoseG = D`、`excessMassG = E`；Gateway 随后把 `X`、`L_paid`、`U_paid` 逐笔 transfer 到 `kidneyGlucose.excretedGlucoseG`、`liver.storageG` 与 `muscleGlucose.uptakeG`。余额不足时后结算者被钳位，质量守恒仍逐轮成立；总轨迹是各部位请求与残余清除的涌现结果，不再承诺与旧的中央分配模型逐位一致。`kidneyGlucose` 本轮 write 仍先把 `excretedGlucoseG` 归 0，transfer 后才为 `X`。
+3. **第 N+2 轮：** `glucose` 从轮初快照读到 `R`，同时读到 `liver.storageRequestG` 与 `muscleGlucose.uptakeRequestG`。它先算 `E = max(0, M_start − B)` 与自身基础/残余清除 `D = min(M_start, basalDisposed + excessDisposed)`，取 `M_after = M_start − D`；再按“肾 → 肝 → 肌”结算：`X = min(max(0, R), M_after)`、`L_paid = min(liver.storageRequestG, M_after − X)`、`U_paid = min(muscleGlucose.uptakeRequestG, M_after − X − L_paid)`。它 write 转移前质量 `W = M_after`、`disposedGlucoseG = D`、`excessMassG = E`；Gateway 随后把 `X`、`L_paid`、`U_paid` 逐笔 transfer 到 `kidneyGlucose.excretedGlucoseG`、`liver.storageG` 与 `muscleGlucose.uptakeG`。余额不足时后结算者被钳位，质量守恒仍逐轮成立；总轨迹是各部位请求与自身清除的涌现结果，不再承诺与旧的中央分配模型逐位一致。`kidneyGlucose` 本轮 write 仍先把 `excretedGlucoseG` 归 0，transfer 后才为 `X`。
 
 因此，在上述时序中，请求为正且结算轮有可用质量时，从浓度 `C` 提交到首次实际排泄相隔两轮；从请求 `R` 提交到执行只隔一轮。一次自然餐的首次吸收默认发生在第 3 轮，但跨阈轮次由实际轨迹决定，不固定为第 5/6 轮，不能按固定轮次断言肾糖。
 
 实际 transfer 不超过本轮 `M_after` 与结算顺序允许的余额；请求本身可以更大，结算时被钳到 `M_after`，不会扣成负质量。同轮小肠或其他来源的新流入在 write 后加入，不能支付本轮排泄。结算轮不重新按浓度判断请求，只按 `R` 和可用质量执行。上限是残余清除后的全部可用质量，不是只排超基线部分；若因此降到基础质量 `B` 以下，本隔室不补糖，是否回升取决于 `liver` 的存量释放（真实转移，耗尽后不补），不是肾糖或葡萄糖凭空生成。请求本身不进入质量账；只有实际 transfer 的那一克数才从 `glucose.glucoseMassG` 转出并记入 `excretedGlucoseG`，不会把同一质量既算进 `disposedGlucoseG` 又算进肾糖。肾糖先结算，肝储存与肌摄糖再按各自请求与剩余余额支付；肝释放是另一笔转移，只在 write 后抬高 `glucoseMassG`，不支付本轮肾糖。各项分列，互不替代。
 
-### 6.4 十一部位闭包与清单
+### 6.4 十五 / 十七部位闭包与清单
 
-`glucose.glucoseMassG` 同时接收 `smallIntestine.carbohydrateG`、`liver.glycogenG` 与 `kidneyGluconeogenesis.glucoseOutputG`，并向 `kidneyGlucose.excretedGlucoseG`、`liver.storageG` 与 `muscleGlucose.uptakeG` 转出；所以加入 `skin` 的汗液出口与 `lungs` 的运动相关呼吸失水出口后，包含 `glucose` 的完整水/碳水 transfer 闭包为十一部位：
+`glucose.glucoseMassG` 同时接收 `smallIntestine.carbohydrateG`、`liver.glycogenG` 与 `kidneyGluconeogenesis.glucoseOutputG`，并向 `kidneyGlucose.excretedGlucoseG`、`liver.storageG` 与 `muscleGlucose.uptakeG` 转出；加上 `colon` 残渣回路、骨骼肌三区域、`skin` 的汗液出口与 `lungs` 的运动相关呼吸失水出口，完整水/碳水 transfer 闭包为根与男性清单 15 部位（女性清单 17 部位）：
 
 ```text
 stomach/hydration.ts
   → smallIntestine
+      → colon → bodyFluid
       → bodyFluid → bladder
                   → lungs
                   → skin
       → glucose → kidneyGlucose
                 → liver.storageG
-                → muscleGlucose
+                → muscleGlucose → muscleHead / muscleTrunk / muscleLimbs
 liver.glycogenG → glucose（释放，write 后入账）
 kidneyGluconeogenesis.glucoseOutputG → glucose（产糖，write 后入账）
 ```
 
 transfer 图按来源 → 目标列出；Gateway 按 transfer 对键逐笔结算（`gateway/operations.js:206`），`glucose` 的出口为肾糖 → 肝储存 → 肌肉，`liver` 的释放是另一笔转移。
 
-即 `hydration.ts`、`smallIntestine`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGlucose`、`kidneyGluconeogenesis`、`muscleGlucose`、`skin`、`lungs` 必须同在清单中。`bodyFluid.waterVolumeMl` 按肾→肺→汗的顺序向 `bladder.volumeMl`、[`lungs`](../lungs/README.md) 的 `respiratoryWaterLossMl` 与 [`skin`](../skin/README.md) 的 `sweatVolumeMl` 分配轮初水：肾尿请求先支付，肺请求其次，汗液只取扣除肾尿与肺失水后的轮初余量；肾糖请求不参与这一水出口排序。缺任一部位，`createFieldRegistry` 会在启动时报 transfer 配对错误；不能用未加载的槽位、运行中兜底或“先欠着”的请求替代。反过来，加载 `kidneyGlucose` 也必须加载 `glucose`；加载 `glucose` 必须同时加载 `liver`、`kidneyGlucose`、`kidneyGluconeogenesis` 与 `muscleGlucose`。女性清单在根闭包上再加 `uterus` 与 `mammaryGlands`，硬闭包为 13 部位。
+即 `hydration.ts`、`smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGlucose`、`kidneyGluconeogenesis`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、`skin`、`lungs` 必须同在清单中。`bodyFluid.waterVolumeMl` 按肾→肺→汗的顺序向 `bladder.volumeMl`、[`lungs`](../lungs/README.md) 的 `respiratoryWaterLossMl` 与 [`skin`](../skin/README.md) 的 `sweatVolumeMl` 分配轮初水：肾尿请求先支付，肺请求其次，汗液只取扣除肾尿与肺失水后的轮初余量；肾糖请求不参与这一水出口排序。缺任一部位，`createFieldRegistry` 会在启动时报 transfer 配对错误；不能用未加载的槽位、运行中兜底或“先欠着”的请求替代。反过来，加载 `kidneyGlucose` 也必须加载 `glucose`；加载 `glucose` 必须同时加载 `liver`、`kidneyGlucose`、`kidneyGluconeogenesis` 与 `muscleGlucose`。女性清单在根闭包上再加 `uterus` 与 `mammaryGlands`，硬闭包为 17 部位。
 
-`kidney` 水请求不在这个 transfer 配对内；[`physicalActivity`](../skeletal-muscle/README.md) 只是 `skin`、`lungs` 与 `muscleGlucose` 的普通轮初读取，也不在闭包内；`hypothalamusAdh`、`hypothalamusThirst`、`interoception` 仍是软读取，缺省由各脚本按自己的默认值处理。旧 `stomach/motility.ts` 不声明水/碳水 transfer，不能替代 `hydration.ts`，也不加载这条肾糖链。
+`kidney` 水请求不在这个 transfer 配对内；[`physicalActivity`](../skeletal-muscle/README.md) 只是 `skin`、`lungs`、`muscleGlucose` 与骨骼肌区域的普通轮初读取，也不在闭包内；`hypothalamusAdh`、`hypothalamusThirst`、`interoception` 仍是软读取，缺省由各脚本按自己的默认值处理。旧 `stomach/motility.ts` 不声明水/碳水 transfer，不能替代 `hydration.ts`，也不加载这条肾糖链。
 
-根清单已同时注册胰腺、肝糖原、肾糖与肌摄糖，当前为 23 个部位、25 份参数文件。DI 变体复制根清单，自动包含新部位；原 ADH/水 golden 不变。
+当前根清单为 38 个部位、34 份唯一参数文件（另含 3 份 DI 变体与 1 份缺区域变体）；DI 变体复制根清单，自动包含新部位；原 ADH/水 golden 不变。
 
 ### 6.5 外源碳质量账
 
@@ -252,23 +253,32 @@ transfer 图按来源 → 目标列出；Gateway 按 transfer 对键逐笔结算
 设 `C = 轮初 glucose.concentrationMgDl`（未加载按 `baselineMgDl`）、`H = 轮初 pancreasEndocrine.glucagonRelative`（未加载按 1）、`dtMin = io.dt / 60`：
 
 ```text
-active = C < baselineMgDl || H > 1
-glucoseOutputG = active ? min(maxOutputRateGPerMin × H × dtMin, maxOutputPerRoundG) : 0
+deficitMgDl    = max(0, baselineMgDl − C)
+excessMgDl     = max(0, C − baselineMgDl)
+suppression    = 1 / (1 + excessMgDl / 30)
+rawRate        = basalOutputRateGPerMin × suppression
+               + hypoglycemiaOutputGainGPerMinPerMgDl × deficitMgDl
+               + glucagonOutputGainGPerMin × max(0, H − 1)
+rate           = clamp(rawRate, 0, maxOutputRateGPerMin)
+glucoseOutputG = min(rate × dtMin, maxOutputPerRoundG)
 write { glucoseOutputG }
 transfer kidneyGluconeogenesis.glucoseOutputG → glucose.glucoseMassG: glucoseOutputG（> 0 时）
 ```
 
-`baselineMgDl` 只是工程触发参考，不是实测低血糖阈值；高血糖但 `H > 1` 时仍会产糖。`C` 与 `H` 都是轮初快照，因此产糖与血糖回升之间有一轮滞后；`maxOutputPerRoundG` 防止高胰高血糖素或长 `dt` 单轮转入过多。
+采用平滑比例输出后，90 mg/dL、`H = 1` 基线时输出 `0.024 g/min`（与肝基础输出 `0.096 g/min` 合计 `0.120 g/min` 平衡血糖基础消耗）；高血糖时基础产糖随 `1 / (1 + excessMgDl / 30)` 平滑抑制；低血糖或高胰高血糖素时按缺口与超额信号平滑增加，受速率上限 `0.5 g/min` 与单轮上限 `0.6 g` 钳制。`baselineMgDl` 只是工程反调节参考，不是实测低血糖阈值；`C` 与 `H` 都是轮初快照，因此产糖与血糖回升之间有一轮滞后；`maxOutputPerRoundG = 0.6 g` 防止长 `dt` 单轮转入过多，同时使正常 60 s 轮次在胰高血糖素升高时不会被过低截断。
 
 ### 7.2 参数
 
 | 参数 ID | 默认值 | 单位 | 状态 | 来源 |
 | --- | ---: | --- | --- | --- |
-| `kidneyGluconeogenesis.maxOutputRateGPerMin` | 0.3 | `g/min` | `design` | — |
-| `kidneyGluconeogenesis.maxOutputPerRoundG` | 0.3 | `g` | `design` | — |
+| `kidneyGluconeogenesis.maxOutputRateGPerMin` | 0.5 | `g/min` | `design` | — |
+| `kidneyGluconeogenesis.maxOutputPerRoundG` | 0.6 | `g` | `design` | — |
 | `kidneyGluconeogenesis.baselineMgDl` | 90 | `mg/dL` | `design` | — |
+| `kidneyGluconeogenesis.basalOutputRateGPerMin` | 0.024 | `g/min` | `design` | — |
+| `kidneyGluconeogenesis.hypoglycemiaOutputGainGPerMinPerMgDl` | 0.005 | `g/(min·mg/dL)` | `design` | — |
+| `kidneyGluconeogenesis.glucagonOutputGainGPerMin` | 0.05 | `g/min` | `design` | — |
 
-三个参数都在 [`gluconeogenesis.parameters.json`](gluconeogenesis.parameters.json)，`source: null`，是工程占位，不是拟合值、实测肾糖异生速率或临床阈值，不能称 `validated`。长期空腹肾糖异生约占内源葡萄糖 20–25% 的背景只用于说明建模动机，没有进入参数或剂量反应。
+六个参数都在 [`gluconeogenesis.parameters.json`](gluconeogenesis.parameters.json)，`source: null`，是工程占位，不是拟合值、实测肾糖异生速率或临床阈值，不能称 `validated`。长期空腹肾糖异生约占内源葡萄糖 20–25% 的背景只用于说明建模动机，没有进入参数或剂量反应。
 
 ### 7.3 transfer 配对、边界与验证
 

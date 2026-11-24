@@ -123,7 +123,7 @@ test('a valid sex action replaces the remaining minutes and raises arousal into 
   }
 });
 
-test('round-start testosterone scales the arousal target with a neutral fallback', () => {
+test('round-start testosterone scales the arousal target with clamped [0, 100] and neutral fallback', () => {
   const action = [sex(0.8, 30)];
   const withoutTestes = round({ actions: action }).written;
 
@@ -132,9 +132,17 @@ test('round-start testosterone scales the arousal target with a neutral fallback
   assertClose(atOne.arousalMm, 80 * (1 - 2 ** (-1 / 5)), 'testosterone 1 target 80');
 
   const atTwo = round({ actions: action, testes: { testosteroneRelative: 2 } }).written;
-  // 目标 100 × 0.8 × (0.5 + 0.5 × 2) = 120 mm，唤醒半时 5 min，轮末 1 min。
-  assertClose(atTwo.arousalMm, 120 * (1 - 2 ** (-1 / 5)), 'testosterone 2 target 120');
+  // 目标 clamp(100 × 0.8 × 1.5, 0, 100) = 100 mm，唤醒半时 5 / 1.5 min，轮末 1 min。
+  assertClose(atTwo.arousalMm, 100 * (1 - 2 ** (-1.5 / 5)), 'testosterone 2 clamped target 100');
   assert.ok(atTwo.arousalMm > withoutTestes.arousalMm, 'higher testosterone raises arousal');
+
+  const maxIntensityHighT = round({ actions: [sex(1, 30)], testes: { testosteroneRelative: 2 } }).written;
+  const maxIntensityBase = round({ actions: [sex(1, 30)], testes: { testosteroneRelative: 1 } }).written;
+  assert.ok(maxIntensityHighT.arousalMm > maxIntensityBase.arousalMm, 'high testosterone still speeds rise at intensity 1');
+  assert.ok(maxIntensityHighT.arousalMm <= 100, 'arousal stays within [0, 100]');
+
+  const negativeT = round({ actions: action, testes: { testosteroneRelative: -5 } }).written;
+  assertClose(negativeT.arousalMm, 40 * (1 - 2 ** (-1 / 5)), 'negative testosterone clamped to 0');
 
   for (const testes of [
     undefined,
@@ -285,6 +293,30 @@ test('round-start arousal at orgasmForcedMm releases without any action', () => 
   }).written;
   assert.equal(below.lastOrgasmAtSimMin, null);
   assert.notEqual(below.phase, 'orgasm');
+});
+
+test('refractory prevents double orgasm and infinite forced orgasm loop even above 95 mm', () => {
+  const peak = {
+    arousalMm: 100,
+    phase: 'plateau',
+    remainingSexMin: 20,
+    sexIntensity: 1,
+    lastOrgasmAtSimMin: null,
+  };
+  const r1 = round({ state: peak, simulatedSeconds: 60 }).written;
+  assert.equal(r1.lastOrgasmAtSimMin, 1);
+  assert.equal(r1.phase, 'orgasm');
+  assertClose(r1.arousalMm, 100 * 2 ** (-1 / 15), 'release round immediately decays');
+  assert.ok(r1.arousalMm >= 95, 'still >= 95 right after a 100 mm forced release');
+
+  const r2 = round({
+    state: r1,
+    actions: [{ type: 'orgasm' }],
+    simulatedSeconds: 120,
+  }).written;
+  assert.equal(r2.lastOrgasmAtSimMin, 1, 'refractory blocks both forced and voluntary release');
+  assert.equal(r2.phase, 'refractory');
+  assert.ok(r2.arousalMm < 95, 'arousal drops below forced threshold');
 });
 
 test('a sex action during refractory replaces remaining minutes but arousal keeps falling', () => {

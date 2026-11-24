@@ -158,9 +158,9 @@ export function createBodySimulation({
   }
 
   async function catchUp(current, nowMs, limit) {
-    if (nowMs < current.wallTimeMs) return { ...current, wallTimeMs: nowMs };
+    if (nowMs < current.wallTimeMs) return { checkpoint: { ...current, wallTimeMs: nowMs }, catchUpError: null };
     const elapsed = Math.floor((nowMs - current.wallTimeMs) / heartbeatIntervalMs);
-    if (elapsed === 0) return current;
+    if (elapsed === 0) return { checkpoint: current, catchUpError: null };
 
     let next = current;
     let remaining = Math.min(elapsed, limit);
@@ -170,7 +170,16 @@ export function createBodySimulation({
         const result = await runHeartbeat(next, batch, { suppressNotifications: true });
         next = store.prune(applyBatch(next, result, batch));
         remaining -= 1;
-        if (remaining <= 0) return next;
+        if (remaining <= 0) {
+          const elapsedAfter = Math.floor((nowMs - next.wallTimeMs) / heartbeatIntervalMs);
+          return {
+            checkpoint: {
+              ...next,
+              wallTimeMs: next.wallTimeMs + Math.max(0, elapsedAfter) * heartbeatIntervalMs,
+            },
+            catchUpError: null,
+          };
+        }
       }
 
       const elapsedAfter = Math.floor((nowMs - next.wallTimeMs) / heartbeatIntervalMs);
@@ -185,14 +194,13 @@ export function createBodySimulation({
         const result = await runHeartbeat(next, batch, { suppressNotifications: true });
         next = store.prune(applyBatch(next, result, batch));
       }
-      return next;
+      return { checkpoint: next, catchUpError: null };
     } catch (error) {
       if (error?.fatal) {
         recordFatal(error, next.activeBatch?.targetSimulatedSeconds ?? null);
-        return { ...next, activeBatch: null, catchUpError: truncateError(error) };
+        return { checkpoint: { ...next, activeBatch: null }, catchUpError: truncateError(error) };
       }
-      const failed = failBatch(next, error);
-      return { ...failed, catchUpError: truncateError(error) };
+      return { checkpoint: failBatch(next, error), catchUpError: truncateError(error) };
     }
   }
 
@@ -222,9 +230,9 @@ export function createBodySimulation({
     const { active } = current;
     const resumedFromPause = active && saved?.startup?.active === false;
     if (!active) {
+      const { catchUpError: _ignored, ...cleanCurrent } = current;
       return {
-        ...current,
-        catchUpError: undefined,
+        ...cleanCurrent,
         startup: startupRecord({
           startedAtMs,
           saved,
@@ -236,7 +244,7 @@ export function createBodySimulation({
       };
     }
 
-    const reconciled = actions.reconcile(current);
+    const { catchUpError: _ignored, ...reconciled } = actions.reconcile(current);
     const initialParts = Object.fromEntries(modules.map(({ id, initialState }) => [id, initialState]));
     const loadedParts = Object.fromEntries(modules.map(({ id, initialState }) => [
       id, withDefaults(initialState, reconciled.snapshot.parts[id], `Body part ${id}`),
@@ -246,7 +254,6 @@ export function createBodySimulation({
       : 0;
     const seeded = {
       ...reconciled,
-      catchUpError: undefined,
       notifications: reconciled.notifications ?? [],
       lastEffectiveAt: Math.max(reconciled.lastEffectiveAt ?? 0, highestPendingEffectiveAt, 0),
       snapshot: {
@@ -255,13 +262,16 @@ export function createBodySimulation({
       },
     };
 
-    const restored = resumedFromPause
+    const { checkpoint: restored, catchUpError } = resumedFromPause
       ? {
-        ...seeded,
-        wallTimeMs: startedAtMs,
-        activeBatch: seeded.activeBatch
-          ? { ...seeded.activeBatch, targetWallTimeMs: startedAtMs + heartbeatIntervalMs }
-          : null,
+        checkpoint: {
+          ...seeded,
+          wallTimeMs: startedAtMs,
+          activeBatch: seeded.activeBatch
+            ? { ...seeded.activeBatch, targetWallTimeMs: startedAtMs + heartbeatIntervalMs }
+            : null,
+        },
+        catchUpError: null,
       }
       : await catchUp(seeded, startedAtMs, catchUpMinutes);
 
@@ -271,11 +281,11 @@ export function createBodySimulation({
       active: true,
       resumedFromPause,
       caughtUpSeconds: restored.snapshot.simulatedSeconds - seeded.snapshot.simulatedSeconds,
-      catchUpError: restored.catchUpError ?? null,
+      catchUpError,
     });
 
     let snapshot = restored.snapshot;
-    if (!restored.catchUpError && !restored.activeBatch) {
+    if (!catchUpError && !restored.activeBatch) {
       const context = {
         ...startup,
         initialParts,
@@ -422,10 +432,10 @@ export function createBodySimulation({
 
   function start() {
     const checkpoint = store.current;
-    if (!checkpoint.active) return;
+    if (!checkpoint.active || fatalFailure) return;
     const lastError = checkpoint.startup.catchUpError;
     lastHeartbeat = {
-      lastSuccessAtMs: now(),
+      lastSuccessAtMs: lastError ? null : now(),
       lastErrorAtMs: lastError ? now() : null,
       lastError,
       consecutiveFailures: lastError ? 1 : 0,

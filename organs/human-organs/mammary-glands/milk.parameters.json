@@ -28,6 +28,15 @@
       "range": [0, 20],
       "source": null,
       "note": "每轮产奶请求超出上一轮实际泌乳量 1 mL 时胀奶代理的增量，0–100 mm 量程；不是乳腺压力、容量或胀痛测量"
+    },
+    {
+      "id": "mammaryGlands.fullnessDecayHalfTimeMin",
+      "unit": "min",
+      "value": 30,
+      "status": "design",
+      "range": [1, 240],
+      "source": null,
+      "note": "胀奶代理的一阶回落半时工程假设，防止一轮结算滞后造成的永久棘轮累积，并在非泌乳状态平滑归零"
     }
   ]
 }

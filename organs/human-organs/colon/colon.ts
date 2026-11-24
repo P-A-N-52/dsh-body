@@ -2,17 +2,17 @@
  * 结肠（colon）薄切片：接收小肠转入的残渣水，按工程速率回收水分回流 `bodyFluid`，
  * 同时形成粪便储存、响应 `defecate` 动作排出，并输出便意代理。部位 `colon` 的唯一写者。
  *
- * 证据：无直接人体测量。`colon.reclamationRatePerMin = 0.001 /min`、
+ * 证据：无直接人体测量。`colon.reclamationRatePerMin = 0.01 /min`、
  * `colon.stoolFormationGPerMin = 0.01 g/min`、`colon.referenceStoolG = 200 g`（同目录
  * `colon.parameters.json`）全部是 `design`、`source: null` 的工程假设，不是结肠转运时间、
  * 结肠吸水率、粪便形成率或便意阈值的人体测量，也不是对任何研究的拟合。设计背景见
  * docs/superpowers/specs/2026-11-24-bowel-design.md；本切片不新增论文证据，不把 200 g 或
- * 0.001 /min 称为生理正常值。实际结肠转运约以小时计，本切片用 60 s 轮上的固定比例代理，
- * 不建分段转运或昼夜节律。
+ * 0.01 /min 称为生理正常值。实际结肠转运约以小时计，本切片用 60 s 轮上的指数回收代理（半时约
+ * 69 min），不建分段转运或昼夜节律。
  *
  * 公式（dtMin = io.dt / 60；只读轮初快照与本轮原始动作）：
  *   startResidue = max(0, prev.residueWaterMl)
- *   reclaimed = min(startResidue × reclamationRatePerMin × dtMin, startResidue)
+ *   reclaimed = clamp(startResidue × (1 − exp(−reclamationRatePerMin × dtMin)), 0, startResidue)
  *   startStoolG = max(0, prev.stoolG)
  *   本轮有 `defecate`：defecatedG = startStoolG；stoolG = 0
  *   否则：defecatedG = 0；stoolG = startStoolG + stoolFormationGPerMin × dtMin
@@ -137,8 +137,9 @@ export function heartbeat(io: IO): void {
   const dtMin = io.dt / 60;
   const startResidueMl = Math.max(0, finiteOrZero(prev.residueWaterMl));
   const startStoolG = Math.max(0, finiteOrZero(prev.stoolG));
-  const reclaimedWaterMl = Math.min(
-    startResidueMl * reclamationRatePerMin * dtMin,
+  const reclaimedWaterMl = clamp(
+    startResidueMl * (1 - Math.exp(-reclamationRatePerMin * dtMin)),
+    0,
     startResidueMl,
   );
   const defecate = io.actions.some((action) => action?.type === 'defecate');

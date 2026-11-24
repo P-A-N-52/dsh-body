@@ -42,29 +42,29 @@
 - Consumes: 现有 `heartbeat(io)`、`hasEnergyIntake` 语义、根清单和 `startGateway` 测试方式。
 - Produces: `GhrelinState { relativeConcentration: number; minutesSinceEnergyIntake: number }`；`fields.minutesSinceEnergyIntake = { unit: 'min', mode: 'absolute' }`；三个新参数的准确 ID 见 spec。
 
-- [ ] **Step 1: 先写模块失败测试**
+- [x] **Step 1: 先写模块失败测试**
 
 在 `test/organs.ghrelin.test.mjs` 增加：初值/字段声明；缺失、负值和非有限计时回落 0；onset 前保持既有恢复；onset 后上升且不超过 peak；初始状态跑 1200 轮后计时为 1200、`G>=1.7` 且 `G<=1.8`；含能摄入当轮 `t=0`、`c=min(c,nadir)`；onset 后纯水和零能量动作分别与无动作对照结果相同。保留现有“0.5 经 90 轮到 0.75”等精确断言。
 
-- [ ] **Step 2: 验证模块测试按预期失败**
+- [x] **Step 2: 验证模块测试按预期失败**
 
 Run: `node --test test/organs.ghrelin.test.mjs`
 Expected: 新断言因缺少计时字段/上升行为而失败，既有断言不被预先放宽。
 
-- [ ] **Step 3: 实现 spec 的状态、参数和方程**
+- [x] **Step 3: 实现 spec 的状态、参数和方程**
 
 在 `ghrelin.ts` 增加计时状态和三个参数，摄入轮只抑制/清零，其余轮按 spec 计算 `t_next`、`target`、`c_next`；缺失或非法计时回落 0。更新脚本头来源与未建模边界，删除“完全不建模餐前上升”的旧描述，保留“不建模餐时表、昼夜节律和剂量响应”。
 
-- [ ] **Step 4: 验证模块测试通过**
+- [x] **Step 4: 验证模块测试通过**
 
 Run: `node --test test/organs.ghrelin.test.mjs`
 Expected: PASS，包括全部旧用例。
 
-- [ ] **Step 5: 补强饥饿通知测试**
+- [x] **Step 5: 补强饥饿通知测试**
 
 在 `test/organs.brain-notify.test.mjs` 以已发送过明显饥饿的会话为种子：44 min 时强饥饿不重复通知，45 min 时产生一个强饥饿 `wake`，档位和计数正确。Run: `node --test test/organs.brain-notify.test.mjs`，Expected: PASS，生产 notify 代码不变。
 
-- [ ] **Step 6: 写真实根清单 Gateway 验收**
+- [x] **Step 6: 写真实根清单 Gateway 验收**
 
 在 `test/organs.fasting-gateway.test.mjs` 使用临时目录、端口 0、`autoTick:false`、固定时钟和真实 `body-modules.json`：
 1. 第一轮以 0 kcal 饮水绑定 `sessionId`，跑 1200 轮；断言 `G>=1.7`、`hunger>=85`，通知队列包含该会话的饥饿提醒，至少一次强饥饿 `wake`。
@@ -85,26 +85,31 @@ Expected: PASS；若失败，先核对会话、轮初快照和动作时序，不
 - Consumes: Task 1 的字段名、参数 ID 和 spec 方程；不改任何代码或测试。
 - Produces: 与实现一致的状态、参数、证据和未建模说明。
 
-- [ ] **Step 1: 更新胃 README**
+- [x] **Step 1: 更新胃 README**
 
 记录 `minutesSinceEnergyIntake`、三个新参数、含能重置/纯水不重置、旧档从 0 开始及饱和曲线；把“完全不建模餐前上升”改为“建模空腹时长驱动的工程上升，不建模餐时表、餐前预期、昼夜节律和剂量响应”。
 
-- [ ] **Step 2: 更新脑 README 与历史设计提示**
+- [x] **Step 2: 更新脑 README 与历史设计提示**
 
 脑 README 说明 `G=1` 是餐间基准，空腹时可高于 1，65/85 mm 映射及通知策略不变。原器官模型设计顶部增加历史提示，链接新 spec，不静默重写原批准文本；只更新会误导当前行为的说明。
 
-- [ ] **Step 3: 检查文档改动**
+- [x] **Step 3: 检查文档改动**
 
 Run: `git diff --check -- organs/human-organs/stomach/README.md organs/human-organs/brain/README.md docs/superpowers/specs/2026-11-20-organ-model-design.md`
 Expected: 无输出；没有声称临床阈值、独立验证或实机验收。
 
 ### Final Verification and Review
 
-- [ ] **Step 1: 完整验证**
+- [x] **Step 1: 完整验证**
 
 Run: `npm test`
 Expected: 全部通过，包括 1200 轮真实根清单验收。
 
-- [ ] **Step 2: 独立 swarm 评审与清理**
+- [x] **Step 2: 独立 swarm 评审与清理**
 
 由未参与实现的 reviewer 核对 spec 每项要求、diff、证据边界和测试真实性；发现问题先修复再复审。最后检查 `git status`，删除本轮不需要的临时产物，区分已验证行为和未做的真实 DSH 会话验收。
+
+## 交付记录
+
+- **已实现并合入：** 提交 `490154d` 已落地 `stomachGhrelin.minutesSinceEnergyIntake`、三个空腹上升参数、`test/organs.fasting-gateway.test.mjs` 与相关文档；随后消化反馈切片（`c134fd0`）将含能摄入抑制改为按扩张/暴露/能量分级下调。
+- **仍未验证：** 真实 DSH 会话中的空腹饥饿素提醒闭环尚未实机验收。

@@ -8,10 +8,12 @@
  * W = 轮初 skin.sweatVolumeMl）：
  *   heatProductionKcalMin = metabolicFactor × D
  *                         + shiveringGain × max(0, setpointC − coreTemperatureC)
- *   lossKcalMin = evaporationKcalPerMl × W
+ *   lossKcalMin = evaporationKcalPerMl × (dtMin > 0 ? W / dtMin : 0)
  *               + lossGain × (coreTemperatureC − ambientTemperatureC)
- *   coreTemperatureC = prev.coreTemperatureC
- *                    + dtMin × (heatProductionKcalMin − lossKcalMin) / heatCapacityKcalPerC
+ *   coreTemperatureC = clamp(
+ *     prev.coreTemperatureC + dtMin × (heatProductionKcalMin − lossKcalMin) / heatCapacityKcalPerC,
+ *     25, 45
+ *   )
  * 产热用轮初氧耗（`bloodOxygen` 已含基础代谢、T4 缩放、活动与消化附加氧耗）；寒战只在
  * 低于设定点时加入。散热含轮初实际汗液蒸发与核心—环境温差；温差项在环境更冷时按负损失
  * 处理，即环境向身体传热，没有单独的环境得热公式。
@@ -25,8 +27,8 @@
  *   状态，不用回退值掩盖异常。只读轮初快照，所以活动、出汗与温度之间有一轮滞后。
  *
  * 证据：无直接人体来源。所有参数见同目录 `thermoregulation.parameters.json`，
- * 全部 `status: design`、`source: null`；37°C、25°C、60 kcal/°C、0.02 kcal/mL、2 与 0.05
- * kcal/(min·°C)、0.58 kcal/mL 都是工程假设，不是体温调定点、量热、寒战产热或蒸发散热
+ * 全部 `status: design`、`source: null`；37°C、25°C、60 kcal/°C、0.005 kcal/mL、2 与 0.104167
+ * kcal/(min·°C)、0.58 kcal/mL 及 [25, 45] °C 安全钳位都是工程假设，不是体温调定点、量热、寒战产热或蒸发散热
  * 的人体测量。不建皮肤分区温度、血管扩张/收缩、寒战肌肉做功细节、发热与疾病、低温症、
  * 绝对核心温度测量、湿度、风速、辐射面积或个体差异；不能称 validated。设计来源：
  * docs/superpowers/specs/2026-11-24-thermoregulation-design.md。
@@ -77,6 +79,12 @@ const evaporationKcalPerMl = requireParameter(
 );
 
 const fallbackBasalOxygenConsumptionMlMin = 250;
+const minCoreTemperatureC = 25;
+const maxCoreTemperatureC = 45;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 export const initialState: ThermoregulationState = {
   coreTemperatureC: setpointC,
@@ -97,8 +105,10 @@ export function heatProductionKcalMin(
 export function heatLossKcalMin(
   sweatVolumeMl: number,
   coreTemperatureC: number,
+  dtMin = 1,
 ): number {
-  return evaporationKcalPerMl * sweatVolumeMl
+  const sweatRateMlMin = dtMin > 0 ? sweatVolumeMl / dtMin : 0;
+  return evaporationKcalPerMl * sweatRateMlMin
     + lossGain * (coreTemperatureC - ambientTemperatureC);
 }
 
@@ -154,14 +164,17 @@ export function heartbeat(io: IO): void {
   const sweatVolumeMl = readSweatVolumeMl(io);
   const previousTemperatureC = readPreviousTemperatureC(io);
 
+  const dtMin = io.dt / 60;
   const productionKcalMin = heatProductionKcalMin(
     oxygenConsumptionMlMin,
     previousTemperatureC,
   );
-  const lossKcalMin = heatLossKcalMin(sweatVolumeMl, previousTemperatureC);
-  const dtMin = io.dt / 60;
-  const coreTemperatureC = previousTemperatureC
-    + (dtMin * (productionKcalMin - lossKcalMin)) / heatCapacityKcalPerC;
+  const lossKcalMin = heatLossKcalMin(sweatVolumeMl, previousTemperatureC, dtMin);
+  const coreTemperatureC = clamp(
+    previousTemperatureC + (dtMin * (productionKcalMin - lossKcalMin)) / heatCapacityKcalPerC,
+    minCoreTemperatureC,
+    maxCoreTemperatureC,
+  );
 
   io.write({ coreTemperatureC });
 }

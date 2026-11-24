@@ -19,6 +19,7 @@ import * as stomachHydration from '../organs/human-organs/stomach/hydration.ts';
 const baselineMassG = 12.69;
 const distributionVolumeDl = 141;
 const residualHalfTimeMin = 60;
+const basalConsumptionGPerMin = 0.12;
 
 const kidneyGlucoseStub = {
   id: 'kidneyGlucose',
@@ -188,8 +189,8 @@ function rootRound(state, options = {}) {
   return { written: writes[0], transfers };
 }
 
-// 与脚本逐位同式的结算期望：残余清除只作用于超基线质量，请求按 policy 顺序从
-// 轮初质量扣除残余清除后的余额支付，write 值为转移前的 post-residual 质量。
+// 与脚本逐位同式的结算期望：基础消耗按浓度/50衰减，残余清除作用于超基线质量，
+// 请求按 policy 顺序从轮初质量扣除总清除后的余额支付，write 值为转移前余额。
 function settlement({
   massG,
   dt = 60,
@@ -198,9 +199,17 @@ function settlement({
   muscleRequest = 0,
   mammaryRequest = 0,
 }) {
-  const excessG = Math.max(0, massG - baselineMassG);
-  const disposedG = excessG * (1 - 2 ** (-(dt / 60) / residualHalfTimeMin));
-  const afterResidualG = massG - disposedG;
+  const dtMin = dt / 60;
+  const startMassG = Math.max(0, massG);
+  const concentrationMgDl = startMassG * 1000 / distributionVolumeDl;
+  const excessG = Math.max(0, startMassG - baselineMassG);
+  const basalDisposedG = Math.min(
+    startMassG,
+    basalConsumptionGPerMin * dtMin * Math.min(1, Math.max(0, concentrationMgDl / 50)),
+  );
+  const excessDisposedG = excessG * (1 - 2 ** (-dtMin / residualHalfTimeMin));
+  const disposedG = Math.min(startMassG, basalDisposedG + excessDisposedG);
+  const afterResidualG = startMassG - disposedG;
   const renalG = Math.min(Math.max(0, request), afterResidualG);
   const liverPaidG = Math.min(liverRequest, afterResidualG - renalG);
   const musclePaidG = Math.min(muscleRequest, afterResidualG - renalG - liverPaidG);
@@ -629,16 +638,17 @@ test('residual disposal uses the residual half-time and ignores the insulin sign
   }
 });
 
-test('baseline and below-baseline mass produce zero excess and zero disposal', () => {
+test('baseline and below-baseline mass produce zero excess and attenuated basal consumption', () => {
   for (const massG of [baselineMassG, 6]) {
+    const expected = settlement({ massG });
     const { written, transfers } = round({
       glucoseMassG: massG,
       concentrationMgDl: 0,
       disposedGlucoseG: 0,
     });
     assert.equal(written.excessMassG, 0);
-    assert.equal(written.disposedGlucoseG, 0);
-    assert.equal(written.glucoseMassG, massG);
+    assert.ok(Math.abs(written.disposedGlucoseG - expected.disposedG) < 1e-12);
+    assert.ok(Math.abs(written.glucoseMassG - expected.afterResidualG) < 1e-12);
     assert.ok(
       Math.abs(written.concentrationMgDl - massG * 1000 / distributionVolumeDl) < 1e-9,
     );
@@ -1028,22 +1038,24 @@ test('same-round intestine inflow lands after write, so concentration rises only
     }],
   });
 
-  assert.ok(Math.abs(next.glucose.glucoseMassG - (baselineMassG + 10)) < 1e-9);
+  const afterFirst = settlement({ massG: start.glucoseMassG }).afterResidualG;
+  assert.ok(Math.abs(next.glucose.glucoseMassG - (afterFirst + 10)) < 1e-9);
   assert.ok(Math.abs(next.glucose.concentrationMgDl - 90) < 1e-9);
 
   const later = round(next.glucose);
   assert.ok(
-    Math.abs(later.written.concentrationMgDl - ((baselineMassG + 10) * 1000 / distributionVolumeDl)) < 1e-9,
+    Math.abs(later.written.concentrationMgDl - ((afterFirst + 10) * 1000 / distributionVolumeDl)) < 1e-9,
   );
-  const expected = settlement({ massG: baselineMassG + 10 });
+  const expected = settlement({ massG: afterFirst + 10 });
   assert.ok(Math.abs(later.written.excessMassG - expected.excessG) < 1e-12);
   assert.ok(Math.abs(later.written.disposedGlucoseG - expected.disposedG) < 1e-12);
   assert.ok(Math.abs(later.written.glucoseMassG - expected.afterResidualG) < 1e-12);
 });
 
-test('residual disposal alone conserves the initial excess above baseline', () => {
+test('basal consumption and excess disposal alone conserve total glucose mass without going negative', () => {
+  const startMassG = baselineMassG + 30;
   let state = {
-    glucoseMassG: baselineMassG + 30,
+    glucoseMassG: startMassG,
     concentrationMgDl: 90,
     disposedGlucoseG: 0,
     excessMassG: 0,
@@ -1055,11 +1067,12 @@ test('residual disposal alone conserves the initial excess above baseline', () =
     disposedG += written.disposedGlucoseG;
     state = written;
     assert.ok(
-      state.glucoseMassG >= baselineMassG - 1e-9,
-      `round ${index + 1} fell below baseline`,
+      state.glucoseMassG >= 0,
+      `round ${index + 1} went negative: ${state.glucoseMassG}`,
     );
   }
-  assert.ok(Math.abs((state.glucoseMassG - baselineMassG) + disposedG - 30) < 1e-6);
+  assert.ok(state.glucoseMassG < baselineMassG, 'standalone glucose pool drains via basal consumption without liver/kidney');
+  assert.ok(Math.abs(state.glucoseMassG + disposedG - startMassG) < 1e-6);
 });
 
 test('an old save without excessMassG derives it from the round-start mass', () => {

@@ -19,7 +19,7 @@ const parametersUrl = new URL(
 
 const BASAL_RATE = 0.5;
 const MEAL_GAIN = 3;
-const BASAL_MOISTURE = 100 / MEAL_GAIN;
+const BASAL_MOISTURE = 100;
 
 function round({ state, bodyFluid, actions = [], dt = 60, simulatedSeconds = 60 } = {}) {
   const writes = [];
@@ -141,13 +141,20 @@ test('eat and drink raise the rate threefold for a five minute window', () => {
   assertClose(written.mouthMoistureMm, BASAL_MOISTURE, 'basal moisture');
 });
 
-test('non-intake actions and zero-volume intakes do not stimulate saliva', () => {
+test('non-intake actions, zero-volume intakes, and malformed eat actions do not stimulate saliva', () => {
   const ignored = [
     { type: 'urinate' },
-    { type: 'eat', volumeMl: 0 },
+    { type: 'eat', volumeMl: 0, energyKcal: 300, mealKind: 'solid' },
     { type: 'drink', volumeMl: -240 },
     { type: 'drink', volumeMl: '240' },
-    { type: 'eat', volumeMl: Number.NaN },
+    { type: 'eat', volumeMl: Number.NaN, energyKcal: 300, mealKind: 'solid' },
+    { type: 'eat', volumeMl: 250 },
+    { type: 'eat', volumeMl: 250, energyKcal: 300 },
+    { type: 'eat', volumeMl: 250, energyKcal: 300, mealKind: 'snack' },
+    { type: 'eat', volumeMl: 250, energyKcal: -10, mealKind: 'solid' },
+    { type: 'eat', volumeMl: 250, energyKcal: Number.NaN, mealKind: 'solid' },
+    { type: 'eat', volumeMl: 250, energyKcal: 300, mealKind: 'solid', durationMin: -1 },
+    { type: 'drink', volumeMl: 240, carbohydrateG: -5 },
   ];
 
   for (const action of ignored) {
@@ -160,17 +167,18 @@ test('non-intake actions and zero-volume intakes do not stimulate saliva', () =>
 test('dehydration halves the rate at full deficit and scales linearly', () => {
   const full = round({ bodyFluid: { waterDeficit: 1 } }).written;
   assertClose(full.salivaRateMlPerMin, BASAL_RATE * 0.5, 'full deficit');
-  assertClose(full.mouthMoistureMm, BASAL_MOISTURE * 0.5, 'full deficit moisture');
+  assertClose(full.mouthMoistureMm, 50, 'full deficit moisture');
 
   const half = round({ bodyFluid: { waterDeficit: 0.5 } }).written;
   assertClose(half.salivaRateMlPerMin, BASAL_RATE * 0.75, 'half deficit');
+  assertClose(half.mouthMoistureMm, 75, 'half deficit moisture');
 
   const withMeal = round({
     bodyFluid: { waterDeficit: 1 },
     actions: [eat()],
   }).written;
   assertClose(withMeal.salivaRateMlPerMin, BASAL_RATE * MEAL_GAIN * 0.5, 'stimulated full deficit');
-  assertClose(withMeal.mouthMoistureMm, 50, 'stimulated full deficit moisture');
+  assertClose(withMeal.mouthMoistureMm, 100, 'stimulated full deficit moisture clamps at 100');
 });
 
 test('the deficit input and mouth moisture are clamped', () => {
