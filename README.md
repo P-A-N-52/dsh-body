@@ -4,6 +4,14 @@
 
 `dsh-body` 是 [DSH](https://github.com/deepseek-ai/deepseek-harness) 的虚拟身体插件。核心是一个**按固定步长结算、可从存档恢复的仿真 Gateway**：会话提交动作，器官脚本计算下一状态，Gateway 决定时间何时前进、哪些结果一起生效。身体启用时，即使会话空闲，仿真也会继续。
 
+## 极高的可自定义程度与可扩展性
+
+整个项目围绕“数据驱动配置 + 独立模块化器官”设计，无需改动 Gateway 主干即可按个人需求自由定制各部位内容、数值与交互体验：
+
+- **自由组合与替换器官模块：** 通过脚本清单（默认 [`body-modules.json`](body-modules.json)、[`body-modules.female.json`](body-modules.female.json)、[`body-modules.male.json`](body-modules.male.json) 或自定义 `manifestPath`）自由增删、重排或替换任意部位的 `.ts` 脚本（例如按需切换到独立的中枢/肾性尿崩症变体清单，或只保留关心的一组器官）。新增一个器官只需编写单个模块（导出 `id`、`fields`、`initialState` 与 `heartbeat(io)`）并登记进清单；跨器官参数直读已解耦，替换某一器官实现时不会牵连其他部位。
+- **参数外置与单具身体精细定制：** 所有生理数值与策略阈值均外置在同目录 `*.parameters.json` 中，可直接调整默认模型行为；也可不改代码，仅在单具身体的存档 `body-state.json` 顶层通过 `profile`（`weightKg`、`heightCm`、`timezoneOffsetMin`、女性静息泌乳预设 `lactating`）、稀疏字典 `parameters`（按参数 ID 精准覆盖任意默认值）以及 `nsfw` 开关，为不同设定定制专属体质与内容边界。
+- **可扩展的体感、通知与动作场景：** 自定义器官或拓展逻辑可向 `interoception.sensations` 写入任意自定义体感（自带强度、阈值与定性描述），自动无缝接入 [`body_state`](tools.js) 的零数字主观感受汇总、[`brainNotify`](organs/human-organs/brain/notify.ts) 的主动提醒与睡眠唤醒链路；具体的饮食、生活剧本或特殊状态也可自由维护在 `scenarios/`、`startupScripts` 初始化脚本与动作载荷中（具体接入规范见 [`docs/gateway-and-scripts.md`](docs/gateway-and-scripts.md)）。
+
 ## Gateway 设计
 
 **一具身体、一条仿真时钟、一份存档。** [Gateway](gateway.js) 在 DSH 宿主进程的主线程管理动作队列、调度和提交；[BodyWorker](gateway/body-worker.js) 在独立工作线程运行器官脚本。[`body-modules.json`](body-modules.json) 决定加载哪些脚本；`body-state.json` 由 Gateway 写，保存这一具身体的状态。加一个器官不需要再造一套时钟、动作入口或存档。
