@@ -15,6 +15,7 @@ const esophagusInitial = {
   bolusVolumeMl: 0,
   transitMin: 0,
   chokingMm: 0,
+  intakeQueue: [],
 };
 
 function silence(t) {

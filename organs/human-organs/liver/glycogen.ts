@@ -2,14 +2,15 @@
  * 肝糖原自主摄取与释放脚本（部位 `liver`）；部位 `liver` 的唯一写者。
  *
  * 消费者：`glucose`。本脚本每轮按自己的参数（最大摄糖速率、半饱和超基线量、胰岛素敏感度）
- * 与轮初 `glucose.excessMassG`、`pancreasEndocrine.insulinRelative` 自主计算
+ * 与轮初 `glucose.excessMassG`、`pancreasEndocrine.insulinPmolL`（按基线 60 pmol/L 换算为
+ * `insulinRelative = insulinPmolL / 60`）自主计算
  * `storageRequestG`，再按轮初存量把请求钳到剩余容量；`glucose` 下一轮按结算顺序支付，经
  * transfer 转入 `storageG`。请求与到账分离：`storageRequestG` 是本轮请求，`storageG` 是
  * 已到账、尚未并入存量的实际量（`transferIn`，每轮 write 归 0）。
  *
  * 释放由本脚本当轮发起：低血糖或胰高血糖素高于基线时发起
  * `liver.glycogenG → glucose.glucoseMassG` 的 transfer，把糖原真实补回血糖；释放速率再乘
- * 轮初 `adrenal.cortisolRelative`，皮质醇高于基线时肝糖输出增加。只有肝向血液放糖；肌肉与
+ * 轮初 `adrenal.cortisolNmolL / 180`，皮质醇高于基线时肝糖输出增加。只有肝向血液放糖；肌肉与
  * 脂肪不释放葡萄糖。释放量恒受 `prev.glycogenG + prev.storageG` 钳制，存量耗尽后
  * `release = 0`。释放与摄糖请求各自计算、互不挪用：请求由轮初 `excessMassG` 决定，
  * 释放由轮初血糖浓度、胰高血糖素与皮质醇决定。
@@ -44,8 +45,8 @@
  *     outputG: release,
  *   }
  *   transfer liver.glycogenG → glucose.glucoseMassG: release（release > 0 时）
- * `excessMassG`、`concentrationMgDl`、`insulinRelative`、`glucagonRelative` 与
- * `cortisolRelative` 都是轮初快照；90 mg/dL 参考值与 `glucose.baselineConcentrationMgDl`、
+ * `excessMassG`、`concentrationMgDl`、`insulinPmolL`、`glucagonRelative` 与
+ * `cortisolNmolL` 都是轮初快照；90 mg/dL 参考值与 `glucose.baselineConcentrationMgDl`、
  * `pancreasEndocrine.referenceGlucoseMgDl` 的工程基线一致，只是反调节参考，不是实测低血糖
  * 阈值。
  *
@@ -63,8 +64,8 @@
  * 蛋白合成/脂肪代谢、激素绝对浓度与个体差异。
  *
  * 边界：`glucose` 未加载时释放按参考 90 mg/dL、`excessMassG` 按 0 回退；
- * `pancreasEndocrine` 未加载时按 `glucagonRelative = 1`、`insulinRelative = 1` 回退；
- * `adrenal` 未加载时按 `cortisolRelative = 1` 回退。上游已加载但字段缺失、非有限或为负时
+ * `pancreasEndocrine` 未加载时按 `glucagonRelative = 1`、`insulinPmolL = 60` 回退；
+ * `adrenal` 未加载时按 `cortisolNmolL = 180` 回退。上游已加载但字段缺失、非有限或为负时
  * 抛错使本轮失败，且不写状态、不发起 transfer，不用健康常量掩盖异常；合法 0 浓度、0 超基线量、
  * 0 胰高血糖素与 0 皮质醇相对信号都是有效读数。
  */

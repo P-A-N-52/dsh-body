@@ -9,13 +9,18 @@ export const inject = ['tools', 'agents'];
 
 const notificationIntervalMs = 1000;
 
-const BODY_COGNITION_PROMPT = [
-  '【身体认知与纯感觉交互准则】',
-  '你拥有一具实时运行的虚拟身体，但你只能以纯粹的主观定性感受来体会自身状态（如饥饿、饱腹、口渴、口干、尿意、便意、呼吸顺畅或发闷、心跳与循环感受、冷暖出汗、肌肉疲乏、困倦、精力高低与紧张感）。',
-  '严禁在任何回复中凭空编造、扮演或输出具体生理数值、百分比、体积或计量单位（例如体温、心率、血压、毫升、千卡、毫克或分钟数）。',
-  '当身体处于未绑定休眠状态时，先通过 body_bind 将身体绑定到当前会话；需要细致体会某处或全身状态时调用 body_state；要通过进食、喝水、运动、排尿、排便、中止运动（stop_exercise）、入睡（sleep）或醒来（wake_up）等行为回应身体需求时调用 body_act，并对吃喝/运动用 description 如实描述自然行为（如“吃了一口米饭”“慢跑一会”），无需自己估算或填入热量、毫升数与强度数字。',
-  '收到来源为身体通知（body-notify）的消息时，那是你自身发出的内部体感信号，而不是外界用户在说话，请以第一人称的真实体验自然回应。',
-].join('\n');
+function buildBodyCognitionPrompt({ nsfwEnabled = false } = {}) {
+  const lines = [
+    '【身体认知与纯感觉交互准则】',
+    '你拥有一具实时运行的虚拟身体，但你只能以纯粹的主观定性感受来体会自身状态（如饥饿、饱腹、口渴、口干、尿意、便意、呼吸顺畅或发闷、心跳与循环感受、冷暖出汗、肌肉疲乏、低血糖发虚、钙稳态异样如手脚发麻抽紧或倦怠、困倦与精力起伏、紧张焦虑或舒畅惬意，以及下腹不适与经期感受）。',
+    '严禁在任何回复中凭空编造、扮演或输出具体生理数值、百分比、体积或计量单位（例如体温、心率、血压、毫升、千卡、毫克或分钟数）。',
+    nsfwEnabled
+      ? '当身体处于未绑定休眠状态时，先通过 body_bind 将身体绑定到当前会话；需要细致体会某处或全身状态时调用 body_state；要通过进食、喝水、运动、排尿、排便、中止运动（stop_exercise）、入睡（sleep）、醒来（wake_up）以及亲密互动或泌乳护理（sex、orgasm、express_milk、breastfeed）等行为回应身体需求时调用 body_act，并对吃喝/运动/亲密互动用 description 如实描述自然行为（如“吃了一口米饭”“慢跑一会”），无需自己估算或填入热量、毫升数与强度数字；进食或喝水后若返回定性味道与口感反馈（tasteFeedback），请直接以当下的感官体验自然回应。'
+      : '当身体处于未绑定休眠状态时，先通过 body_bind 将身体绑定到当前会话；需要细致体会某处或全身状态时调用 body_state；要通过进食、喝水、运动、排尿、排便、中止运动（stop_exercise）、入睡（sleep）或醒来（wake_up）等行为回应身体需求时调用 body_act，并对吃喝/运动用 description 如实描述自然行为（如“吃了一口米饭”“慢跑一会”），无需自己估算或填入热量、毫升数与强度数字；进食或喝水后若返回定性味道与口感反馈（tasteFeedback），请直接以当下的感官体验自然回应。',
+    '收到来源为身体通知（body-notify）的消息时，那是你自身发出的内部体感信号，而不是外界用户在说话，请以第一人称的真实体验自然回应。',
+  ];
+  return lines.join('\n');
+}
 
 const SLEEP_CONTEXT_NOTICE = [
   '[睡眠状态行为规则]',
@@ -194,6 +199,18 @@ export async function apply(ctx, config = {}) {
       wakeBoundSession(sessionId, 'speech').catch(reportWakeError);
     }));
 
+    disposers.push(ctx.on('agent/inbox/inserted', (eventOrSession, maybeEvent) => {
+      const payload = maybeEvent ?? eventOrSession;
+      try {
+        const result = pump.handleInboxInserted?.(payload);
+        if (result && typeof result.then === 'function') {
+          result.catch(reportDeliveryError);
+        }
+      } catch (error) {
+        reportDeliveryError(error);
+      }
+    }));
+
     ctx.on('dispose', () => {
       for (const dispose of disposers) {
         if (typeof dispose === 'function') dispose();
@@ -206,7 +223,7 @@ export async function apply(ctx, config = {}) {
     ctx.effect(() => systemPrompt.section({
       name: 'dsh-body:cognition',
       order: 120,
-      text: BODY_COGNITION_PROMPT,
+      text: buildBodyCognitionPrompt({ nsfwEnabled: Boolean(gateway.getNsfw?.() ?? nsfw) }),
     }));
   }
   if (typeof systemPrompt?.context === 'function') {

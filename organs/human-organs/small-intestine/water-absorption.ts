@@ -48,7 +48,7 @@
  *
  * 吸收反馈（design，修正自 docs/superpowers/specs/2026-11-24-digestive-feedback-design.md）：
  *   waterFactor = max(0, 1 + waterAbsorptionDehydrationFactor × clamp(bodyFluid.waterDeficit, 0, 1))
- *   carbFactor  = max(0, 1 + carbAbsorptionInsulinGain × (pancreasEndocrine.insulinRelative − 1)
+ *   carbFactor  = max(0, 1 + carbAbsorptionInsulinGain × (pancreasEndocrine.insulinPmolL / 60 − 1)
  *                 − carbAbsorptionGradientGain × (glucose.concentrationMgDl / 90 − 1))
  * 吸收量均按 [0, 轮初池] 严格钳位，防止负值或透支。90 mg/dL 是硬编码的工程参考浓度（与
  * `glucose.baselineConcentrationMgDl = 90` 对齐），不跨模块读取参数。脱水时不抑制水吸收（默认
@@ -106,7 +106,7 @@ type GlucoseReading = {
 };
 
 type PancreasReading = {
-  readonly insulinRelative?: unknown;
+  readonly insulinPmolL?: unknown;
 };
 
 type IO = {
@@ -235,9 +235,15 @@ export function heartbeat(io: IO): void {
   );
 
   const remainingWaterMl = waterVolumeMl - absorbedWaterMl;
-  const residueWaterMl = residueFraction > 0
-    ? Math.min(remainingWaterMl, absorbedWaterMl * (residueFraction / (1 - residueFraction)))
-    : 0;
+  const clampedResidueFraction = clamp(residueFraction, 0, 1);
+  const residueWaterMl = clampedResidueFraction <= 0
+    ? 0
+    : clampedResidueFraction >= 1
+      ? Math.max(0, remainingWaterMl)
+      : Math.min(
+        Math.max(0, remainingWaterMl),
+        absorbedWaterMl * (clampedResidueFraction / (1 - clampedResidueFraction)),
+      );
 
   io.write({
     waterVolumeMl,

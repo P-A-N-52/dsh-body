@@ -145,6 +145,7 @@ test('bloodCalcium parameters are design defaults with no source', () => {
     'calcium.calciumExcretionPerMlG',
     'calcium.distributionVolumeDl',
     'calcium.referenceMgDl',
+    'calcium.referencePthPgMl',
   ]);
   for (const parameter of data.parameters) {
     assert.equal(parameter.status, 'design', `${parameter.id}: status`);
@@ -164,6 +165,8 @@ test('bloodCalcium parameters are design defaults with no source', () => {
   assert.equal(byId['calcium.calciumExcretionPerMlG'].value, 0.000001);
   assert.equal(byId['calcium.distributionVolumeDl'].unit, 'dL');
   assert.equal(byId['calcium.distributionVolumeDl'].value, 140);
+  assert.equal(byId['calcium.referencePthPgMl'].unit, 'pg/mL');
+  assert.equal(byId['calcium.referencePthPgMl'].value, 30);
 
   assert.deepEqual(loadParameters(parametersUrl), {
     'calcium.boneCapacityG': 200,
@@ -173,36 +176,37 @@ test('bloodCalcium parameters are design defaults with no source', () => {
     'calcium.calciumExcretionPerMlG': 0.000001,
     'calcium.distributionVolumeDl': 140,
     'calcium.referenceMgDl': 9.5,
+    'calcium.referencePthPgMl': 30,
   });
 });
 
 test('a neutral PTH with no GFR leaves calcium and the bone store unchanged', () => {
   const neutral = round({
     state: { mgDl: 9.5, boneStoreG: 100 },
-    parathyroid: { pthRelative: 1 },
+    parathyroid: { pthPgMl: 30 },
     blood: { gfrMlMin: 0 },
   });
   assert.deepEqual(neutral.written, { mgDl: 9.5, boneStoreG: 100 });
 });
 
-test('PTH above 1 releases bone calcium and stops renal excretion', () => {
+test('PTH above 30 pg/mL releases bone calcium and stops renal excretion', () => {
   const dtMin = 1;
   const releaseG = 0.0004 * (2 - 1) * dtMin;
   const { written } = round({
     state: { mgDl: 9.5, boneStoreG: 100 },
-    parathyroid: { pthRelative: 2 },
+    parathyroid: { pthPgMl: 60 },
     blood: { gfrMlMin: 100 },
   });
   assertClose(written.boneStoreG, 100 - releaseG, 'bone store loses the released mass');
   assertClose(written.mgDl, 9.5 + releaseG * MG_DL_PER_G, 'blood calcium rises by the released mass');
 });
 
-test('PTH below 1 deposits calcium into the bone store', () => {
+test('PTH below 30 pg/mL deposits calcium into the bone store', () => {
   const dtMin = 1;
   const depositG = 0.0004 * (1 - 0) * dtMin;
   const { written } = round({
     state: { mgDl: 9.5, boneStoreG: 100 },
-    parathyroid: { pthRelative: 0 },
+    parathyroid: { pthPgMl: 0 },
     blood: { gfrMlMin: 0 },
   });
   assertClose(written.boneStoreG, 100 + depositG, 'bone store gains the deposited mass');
@@ -212,7 +216,7 @@ test('PTH below 1 deposits calcium into the bone store', () => {
 test('release is capped by the bone store and the store cannot go below zero', () => {
   const { written } = round({
     state: { mgDl: 9.5, boneStoreG: 0.01 },
-    parathyroid: { pthRelative: 3 },
+    parathyroid: { pthPgMl: 90 },
     blood: { gfrMlMin: 0 },
     dt: 60 * 60,
   });
@@ -223,7 +227,7 @@ test('release is capped by the bone store and the store cannot go below zero', (
 test('deposit is capped by the 200 g bone capacity with mass conservation', () => {
   const { written } = round({
     state: { mgDl: 9.5, boneStoreG: 199.99 },
-    parathyroid: { pthRelative: 0 },
+    parathyroid: { pthPgMl: 0 },
     blood: { gfrMlMin: 0 },
     dt: 6000,
   });
@@ -232,7 +236,7 @@ test('deposit is capped by the 200 g bone capacity with mass conservation', () =
 
   const atCap = round({
     state: { mgDl: 9.5, boneStoreG: 200 },
-    parathyroid: { pthRelative: 0 },
+    parathyroid: { pthPgMl: 0 },
     blood: { gfrMlMin: 0 },
     dt: 6000,
   });
@@ -244,24 +248,24 @@ test('GFR scales PTH-dependent calcium excretion and reduces blood calcium', () 
   const depositG = 0.0004 * (1 - 0.5);
   const noGfr = round({
     state: { mgDl: 9.5, boneStoreG: 100 },
-    parathyroid: { pthRelative: 0.5 },
+    parathyroid: { pthPgMl: 15 },
     blood: { gfrMlMin: 0 },
   });
   const normal = round({
     state: { mgDl: 9.5, boneStoreG: 100 },
-    parathyroid: { pthRelative: 0.5 },
+    parathyroid: { pthPgMl: 15 },
     blood: { gfrMlMin: 100 },
   });
   const high = round({
     state: { mgDl: 9.5, boneStoreG: 100 },
-    parathyroid: { pthRelative: 0.5 },
+    parathyroid: { pthPgMl: 15 },
     blood: { gfrMlMin: 200 },
   });
   assertClose(noGfr.written.mgDl, 9.5 - depositG * MG_DL_PER_G, 'deposit only');
   assertClose(
     normal.written.mgDl,
     9.5 - (depositG + 0.00005) * MG_DL_PER_G,
-    '100 mL/min excrete 0.00005 g at PTH 0.5',
+    '100 mL/min excrete 0.00005 g at PTH 15 pg/mL',
   );
   assertClose(
     high.written.mgDl,
@@ -277,12 +281,12 @@ test('GFR scales PTH-dependent calcium excretion and reduces blood calcium', () 
 test('high calcium with low PTH deposits and excretes more than neutral PTH', () => {
   const lowPth = round({
     state: { mgDl: 11, boneStoreG: 100 },
-    parathyroid: { pthRelative: 0 },
+    parathyroid: { pthPgMl: 0 },
     blood: { gfrMlMin: 100 },
   });
   const neutral = round({
     state: { mgDl: 11, boneStoreG: 100 },
-    parathyroid: { pthRelative: 1 },
+    parathyroid: { pthPgMl: 30 },
     blood: { gfrMlMin: 100 },
   });
   assertClose(lowPth.written.boneStoreG, 100.0004, 'low PTH adds the deposit to bone');
@@ -292,14 +296,14 @@ test('high calcium with low PTH deposits and excretes more than neutral PTH', ()
   assert.ok(lowPth.written.mgDl < neutral.written.mgDl, 'deposition adds to excretion');
 });
 
-test('PTH is a fixed point at 1 and a missing parathyroid falls back to 1', () => {
+test('PTH is a fixed point at 30 pg/mL and a missing parathyroid falls back to 30 pg/mL', () => {
   const missing = round({
     state: { mgDl: 9.5, boneStoreG: 100 },
     blood: { gfrMlMin: 100 },
   });
   const neutral = round({
     state: { mgDl: 9.5, boneStoreG: 100 },
-    parathyroid: { pthRelative: 1 },
+    parathyroid: { pthPgMl: 30 },
     blood: { gfrMlMin: 100 },
   });
   assert.deepEqual(neutral.written, { mgDl: 9.5, boneStoreG: 100 });
@@ -309,11 +313,11 @@ test('PTH is a fixed point at 1 and a missing parathyroid falls back to 1', () =
 test('a missing blood part falls back to a GFR of 100', () => {
   const missing = round({
     state: { mgDl: 9.5, boneStoreG: 100 },
-    parathyroid: { pthRelative: 1 },
+    parathyroid: { pthPgMl: 30 },
   });
   const explicit = round({
     state: { mgDl: 9.5, boneStoreG: 100 },
-    parathyroid: { pthRelative: 1 },
+    parathyroid: { pthPgMl: 30 },
     blood: { gfrMlMin: 100 },
   });
   assert.deepEqual(missing.written, explicit.written);
@@ -321,14 +325,14 @@ test('a missing blood part falls back to a GFR of 100', () => {
 
 test('missing own state starts at the reference calcium and initial bone store', () => {
   const newBody = round({
-    parathyroid: { pthRelative: 1 },
+    parathyroid: { pthPgMl: 30 },
     blood: { gfrMlMin: 0 },
   });
   assert.deepEqual(newBody.written, { mgDl: 9.5, boneStoreG: 100 });
 
   const partial = round({
     state: { mgDl: Number.NaN },
-    parathyroid: { pthRelative: 1 },
+    parathyroid: { pthPgMl: 30 },
     blood: { gfrMlMin: 0 },
   });
   assert.deepEqual(partial.written, { mgDl: 9.5, boneStoreG: 100 });
@@ -337,7 +341,7 @@ test('missing own state starts at the reference calcium and initial bone store',
 test('blood calcium and bone store clamp to their 0-20 mg/dL and 0-200 g ranges', () => {
   const floor = round({
     state: { mgDl: 0, boneStoreG: 100 },
-    parathyroid: { pthRelative: 1 },
+    parathyroid: { pthPgMl: 30 },
     blood: { gfrMlMin: 100 },
   });
   assert.equal(floor.written.mgDl, 0);
@@ -345,7 +349,7 @@ test('blood calcium and bone store clamp to their 0-20 mg/dL and 0-200 g ranges'
 
   const ceiling = round({
     state: { mgDl: 20, boneStoreG: 100 },
-    parathyroid: { pthRelative: 3 },
+    parathyroid: { pthPgMl: 90 },
     blood: { gfrMlMin: 0 },
   });
   assert.equal(ceiling.written.mgDl, 20);
@@ -355,12 +359,13 @@ test('blood calcium and bone store clamp to their 0-20 mg/dL and 0-200 g ranges'
 test('a loaded parathyroid or blood with an invalid field fails the round without writing', () => {
   const invalidParathyroid = [
     ['empty parathyroid', {}],
-    ['null PTH', { pthRelative: null }],
-    ['NaN PTH', { pthRelative: Number.NaN }],
-    ['positive infinity PTH', { pthRelative: Number.POSITIVE_INFINITY }],
-    ['negative infinity PTH', { pthRelative: Number.NEGATIVE_INFINITY }],
-    ['negative PTH', { pthRelative: -0.1 }],
-    ['non-numeric PTH', { pthRelative: '1' }],
+    ['legacy pthRelative only', { pthRelative: 1 }],
+    ['null PTH', { pthPgMl: null }],
+    ['NaN PTH', { pthPgMl: Number.NaN }],
+    ['positive infinity PTH', { pthPgMl: Number.POSITIVE_INFINITY }],
+    ['negative infinity PTH', { pthPgMl: Number.NEGATIVE_INFINITY }],
+    ['negative PTH', { pthPgMl: -0.1 }],
+    ['non-numeric PTH', { pthPgMl: '30' }],
     ['null parathyroid', null],
     ['non-object parathyroid', 42],
   ];
@@ -388,7 +393,7 @@ test('low calcium raises PTH, releases bone calcium, and lowers hypocalcemia', (
   const releaseAtTargetG = 0.0004 * (1.75 - 1);
   const excretionAtTargetG = 100 * 0.000001 * Math.max(0, 1 - 1.75);
   assert.ok(releaseAtTargetG > 0, 'release at 8 mg/dL is positive');
-  assert.equal(excretionAtTargetG, 0, 'excretion vanishes above PTH 1');
+  assert.equal(excretionAtTargetG, 0, 'excretion vanishes above PTH 30 pg/mL');
 
   let pth = { ...parathyroidInitialState };
   let calcium = { mgDl: 8, boneStoreG: 100 };
@@ -405,7 +410,7 @@ test('low calcium raises PTH, releases bone calcium, and lowers hypocalcemia', (
     interoception = next.interoception;
   }
 
-  assert.ok(pth.pthRelative > 1, 'PTH rises above baseline');
+  assert.ok(pth.pthPgMl > 30, 'PTH rises above baseline');
   assert.ok(calcium.boneStoreG < 100, 'bone releases calcium');
   assert.ok(calcium.mgDl > 8, 'blood calcium recovers above the low seed');
   assert.ok(calcium.mgDl < 9.5, 'it is still below the reference after 60 rounds');
@@ -429,7 +434,7 @@ test('high calcium lowers PTH, deposits bone calcium, and raises the hypercalcem
     interoception = next.interoception;
   }
 
-  assert.ok(pth.pthRelative < 1, 'PTH falls below baseline');
+  assert.ok(pth.pthPgMl < 30, 'PTH falls below baseline');
   assert.ok(calcium.boneStoreG > 100, 'bone stores the deposit');
   assert.ok(calcium.mgDl < 11, 'blood calcium falls from the high seed');
   assert.ok(calcium.mgDl > 9.5, 'it is still above the reference after 60 rounds');
@@ -468,7 +473,7 @@ test('the 9.5 mg/dL reference is a stable setpoint with zero calcium readouts', 
     interoception = next.interoception;
   }
 
-  assert.equal(pth.pthRelative, 1);
+  assert.equal(pth.pthPgMl, 30);
   assert.deepEqual(calcium, { mgDl: 9.5, boneStoreG: 100 });
   assert.equal(interoception.hypocalcemiaMm, 0);
   assert.equal(interoception.hypercalcemiaMm, 0);
@@ -479,21 +484,21 @@ test('blood calcium output is finite and JSON-safe', () => {
     ['no upstream parts', {}],
     ['release', {
       state: { mgDl: 9.5, boneStoreG: 100 },
-      parathyroid: { pthRelative: 2 },
+      parathyroid: { pthPgMl: 60 },
       blood: { gfrMlMin: 0 },
     }],
     ['deposit', {
       state: { mgDl: 9.5, boneStoreG: 100 },
-      parathyroid: { pthRelative: 0 },
+      parathyroid: { pthPgMl: 0 },
     }],
     ['high GFR', {
       state: { mgDl: 11, boneStoreG: 100 },
-      parathyroid: { pthRelative: 0.25 },
+      parathyroid: { pthPgMl: 7.5 },
       blood: { gfrMlMin: 200 },
     }],
     ['fractional dt', {
       state: { mgDl: 8, boneStoreG: 0.2 },
-      parathyroid: { pthRelative: 2.5 },
+      parathyroid: { pthPgMl: 75 },
       blood: { gfrMlMin: 37 },
       dt: 90,
     }],

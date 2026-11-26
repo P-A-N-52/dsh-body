@@ -10,8 +10,9 @@
  *    不再与单次血浆 PRL 线性放大；不排空时高充盈自动刹停产奶并形成显著胀痛 `fullnessMm`。
  * 3. **催产素排乳反射（Let-down）与单次水账**：水与乳糖在合成入乳腺时（`milkMl` / `lactoseG`）已
  *    从 `bodyFluid` / `glucose` 转入 `storedMilkMl`；执行 `express_milk` / `breastfeed` 时待
- *    `pituitary.oxytocinPgMl >= 4 pg/mL` 按 `PAMR`（伴过胀惩罚）从 `storedMilkMl` 向外排出 `ejectedMilkMl`，
- *    绝不重复向 `bodyFluid` 扣水。
+ *    `pituitary.oxytocinPgMl >= 5 pg/mL` 按单次 `PAMR`（伴过胀惩罚）从 `storedMilkMl` 向外排出
+ *    `ejectedMilkMl`；动作先进入 `pendingEjections`，达到阈值后按提交顺序各结算一次，
+ *    后续刺激延续不重复排空，且绝不重复向 `bodyFluid` 扣水。
  */
 import {
   getNsfwSetting,
@@ -24,6 +25,11 @@ import {
 export const id = 'mammaryGlands';
 export const actionTypes = ['express_milk', 'breastfeed'];
 
+type EjectionSession = {
+  durationMin: number;
+  mode: 'express' | 'express_unilateral' | 'breastfeed';
+};
+
 type MammaryGlandsState = {
   lactating: boolean;
   galactorrhea: boolean;
@@ -31,6 +37,7 @@ type MammaryGlandsState = {
   storedMilkMl: number;
   ejectedMilkMl: number;
   stimulationMin: number;
+  pendingEjections: EjectionSession[];
   milkRequestMl: number;
   milkMl: number;
   lactoseRequestG: number;
@@ -45,6 +52,7 @@ type SavedMammaryGlandsState = Partial<{
   readonly storedMilkMl: unknown;
   readonly ejectedMilkMl: unknown;
   readonly stimulationMin: unknown;
+  readonly pendingEjections: unknown;
   readonly milkRequestMl: unknown;
   readonly milkMl: unknown;
   readonly lactoseRequestG: unknown;
@@ -110,6 +118,7 @@ export const initialState: MammaryGlandsState = {
   storedMilkMl: presetLactating ? 120 : 0,
   ejectedMilkMl: 0,
   stimulationMin: 0,
+  pendingEjections: [],
   milkRequestMl: 0,
   milkMl: 0,
   lactoseRequestG: 0,
@@ -124,6 +133,7 @@ export const fields = {
   storedMilkMl: { unit: 'mL', mode: 'absolute' },
   ejectedMilkMl: { unit: 'mL', mode: 'absolute' },
   stimulationMin: { unit: 'min', mode: 'absolute' },
+  pendingEjections: { unit: '1', mode: 'absolute' },
   milkRequestMl: { unit: 'mL', mode: 'absolute' },
   milkMl: {
     unit: 'mL',
@@ -188,6 +198,7 @@ export function heartbeat(io: IO): void {
       storedMilkMl: 0,
       ejectedMilkMl: 0,
       stimulationMin: 0,
+      pendingEjections: [],
       milkRequestMl: 0,
       milkMl: 0,
       lactoseRequestG: 0,
@@ -204,41 +215,48 @@ export function heartbeat(io: IO): void {
     Math.max(0, finiteOr(prev.storedMilkMl, 0)) + arrivedMilkMl,
   );
 
-  // 2. 解析本轮排乳动作（express_milk / breastfeed）
+  // 2. 解析本轮排乳动作，未达催产素阈值的会话随存档等待后续轮次
   let stimulationMin = Math.max(0, finiteOr(prev.stimulationMin, 0) - dtMin);
-  let pamrMode: 'express' | 'express_unilateral' | 'breastfeed' = 'breastfeed';
+  const pendingEjections: EjectionSession[] = Array.isArray(prev.pendingEjections)
+    ? prev.pendingEjections.map((session) => ({ ...session }))
+    : [];
   for (const action of io.actions ?? []) {
     if (action?.type !== 'express_milk' && action?.type !== 'breastfeed') continue;
-    const dur = typeof action.durationMin === 'number'
+    const durationMin = typeof action.durationMin === 'number'
       && Number.isFinite(action.durationMin)
       && action.durationMin > 0
       ? clamp(action.durationMin, 0.5, 120)
       : DEFAULT_SESSION_MIN;
-    stimulationMin = dur;
-    pamrMode = action.type === 'express_milk'
+    const mode = action.type === 'express_milk'
       ? (action.bilateral === false ? 'express_unilateral' : 'express')
       : 'breastfeed';
+    stimulationMin = durationMin;
+    pendingEjections.push({ durationMin, mode });
   }
 
-  const basePamr = pamrMode === 'express'
-    ? expressPamr
-    : pamrMode === 'express_unilateral'
-      ? 0.66
-      : breastfeedPamr;
-
-  // 3. 催产素排乳反射（Let-down）
+  // 3. 催产素排乳反射（Let-down）；同轮会话按动作顺序各结算一次
   const letdownReady = !pituitary.present || pituitary.oxytocinPgMl >= letdownOxytocinThresholdPgMl;
   let ejectedMilkMl = 0;
   let storedMilkMl = poolBeforeEjection;
-  if (stimulationMin > 0 && letdownReady && poolBeforeEjection > 0 && dtMin > 0) {
-    const engorgementPenalty = engorgementPamrPenaltyPer100Ml
-      * (Math.max(0, poolBeforeEjection - 200) / 100);
-    const effectivePamr = clamp(basePamr - engorgementPenalty, 0.25, 0.85);
-    const fraction = dtMin >= 10
-      ? effectivePamr
-      : 1 - Math.exp(-0.22 * effectivePamr * dtMin);
-    ejectedMilkMl = Math.min(poolBeforeEjection, poolBeforeEjection * fraction);
-    storedMilkMl = Math.max(0, poolBeforeEjection - ejectedMilkMl);
+  if (letdownReady && pendingEjections.length > 0 && dtMin > 0) {
+    for (const session of pendingEjections) {
+      if (storedMilkMl <= 0) break;
+      const basePamr = session.mode === 'express'
+        ? expressPamr
+        : session.mode === 'express_unilateral'
+          ? 0.66
+          : breastfeedPamr;
+      const engorgementPenalty = engorgementPamrPenaltyPer100Ml
+        * (Math.max(0, storedMilkMl - 200) / 100);
+      const effectivePamr = clamp(basePamr - engorgementPenalty, 0.25, 0.85);
+      const fraction = session.durationMin >= 10
+        ? effectivePamr
+        : 1 - Math.exp(-0.22 * effectivePamr * session.durationMin);
+      const ejected = Math.min(storedMilkMl, storedMilkMl * fraction);
+      ejectedMilkMl += ejected;
+      storedMilkMl = Math.max(0, storedMilkMl - ejected);
+    }
+    pendingEjections.length = 0;
   }
 
   // 4. 非妊娠高催乳素 + 刺激诱导状态机
@@ -255,15 +273,13 @@ export function heartbeat(io: IO): void {
 
   if (dtDays > 0) {
     if (!prevLactating) {
-      if (highPrl || stimulationMin > 0) {
-        const hormoneDelta = highPrl
-          ? hormonalInductionPerDay
-            * clamp(pituitary.prolactinNgMl / 120, 0.5, 1.8)
-            * p4Brake
-            * dtDays
-          : 0;
+      if (highPrl) {
+        const hormoneDelta = hormonalInductionPerDay
+          * clamp(pituitary.prolactinNgMl / 120, 0.5, 1.8)
+          * p4Brake
+          * dtDays;
         const stimDelta = stimulationMin > 0
-          ? stimulatedInductionPerDay * 4 * (highPrl ? 1 : 0.45) * p4Brake * dtDays
+          ? stimulatedInductionPerDay * 4 * p4Brake * dtDays
           : 0;
         const nextProgress = inductionProgress + hormoneDelta + stimDelta;
         // 无吸吮刺激时只允许到达溢乳平台（0.35），不可越过 1.0 进入规整泌乳（SRC-PAGEWILSON-2007）。
@@ -319,6 +335,7 @@ export function heartbeat(io: IO): void {
     storedMilkMl,
     ejectedMilkMl,
     stimulationMin,
+    pendingEjections,
     milkRequestMl,
     milkMl: 0,
     lactoseRequestG,

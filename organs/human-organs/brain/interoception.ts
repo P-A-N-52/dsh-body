@@ -226,7 +226,6 @@ type BloodOxygenReading = {
 
 type AdrenalReading = {
   cortisolNmolL?: number;
-  cortisolRelative?: number;
 };
 
 type OvariesReading = {
@@ -671,7 +670,7 @@ export function heartbeat(io: IO): void {
   const rawAdrenal = io.read('adrenal');
   const cortisolRelative = isFiniteNumber(rawAdrenal?.cortisolNmolL)
     ? Math.max(0, rawAdrenal.cortisolNmolL) / 180
-    : finiteOr(rawAdrenal?.cortisolRelative, 0);
+    : 0;
   const rawSympatheticMm = (io as { read(id: string): Readonly<{ sympatheticMm?: unknown }> | undefined }).read('autonomic')?.sympatheticMm;
   const sympatheticMm = isFiniteNumber(rawSympatheticMm) ? clamp(rawSympatheticMm, 0, 100) : 0;
   const rawStressMm = Math.max(

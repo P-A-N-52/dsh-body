@@ -106,6 +106,7 @@ test('the blood parameters are design defaults with no source', () => {
     'blood.oxygenContentPerPercentMlPerL': { value: 2, unit: 'mL/L/%' },
     'blood.sympatheticSystolicGain': { value: 0.002, unit: '1/mm' },
     'blood.sympatheticDiastolicGain': { value: 0.001, unit: '1/mm' },
+    'blood.referenceMaxCardiacOutputMlMin': { value: 16380, unit: 'mL/min' },
   };
   assert.deepEqual(
     data.parameters.map((parameter) => parameter.id),
@@ -224,6 +225,17 @@ test('maximum oxygen delivery is the cardiac capacity at maximum drive', () => {
   assert.ok(
     resting.maxOxygenDeliveryMlPerMin > resting.oxygenDeliveryMlMin,
     'capacity exceeds the lagged rest delivery',
+  );
+
+  const customCapacity = round({
+    state: initialState,
+    heart: { cardiacOutputMlMin: 2000, maxCardiacOutputMlMin: 2340 },
+    bloodOxygen: oxygenAt(97),
+  }).written;
+  assertClose(
+    customCapacity.maxOxygenDeliveryMlPerMin,
+    2340 * (97 * 2) / 1000,
+    'uses heart.maxCardiacOutputMlMin when provided',
   );
 });
 
@@ -355,6 +367,9 @@ test('a loaded heart with an invalid output fails the round without writes', () 
     ['negative output', heartAt(-1)],
     ['null output', { cardiacOutputMlMin: null }],
     ['string output', heartAt('5000')],
+    ['NaN max output', { cardiacOutputMlMin: 4900, maxCardiacOutputMlMin: Number.NaN }],
+    ['negative max output', { cardiacOutputMlMin: 4900, maxCardiacOutputMlMin: -1 }],
+    ['string max output', { cardiacOutputMlMin: 4900, maxCardiacOutputMlMin: '16380' }],
   ];
 
   for (const [label, heart] of invalid) {

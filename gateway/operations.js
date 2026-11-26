@@ -171,8 +171,14 @@ export function applyOperations({ registry, snapshotParts, writes, adds = [], tr
     }
     const key = `${partId}.${field}`;
     const group = sums.get(key);
-    if (group) group.delta += delta;
-    else sums.set(key, { partId, field, delta });
+    if (group) {
+      group.delta += delta;
+      if (!Number.isFinite(group.delta)) {
+        fail({ module: caller, operation: 'add', partId, field, reason: 'summed delta overflowed to non-finite number' });
+      }
+    } else {
+      sums.set(key, { partId, field, delta });
+    }
   }
   for (const { partId, field, delta } of sums.values()) {
     const declaration = lookup(partId, field);
@@ -182,7 +188,11 @@ export function applyOperations({ registry, snapshotParts, writes, adds = [], tr
     if (typeof base !== 'number' || !Number.isFinite(base)) {
       fail({ ...detail, reason: 'field value is not a finite number' });
     }
-    part[field] = base + delta;
+    const nextValue = base + delta;
+    if (!Number.isFinite(nextValue)) {
+      fail({ ...detail, reason: 'field value overflowed to non-finite number' });
+    }
+    part[field] = nextValue;
   }
 
   const pairs = new Map();
@@ -200,8 +210,14 @@ export function applyOperations({ registry, snapshotParts, writes, adds = [], tr
     }
     const key = `${fromPart}.${fromField}->${target}`;
     const pair = pairs.get(key);
-    if (pair) pair.amount += amount;
-    else pairs.set(key, { caller, fromPart, fromField, toPart, toField, amount });
+    if (pair) {
+      pair.amount += amount;
+      if (!Number.isFinite(pair.amount)) {
+        fail({ ...detail, reason: 'transferred amount overflowed to non-finite number' });
+      }
+    } else {
+      pairs.set(key, { caller, fromPart, fromField, toPart, toField, amount });
+    }
   }
   const ordered = [...pairs.entries()].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
   for (const [, { caller, fromPart, fromField, toPart, toField, amount }] of ordered) {
@@ -221,7 +237,11 @@ export function applyOperations({ registry, snapshotParts, writes, adds = [], tr
     if (typeof targetValue !== 'number' || !Number.isFinite(targetValue)) {
       fail({ ...detail, partId: toPart, field: toField, reason: 'target value is not a finite number' });
     }
-    targetPart[toField] = targetValue + amount;
+    const nextTargetValue = targetValue + amount;
+    if (!Number.isFinite(nextTargetValue)) {
+      fail({ ...detail, partId: toPart, field: toField, reason: 'target value overflowed to non-finite number' });
+    }
+    targetPart[toField] = nextTargetValue;
   }
 
   return next;

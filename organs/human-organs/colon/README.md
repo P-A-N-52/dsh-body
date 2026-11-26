@@ -4,7 +4,7 @@
 
 `colon` 目前只有一个部位写者 `colon.ts`。它接收小肠按通量比例分流转入的未吸收残渣水，按一阶指数回收速率把一部分水转回 `bodyFluid.waterVolumeMl`，同时按固定速率形成粪便、响应 `defecate` 动作排出轮初粪便，并写出 0–100 mm 的便意代理。`interoception.bowelUrgencyMm` 优先软读本部位的 `colon.bowelUrgencyMm`（缺失或非有限时再按 `colon.stoolG` 回落）。
 
-实现状态：脚本、参数与定向测试已在 `organs/human-organs/colon/`，并已加入根清单 `body-modules.json`、女性清单与男性清单。当前根清单 39 部位、35 份唯一参数文件，女性清单 42 / 38，男性清单 41 / 37。旧存档缺 `colon` 时由 `initialState` 补 0。
+实现状态：脚本、参数与定向测试已在 `organs/human-organs/colon/`，并已加入根清单 `body-modules.json`、女性清单与男性清单。当前根清单 43 部位、39 份唯一参数文件，女性清单 46 / 42，男性清单 45 / 41。旧存档缺 `colon` 时由 `initialState` 补 0。
 
 **清单依赖。** `colon.residueWaterMl` 声明 `transferIn: ["smallIntestine.waterVolumeMl"]`，与小肠的 `transferOut` 配对；`colon.reclaimedWaterMl` 声明 `transferOut: ["bodyFluid.waterVolumeMl"]`，与体液的 `transferIn` 配对。因此完整清单必须同时加载 `smallIntestine` 与 `bodyFluid`：缺 `colon` 时启动报 `Body module "smallIntestine" field "waterVolumeMl": transferOut target "colon.residueWaterMl" is not declared`；缺 `bodyFluid` 时报 `colon.reclaimedWaterMl` 的 `transferOut` 目标未声明。当前根与男性清单的硬 transfer 闭包为 15 个部位，女性清单为 17 个部位；`esophagus` 不在闭包内。
 
@@ -78,5 +78,5 @@ transfer colon.reclaimedWaterMl → bodyFluid.waterVolumeMl: reclaimed
 ## 7. 当前限制
 
 - **未建模：** 肠道菌群、发酵、气体/腹胀、消化酶、膳食纤维、Bristol 分型、便秘/腹泻、直肠储袋、肛门括约肌、自动排便反射、粪便水/能量账本、结肠分段转运与昼夜节律。
-- **未验证：** 结肠转运时间、吸水率、粪便形成率、便意阈值都没有实测或独立人体数据；没有真实 DSH 会话、临床验证或 38 部位性能实测。
+- **未验证：** 结肠转运时间、吸水率、粪便形成率、便意阈值都没有实测或独立人体数据；没有真实 DSH 会话、临床验证或全清单性能实测。
 - 粪便质量只按固定速率增长，不由摄入成分反推；便意只由粪便量线性映射，不是直肠压力或肛门直肠测压结果。

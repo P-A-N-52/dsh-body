@@ -255,7 +255,7 @@ test('the root body boots the endocrine parts at baseline and keeps resting dema
   const body = createBody(t);
   const gateway = await body.start();
   const booted = gateway.getState().parts;
-  assert.deepEqual(booted.hypothalamusEndocrine, { trhRelative: 1, crhRelative: 1 });
+  assert.deepEqual(booted.hypothalamusEndocrine, { trhRelative: 1, crhRelative: 1, carElapsedMin: null });
   assert.deepEqual(booted.pituitary, { tshRelative: 1, acthPgMl: 12, prolactinNgMl: 8, oxytocinPgMl: 2 });
   assert.deepEqual(booted.thyroid, { thyroxineRelative: 1 });
   assert.deepEqual(booted.adrenal, { cortisolNmolL: 180 });

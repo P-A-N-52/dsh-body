@@ -13,6 +13,7 @@ export function checkpoint({
   activeBatch = null,
   lastEffectiveAt = 0,
   notifications = [],
+  profile,
 } = {}) {
   return {
     schemaVersion: 2,
@@ -24,6 +25,7 @@ export function checkpoint({
     lastEffectiveAt,
     notifications,
     startup: null,
+    ...(profile === undefined ? {} : { profile }),
   };
 }
 

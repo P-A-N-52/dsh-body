@@ -33,8 +33,8 @@
  *   不乘在滤波状态上，避免逐轮复利；稳态暴露是未加增益时的同一倍数。
  * - `salivaryGlands` 已加载但 `salivaRateMlPerMin` 缺失、非数、非有限或为负时抛错，
  *   本轮不写状态；不含碳水的餐不读取该字段，因此不受损坏的唾液状态影响。
- * - `duodenum.salivaryAmylaseGain = 0.05` 在本目录参数文件；归一化用的
- *   `salivaryGlands.basalRateMlPerMin` 从唾液腺参数文件只读加载，避免复制同一常数。
+ * - `duodenum.salivaryAmylaseGain = 0.05` 与归一化用的
+ *   `duodenum.referenceSalivaRateMlPerMin = 0.5` 均放在本目录参数文件，不再直接导入唾液腺参数文件。
  *   没有淀粉酶浓度或餐食成分的人体测量，增益和碳水判定都是工程假设。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
@@ -74,12 +74,9 @@ type IO = {
 const parameters = loadParameters(new URL('./nutrient-exposure.parameters.json', import.meta.url));
 const timeConstantMin = requireParameter(parameters, 'duodenum.exposure.timeConstantMin');
 const salivaryAmylaseGain = requireParameter(parameters, 'duodenum.salivaryAmylaseGain');
-const salivaryParameters = loadParameters(
-  new URL('../salivary-glands/saliva.parameters.json', import.meta.url),
-);
-const basalSalivaRateMlPerMin = requireParameter(
-  salivaryParameters,
-  'salivaryGlands.basalRateMlPerMin',
+const referenceSalivaRateMlPerMin = requireParameter(
+  parameters,
+  'duodenum.referenceSalivaRateMlPerMin',
 );
 
 function finiteOrZero(value: unknown): number {
@@ -95,7 +92,7 @@ function amylaseFactor(io: IO, emptiedCarbohydrateG: number): number {
   if (typeof salivaRate !== 'number' || !Number.isFinite(salivaRate) || salivaRate < 0) {
     throw new Error('salivaryGlands.salivaRateMlPerMin must be a non-negative finite number');
   }
-  return 1 + (salivaryAmylaseGain * salivaRate) / basalSalivaRateMlPerMin;
+  return 1 + (salivaryAmylaseGain * salivaRate) / referenceSalivaRateMlPerMin;
 }
 
 export function heartbeat(io: IO): void {

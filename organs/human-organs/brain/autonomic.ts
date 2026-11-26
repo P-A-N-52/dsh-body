@@ -16,8 +16,8 @@
 import { getNsfwSetting, loadParameters, requireParameter } from '../../../lib/parameters.js';
 import { evaluateSexualRelease } from '../sexual-response/response.ts';
 import {
+  evaluateSleepTransition,
   evaluateSleepWakeSignals,
-  willNaturallyWakeThisRound,
   type SleepStage,
 } from './wake-evaluation.ts';
 
@@ -129,29 +129,26 @@ export function heartbeat(io: AutonomicIo): void {
   const sleep = io.read('sleep');
   const prevSleeping = sleep?.sleeping === true;
   const sleepStage = readSleepStage(sleep?.sleepStage, prevSleeping);
-  const evalResult = evaluateSleepWakeSignals(io, { sleepStage });
+  const nsfwEnabled = getNsfwSetting() !== false;
+  const evalResult = evaluateSleepWakeSignals(io, { sleepStage, nsfwEnabled });
   const dtMin = Math.max(0, finiteOr(io.dt, 60) / 60);
 
   const startleTriggered = prevSleeping
     && (evalResult.emergencyTriggered || evalResult.explicitStartleRequested);
   const pineal = io.read('pineal');
-  const willNaturallyWake = prevSleeping
-    && !startleTriggered
-    && !evalResult.endsWithWakeAction
-    && !evalResult.importantSleepTriggered
-    && willNaturallyWakeThisRound({
-      sleepPressureMm: sleep?.sleepPressureMm,
-      sleepDurationMin: sleep?.sleepDurationMin,
+  const endingSleepingLikely = sleep === undefined
+    ? evalResult.endsWithSleepAction
+    : evaluateSleepTransition(io, {
+      prevSleeping,
+      sleepStage,
+      sleepPressureMm: sleep.sleepPressureMm,
+      sleepDurationMin: sleep.sleepDurationMin,
       pinealMelatoninRelative: pineal?.melatoninRelative,
       hasPineal: pineal !== undefined,
       dtMin,
-    });
-  const endingSleepingLikely = prevSleeping
-    ? (!startleTriggered
-      && !evalResult.endsWithWakeAction
-      && !evalResult.importantSleepTriggered
-      && !willNaturallyWake)
-    : evalResult.endsWithSleepAction;
+      nsfwEnabled,
+      signals: evalResult,
+    }).sleeping;
 
   const activity = io.read('physicalActivity');
   const remainingExerciseMin = Math.max(0, finiteOr(activity?.remainingExerciseMin, 0));
@@ -196,7 +193,6 @@ export function heartbeat(io: AutonomicIo): void {
     ? painSympatheticGain * Math.max(0, painLevelMm - painDiscomfortThresholdMm)
     : 0;
 
-  const nsfwEnabled = getNsfwSetting() !== false;
   const sexualResponse = io.read('sexualResponse');
   const ovaries = io.read('ovaries');
   const testes = io.read('testes');

@@ -264,3 +264,38 @@ test('two adds give the same total whatever the module order', async (t) => {
   assert.equal(first.state().snapshot.parts.pool.amount, 1.2);
   assert.equal(second.state().snapshot.parts.pool.amount, 1.2);
 });
+
+test('add and transfer overflow to non-finite numbers fail fatally instead of corrupting state', async (t) => {
+  const addSumOverflow = await launch(t, {
+    modules: {
+      'pool.mjs': poolSource(),
+      'source.mjs': contributorSource({ id: 'source', deltas: [Number.MAX_VALUE] }),
+      'sink.mjs': contributorSource({ id: 'sink', deltas: [Number.MAX_VALUE] }),
+    },
+  });
+  await addSumOverflow.tick();
+  assert.equal((await health(addSumOverflow)).status, 'fatal');
+  assert.equal(addSumOverflow.state().snapshot.simulatedSeconds, 0);
+
+  const addBaseOverflow = await launch(t, {
+    modules: {
+      'pool.mjs': poolSource(),
+      'source.mjs': contributorSource({ id: 'source', deltas: [Number.MAX_VALUE] }),
+    },
+    seed: checkpoint({ parts: { pool: { amount: Number.MAX_VALUE } } }),
+  });
+  await addBaseOverflow.tick();
+  assert.equal((await health(addBaseOverflow)).status, 'fatal');
+  assert.equal(addBaseOverflow.state().snapshot.simulatedSeconds, 0);
+
+  const transferOverflow = await launch(t, {
+    modules: {
+      'source.mjs': transferSource({ initialMl: Number.MAX_VALUE, writeMl: Number.MAX_VALUE, amount: Number.MAX_VALUE }),
+      'sink.mjs': transferSink(),
+    },
+    seed: checkpoint({ parts: { source: { volumeMl: Number.MAX_VALUE }, sink: { volumeMl: Number.MAX_VALUE } } }),
+  });
+  await transferOverflow.tick();
+  assert.equal((await health(transferOverflow)).status, 'fatal');
+  assert.equal(transferOverflow.state().snapshot.simulatedSeconds, 0);
+});

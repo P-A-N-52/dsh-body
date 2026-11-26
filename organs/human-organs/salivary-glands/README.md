@@ -4,7 +4,7 @@
 
 `organs/human-organs/salivary-glands/` 目前只有一个部位 `salivaryGlands`，脚本为 `saliva.ts`。它按基础分泌、进食刺激和脱水状态计算本轮唾液产率 `salivaRateMlPerMin`，并换算出 0–100 mm 的口腔湿润度代理 `mouthMoistureMm`。当前有两个消费者：`duodenum` 读取产率，对含碳水餐的营养暴露给淀粉酶增益；`interoception` 读取湿润度，写出口干读数 `dryMouthMm`。本脚本不写其他部位、不调用 `transfer` 或 `notify`，也不建唾液水账。
 
-实现状态：脚本、参数、模块契约测试与真实 Gateway 测试已落地；当前根清单为 39 部位、35 份唯一参数文件，女性清单为 42 部位、38 份，男性清单为 41 部位、37 份；本切片不新增 `transfer`，硬闭包为根与男性 15 个部位、女性 17 个。四个 `salivaryGlands.*` 参数与消费者参数 `duodenum.salivaryAmylaseGain` 全部是 `design`、`source: null`。本文只描述离线模型与契约，未做真实 DSH 会话、唾液流率实测或临床验证。
+实现状态：脚本、参数、模块契约测试与真实 Gateway 测试已落地；当前根清单为 43 部位、39 份唯一参数文件，女性清单为 46 部位、42 份，男性清单为 45 部位、41 份；本切片不新增 `transfer`，硬闭包为根与男性 15 个部位、女性 17 个。四个 `salivaryGlands.*` 参数与消费者参数 `duodenum.salivaryAmylaseGain`、`duodenum.referenceSalivaRateMlPerMin` 全部是 `design`、`source: null`（`duodenum` 已通过本地参考产率参数与 `saliva.parameters.json` 解耦）。本文只描述离线模型与契约，未做真实 DSH 会话、唾液流率实测或临床验证。
 
 ## 1. 脚本与部位
 
@@ -59,7 +59,7 @@ mouthMoistureMm    = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100
 
 | 消费者 | 读什么 | 用途 |
 | --- | --- | --- |
-| `duodenum` | 轮初 `salivaryGlands.salivaRateMlPerMin` | 对含碳水餐的营养暴露乘 `1 + salivaryAmylaseGain × salivaRateMlPerMin / basalRateMlPerMin`；不含碳水时不变 |
+| `duodenum` | 轮初 `salivaryGlands.salivaRateMlPerMin` | 对含碳水餐的营养暴露乘 `1 + salivaryAmylaseGain × salivaRateMlPerMin / duodenum.referenceSalivaRateMlPerMin`；不含碳水时不变 |
 | `interoception` | 轮初 `salivaryGlands.mouthMoistureMm` | `dryMouthMm = clamp(100 − mouthMoistureMm, 0, 100)`；不进入 `discomfort`，现已接入 `brainNotify` 与纯定性 `body_state` |
 
 - **duodenum。** 只有轮初 `stomach.emptiedCarbohydrateG` 为有限正数时才应用增益；缺失、0、非数或非有限按不含碳水处理，输出与旧行为逐点一致。`salivaryGlands` 未加载时增益按 0；已加载但产率缺失、非数、非有限或为负时抛错，本轮不写。增益乘在到达速率上，不乘在滤波状态上，避免逐轮复利。
@@ -80,7 +80,7 @@ mouthMoistureMm    = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100
 
 ## 6. 未验证
 
-没有唾液流率、刺激持续时间、脱水缩减比例或淀粉酶增益的直接人体测量、独立数据或临床验证；0.5 mL/min、×3、5 min、0.5 与 0.05 全是 `design`、`source: null` 的工程假设，不能称拟合、实测或 `validated`。真实 Gateway 测试只验证清单加载、动作触发、消费者读数、脱水预置与重启接续，不是实机生理验收；本切片未做 38 / 41 部位性能实测。`dryMouthMm` 不能当作口干量表、唾液渗透压或临床干燥症指标。
+没有唾液流率、刺激持续时间、脱水缩减比例或淀粉酶增益的直接人体测量、独立数据或临床验证；0.5 mL/min、×3、5 min、0.5 与 0.05 全是 `design`、`source: null` 的工程假设，不能称拟合、实测或 `validated`。真实 Gateway 测试只验证清单加载、动作触发、消费者读数、脱水预置与重启接续，不是实机生理验收；本切片未做全清单性能实测。`dryMouthMm` 不能当作口干量表、唾液渗透压或临床干燥症指标。
 
 ## 7. 证据入口
 

@@ -4,13 +4,13 @@
 
 `pancreasEndocrine` 读取轮初血浆葡萄糖浓度代理，写入血浆胰岛素绝对浓度代理 `insulinPmolL`（单位 `pmol/L`，静息基准 `60 pmol/L`）与低血糖反调节信号 `glucagonRelative`（单位 `1`）。`insulinPmolL` 在体内按 Michaelis-Menten 可饱和清除 ODE（参考 Thorsteinsson 1985 正常人可饱和半饱和尺度 `Km = 3890 pmol/L`）积分，由各下游摄糖部位（`muscleGlucose`、`liver`、`smallIntestine`）通过 `insulinPmolL / 60` 归一化消费；`glucagonRelative` 在血糖低于参考值 `90 mg/dL` 时温和升高，跌破反调节阈值 `68 mg/dL` 后叠加陡增增益，由 `liver` 与 `kidneyGluconeogenesis` 消费。
 
-实现状态：胰腺脚本、参数与模块契约测试已落地；葡萄糖浓度、肌肉/肝摄糖请求与肝糖原释放的耦合、三清单注册均已接入，当前根清单为 41 个部位、37 份唯一参数文件（女性清单 44 个部位、40 份，男性清单 43 个部位、39 份；全库共 47 份唯一参数文件）。参数标 `design`；尚未做真实 DSH 会话验收或独立人体餐后曲线验证。
+实现状态：胰腺脚本、参数与模块契约测试已落地；葡萄糖浓度、肌肉/肝摄糖请求与肝糖原释放的耦合、三清单注册均已接入，当前根清单为 43 个部位、39 份唯一参数文件（女性清单 46 个部位、42 份，男性清单 45 个部位、41 份；全库共 47 份唯一参数文件）。参数标 `design`；尚未做真实 DSH 会话验收或独立人体餐后曲线验证。
 
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `insulin.ts` | `pancreasEndocrine` | `insulinPmolL`、`glucagonRelative` | 轮初 `glucose.concentrationMgDl`；自己的轮初 `insulinPmolL` / `glucagonRelative`（兼容旧 `insulinRelative`）；`io.dt` | `insulin.parameters.json` |
+| `insulin.ts` | `pancreasEndocrine` | `insulinPmolL`、`glucagonRelative` | 轮初 `glucose.concentrationMgDl`；自己的轮初 `insulinPmolL` / `glucagonRelative`；`io.dt` | `insulin.parameters.json` |
 
 - 无动作、无 transfer、无通知；不写葡萄糖、肌肉或肝，也不搬任何胰岛素/胰高血糖素质量。
 - 三类消费者：`muscleGlucose` 与 `liver` 各自用 `I = insulinPmolL / 60` 计算摄糖请求（肌肉敏感度 1.0、肝 0.5），`smallIntestine` 在高血糖碳水梯度读 `I`（当前灵敏度 0）；`liver` 与 `kidneyGluconeogenesis` 读 `glucagonRelative` 放大内源升糖。
@@ -24,7 +24,7 @@
 | `insulinPmolL` | `pmol/L` | 血浆胰岛素浓度代理（空腹 90 mg/dL 静息稳态精确保持 `60 pmol/L`，保护上限 `900 pmol/L`）；下游通过 `I = insulinPmolL / 60` 消费。不是 C-peptide 或临床实验室个体测定 |
 | `glucagonRelative` | `1` | 轮末写入的无量纲相对胰高血糖素信号，供下一轮 `liver` 与 `kidneyGluconeogenesis` 使用；初值 1，不是 pg/mL |
 
-时间原点：本轮轮末写出的两个值供下一轮下游读取；兼容旧存档时 `saved.insulinRelative` 按 `60 * saved.insulinRelative` 迁移。
+时间原点：本轮轮末写出的两个值供下一轮下游读取；代码已移除旧相对字段兼容回退，全面以 `insulinPmolL`（`pmol/L`）为准。
 
 ## 3. 方程与参数
 
@@ -66,7 +66,7 @@ H_next = glucagonTarget + (H − glucagonTarget) × 2^(−dtMin / responseHalfTi
 
 `liver`、`muscleGlucose` 与 `smallIntestine` 在本轮轮初读取 `pancreasEndocrine.insulinPmolL` 并除以 `60` 换算为无量纲归一化因子 `I`（未加载胰腺时回退 `1`；已加载但 `insulinPmolL` 缺失、非有限或为负时抛错）；`liver` 与 `kidneyGluconeogenesis` 读取 `glucagonRelative`。其余结算、质量守恒与轮次滞后边界保持不变。
 
-`insulinRelative` 不再统一缩放一个“总清除量”，而是由各组织各自使用。设 `E = max(0, glucose.excessMassG)`、`I = insulinRelative`、`dtMin = io.dt / 60`：
+`insulinPmolL` 不统一缩放一个“总清除量”，而是由各组织按 `I = insulinPmolL / 60` 归一化后各自使用。设 `E = max(0, glucose.excessMassG)`、`dtMin = io.dt / 60`：
 
 ```text
 肌肉请求 = muscleGlucose.maxUptakeRateGPerMin
@@ -120,10 +120,10 @@ Gateway 先应用 write，再把本轮 transfer 按 transfer 对键排序后逐�
 必须区分“上游按设计未接入”和“已接入但异常”：
 
 - **自定义清单没有 `pancreasEndocrine`：** `muscleGlucose`、`liver` 与 `smallIntestine` 按 `I = 1`、`H = 1` 回退；`glucose` 的自身残余清除不受影响。
-- **旧根存档只有 `insulinRelative`：** 首轮按 `60 × insulinRelative` 换算初值，不反推历史。
+- **旧根存档只有历史相对字段：** 代码已统一移除旧字段兼容回退，全面以 `insulinPmolL`（`pmol/L`）为准；缺失 `insulinPmolL` 时直接按基线 `60 pmol/L` 起步。
 - **已加载 `glucose` 但读数异常：** 缺 `concentrationMgDl`、非有限或为负时抛错，让本轮失败并暴露错误。
 
-根清单（`body-modules.json`）当前为 41 个部位、37 份唯一参数文件。
+根清单（`body-modules.json`）当前为 43 个部位、39 份唯一参数文件（女性 46 / 42、男性 45 / 41）。
 
 ## 7. 证据入口
 
@@ -137,7 +137,7 @@ Gateway 先应用 write，再把本轮 transfer 按 transfer 对键排序后逐�
 
 ## 8. 未建模与未验证
 
-- 不建胰岛素/胰高血糖素的绝对浓度、分泌率、C-peptide、两室激素动力学、α/β 细胞相互抑制、受体或胞内信号、肝糖异生、脂肪组织分区、肌糖原容量上限、静息糖原周转、饱和作用或慢速组织隔室；M2 薄切片已含骨骼肌摄糖与肌糖原（肌肉按自身参数写 `uptakeRequestG`，`glucose` 结算后进入 `uptakeG`，下一轮入账 `glycogenG`，运动时消耗）与肝糖原储存/释放（肝按自身参数写 `storageRequestG`，实际到账进入 `storageG`，低血糖或高 `glucagonRelative` 时由肝释放），但不是完整组织分区或激素模型。
-- 不建胰岛素抵抗、脂肪组织摄糖、自动行为或药物作用；不把两个相对信号换算成任何实测单位，也不表示胰高血糖素直接促进糖异生。
-- 无激素 transfer，不搬质量；`insulinRelative` 只被肌肉与肝各自用于计算摄糖请求，`glucagonRelative` 只放大肝糖原释放；`glucose` 的自身残余清除与两者无关。肾糖排泄由独立薄切片处理，与本信号不互相替代；肝释放受存量限制，耗尽后不会凭空升糖。
+- 已建胰岛素绝对浓度与饱和清除；不建胰高血糖素绝对浓度、C-peptide、α/β 细胞相互抑制、受体或胞内信号、肝糖异生、脂肪组织分区、肌糖原容量上限、静息糖原周转或慢速组织隔室；M2 薄切片已含骨骼肌摄糖与肌糖原（肌肉按自身参数写 `uptakeRequestG`，`glucose` 结算后进入 `uptakeG`，下一轮入账 `glycogenG`，运动时消耗）与肝糖原储存/释放（肝按自身参数写 `storageRequestG`，实际到账进入 `storageG`，低血糖或高 `glucagonRelative` 时由肝释放），但不是完整组织分区或激素模型。
+- 不建胰岛素抵抗、脂肪组织摄糖、自动行为或药物作用；`glucagonRelative` 不换算成实测浓度，也不表示胰高血糖素直接促进糖异生。
+- 无激素 transfer，不搬质量；`insulinPmolL / 60` 只被肌肉与肝各自用于计算摄糖请求，`glucagonRelative` 只放大肝糖原释放；`glucose` 的自身残余清除与两者无关。肾糖排泄由独立薄切片处理，与本信号不互相替代；肝释放受存量限制，耗尽后不会凭空升糖。
 - 模块与离线 Gateway 测试不等于真实 DSH 实机验收、独立生理数据验证、临床验证或个体预测；本项目尚未登记/提取可用于对照的餐后胰岛素或胰高血糖素测量。

@@ -29,11 +29,6 @@ type PituitaryState = {
   oxytocinPgMl: number;
 };
 
-type SavedPituitaryState = Partial<PituitaryState> & {
-  acthRelative?: unknown;
-  prolactinRelative?: unknown;
-};
-
 type MammaryGlandsReading = {
   lactating?: unknown;
   stimulationMin?: unknown;
@@ -46,7 +41,7 @@ type SexualResponseReading = {
 };
 
 type IO = {
-  read(id: 'pituitary'): Readonly<SavedPituitaryState> | undefined;
+  read(id: 'pituitary'): Readonly<Partial<PituitaryState>> | undefined;
   read(id: 'hypothalamusEndocrine'): Readonly<{ trhRelative?: unknown; crhRelative?: unknown }> | undefined;
   read(id: 'thyroid'): Readonly<{ thyroxineRelative?: unknown }> | undefined;
   read(id: 'adrenal'): Readonly<{ cortisolNmolL?: unknown }> | undefined;
@@ -157,15 +152,11 @@ function readMammaryStimulation(part: Readonly<MammaryGlandsReading> | undefined
   };
 }
 
-function resolvePrevState(saved: Readonly<SavedPituitaryState> | undefined): PituitaryState {
+function resolvePrevState(saved: Readonly<Partial<PituitaryState>> | undefined): PituitaryState {
   if (!saved) return initialState;
   const tshRelative = finiteOr(saved.tshRelative, initialState.tshRelative);
-  const acthPgMl = typeof saved.acthPgMl === 'number' && Number.isFinite(saved.acthPgMl)
-    ? saved.acthPgMl
-    : acthBasalPgMl * finiteOr(saved.acthRelative, 1);
-  const prolactinNgMl = typeof saved.prolactinNgMl === 'number' && Number.isFinite(saved.prolactinNgMl)
-    ? saved.prolactinNgMl
-    : prolactinBasalNgMl * finiteOr(saved.prolactinRelative, 1);
+  const acthPgMl = finiteOr(saved.acthPgMl, initialState.acthPgMl);
+  const prolactinNgMl = finiteOr(saved.prolactinNgMl, initialState.prolactinNgMl);
   const oxytocinPgMl = finiteOr(saved.oxytocinPgMl, initialState.oxytocinPgMl);
   return { tshRelative, acthPgMl, prolactinNgMl, oxytocinPgMl };
 }

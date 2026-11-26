@@ -12,6 +12,7 @@
  */
 import { getNsfwSetting, loadParameters, requireParameter } from '../../../lib/parameters.js';
 import { evaluateSexualRelease } from '../sexual-response/response.ts';
+import { evaluateSleepTransition } from './wake-evaluation.ts';
 
 export const id = 'reward';
 export const actionTypes: string[] = [];
@@ -35,10 +36,23 @@ type IO = {
   read(id: 'duodenum'): Readonly<{ nutrientExposure?: unknown }> | undefined;
   read(id: 'stomachGhrelin'): Readonly<{ relativeConcentration?: unknown }> | undefined;
   read(id: 'adrenal'): Readonly<{ cortisolNmolL?: unknown }> | undefined;
-  read(id: 'interoception'): Readonly<{ discomfort?: unknown }> | undefined;
-  read(id: 'uterus'): Readonly<{ crampMm?: unknown }> | undefined;
-  read(id: 'sleep'): Readonly<{ sleeping?: unknown }> | undefined;
-  readonly actions: readonly Readonly<{ type?: unknown; intensity?: unknown; durationMin?: unknown }>[];
+  read(id: 'interoception'): Readonly<Record<string, unknown>> | undefined;
+  read(id: 'bladder' | 'colon' | 'blood' | 'mammaryGlands'): Readonly<Record<string, unknown>> | undefined;
+  read(id: 'uterus'): Readonly<Record<string, unknown>> | undefined;
+  read(id: 'pineal'): Readonly<{ melatoninRelative?: unknown }> | undefined;
+  read(id: 'sleep'): Readonly<{
+    sleeping?: unknown;
+    sleepStage?: unknown;
+    sleepPressureMm?: unknown;
+    sleepDurationMin?: unknown;
+  }> | undefined;
+  readonly actions: readonly Readonly<{
+    type?: unknown;
+    reason?: unknown;
+    startle?: unknown;
+    intensity?: unknown;
+    durationMin?: unknown;
+  }>[];
   readonly dt: number;
   readonly simulatedSeconds: number;
   write(next: RewardState): void;
@@ -95,7 +109,27 @@ export function heartbeat(io: IO): void {
   const dtMin = Math.max(0, finiteOr(io.dt, 60) / 60);
   const nsfwEnabled = getNsfwSetting() !== false;
 
-  const sleeping = io.read('sleep')?.sleeping === true;
+  const sleep = io.read('sleep');
+  const prevSleeping = sleep?.sleeping === true;
+  const sleepStage = !prevSleeping
+    ? 'awake'
+    : sleep?.sleepStage === 'deep' || sleep?.sleepStage === 'rem'
+      ? sleep.sleepStage
+      : 'light';
+  const pineal = sleep === undefined ? undefined : io.read('pineal');
+  const transition = sleep === undefined
+    ? { sleeping: false, wakeEvent: 'none' as const }
+    : evaluateSleepTransition(io, {
+      prevSleeping,
+      sleepStage,
+      sleepPressureMm: sleep.sleepPressureMm,
+      sleepDurationMin: sleep.sleepDurationMin,
+      pinealMelatoninRelative: pineal?.melatoninRelative,
+      hasPineal: pineal !== undefined,
+      dtMin,
+      nsfwEnabled,
+    });
+  const sleeping = transition.sleeping;
   const sexual = io.read('sexualResponse');
   const ovaries = io.read('ovaries');
   const testes = io.read('testes');

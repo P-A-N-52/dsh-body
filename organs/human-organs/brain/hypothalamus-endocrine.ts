@@ -12,6 +12,7 @@
  */
 import { resolveCircadianHour } from '../../../lib/circadian.js';
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import { evaluateSleepTransition } from './wake-evaluation.ts';
 
 export const id = 'hypothalamusEndocrine';
 export const actionTypes: string[] = [];
@@ -19,6 +20,7 @@ export const actionTypes: string[] = [];
 type HypothalamusEndocrineState = {
   trhRelative: number;
   crhRelative: number;
+  carElapsedMin: number | null;
 };
 
 type IO = {
@@ -29,9 +31,18 @@ type IO = {
   read(id: 'glucose'): Readonly<{ concentrationMgDl?: unknown }> | undefined;
   read(id: 'physicalActivity'): Readonly<{ remainingExerciseMin?: unknown; intensity?: unknown }> | undefined;
   read(id: 'autonomic'): Readonly<{ sympatheticMm?: unknown }> | undefined;
-  read(id: 'sleep'): Readonly<{ sleeping?: unknown; sleepInertiaMm?: unknown; wakeEvent?: unknown }> | undefined;
+  read(id: 'interoception' | 'bladder' | 'colon' | 'blood' | 'uterus' | 'mammaryGlands'): Readonly<Record<string, unknown>> | undefined;
+  read(id: 'pineal'): Readonly<{ melatoninRelative?: unknown }> | undefined;
+  read(id: 'sleep'): Readonly<{
+    sleeping?: unknown;
+    sleepStage?: unknown;
+    sleepPressureMm?: unknown;
+    sleepDurationMin?: unknown;
+    wakeEvent?: unknown;
+  }> | undefined;
   read(id: 'reward'): Readonly<{ hedonicMm?: unknown }> | undefined;
   read(id: 'pituitary'): Readonly<{ oxytocinPgMl?: unknown }> | undefined;
+  readonly actions: readonly Readonly<{ type?: unknown; reason?: unknown; startle?: unknown }>[];
   readonly dt: number;
   readonly wallTimeMs?: number;
   write(next: HypothalamusEndocrineState): void;
@@ -66,11 +77,13 @@ const EXERCISE_CRH_GAIN = 0.4;
 export const initialState: HypothalamusEndocrineState = {
   trhRelative: 1,
   crhRelative: 1,
+  carElapsedMin: null,
 };
 
 export const fields = {
   trhRelative: { unit: '1', mode: 'absolute' },
   crhRelative: { unit: '1', mode: 'absolute' },
+  carElapsedMin: { unit: 'min', mode: 'absolute' },
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -126,22 +139,44 @@ export function heartbeat(io: IO): void {
       * Math.cos((2 * Math.PI * (resolveCircadianHour(io.wallTimeMs) - crhPeakHour)) / 24)
     : 0;
 
+  const dtMin = Math.max(0, io.dt / 60);
   const sleep = io.read('sleep');
-  const sleeping = sleep?.sleeping === true;
-  const sleepInertiaMm = clamp(finiteOr(sleep?.sleepInertiaMm, 0), 0, 100);
+  const prevSleeping = sleep?.sleeping === true;
+  const sleepStage = !prevSleeping
+    ? 'awake'
+    : sleep?.sleepStage === 'deep' || sleep?.sleepStage === 'rem'
+      ? sleep.sleepStage
+      : 'light';
+  const pineal = sleep === undefined ? undefined : io.read('pineal');
+  const transition = sleep === undefined ? null : evaluateSleepTransition(io, {
+    prevSleeping,
+    sleepStage,
+    sleepPressureMm: sleep.sleepPressureMm,
+    sleepDurationMin: sleep.sleepDurationMin,
+    pinealMelatoninRelative: pineal?.melatoninRelative,
+    hasPineal: pineal !== undefined,
+    dtMin,
+  });
+  const sleeping = transition?.sleeping ?? false;
   const sleepSuppression = sleeping ? sleepCrhSuppression : 0;
+  const wokeThisRound = transition !== null && transition.wakeEvent !== 'none';
+  const prevCarElapsedMin = typeof prev.carElapsedMin === 'number' && Number.isFinite(prev.carElapsedMin)
+    ? Math.max(0, prev.carElapsedMin)
+    : null;
+  const carElapsedMin = sleep !== undefined && !sleeping
+    ? wokeThisRound
+      ? 0
+      : prevCarElapsedMin === null
+        ? null
+        : prevCarElapsedMin + dtMin
+    : null;
 
-  // SRC-CLOW-2004 & Smyth 2015: 醒后约 10 min 潜伏窗内温和起坡，随后进入 30–45 min CAR 峰值
+  // SRC-CLOW-2004: 醒后 0–10 min 线性平滑起坡，10–30 min 保持，45 min 结束 CAR 窗口。
   let carDrive = 0;
-  if (sleep !== undefined && !sleeping) {
-    const wokeThisRound = sleep.wakeEvent !== 'none' && sleep.wakeEvent !== undefined;
-    if (wokeThisRound && sleepInertiaMm > 0) {
-      carDrive = carAmplitude * (carLatentMin > 0 ? 0.4 : 1);
-    } else if (sleepInertiaMm > 0) {
-      carDrive = carAmplitude * clamp(sleepInertiaMm / 20, 0, 1);
-    } else if (wokeThisRound) {
-      carDrive = carAmplitude * 0.7;
-    }
+  if (carElapsedMin !== null && carElapsedMin < 45) {
+    const ramp = carLatentMin > 0 ? clamp(carElapsedMin / carLatentMin, 0, 1) : 1;
+    const resolution = carElapsedMin > 30 ? clamp((45 - carElapsedMin) / 15, 0, 1) : 1;
+    carDrive = carAmplitude * ramp * resolution;
   }
 
   const hedonicMm = clamp(finiteOr(io.read('reward')?.hedonicMm, 0), 0, 100);
@@ -153,7 +188,6 @@ export function heartbeat(io: IO): void {
     0.5,
   );
 
-  const dtMin = io.dt / 60;
   const retention = 2 ** (-dtMin / RESPONSE_HALF_TIME_MIN);
 
   const trhTarget = clamp(
@@ -177,5 +211,5 @@ export function heartbeat(io: IO): void {
   const trhRelative = trhTarget + (prev.trhRelative - trhTarget) * retention;
   const crhRelative = crhTarget + (prev.crhRelative - crhTarget) * retention;
 
-  io.write({ trhRelative, crhRelative });
+  io.write({ trhRelative, crhRelative, carElapsedMin });
 }

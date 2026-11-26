@@ -188,7 +188,7 @@ test('a missing pituitary falls back to basal acthPgMl 12', () => {
   assertClose(baseline.written.cortisolNmolL, 180, 'baseline');
 });
 
-test('a missing adrenal state starts from basal 180 nmol/L and migrates legacy cortisolRelative', () => {
+test('a missing adrenal state starts from basal 180 nmol/L without reading legacy cortisolRelative', () => {
   const { written } = round({ pituitary: pituitaryAt(36) });
   assertClose(
     written.cortisolNmolL,
@@ -196,8 +196,8 @@ test('a missing adrenal state starts from basal 180 nmol/L and migrates legacy c
     'initial state',
   );
 
-  const migrated = round({ state: { cortisolRelative: 2 }, dt: 0 });
-  assert.equal(migrated.written.cortisolNmolL, 360, 'legacy cortisolRelative migrates as ratio * 180');
+  const ignoredLegacy = round({ state: { cortisolRelative: 2 }, dt: 0 });
+  assert.equal(ignoredLegacy.written.cortisolNmolL, 180, 'legacy cortisolRelative is no longer read');
 });
 
 test('a loaded pituitary with an invalid ACTH fails the round without writes', () => {

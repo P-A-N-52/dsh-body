@@ -25,7 +25,7 @@
  * 不再借用 `adrenal.cortisolRelative` 充当交感代理。
  *
  * 证据与未验证：无直接人体来源。全部参数与增益均标 `design`、`source: null`；不建模心电、
- * 瓣膜、心律、后负荷、运动性高血压或心衰。输出只含三个有限数字段，JSON-safe；无 transfer、动作或通知。
+ * 瓣膜、心律、后负荷、运动性高血压或心衰。输出只含四个有限数字段（含 `maxCardiacOutputMlMin`），JSON-safe；无 transfer、动作或通知。
  */
 import {
   getNumericParameterOverride,
@@ -89,6 +89,7 @@ type HeartState = {
   heartRatePerMin: number;
   strokeVolumeMl: number;
   cardiacOutputMlMin: number;
+  maxCardiacOutputMlMin: number;
 };
 
 type ActivityReading = {
@@ -133,17 +134,22 @@ const referenceBloodVolumeMl = getNumericParameterOverride('blood.referenceBlood
   ?? scaleByBodyWeight(5000);
 const strokeVolumeRange = { min: scaleByBodyWeight(30), max: scaleByBodyWeight(140) };
 const preloadFactorRange = { min: 0.5, max: 1.15 };
+const maxDrive = 1 + Math.max(activityGain, sympatheticDriveGain * 100);
+const maxStrokeVolumeMl = restingStrokeVolumeMl * (1 + strokeVolumeGain * (maxDrive - 1));
+const maxCardiacOutputMlMin = maxHeartRatePerMin * maxStrokeVolumeMl;
 
 export const initialState: HeartState = {
   heartRatePerMin: restingHeartRatePerMin,
   strokeVolumeMl: restingStrokeVolumeMl,
   cardiacOutputMlMin: restingHeartRatePerMin * restingStrokeVolumeMl,
+  maxCardiacOutputMlMin,
 };
 
 export const fields = {
   heartRatePerMin: { unit: '1/min', mode: 'absolute' },
   strokeVolumeMl: { unit: 'mL', mode: 'absolute' },
   cardiacOutputMlMin: { unit: 'mL/min', mode: 'absolute' },
+  maxCardiacOutputMlMin: { unit: 'mL/min', mode: 'absolute' },
 };
 
 type IO = {
@@ -285,5 +291,5 @@ export function heartbeat(io: IO): void {
   );
   const cardiacOutputMlMin = heartRatePerMin * strokeVolumeMl;
 
-  io.write({ heartRatePerMin, strokeVolumeMl, cardiacOutputMlMin });
+  io.write({ heartRatePerMin, strokeVolumeMl, cardiacOutputMlMin, maxCardiacOutputMlMin });
 }

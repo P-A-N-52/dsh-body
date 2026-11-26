@@ -1495,3 +1495,88 @@ test('extensible sensations support 3 -> 2 step-down, urgent flag, nsfw gating, 
   assert.equal(numericSanitized.notifications[0].mode, 'wake');
   assertNoDigits(numericSanitized.notifications);
 });
+
+
+test('orgasm timestamps notify once per release without repeating a stored edge', () => {
+  const first = round({
+    sexualResponse: { phase: 'orgasm', lastOrgasmAtSimMin: 1 },
+    boundSessionId: 'orgasm-session',
+    simulatedSeconds: 60,
+  });
+  assert.equal(first.notifications.length, 1);
+  assert.match(first.notifications[0].text, /释放|高潮/);
+  assertNoDigits(first.notifications);
+  assert.equal(first.written.sessions['orgasm-session'].lastOrgasmAtSimMin, 1);
+
+  const repeated = round({
+    state: first.written,
+    sexualResponse: { phase: 'orgasm', lastOrgasmAtSimMin: 1 },
+    boundSessionId: 'orgasm-session',
+    simulatedSeconds: 120,
+  });
+  assert.deepEqual(repeated.notifications, []);
+
+  const nextRelease = round({
+    state: repeated.written,
+    sexualResponse: { phase: 'orgasm', lastOrgasmAtSimMin: 61 },
+    boundSessionId: 'orgasm-session',
+    simulatedSeconds: 61 * 60,
+  });
+  assert.equal(nextRelease.notifications.length, 1);
+  assertNoDigits(nextRelease.notifications);
+  assert.equal(nextRelease.written.sessions['orgasm-session'].lastOrgasmAtSimMin, 61);
+});
+
+test('hypocalcemia and hypercalcemia emit zero-digit context/wake alerts and wake from sleep above sleep threshold', () => {
+  const hypoMarked = round({
+    interoception: { hunger: 0, fullness: 0, thirst: 0, hypocalcemiaMm: 65 },
+    boundSessionId: 'session-ca',
+    simulatedSeconds: 60,
+  });
+  assert.equal(hypoMarked.notifications.length, 1);
+  assert.equal(hypoMarked.notifications[0].mode, 'context');
+  assert.match(hypoMarked.notifications[0].text, /发麻|抽紧/);
+  assertNoDigits(hypoMarked.notifications);
+  assert.equal(hypoMarked.written.sessions['session-ca'].sensations.hypocalcemia, 2);
+
+  const hypoStrong = round({
+    state: hypoMarked.written,
+    interoception: { hunger: 0, fullness: 0, thirst: 0, hypocalcemiaMm: 85 },
+    boundSessionId: 'session-ca',
+    simulatedSeconds: 120,
+  });
+  assert.equal(hypoStrong.notifications.length, 1);
+  assert.equal(hypoStrong.notifications[0].mode, 'wake');
+  assert.match(hypoStrong.notifications[0].text, /麻木|抽搐/);
+  assertNoDigits(hypoStrong.notifications);
+  assert.equal(hypoStrong.written.sessions['session-ca'].sensations.hypocalcemia, 3);
+
+  const resetLow = round({
+    state: hypoStrong.written,
+    interoception: { hunger: 0, fullness: 0, thirst: 0, hypocalcemiaMm: 35 },
+    boundSessionId: 'session-ca',
+    simulatedSeconds: 180,
+  });
+  assert.deepEqual(resetLow.notifications, []);
+  assert.equal(resetLow.written.sessions['session-ca'].sensations.hypocalcemia, undefined);
+
+  const hyperMarked = round({
+    interoception: { hunger: 0, fullness: 0, thirst: 0, hypercalcemiaMm: 70 },
+    boundSessionId: 'session-hyper',
+    simulatedSeconds: 60,
+  });
+  assert.equal(hyperMarked.notifications.length, 1);
+  assert.equal(hyperMarked.notifications[0].mode, 'context');
+  assert.match(hyperMarked.notifications[0].text, /倦怠|发沉/);
+  assertNoDigits(hyperMarked.notifications);
+
+  const hyperSleepWake = round({
+    interoception: { hunger: 0, fullness: 0, thirst: 0, hypercalcemiaMm: 95 },
+    sleep: { sleeping: true, sleepStage: 'deep', sleepPressureMm: 40, sleepDurationMin: 30 },
+    boundSessionId: 'session-hyper-sleep',
+    simulatedSeconds: 60,
+  });
+  assert.equal(hyperSleepWake.notifications.length, 1);
+  assert.equal(hyperSleepWake.notifications[0].mode, 'wake');
+  assertNoDigits(hyperSleepWake.notifications);
+});

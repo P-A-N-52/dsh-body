@@ -18,7 +18,16 @@
       "status": "design",
       "range": [0, 0.5],
       "source": null,
-      "note": "含碳水餐到达速率的唾液淀粉酶相对增益；唾液产率按 basalRateMlPerMin 归一化，设计值不是实测酶活性"
+      "note": "含碳水餐到达速率的唾液淀粉酶相对增益；唾液产率按 duodenum.referenceSalivaRateMlPerMin 归一化，设计值不是实测酶活性"
+    },
+    {
+      "id": "duodenum.referenceSalivaRateMlPerMin",
+      "unit": "mL/min",
+      "value": 0.5,
+      "status": "design",
+      "range": [0.1, 2],
+      "source": null,
+      "note": "唾液淀粉酶增益归一化使用的参考静息唾液产率（与 salivaryGlands.basalRateMlPerMin 默认值一致，实现跨器官参数文件解耦）；design"
     }
   ]
 }

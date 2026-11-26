@@ -4,17 +4,17 @@
 
 `adrenal/` 只有一个部位 `adrenal`，脚本为 `cortisol.ts`，没有动作、通知或 `transfer`，也不写其他部位。它读取轮初 `pituitary.acthPgMl`（pg/mL），按 Sigmoid Hill 响应与 `49 min`（`SRC-KEENAN-2004`，`prior`）消除半衰期积分血浆总皮质醇浓度代理 `cortisolNmolL`（单位 `nmol/L`，静息平衡 `180 nmol/L`）。下游消费者按 `cortisolNmolL / 180` 归一化消费：`liver`（低血糖肝糖输出缩放）、`interoception`（转成 `stressMm`）、`testes`（高皮质醇应激抑制）以及 `hypothalamusEndocrine` / `pituitary`（CRH/ACTH 负反馈）。
 
-实现状态：脚本、参数与模块契约测试已落地；当前根清单为 41 部位、37 份唯一参数文件，女性清单为 44 部位、40 份，男性清单为 43 部位、39 份；硬闭包为根与男性 15 个部位、女性 17 个部位，本切片不新增 `transfer`。`acthEc50PgMl = 26`、`maxSecretionNmolLPerMin = 10` 与 `eliminationHalfTimeMin = 49` 标为 `prior`（`SRC-KEENAN-2004`）；`referenceCortisolNmolL = 180`、`referenceActhPgMl = 12` 与 `hillExponent = 1.85` 标为 `design`。本文只描述离线模型与契约，未做真实 DSH 会话、游离皮质醇多室拟合或临床验证。
+实现状态：脚本、参数与模块契约测试已落地；当前根清单为 43 部位、39 份唯一参数文件，女性清单为 46 部位、42 份，男性清单为 45 部位、41 份；硬闭包为根与男性 15 个部位、女性 17 个部位，本切片不新增 `transfer`。`acthEc50PgMl = 26`、`maxSecretionNmolLPerMin = 10` 与 `eliminationHalfTimeMin = 49` 标为 `prior`（`SRC-KEENAN-2004`）；`referenceCortisolNmolL = 180`、`referenceActhPgMl = 12` 与 `hillExponent = 1.85` 标为 `design`。本文只描述离线模型与契约，未做真实 DSH 会话、游离皮质醇多室拟合或临床验证。
 
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `cortisol.ts` | `adrenal` | `cortisolNmolL` | 自己的轮初状态（兼容旧 `cortisolRelative`）；轮初 `pituitary.acthPgMl`（未加载垂体时按 12 pg/mL）；`io.dt` | `cortisol.parameters.json` |
+| `cortisol.ts` | `adrenal` | `cortisolNmolL` | 自己的轮初状态；轮初 `pituitary.acthPgMl`（未加载垂体时按 12 pg/mL）；`io.dt` | `cortisol.parameters.json` |
 
 - `actionTypes = []`；不读动作，不调用 `transfer` / `notify`。
 - `pituitary` 是可选部位：未加载时 `acthPgMl` 按 12 pg/mL 回退。已加载但 `acthPgMl` 缺失、非数值、非有限或为负时抛错，本轮不写状态。
-- 旧档只有 `cortisolRelative` 时首轮按 `180 × cortisolRelative` 迁移。
+- 已全面统一为纯物理单位 `cortisolNmolL`（`nmol/L`），代码已移除旧相对字段回退；旧档不再读取相对字段偏差，缺字段按 `180 nmol/L` 起步。
 
 ## 2. 字段与单位
 
@@ -51,7 +51,7 @@ cortisolNmolL = clamp(steadyTarget + (prevCortisol − steadyTarget) × 2^(−dt
 
 ## 4. 消费者与负反馈
 
-`liver`、`interoception`（读 `cortisolNmolL / 180`，单元测试缺失时兼容 `cortisolRelative`）、`testes`、`hypothalamusEndocrine` 与 `pituitary` 均通过 `ratio = cortisolNmolL / 180` 消费皮质醇信号。
+`liver`、`interoception`、`testes`、`hypothalamusEndocrine` 与 `pituitary` 均通过 `ratio = cortisolNmolL / 180` 消费皮质醇信号；旧相对字段不是本次兼容承诺。
 
 ## 5. 未建模与未验证
 

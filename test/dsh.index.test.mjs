@@ -511,3 +511,70 @@ test('apply injects sleep behavioral notice in systemPrompt.context and wakes bo
   assert.equal(savedSpeech.actions[savedSpeech.pendingActionIds[0]].action.reason, 'speech');
   assert.ok(listeners.get('tools/pre-execute').size >= 1);
 });
+
+test('apply records agent/inbox/inserted notification read receipt into logs/notification-history.json and cleans up listener', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-index-receipt-'));
+  const home = join(dir, 'profile');
+  const statePath = join(dir, 'state', 'body-state.json');
+  const manifestPath = setupManifest(dir);
+
+  const delivered = [];
+  const agents = new Map([
+    ['session-r', {
+      async inject(message) {
+        delivered.push({ method: 'inject', message });
+      },
+      async followup(message) {
+        delivered.push({ method: 'followup', message });
+      },
+    }],
+  ]);
+
+  const notification = {
+    id: 'n-receipt-1',
+    mode: 'context',
+    sessionId: 'session-r',
+    text: '身体感受：胃里有些空，饥饿感开始明显。',
+    createdAtSimulatedSeconds: 60,
+    createdAtWallTimeMs: Date.now(),
+  };
+  mkdirSync(join(dir, 'state'), { recursive: true });
+  writeFileSync(statePath, JSON.stringify({
+    ...checkpoint({
+      wallTimeMs: Date.now(),
+      notifications: [notification],
+    }),
+    boundSessionId: 'session-r',
+  }));
+
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  const { ctx, listeners, emit, disposeAll } = makeContext(home, agents, { withEvents: true });
+  let disposed = false;
+  t.after(async () => {
+    if (!disposed) await disposeAll();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  await apply(ctx, { manifestPath, statePath, port: 0, notificationIntervalMs: 10 });
+  await until(() => delivered.length === 1);
+
+  const historyPath = join(dir, 'state', 'logs', 'notification-history.json');
+  await until(() => existsSync(historyPath));
+  let history = JSON.parse(readFileSync(historyPath, 'utf8'));
+  assert.equal(history.entries[0].id, 'n-receipt-1');
+  assert.equal(history.entries[0].status, 'acked');
+  assert.equal(history.entries[0].messageId, delivered[0].message.id);
+  assert.equal(history.entries[0].insertedAtWallTimeMs, null);
+
+  emit('agent/inbox/inserted', { message: delivered[0].message });
+  history = JSON.parse(readFileSync(historyPath, 'utf8'));
+  assert.equal(history.entries[0].status, 'inserted');
+  assert.equal(Number.isSafeInteger(history.entries[0].insertedAtWallTimeMs), true);
+
+  assert.equal(listeners.get('agent/inbox/inserted').size, 1);
+  await disposeAll();
+  disposed = true;
+  assert.equal(listeners.get('agent/inbox/inserted').size, 0);
+});

@@ -56,11 +56,13 @@ test('heart exports the pump contract without actions', () => {
     heartRatePerMin: { unit: '1/min', mode: 'absolute' },
     strokeVolumeMl: { unit: 'mL', mode: 'absolute' },
     cardiacOutputMlMin: { unit: 'mL/min', mode: 'absolute' },
+    maxCardiacOutputMlMin: { unit: 'mL/min', mode: 'absolute' },
   });
   assert.deepEqual(initialState, {
     heartRatePerMin: 70,
     strokeVolumeMl: 70,
     cardiacOutputMlMin: 4900,
+    maxCardiacOutputMlMin: 16380,
   });
 
   const resting = round({ state: initialState });
@@ -74,6 +76,7 @@ test('heart exports the pump contract without actions', () => {
   assert.equal(resting.written.heartRatePerMin, 70);
   assert.equal(resting.written.strokeVolumeMl, 70);
   assert.equal(resting.written.cardiacOutputMlMin, 4900);
+  assert.equal(resting.written.maxCardiacOutputMlMin, 16380);
 });
 
 test('the heart parameters are design defaults with no source', () => {

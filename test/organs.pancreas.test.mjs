@@ -157,8 +157,6 @@ test('insulin responds dose-dependently across hyperglycemia, hypoglycemia, and 
   assert.equal(extreme.insulinPmolL, maxInsulinPmolL);
   assert.ok(hypo.insulinPmolL < 5);
 
-  const legacyState = round({ insulinRelative: 2 }, { glucose: glucoseAt(90), dt: 0 });
-  assert.equal(legacyState.insulinPmolL, 120, 'legacy relative checkpoints scale by basal 60 pmol/L');
 });
 
 test('glucagonRelative rises above 1 below 90 mg/dL and adds counterregulation below 68 mg/dL', () => {

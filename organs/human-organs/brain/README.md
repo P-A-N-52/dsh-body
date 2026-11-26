@@ -2,7 +2,7 @@
 
 `brain/` 目前有十一个脚本：`interoception.ts` 把胃壁机械感受、胃饥饿素、十二指肠营养暴露、下丘脑口渴驱动、膀胱充盈、子宫痉挛、乳腺胀奶、食管呛咳与结肠便意/粪便量汇成 0–100 mm 的饥饿、饱满、口渴、尿意、不适、痛经、胀奶、便意等代理，再由七路（含子宫痉挛、乳腺胀奶与食管呛咳，外加非标扩展 `discomfortMm` / `discomfort: true`）超出舒适区的强度取最大值得到不适代理；同时软读性反应周期 `sexualResponse.arousalMm` 写 `sexualArousalMm`，结合性激素（男性 `testes.testosteroneRelative`；女性 `ovaries.estradiolPmolL` / `progesteroneNmolL`）、中枢奖赏 `reward`、`pituitary.prolactinNgMl`、躯体不适、低血糖与压力写 `libidoMm`，软读 `reward.hedonicMm`、`sexualResponse.afterglowMm` 与原始压力写 `hedonicCalmMm`（并提供轻度压力缓冲与静息安静困倦轻推），软读血氧池 `bloodOxygen.oxygenDeficit` 写 `dyspneaMm`，软读肾上腺 `adrenal.cortisolNmolL`（除以 180 归一化）与 `autonomic.sympatheticMm` 写 `stressMm`，联合松果体 `pineal.melatoninRelative` 与睡眠节律 `sleep` 写 `sleepinessMm`，软读唾液腺 `salivaryGlands.mouthMoistureMm` 写 `dryMouthMm`，软读核心温度与动态设定点写 `heatMm` / `coldMm`，软读血钙 `bloodCalcium.mgDl` 写 `hypocalcemiaMm` / `hypercalcemiaMm`，软读血糖 `glucose.concentrationMgDl` 写 `hypoglycemiaMm`，软读心率/收缩压写 `palpitationMm`，并按自身上一轮状态指数衰减叠加汗率写 `sweatDampMm`、叠加运动与三分区肌糖原亏空写 `muscleFatigueMm`。其中 `sexualArousalMm`、`libidoMm`、`mammaryFullnessMm`、`afterglowMm`（用于 `hedonicCalmMm`）与 `discomfort` 内的 `mammaryGlands.fullnessMm` 受 `getNsfwSetting()` 门控（`false` 时置 0）；`esophagus.chokingMm` 只留在 `discomfort` 内，不单独输出也不触发通知。`sleep.ts` 维护清醒/睡眠双稳态、睡眠分期、`sleepInertiaMm` 与 `wakeEvent`（`sleep` / `wake_up` 动作及主动/重要/惊醒唤醒）。`autonomic.ts` 维护交感/副交感/惊醒状态（含性释放后副交感余韵回升）。`reward.ts` 维护中枢欲望（`wantingMm`）、享乐（`hedonicMm`）与享乐饱足抑制（`satietyMm`）。`notify.ts` 读取除食管呛咳、`discomfort`、`hedonicCalmMm` 与钙读数外的主观体感（4 类核心 + 15 类扩展体感 + `bladder.involuntaryVoidedMl` 漏尿边沿 + `sexualResponse.lastOrgasmAtSimMin` 5 min 防陈旧高潮边沿 + 可扩展 `sensations`），按三档双轨指数退避、缓解重置（含泌乳挤奶/哺乳缓解）、睡眠门控、NSFW 门控与多感受零数字聚合策略调用 `io.notify`。`hypothalamus-adh.ts` 把体液亏缺与血容量亏缺映射成相对 ADH 水平；`hypothalamus-thirst.ts` 把同一水量亏缺映射成口渴驱动；`hypothalamus-endocrine.ts` 与 `pituitary.ts` 构成 HPT/HPA 轴与催乳素/催产素中枢环节；`thermoregulation.ts` 由产热与散热积分核心温度，并驱动出汗、喘息与冷热读数。十一个脚本只写自己的部位，不写其他器官。
 
-实现状态：脚本与参数已在 `organs/human-organs/brain/`，十一个大脑脚本（含新增中枢奖赏 `reward.ts`）均已加入三份清单；`body_bind` / `body_state`（纯定性零数值）/ `body_act` 工具（含进食/饮水翻译官顺手返回的零数字纯文本 `tasteFeedback`）、DSH `systemPrompt` 挂载与通知投递在 `index.js` / `tools.js` / `notifications.js`。当前根清单 41 部位、37 份唯一参数文件，女性清单 44 部位、40 份，男性清单 43 部位、39 份，全库共 47 份唯一参数文件；`uterus`、`ovaries` 与 `mammaryGlands` 只随女性清单 `body-modules.female.json` 加载，`testes` / `epididymis` 只随男性清单 `body-modules.male.json` 加载，`bloodCalcium` 当前尚未挂载进三份清单。
+实现状态：脚本与参数已在 `organs/human-organs/brain/`，十一个大脑脚本（含中枢奖赏 `reward.ts`）均已加入三份清单；`body_bind` / `body_state`（纯定性零数值）/ `body_act` 工具（含进食/饮水翻译官顺手返回的零数字纯文本 `tasteFeedback`）、DSH `systemPrompt` 挂载与通知投递在 `index.js` / `tools.js` / `notifications.js`。当前根清单 43 部位、39 份唯一参数文件，女性清单 46 部位、42 份，男性清单 45 部位、41 份，全库共 47 份唯一参数文件；`uterus`、`ovaries` 与 `mammaryGlands` 只随女性清单 `body-modules.female.json` 加载，`testes` / `epididymis` 只随男性清单 `body-modules.male.json` 加载，`parathyroid` 与 `bloodCalcium` 已挂载进三份清单。
 
 ## 1. 脚本与部位
 
@@ -15,7 +15,7 @@
 | `hypothalamus-adh.ts` | `hypothalamusAdh` | `relativeConcentration` | `bodyFluid.waterDeficit`；轮初 `blood.bloodVolumeMl`（可选） | `hypothalamus-adh.parameters.json` |
 | `hypothalamus-thirst.ts` | `hypothalamusThirst` | `thirst` | `bodyFluid.waterDeficit` | `hypothalamus-thirst.parameters.json` |
 | `thermoregulation.ts` | `thermoregulation` | `coreTemperatureC`、`setpointC` | 自己的轮初温度；`sleep.sleeping`；轮初 `bloodOxygen.oxygenConsumptionMlMin`（可选）、`skin.sweatVolumeMl`（可选）；`io.wallTimeMs`、`io.dt` | `thermoregulation.parameters.json` |
-| `hypothalamus-endocrine.ts` | `hypothalamusEndocrine` | `trhRelative`、`crhRelative` | 自己的轮初状态；`thyroid`、`adrenal.cortisolNmolL`（除以 180 归一化）、`thermoregulation`、`glucose`、`physicalActivity`、`autonomic.sympatheticMm`、`sleep`（含 `carLatentMin` 10 min 潜伏起坡）、`reward.hedonicMm` 与 `pituitary.oxytocinPgMl`（非低血糖应激温和缓冲）；`io.wallTimeMs`、`io.dt` | `hypothalamus-endocrine.parameters.json` |
+| `hypothalamus-endocrine.ts` | `hypothalamusEndocrine` | `trhRelative`、`crhRelative`、`carElapsedMin` | 自己的轮初状态；`thyroid`、`adrenal.cortisolNmolL`（除以 180 归一化）、`thermoregulation`、`glucose`、`physicalActivity`、`autonomic.sympatheticMm`、`sleep`（含 `carLatentMin` 10 min 潜伏起坡）、`reward.hedonicMm` 与 `pituitary.oxytocinPgMl`（非低血糖应激温和缓冲）；`io.wallTimeMs`、`io.dt` | `hypothalamus-endocrine.parameters.json` |
 | `pituitary.ts` | `pituitary` | `tshRelative`、`acthPgMl`、`prolactinNgMl`、`oxytocinPgMl` | 自己的轮初状态；`hypothalamusEndocrine`、`thyroid`、`adrenal.cortisolNmolL`、`mammaryGlands.lactating` / `stimulationMin`（与 `milkMl` 解耦）、`sleep`、`sexualResponse`、`io.actions`、`io.dt`、`io.wallTimeMs`、`io.simulatedSeconds` | `pituitary.parameters.json` |
 | `reward.ts` | `reward` | `wantingMm`、`hedonicMm`、`satietyMm` | 自己的轮初状态；`sexualResponse`（经 `evaluateSexualRelease`）、`ovaries`、`testes`、`pituitary`、`physicalActivity`、`duodenum`、`stomachGhrelin`、`adrenal.cortisolNmolL`、`interoception.discomfort`、`uterus.crampMm`、`sleep`、`io.actions`、`io.dt`、`io.simulatedSeconds` | `reward.parameters.json` |
 
@@ -197,7 +197,7 @@ thirst = clamp(baselineMm + deficitGainMm × waterDeficit, 0, 100)
 | `lastSessionId` | `1` | 最近一次带 `sessionId` 的动作或 `io.boundSessionId` 所属会话；没有则为 `null` |
 | `sessions` | `1` | 每个会话的提醒状态：`lastSentAt`、`backoffStep`、`lastUrgentSentAt`、`urgentBackoffStep`、`lastInvoluntaryVoidedMl`、`lastLevel`、`lastKind`、`lastSeenAt`、核心水位 `levels`、内置扩展水位 `sensations` 及可选非标扩展水位 `sensationLevels` |
 
-`sessions` 是内部策略状态，不是生理读数；按 `maxTrackedSessions` 保留最近 32 个会话。每个会话各自保存 `levels`（`{ hunger, fullness, urinary, thirst }`）、`sensations`（15 项扩展体感水位字典）与可选 `sensationLevels`（非标扩展感受水位字典，均存 0/2/3）；每轮只对当前目标会话（本轮最后带 `sessionId` 的动作，否则 `io.boundSessionId`，再否则持久化的 `lastSessionId`）按当轮观测调和，其他会话不被当轮观测改写。`lastKind` / `lastLevel` 保留兼容旧档迁移。旧会话缺少 `levels` 时按 `lastKind/lastLevel` 惰性补出对应信号的水位；顶层 `initialState` 为 `{ lastSessionId: null, sessions: {} }`。
+`sessions` 是内部策略状态，不是生理读数；按 `maxTrackedSessions` 保留最近 32 个会话。每个会话各自保存 `levels`（`{ hunger, fullness, urinary, thirst }`）、`sensations`（17 项扩展体感水位字典）与可选 `sensationLevels`（非标扩展感受水位字典，均存 0/2/3）；每轮只对当前目标会话（本轮最后带 `sessionId` 的动作，否则 `io.boundSessionId`，再否则持久化的 `lastSessionId`）按当轮观测调和，其他会话不被当轮观测改写。`lastKind` / `lastLevel` 保留兼容旧档迁移。旧会话缺少 `levels` 时按 `lastKind/lastLevel` 惰性补出对应信号的水位；顶层 `initialState` 为 `{ lastSessionId: null, sessions: {} }`。
 
 ## 3. 输入与方程
 
@@ -223,7 +223,7 @@ thirst = clamp(baselineMm + deficitGainMm × waterDeficit, 0, 100)
 | `esophagus.chokingMm` | 食管呛咳风险代理，0–100 mm；只留在 `discomfort` 第七路，不单独输出或通知。根清单加载 | 0 |
 | `colon.bowelUrgencyMm` / `colon.stoolG` | 结肠便意代理 0–100 mm 与粪便量 g；优先读 `bowelUrgencyMm` | 0 |
 | `thermoregulation.coreTemperatureC` | 核心温度代理，°C；不是实测核心体温、皮肤温度或临床分级。根清单加载 | 37 |
-| `bloodCalcium.mgDl` | 血钙浓度代理，mg/dL；不是实验室参考区间。当前三份清单尚未挂载 | 9.5 |
+| `bloodCalcium.mgDl` | 血钙浓度代理，mg/dL；不是实验室参考区间。三份清单均已挂载 | 9.5 |
 | `glucose.concentrationMgDl` | 血糖浓度代理，mg/dL；用于计算 `hypoglycemiaMm`。根清单加载 | 缺失/非有限时 `hypoglycemiaMm = 0` |
 | `heart.heartRatePerMin` / `blood.systolicMmHg` / `physicalActivity` | 心率、收缩压与活动状态；用于计算 `palpitationMm`（中高强度运动中屏蔽静止心动过速项） | 缺失/非有限对应分量为 0 |
 | `skin.sweatVolumeMl` | 本轮前出汗到账体积，mL；用于换算瞬时汗率并叠加到 `sweatDampMm` | 0 |
@@ -296,7 +296,7 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 
 ### `hypothalamus-endocrine.parameters.json`
 
-共 9 项 `design` 参数：`trhFeedbackGain (1)`、`crhFeedbackGain (1)`、`crhCircadianAmplitude (0.35)`、`crhPeakHour (7 h)`、`sympatheticCrhGain (0.01 /mm)`、`carAmplitude (0.45, SRC-CLOW-2004)`、`carLatentMin (10 min)`、`sleepCrhSuppression (0.15)`、`rewardBufferingGain (0.25)`。除冷应激/低血糖/高强度运动/交感/CAR 外，非低血糖应激另受 `reward.hedonicMm` 与 `pituitary.oxytocinPgMl` 的温和缓冲，皮质醇负反馈按 `adrenal.cortisolNmolL / 180` 归一化。
+共 9 项 `design` 参数：`trhFeedbackGain (1)`、`crhFeedbackGain (1)`、`crhCircadianAmplitude (0.35)`、`crhPeakHour (7 h)`、`sympatheticCrhGain (0.01 /mm)`、`carAmplitude (0.45, SRC-CLOW-2004)`、`carLatentMin (10 min)`、`sleepCrhSuppression (0.15)`、`rewardBufferingGain (0.25)`。自身另保存 `carElapsedMin`（初值 `null`）：与 `sleep` 共用本轮睡醒转态判定，实际醒来当轮为 0，随后按 `io.dt` 累计，0–10 min 平滑起坡、10–30 min 保持、45 min 结束 CAR；再次入睡清除计时。`reward` 也使用同一转态：高潮唤醒当轮可发放奖励，高潮后若最终动作仍为入睡则不发放。非低血糖应激另受 `reward.hedonicMm` 与 `pituitary.oxytocinPgMl` 的温和缓冲，皮质醇负反馈按 `adrenal.cortisolNmolL / 180` 归一化。
 
 ### `pituitary.parameters.json`
 
@@ -368,7 +368,7 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 - 性反应周期、性欲、情绪、伴侣与受孕/妊娠：受 `nsfw` 门控（默认 `false`），开启时仍只作无数字体感与信号调制，不模拟伴侣关系或生殖结局；
 - 呼吸控制与血气：脑不建呼吸节律、呼吸功、PaO2 / PaCO2、血红蛋白 / 氧合曲线或 CO2 / 酸碱调节；
 - 内分泌轴的结合蛋白、受体与临床疾病诊断（`acthPgMl`、`prolactinNgMl`、`oxytocinPgMl` 与外周 `cortisolNmolL` 虽采用了物理浓度单位与文献动力学参考值，仍属于模型工程代理，非实验室化验读数）；
-- 通知历史文件、模型已读确认（`agent/inbox/inserted`）与一具身体同时绑定多会话（当前为显式单会话绑定 `boundSessionId`，未绑定时在 `requireBinding: true` 下休眠）。
+- 一具身体同时绑定多会话（当前为显式单会话绑定 `boundSessionId`，未绑定时在 `requireBinding: true` 下休眠）；以及本次新增状态/通知滚动历史、`agent/inbox/inserted` 阅读回执与血钙通知逻辑的真实 DSH 会话验收。
 
 ## 6. 证据入口
 
@@ -407,21 +407,21 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 
 ## 7. 当前限制
 
-- **体感提醒与无数字交互已接通，但仍属离线与 Gateway 测试口径**：`interoception` 为 `producer only`（仅 `sweatDampMm` 与 `muscleFatigueMm` 读取自身上一轮状态）；`brainNotify` 覆盖 4 项核心 + 15 项扩展体感 + 漏尿边沿 + 高潮事件边沿 + 可扩展 `sensations` 并调用 `io.notify`，`notifications.js` 按 `mode` 投递到已绑定会话，`tools.js` (`body_state`) 转为纯定性零数值感受描述。M19 真实 DSH 会话早于本次更新；新的通知策略、`sleep` 闭环、休眠绑定与纯感觉交互目前覆盖于离线单元与真实 Gateway 集成测试，尚无新的真实 DSH 会话或独立人体验证；通知历史文件、`agent/inbox/inserted` 已读确认与多会话并发绑定仍未实现。
+- **体感提醒与无数字交互已接通，但仍属离线与 Gateway 测试口径**：`interoception` 为 `producer only`（仅 `sweatDampMm` 与 `muscleFatigueMm` 读取自身上一轮状态）；`brainNotify` 覆盖 4 项核心 + 17 项扩展体感 + 漏尿边沿 + 高潮事件边沿 + 可扩展 `sensations` 并调用 `io.notify`，`notifications.js` 按 `mode` 投递到已绑定会话，`tools.js` (`body_state`) 转为纯定性零数值感受描述（含 `discomfort`、`wakeEvent`、`reward` 与排乳等待前兆）。M19 真实 DSH 会话早于本次更新；新的通知策略、`sleep` 闭环、休眠绑定、纯感觉交互、`logs/` 状态与通知滚动历史文件以及 `agent/inbox/inserted` 阅读回执链目前仅覆盖于离线单元与真实 Gateway / 模拟宿主集成测试，尚无新的真实 DSH 会话或独立人体验证；多会话并发绑定仍未实现。
 - **不是生理测量**：23 个 `interoception` 输出、3 个 `reward` 输出与 6 个 `sleep` 字段都是主观评分或工程代理，不能当作物理长度、神经放电、激素浓度、胃容积、膀胱压力、血气、血糖、PSG/EEG 分期或残余尿诊断。
 - **通知不自动产生进食/饮水/排泄/入睡动作**：提醒只发纯定性体感文本；`drink` / `eat` / `urinate` / `defecate` / `sleep` / `wake_up` / `stop_exercise` 仍由会话通过 `body_act` 显式触发。
 - **尿意没有生理阈值**：`urinaryUrgency` 只按膀胱体积归一化，并在 410 mL 处饱和；65/85 mm 只是提醒 policy，不是排尿阈值；600 mL 非自主排空是工程兜底，发生时会发出一次漏尿 `wake` 感知文本。
-- **不适与食管呛咳边界**：`discomfort` 只取各分量超出 70 mm 的最大值；`esophagus.chokingMm` 只留在 `discomfort` 第七路，不单独输出字段也不发通知；`hypocalcemiaMm` 与 `hypercalcemiaMm` 只作读数（且 `bloodCalcium` 尚未挂载进默认清单），不发通知。
+- **不适、血钙提醒与食管呛咳边界**：`discomfort` 只取各分量超出 70 mm 的最大值；`esophagus.chokingMm` 只留在 `discomfort` 第七路，不单独输出字段也不发通知；`hypocalcemiaMm` 与 `hypercalcemiaMm` 现已同步接入 `interoception`、`brainNotify`（作为第 16/17 项标准扩展体感，`>= 65 / 85 mm`，达标时 `mode: 'wake'`）、`wake-evaluation`（睡眠期超重要阈值触发 `wakeReason: 'important'`）与 `body_state`（`>= 85 mm` 均标为 `urgent`）。
 - **没有餐时表与餐前预期**：不能按钟点预测下一餐；饥饿素现由胃脚本按空腹时长做工程上升，是 `design`。
-- **没有渗透压、EEG 分期或个体化**：两个下丘脑脚本不读血浆/尿渗透压或 RAAS；`sleep` 不建 REM/NREM 分期或睡眠惯性；年龄、性别、BMI 与膀胱容量差异不自动进入脑内参数。
+- **没有渗透压、EEG 实测或个体化**：两个下丘脑脚本不读血浆/尿渗透压或 RAAS；`sleep` 仅以 `light/deep/rem` 90 分钟工程周期与 20 min 睡眠惯性代理分期，不建真实脑电 PSG/EEG 波形；年龄、性别、BMI 与膀胱容量差异不自动进入脑内参数。
 
 ## 8. 体感提醒（`brainNotify`）
 
-`notify.ts` 只做提醒策略：每轮读取 `interoception`（4 项核心 + 15 项扩展体感 + 可选 `sensations`，不读 `hedonicCalmMm`）、可选 `bladder` / `colon` / `sleep` / `blood` / `uterus` / `mammaryGlands` / `sexualResponse`、本轮动作与 `io.boundSessionId`，按双轨指数退避、缓解重置、睡眠门控、NSFW 门控与多感受零数字聚合决定是否调用 `io.notify`。它不生成新感受，不改 `interoception`，也不读 `esophagus.chokingMm` 或聚合 `discomfort`（亦不通知 `hypocalcemiaMm` / `hypercalcemiaMm`）。
+`notify.ts` 只做提醒策略：每轮读取 `interoception`（4 项核心 + 17 项扩展体感 + 可选 `sensations`，不读 `hedonicCalmMm`）、可选 `bladder` / `colon` / `sleep` / `blood` / `uterus` / `mammaryGlands` / `sexualResponse`、本轮动作与 `io.boundSessionId`，按双轨指数退避、缓解重置、睡眠门控、NSFW 门控与多感受零数字聚合决定是否调用 `io.notify`。它不生成新感受，不改 `interoception`，也不读 `esophagus.chokingMm` 或聚合 `discomfort`。
 
 **覆盖信号与分级**：
 - 4 项核心：`hunger`、`fullness`、`urinary`、`thirst`（各自读取 `brainNotify.<kind>.marked` / `strong`，默认 65 / 85 mm）。
-- 15 项内置扩展：`dyspnea`、`palpitation`、`hypoglycemia`、`heat`、`cold`、`bowelUrgency`、`dryMouth`、`uterineCramp`、`muscleFatigue`、`sweatDamp`、`stress`、`sleepiness`、`mammaryFullness`、`sexualArousal`、`libido`（统一读取 `brainNotify.default.marked` / `strong`，默认 65 / 85 mm；`sexualArousal === 3` 且 `sexualResponse.phase === 'orgasm'` 时改用高潮余韵文案，并与 `sexualOrgasm` 边沿去重）。
+- 17 项内置扩展：`dyspnea`、`palpitation`、`hypoglycemia`、`heat`、`cold`、`bowelUrgency`、`dryMouth`、`uterineCramp`、`muscleFatigue`、`sweatDamp`、`stress`、`sleepiness`、`mammaryFullness`、`sexualArousal`、`libido`、`hypocalcemia`、`hypercalcemia`（统一读取 `brainNotify.default.marked` / `strong`，默认 65 / 85 mm；`sexualArousal === 3` 且 `sexualResponse.phase === 'orgasm'` 时改用高潮余韵文案，并与 `sexualOrgasm` 边沿去重）。
 - 高潮边沿：`sexualResponse.lastOrgasmAtSimMin` 与会话记录 `lastOrgasmAtSimMin` 不同且距当前仿真分钟 ≤ 5 min（且未睡着、`nsfwEnabled`）时触发 `sexualOrgasm` 边沿通知；超过 5 min 视为陈旧高潮事件仅静默同步水位不再补发。
 - 漏尿边沿：`bladder.involuntaryVoidedMl` 由 `<= 0` 跃升至 `> 0` 时产生一次 `involuntaryVoid` 紧急 `wake` 候选，待归零后复位边沿标记 `lastInvoluntaryVoidedMl`。
 - 非标扩展 `sensations`：支持 `intensityMm`、`urgent?: boolean`、`nsfw?: boolean`、`contextText?: string`、`wakeText?: string`，共用 65 / 85 / 40 mm 滞回（含 `3 -> 2` 步降）与跨 `nsfw` / 零数字清洗。
@@ -451,4 +451,4 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 - 目标会话按 `io.actions` 最后一条 `sessionId` → `io.boundSessionId` → `prev.lastSessionId` 解析。
 - 启动补算轮带 `io.suppressNotifications = true`：`brainNotify` 只调和下降水位，不调用 `io.notify`，不消耗退避步数与时间戳。
 
-**未实现**：通知历史文件、`agent/inbox/inserted` 已读确认、多会话同时绑定、以及本次新增通知逻辑的真实 DSH 会话验收（当前仅完成离线单测与真实 Gateway 集成测试）。Gateway 的 `GET /notifications` 仍是待确认队列；投递泵在 `inject`/`followup` 入队后 ACK，不表示模型已经读取。
+**未实现/未实测**：多会话同时绑定、以及本次新增日志/回执与血钙通知逻辑的真实 DSH 会话验收（当前仅完成离线单测、模拟宿主与真实 Gateway 集成测试）。Gateway 的 `GET /notifications` 仍是待确认队列；投递泵在 `inject`/`followup` 入队后 ACK，同时向 `logs/notification-history.json` 写入投递记录并在收到 `agent/inbox/inserted` 后补写阅读回执时间（若宿主不触发该事件则保留 `insertedAtWallTimeMs: null`）。

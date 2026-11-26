@@ -74,11 +74,16 @@ function emptyAccumulator() {
   return { voidedMl: 0, sweatMl: 0, lungsMl: 0, bleedingMl: 0, milkMl: 0 };
 }
 
-test('the female manifest boots 43 parts and pays menses and milk into the water ledger', async (t) => {
+function assertClose(actual, expected, label, tolerance = 1e-12) {
+  assert.ok(Math.abs(actual - expected) <= tolerance, `${label}: ${actual} != ${expected}`);
+}
+
+test('the female manifest boots 46 parts and pays menses and milk into the water ledger', async (t) => {
   silence(t);
   const { gateway } = await startBody(t, { parts: { ovaries: { cycleDay: 0 } } });
   const booted = gateway.getState().parts;
-  assert.equal(Object.keys(booted).length, 43);
+  assert.equal(Object.keys(booted).length, 46);
+  assert.ok(booted.reward, 'reward must be loaded');
   assert.ok(booted.ovaries, 'ovaries must be loaded');
   assert.ok(booted.uterus, 'uterus must be loaded');
   assert.ok(booted.liver, 'liver must be loaded');
@@ -106,6 +111,12 @@ test('the female manifest boots 43 parts and pays menses and milk into the water
   assert.ok(booted.mammaryGlands, 'mammaryGlands must be loaded');
   assert.deepEqual(booted.mammaryGlands, {
     lactating: false,
+    galactorrhea: false,
+    inductionProgress: 0,
+    storedMilkMl: 0,
+    ejectedMilkMl: 0,
+    stimulationMin: 0,
+    pendingEjections: [],
     milkRequestMl: 0,
     milkMl: 0,
     lactoseRequestG: 0,
@@ -125,13 +136,15 @@ test('the female manifest boots 43 parts and pays menses and milk into the water
     alveolarO2MlMin: 6000 * (0.058333 / 1.4),
     alveolarO2CapacityMlMin: 60000 * (0.058333 / 1.4),
   });
-  assert.equal(booted.pituitary.prolactinRelative, 1);
+  assert.equal(booted.pituitary.prolactinNgMl, 8);
   assert.equal(booted.ovaries.cycleDay, 0);
   assert.deepEqual(booted.uterus, {
     endometriumRelative: 0.1,
     crampMm: 0,
     bleedingRequestMl: 0,
     bleedingMl: 0,
+    contractionMm: 0,
+    pelvicCongestionMm: 0,
   });
 
   const accumulator = emptyAccumulator();
@@ -154,7 +167,7 @@ test('the female manifest boots 43 parts and pays menses and milk into the water
   assert.deepEqual(discomfortRounds, [2, 3, 4, 5], 'discomfort reads the previous round cramp');
   assert.ok(accumulator.bleedingMl > 0);
   assert.equal(accumulator.milkMl, 0, 'non-lactating default female has zero milk drain');
-  assert.equal(gateway.getState().parts.pituitary.prolactinRelative, 1);
+  assert.ok(gateway.getState().parts.pituitary.prolactinNgMl > 0);
   assert.ok(
     Math.abs(waterLedgerMl(gateway.getState().parts, accumulator)) <= 1e-6,
     'the ledger must still include every paid bleed',
@@ -190,31 +203,31 @@ test('a lactating female pays milk and lactose and raises prolactin while conser
   let parts = gateway.getState().parts;
   accumulate(accumulator, parts);
   assert.equal(parts.mammaryGlands.lactating, true);
-  assert.equal(parts.mammaryGlands.milkRequestMl, 0.5);
+  assertClose(parts.mammaryGlands.milkRequestMl, 0.1728, 'baseline PRL 8 request');
   assert.equal(parts.mammaryGlands.milkMl, 0);
   assert.equal(parts.mammaryGlands.lactoseG, 0);
 
   await gateway.tick();
   parts = gateway.getState().parts;
   accumulate(accumulator, parts);
-  assert.equal(parts.mammaryGlands.milkMl, 0.5);
-  assert.ok(Math.abs(parts.mammaryGlands.lactoseG - 0.035) <= 1e-12);
+  assertClose(parts.mammaryGlands.milkMl, 0.1728, 'the first request is paid');
+  assertClose(parts.mammaryGlands.lactoseG, 0.0127872, 'the first lactose request is paid');
 
   await gateway.tick();
   parts = gateway.getState().parts;
   accumulate(accumulator, parts);
-  assert.ok(parts.pituitary.prolactinRelative > 1, 'milk payout raises prolactin');
+  assert.ok(parts.pituitary.prolactinNgMl > 8, 'the lactation floor raises prolactin');
 
   await gateway.tick();
   parts = gateway.getState().parts;
   accumulate(accumulator, parts);
-  assert.ok(parts.mammaryGlands.milkRequestMl > 0.5, 'elevated prolactin raises milk request');
+  assert.ok(parts.mammaryGlands.milkRequestMl > 0.1728, 'elevated prolactin raises milk request');
 
   await gateway.tick();
   parts = gateway.getState().parts;
   accumulate(accumulator, parts);
-  assert.ok(parts.mammaryGlands.milkMl > 0.5, 'elevated prolactin raises milk payout');
-  assert.ok(parts.mammaryGlands.lactoseG > 0.035, 'elevated prolactin raises lactose payout');
+  assert.ok(parts.mammaryGlands.milkMl > 0.1728, 'elevated prolactin raises milk payout');
+  assert.ok(parts.mammaryGlands.lactoseG > 0.0127872, 'elevated prolactin raises lactose payout');
   assert.ok(
     Math.abs(waterLedgerMl(parts, accumulator)) <= 1e-6,
     'lactating water ledger must stay conserved',

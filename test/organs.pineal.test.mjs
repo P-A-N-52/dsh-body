@@ -126,6 +126,25 @@ test('the curve stays inside 0-2 and every write is finite and JSON-safe', (t) =
   }
 });
 
+test('the circadian target uses the 39.4 minute response even without sleep', (t) => {
+  t.after(() => setWorkerParameterConfig({}));
+  setWorkerParameterConfig({ profile: { timezoneOffsetMin: 0 } });
+  let written;
+  heartbeat({
+    read: (partId) => (partId === 'pineal' ? { melatoninRelative: 1.8 } : undefined),
+    actions: [],
+    dt: 60,
+    simulatedSeconds: 0,
+    wallTimeMs: 14 * 3600 * 1000,
+    write: (next) => { written = next; },
+  });
+  assertClose(
+    written.melatoninRelative,
+    0.2 + 1.6 * 2 ** (-1 / 39.4),
+    'one minute from peak toward the afternoon trough',
+  );
+});
+
 test('when sleep module is loaded, nocturnal room light suppresses melatonin vs dark sleep', (t) => {
   t.after(() => setWorkerParameterConfig({}));
   setWorkerParameterConfig({ profile: { timezoneOffsetMin: 0 } });

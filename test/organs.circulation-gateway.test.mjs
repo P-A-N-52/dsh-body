@@ -120,6 +120,7 @@ test('exercise raises heart rate, cardiac output and oxygen delivery while SpO2 
     heartRatePerMin: 70,
     strokeVolumeMl: 70,
     cardiacOutputMlMin: 4900,
+    maxCardiacOutputMlMin: 16380,
   });
   assert.equal(resting.blood.systolicMmHg, 120);
   assert.equal(resting.blood.diastolicMmHg, 80);

@@ -249,3 +249,127 @@ test('overlapping pump.run() calls do not deliver the same notification twice', 
   assert.deepEqual(gateway.state.acks, ['n1']);
   assert.deepEqual(gateway.queue, []);
 });
+
+test('agent/inbox/inserted records read receipt both synchronously pre-ack and asynchronously post-ack', async () => {
+  const queue = [
+    notification({ id: 'n-sync', sessionId: 'session-a' }),
+    notification({ id: 'n-async', sessionId: 'session-b' }),
+  ];
+  const ackMetas = [];
+  const receipts = [];
+  const gateway = {
+    getNotifications() {
+      return queue.map((item) => ({ ...item }));
+    },
+    ackNotification(id, meta) {
+      ackMetas.push({ id, meta });
+      const idx = queue.findIndex((item) => item.id === id);
+      if (idx !== -1) queue.splice(idx, 1);
+      return { id, acked: idx !== -1 };
+    },
+    confirmNotificationInserted(payload) {
+      receipts.push(payload);
+      return { matched: true, ...payload };
+    },
+  };
+
+  let pumpRef;
+  let seq = 0;
+  let clock = 10_000;
+  const agents = {
+    'session-a': {
+      async inject(message) {
+        clock += 50;
+        pumpRef.handleInboxInserted({ message });
+      },
+      async followup() {
+        throw new Error('unexpected followup');
+      },
+    },
+    'session-b': {
+      async inject() {},
+      async followup() {
+        throw new Error('unexpected followup');
+      },
+    },
+  };
+  pumpRef = createNotificationPump({
+    gateway,
+    agentFor: (sessionId) => agents[sessionId],
+    makeId: () => `msg-${++seq}`,
+    now: () => clock,
+    logger: silentLogger,
+  });
+
+  const results = await pumpRef.run();
+  assert.deepEqual(results, [
+    { id: 'n-sync', status: 'delivered' },
+    { id: 'n-async', status: 'delivered' },
+  ]);
+  assert.deepEqual(ackMetas, [
+    { id: 'n-sync', meta: { messageId: 'msg-1', insertedAtWallTimeMs: 10_050 } },
+    { id: 'n-async', meta: { messageId: 'msg-2' } },
+  ]);
+  assert.deepEqual(receipts, []);
+
+  // Unrelated user message is ignored
+  assert.deepEqual(
+    pumpRef.handleInboxInserted({
+      message: { id: 'user-msg-1', role: 'user', source: { kind: 'web' } },
+    }),
+    { matched: false },
+  );
+  assert.deepEqual(receipts, []);
+
+  // Async agent/inbox/inserted for msg-2 triggers confirmNotificationInserted
+  clock += 200;
+  const asyncReceipt = pumpRef.handleInboxInserted({
+    message: { id: 'msg-2', role: 'user', source: { kind: 'body-notify' } },
+  });
+  assert.equal(asyncReceipt.matched, true);
+  assert.deepEqual(receipts, [{
+    messageId: 'msg-2',
+    notificationId: 'n-async',
+    insertedAtWallTimeMs: 10_250,
+  }]);
+});
+
+test('retried ackNotification preserves messageId and pre-ack inbox insertion timestamp', async () => {
+  const queue = [notification({ id: 'n-retry', sessionId: 'session-a' })];
+  let failAck = true;
+  const ackMetas = [];
+  const gateway = {
+    getNotifications() {
+      return queue.map((item) => ({ ...item }));
+    },
+    ackNotification(id, meta) {
+      ackMetas.push({ id, meta });
+      if (failAck) throw new Error('temporary ack failure');
+      const idx = queue.findIndex((item) => item.id === id);
+      if (idx !== -1) queue.splice(idx, 1);
+      return { id, acked: true };
+    },
+  };
+
+  let pumpRef;
+  pumpRef = createNotificationPump({
+    gateway,
+    agentFor: () => ({
+      async inject(message) {
+        pumpRef.handleInboxInserted({ message });
+      },
+      async followup() {},
+    }),
+    makeId: () => 'msg-retry-1',
+    now: () => 50_000,
+    logger: silentLogger,
+  });
+
+  assert.deepEqual(await pumpRef.run(), [{ id: 'n-retry', status: 'failed' }]);
+  failAck = false;
+  assert.deepEqual(await pumpRef.run(), [{ id: 'n-retry', status: 'delivered' }]);
+  assert.deepEqual(ackMetas, [
+    { id: 'n-retry', meta: { messageId: 'msg-retry-1', insertedAtWallTimeMs: 50_000 } },
+    { id: 'n-retry', meta: { messageId: 'msg-retry-1', insertedAtWallTimeMs: 50_000 } },
+  ]);
+});

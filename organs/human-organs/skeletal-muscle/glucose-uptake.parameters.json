@@ -18,7 +18,7 @@
       "status": "design",
       "range": [0, 5],
       "source": null,
-      "note": "肌肉在过剩量远大于半饱和、insulinRelative=1 时的最大摄糖速率的工程占位；不是实测骨骼肌葡萄糖摄取率、胰岛素刺激摄取或个体值，无登记来源。实际请求还按过剩量与半饱和比例、胰岛素响应缩放，到账量由 glucose 按序钳位。range 是工程调参范围，不是人体测量范围"
+      "note": "肌肉在过剩量远大于半饱和、insulinPmolL = 60 pmol/L 时的最大摄糖速率的工程占位；不是实测骨骼肌葡萄糖摄取率、胰岛素刺激摄取或个体值，无登记来源。实际请求还按过剩量与半饱和比例、胰岛素响应缩放，到账量由 glucose 按序钳位。range 是工程调参范围，不是人体测量范围"
     },
     {
       "id": "muscleGlucose.halfMaxExcessG",
@@ -36,7 +36,7 @@
       "status": "design",
       "range": [0, 5],
       "source": null,
-      "note": "肌肉对相对胰岛素信号的敏感度：请求乘以 max(0, 1 + insulinSensitivity × (insulinRelative − 1))；1.0 表示与相对信号同比例，0 表示不敏感。不是胰岛素敏感性指数、钳夹实验值或受体亲和力，无登记来源。range 是工程调参范围，不是人体测量范围"
+      "note": "肌肉对胰岛素信号的敏感度：请求乘以 max(0, 1 + insulinSensitivity × (insulinPmolL / 60 − 1))；1.0 表示与相对基线偏离同比例，0 表示不敏感。不是胰岛素敏感性指数、钳夹实验值或受体亲和力，无登记来源。range 是工程调参范围，不是人体测量范围"
     },
     {
       "id": "muscleGlucose.exerciseUptakeRateGPerMin",

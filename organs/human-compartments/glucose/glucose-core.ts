@@ -27,7 +27,7 @@
  * 工程假设（design）：
  * - 固定 75 kg、90 mg/dL 基线与 60 min 残余清除半时都 `source: null`
  *   （同目录 `glucose.parameters.json`）。`residualDisposalHalfTimeMin` 只描述本隔室自身
- *   （脑/红细胞等非器官组织）的表观清除，与 `pancreasEndocrine.insulinRelative` 无关；
+ *   （脑/红细胞等非器官组织）的表观清除，与 `pancreasEndocrine.insulinPmolL` 无关；
  *   它不是组织摄糖效率或总清除半时。未来分别由身体预设/个体输入、个体空腹测量和更完整的
  *   非器官组织清除模型替换。分布体积参数 `source: SRC-DALLAMAN-2007` 只是定义与量级锚点。
  * - 浓度是本轮轮初质量读数：`concentrationMgDl = M_start × 1000 / V`。小肠同轮 transfer 的

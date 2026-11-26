@@ -282,7 +282,7 @@ test('restarting on the same state path continues the liver release', async (t) 
         storageG: 0,
         outputG: 0,
       },
-      pancreasEndocrine: { insulinRelative: 1, glucagonRelative: 1 },
+      pancreasEndocrine: { insulinPmolL: 60, glucagonRelative: 1 },
     },
   })));
   silence(t);

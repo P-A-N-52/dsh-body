@@ -7,7 +7,7 @@
 - [`interoception`](../brain/README.md) 的第五路 `discomfort` 读取 `crampMm`（软读；根清单没有子宫时按 0）；
 - [`bodyFluid`](../../human-compartments/body-water/README.md) 的女性变体读取 `bleedingRequestMl`，把 `bodyFluid.waterVolumeMl` 转入 `bleedingMl`。
 
-**状态口径。** 当前实现：脚本与参数在 `organs/human-organs/uterus/`，只随独立女性清单 `body-modules.female.json` 加载；当前根清单为 41 部位、37 份唯一参数文件，女性清单为 44 部位、40 份，男性清单为 43 部位、39 份。`mensesDays = 4.0` 取 `SRC-BULL-2019`（`prior`），周期经量参考从 50 mL 调至 `30 mL`（对齐 `SRC-HALLBERG-1966` 总体中位数 30.0 mL，保留单口径水账 `design`），分泌期内膜平台参考 `SRC-BAKOS-1994`（`lutealEndometriumPlateau = 0.9`、`design`），高潮/催产素宫缩方向参考 `SRC-BLAICHER-1999`（`design`）。
+**状态口径。** 当前实现：脚本与参数在 `organs/human-organs/uterus/`，只随独立女性清单 `body-modules.female.json` 加载；当前根清单为 43 部位、39 份唯一参数文件，女性清单为 46 部位、42 份，男性清单为 45 部位、41 份。`mensesDays = 4.0` 取 `SRC-BULL-2019`（`prior`），周期经量参考从 50 mL 调至 `30 mL`（对齐 `SRC-HALLBERG-1966` 总体中位数 30.0 mL，保留单口径水账 `design`），分泌期内膜平台参考 `SRC-BAKOS-1994`（`lutealEndometriumPlateau = 0.9`、`design`），高潮/催产素宫缩方向参考 `SRC-BLAICHER-1999`（`design`）。
 
 ## 1. 脚本与部位
 

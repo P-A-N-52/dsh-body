@@ -33,6 +33,9 @@ export function createBodyHttpServer({
   getCapabilities,
   enqueue,
   ackNotification,
+  confirmNotificationInserted,
+  getStateHistory,
+  getNotificationHistory,
   bindSession,
   unbindSession,
 }) {
@@ -118,7 +121,59 @@ export function createBodyHttpServer({
     if (!isRecord(payload) || typeof payload.id !== 'string' || !payload.id) {
       return reply(response, 400, { error: 'Expected a nonempty id' });
     }
-    return reply(response, 200, ackNotification(payload.id));
+    const meta = {};
+    if (typeof payload.messageId === 'string' && payload.messageId) {
+      meta.messageId = payload.messageId;
+    }
+    if (Number.isSafeInteger(payload.insertedAtWallTimeMs) && payload.insertedAtWallTimeMs >= 0) {
+      meta.insertedAtWallTimeMs = payload.insertedAtWallTimeMs;
+    }
+    return reply(response, 200, ackNotification(payload.id, meta));
+  }
+
+  async function handleReceiptPost(request, response) {
+    let payload;
+    try {
+      payload = await readJsonBody(request);
+    } catch (error) {
+      return reply(response, error.statusCode ?? 400, { error: error.message });
+    }
+    if (!isRecord(payload)) {
+      return reply(response, 400, { error: 'Expected a JSON object' });
+    }
+    const hasMessageId = typeof payload.messageId === 'string' && payload.messageId.length > 0;
+    const hasNotificationId = typeof payload.notificationId === 'string' && payload.notificationId.length > 0;
+    if (!hasMessageId && !hasNotificationId) {
+      return reply(response, 400, { error: 'Expected a nonempty messageId or notificationId' });
+    }
+    if (typeof confirmNotificationInserted !== 'function') {
+      return reply(response, 501, { error: 'Notification receipts are not supported' });
+    }
+    const insertedAtWallTimeMs = Number.isSafeInteger(payload.insertedAtWallTimeMs) && payload.insertedAtWallTimeMs >= 0
+      ? payload.insertedAtWallTimeMs
+      : null;
+    return reply(response, 200, confirmNotificationInserted({
+      messageId: hasMessageId ? payload.messageId : null,
+      notificationId: hasNotificationId ? payload.notificationId : null,
+      insertedAtWallTimeMs,
+    }));
+  }
+
+  function parseHistoryLimit(url) {
+    const raw = url.searchParams.get('limit');
+    if (raw === null) return undefined;
+    if (!/^[1-9]\d*$/.test(raw)) {
+      const error = new Error('Expected limit to be a positive integer');
+      error.statusCode = 400;
+      throw error;
+    }
+    const parsed = Number(raw);
+    if (!Number.isSafeInteger(parsed) || parsed < 1) {
+      const error = new Error('Expected limit to be a positive integer');
+      error.statusCode = 400;
+      throw error;
+    }
+    return parsed;
   }
 
   async function handleBindPost(request, response) {
@@ -156,12 +211,13 @@ export function createBodyHttpServer({
     const checkpoint = store.current;
     if (!checkpoint) return reply(response, 503, { error: 'Body Gateway is starting', starting: true });
 
-    let pathname;
+    let parsedUrl;
     try {
-      pathname = new URL(request.url, `http://${host}`).pathname;
+      parsedUrl = new URL(request.url, `http://${host}`);
     } catch {
       return reply(response, 400, { error: 'Invalid request URL' });
     }
+    const { pathname } = parsedUrl;
 
     if (pathname === '/health') {
       if (request.method !== 'GET') return methodNotAllowed(response, 'GET');
@@ -190,6 +246,32 @@ export function createBodyHttpServer({
     if (pathname === '/notifications/ack') {
       if (request.method !== 'POST') return methodNotAllowed(response, 'POST');
       return handleAckPost(request, response);
+    }
+    if (pathname === '/notifications/receipt') {
+      if (request.method !== 'POST') return methodNotAllowed(response, 'POST');
+      return handleReceiptPost(request, response);
+    }
+    if (pathname === '/logs/state') {
+      if (request.method !== 'GET') return methodNotAllowed(response, 'GET');
+      if (typeof getStateHistory !== 'function') {
+        return reply(response, 501, { error: 'State logs are not supported' });
+      }
+      try {
+        return reply(response, 200, { entries: getStateHistory({ limit: parseHistoryLimit(parsedUrl) }) });
+      } catch (error) {
+        return reply(response, error.statusCode ?? 400, { error: error.message });
+      }
+    }
+    if (pathname === '/logs/notifications') {
+      if (request.method !== 'GET') return methodNotAllowed(response, 'GET');
+      if (typeof getNotificationHistory !== 'function') {
+        return reply(response, 501, { error: 'Notification logs are not supported' });
+      }
+      try {
+        return reply(response, 200, { entries: getNotificationHistory({ limit: parseHistoryLimit(parsedUrl) }) });
+      } catch (error) {
+        return reply(response, error.statusCode ?? 400, { error: error.message });
+      }
     }
     if (pathname === '/actions') {
       if (request.method !== 'POST') return methodNotAllowed(response, 'POST');

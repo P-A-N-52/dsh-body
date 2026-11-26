@@ -66,7 +66,7 @@ function lowGlucoseParts({ glycogenG }) {
       storageG: 0,
       outputG: 0,
     },
-    pancreasEndocrine: { insulinRelative: 1, glucagonRelative: 1 },
+    pancreasEndocrine: { insulinPmolL: 60, glucagonRelative: 1 },
   };
 }
 
@@ -169,7 +169,7 @@ test('high glucose smoothly suppresses kidney output', async (t) => {
         storageG: 0,
         outputG: 0,
       },
-      pancreasEndocrine: { insulinRelative: 1, glucagonRelative: 1 },
+      pancreasEndocrine: { insulinPmolL: 60, glucagonRelative: 1 },
     },
   });
 

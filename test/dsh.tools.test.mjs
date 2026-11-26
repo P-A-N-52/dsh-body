@@ -378,7 +378,7 @@ test('gateway.getState returns all raw numeric parts while body_state returns ze
 
   const all = gateway.getState();
   assert.equal(all.simulatedSeconds, 60);
-  assert.equal(Object.keys(all.parts).length, 41);
+  assert.equal(Object.keys(all.parts).length, 43);
   for (const part of [
     'esophagus',
     'stomach',
@@ -406,6 +406,8 @@ test('gateway.getState returns all raw numeric parts while body_state returns ze
     'pituitary',
     'thyroid',
     'adrenal',
+    'parathyroid',
+    'bloodCalcium',
     'pineal',
     'kidney',
     'bladder',
@@ -447,6 +449,7 @@ test('gateway.getState returns all raw numeric parts while body_state returns ze
     heartRatePerMin: 70,
     strokeVolumeMl: 70,
     cardiacOutputMlMin: 4900,
+    maxCardiacOutputMlMin: 16380,
   });
   assert.deepEqual(all.parts.blood, {
     bloodVolumeMl: 5000,
@@ -1199,4 +1202,61 @@ test('body_state emits zero-digit qualitative feedback across newly exposed repr
   const maskedState = await maskedMale.tools.body_state.execute({}, fakeExec({ callId: 'male-masked' }));
   assertNoDigits(maskedState, 'masked male');
   assert.equal(maskedState.feelings.some((f) => f.area === 'sexual' || f.area === 'mammary'), false);
+});
+
+test('body_state surfaces discomfort focus, wakeEvent, reward wanting/satiety, and pending milk letdown without digits', async (t) => {
+  const { tools } = await startBody(t, {
+    manifestPath: join(root, 'body-modules.female.json'),
+    defaultNsfw: true,
+    parts: {
+      sleep: {
+        sleeping: false,
+        sleepPressureMm: 10,
+        sleepDurationMin: 0,
+        sleepStage: 'awake',
+        sleepInertiaMm: 25,
+        wakeEvent: 'important',
+      },
+      reward: { wantingMm: 78, hedonicMm: 20, satietyMm: 72 },
+      mammaryGlands: {
+        lactating: true,
+        pendingEjections: [{ durationMin: 15, mode: 'express' }],
+        ejectedMilkMl: 0,
+        fullnessMm: 30,
+      },
+      interoception: {
+        hunger: 70,
+        fullness: 92,
+        discomfort: 75,
+        stressMm: 0,
+        hedonicCalmMm: 10,
+      },
+    },
+  });
+
+  const all = await tools.body_state.execute({}, fakeExec({ callId: 'polish-all' }));
+  assertNoDigits(all, 'polish-all');
+  assert.ok(all.feelings.some((f) => f.area === 'sleep' && f.feeling.includes('唤醒')));
+  assert.ok(all.feelings.some((f) => f.area === 'hunger' && f.feeling.includes('渴求')));
+  assert.ok(all.feelings.some((f) => f.area === 'stress' && f.feeling.includes('饱足')));
+  assert.ok(all.feelings.some((f) => f.area === 'mammary' && f.feeling.includes('排乳前兆')));
+
+  const discomfortFocus = await tools.body_state.execute({ focus: 'discomfort' }, fakeExec({ callId: 'polish-discomfort' }));
+  assertNoDigits(discomfortFocus, 'polish-discomfort');
+  assert.equal(discomfortFocus.focus, 'discomfort');
+  assert.ok(discomfortFocus.feelings.length >= 1);
+
+  const esophagusSteady = await tools.body_state.execute({ focus: 'esophagus' }, fakeExec({ callId: 'polish-esophagus' }));
+  assertNoDigits(esophagusSteady, 'polish-esophagus');
+  assert.equal(esophagusSteady.focus, 'esophagus');
+
+  const calcUrgent = await startBody(t, {
+    parts: {
+      interoception: { hypocalcemiaMm: 90, hypercalcemiaMm: 90 },
+    },
+  });
+  const metabolism = await calcUrgent.tools.body_state.execute({ focus: 'metabolism' }, fakeExec({ callId: 'calc-urgent' }));
+  assertNoDigits(metabolism, 'calc-urgent');
+  assert.ok(metabolism.feelings.some((f) => f.area === 'metabolism' && f.level === 'urgent' && f.feeling.includes('麻木')));
+  assert.ok(metabolism.feelings.some((f) => f.area === 'metabolism' && f.level === 'urgent' && f.feeling.includes('混浊')));
 });

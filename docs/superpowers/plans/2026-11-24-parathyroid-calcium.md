@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `parathyroid`（PTH）与 `bloodCalcium` 隔室 + 骨钙库形成血钙负反馈：低钙 → PTH 升 → 骨钙释放/重吸收增加，高钙 → PTH 降 → 沉积/排泄增加（经 `blood.gfrMlMin`）；症状读数进 `interoception`；根清单 33 部位 / 35 参数、女性 35 / 37。
+**Goal:** `parathyroid`（PTH）与 `bloodCalcium` 隔室 + 骨钙库形成血钙负反馈：低钙 → PTH 升 → 骨钙释放/重吸收增加，高钙 → PTH 降 → 沉积/排泄增加（经 `blood.gfrMlMin`）；症状读数进 `interoception`；三清单均已接入（根 43 部位 / 39 参数、女性 46 / 42、男性 45 / 41）。
 
-**Architecture:** `bloodCalcium.mgDl` 低 → `parathyroid.pthRelative` 升 → `bone` 释放增加、肾排泄减少；高则反向。`bone` 只作钙库，不做骨密度/骨折。
+**Architecture:** `bloodCalcium.mgDl` 低 → `parathyroid.pthPgMl`（`pg/mL`）升 → `bone` 释放增加、肾排泄减少；高则反向。`bone` 只作钙库，不做骨密度/骨折。
 
 **Tech Stack:** Node >=22.18、ESM、本地可擦除 TypeScript、`node:test` + `node:assert`，无第三方依赖。
 
@@ -43,12 +43,12 @@
 
 **Files:** Modify `organs/human-organs/brain/interoception.ts` 及其测试、两份清单、相关计数测试；Create `test/organs.parathyroid-gateway.test.mjs`、`organs/human-organs/parathyroid/README.md`、`organs/human-compartments/calcium/README.md`；Modify `docs/gateway-and-scripts.md`、`docs/virtual-body.md`
 - [x] Step 1: `interoception` 新增 `hypocalcemiaMm` / `hypercalcemiaMm`（软读缺省 0）。
-- [ ] Step 2: 两份清单加 `parathyroid/parathyroid.ts` 与 `calcium/calcium.ts`；根 33 部位 / 35 参数、女性 35 / 37（若接入当前 38/41 清单需按最新基数同步）。
-- [ ] Step 3: 真实 Gateway：预置低血钙 → PTH 升、骨钙库下降、血钙回升、`hypocalcemiaMm` 下降；预置高血钙 → 排泄增加、血钙回落；重启接续。
-- [ ] Step 4: 器官 README（`parathyroid/README.md` 与 `calcium/README.md` 已补齐，主文档挂载描述待接入清单后同步）。
-- [ ] Step 5: `npm test` 与 `git diff --check`。
+- [x] Step 2: 三份清单加 `parathyroid/parathyroid.ts` 与 `calcium/calcium.ts`（现行基数同步为根 43 部位 / 39 参数、女性 46 / 42、男性 45 / 41）。
+- [x] Step 3: 真实 Gateway：新增 `test/organs.parathyroid-gateway.test.mjs`，覆盖三清单静息基线、预置低血钙 → PTH 升 / 骨钙库下降 / 血钙回升 / `hypocalcemiaMm` 升高、预置高血钙 → 排泄与沉积增加 / 血钙回落，以及重启接续。
+- [x] Step 4: 器官 README 与主文档挂载描述已同步完成。
+- [x] Step 5: `npm test` 与 `git diff --check`。
 
 ## 交付记录
 
-- **已完成（Task 1、Task 2 与局部 Task 3）：** 随本地提交 `9cacc65` 落地 `parathyroid/parathyroid.ts`、`calcium/calcium.ts`、各自参数文件以及单元/闭环测试 `test/organs.parathyroid.test.mjs`、`test/organs.blood-calcium.test.mjs`；`interoception.ts` 已包含 `hypocalcemiaMm` / `hypercalcemiaMm` 软读；P0 阶段在 `calcium.ts` 修正了 `/ 1000` → `* 1000` 的 g→mg 换算错误并增加 `depositG` 骨容量余量截断；P2 阶段已补齐 `organs/human-organs/parathyroid/README.md` 与 `organs/human-compartments/calcium/README.md`。
-- **尚未完成（Task 3 保持未勾选）：** `parathyroid` 与 `bloodCalcium` 仍**未挂载**进任何 `body-modules*.json` 清单，`test/organs.parathyroid-gateway.test.mjs` 尚未创建。
+- **已完成（Task 1–3 挂载、Gateway 测试与文档收口）：** 随本地提交 `9cacc65` 落地 `parathyroid/parathyroid.ts`、`calcium/calcium.ts`、各自参数文件以及单元/闭环测试 `test/organs.parathyroid.test.mjs`、`test/organs.blood-calcium.test.mjs`；`interoception.ts` 已包含 `hypocalcemiaMm` / `hypercalcemiaMm` 软读；P0 阶段在 `calcium.ts` 修正了 `/ 1000` → `* 1000` 的 g→mg 换算错误并增加 `depositG` 骨容量余量截断；2026-11-26 本轮收口已完成三份 `body-modules*.json` 挂载、新增 `test/organs.parathyroid-gateway.test.mjs` 并同步计数测试、器官 README 与主文档。
+- **已落地纯物理统一与通知/唤醒扩展（2026-11-26）：** `parathyroid` 已由 `pthRelative` 统一为纯物理浓度 `pthPgMl`（`pg/mL`，`design` 基线 30、上限 90），`calcium.ts` 消费 `pthPgMl` 并移除旧相对字段回退；`hypocalcemiaMm` / `hypercalcemiaMm` 已接入 `brainNotify`（`EXPANDED_KEYS` 65/85/40 mm 无数字通知）与 `wake-evaluation`（92/95 mm 睡眠唤醒）。仍属 `design`/`source: null`，未做临床或真实 DSH 会话验证。

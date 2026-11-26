@@ -3,7 +3,8 @@
  * 变体（如 `glucose-uptake.no-limbs.ts`）只传入各自实际加载的区域份额。
  *
  * 聚合器不再持有肌糖原，只保留摄糖请求与区域分配：每轮读轮初 `glucose.excessMassG` 与
- * `pancreasEndocrine.insulinRelative`，按自己的最大速率、半饱和过剩量与胰岛素敏感度计算
+ * `pancreasEndocrine.insulinPmolL`（按基线 60 pmol/L 换算为 `insulinRelative = insulinPmolL / 60`），
+ * 按自己的最大速率、半饱和过剩量与胰岛素敏感度计算
  * 本轮摄糖请求 `uptakeRequestG`；`glucose` 下一轮按序结算，经 transfer 把实际到账量转入
  * `uptakeG`。本脚本随后把轮初 `uptakeG` 按区域份额经 transfer 分配给本变体声明的区域部位。
  * 区域各自持有糖原、按轮初活动消耗，见同目录 `regions/region-core.ts`。
@@ -59,7 +60,7 @@
  * 区域份额不随动作类型或肢体使用变化；缺区域变体只按现有区域归一，不推断缺失肢体的质量。
  *
  * 边界：`glucose` 未加载时按 `excessMassG = 0` 回退（无过剩信号，请求 0）；`pancreasEndocrine`
- * 未加载时按 `insulinRelative = 1` 回退。上游部位已加载但字段缺失、非有限或为负时抛错使本轮
+ * 未加载时按 `insulinPmolL = 60`（相对基线 `1`）回退。上游部位已加载但字段缺失、非有限或为负时抛错使本轮
  * 失败且不写状态、不发起 transfer，不用健康常量掩盖异常；合法 0 过剩与 0 胰岛素信号都是
  * 有效值。旧存档携带的 `glycogenG` / `glycogenConsumedG` 不参与本脚本计算，第一次 write 后
  * 不再保留。
@@ -89,7 +90,7 @@ type GlucoseReading = {
 };
 
 type PancreasReading = {
-  insulinRelative?: unknown;
+  insulinPmolL?: unknown;
 };
 
 type ActivityReading = {
@@ -195,10 +196,7 @@ export function createMuscleGlucose(regionShares: readonly MuscleRegionShare[]) 
     const pancreas = io.read('pancreasEndocrine');
     const insulinRelative = pancreas === undefined
       ? 1
-      : requireReading(
-        (pancreas as Readonly<{ insulinPmolL?: unknown }>).insulinPmolL,
-        'pancreasEndocrine.insulinPmolL',
-      ) / 60;
+      : requireReading(pancreas.insulinPmolL, 'pancreasEndocrine.insulinPmolL') / 60;
     const activity = readActivity(io);
 
     const dtMin = io.dt / 60;

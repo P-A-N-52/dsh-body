@@ -67,7 +67,7 @@ function assertClose(actual, expected, label, tolerance = 1e-12) {
   );
 }
 
-test('the male manifest boots forty-two parts with testes and epididymis', async (t) => {
+test('the male manifest boots forty-five parts with testes, epididymis and reward', async (t) => {
   const { gateway: safeGateway } = await startBody(t, { defaultNsfw: false });
   assert.equal(Object.hasOwn(safeGateway.getCapabilities(), 'sex'), false);
   assert.equal(Object.hasOwn(safeGateway.getCapabilities(), 'orgasm'), false);
@@ -77,8 +77,9 @@ test('the male manifest boots forty-two parts with testes and epididymis', async
   const { gateway } = await startBody(t);
   const parts = gateway.getState().parts;
 
-  assert.equal(Object.keys(parts).length, 42);
-  assert.deepEqual(parts.testes, { testosteroneRelative: 1 });
+  assert.equal(Object.keys(parts).length, 45);
+  assert.deepEqual(parts.testes, { testosteroneRelative: 1, sleepDebtDays: 0 });
+  assert.deepEqual(parts.reward, { wantingMm: 25, hedonicMm: 15, satietyMm: 0 });
   assert.deepEqual(parts.epididymis, { spermStorageMl: 0, ejaculatedMl: 0 });
   assert.ok(parts.sexualResponse, 'sexualResponse must be loaded');
   assert.ok(parts.interoception, 'interoception must be loaded');

@@ -4,6 +4,7 @@ import { createActionQueue } from './gateway/actions.js';
 import { createCheckpointStore } from './gateway/checkpoint.js';
 import { readManifest } from './gateway/config.js';
 import { createBodyHttpServer, host } from './gateway/http.js';
+import { createBodyLogStore, jsonValuesEqual } from './gateway/logs.js';
 import { createBodyRunner, formatError } from './gateway/runner.js';
 import { createBodySimulation } from './gateway/simulation.js';
 
@@ -13,6 +14,8 @@ const defaultMaxCheckpointBytes = 2 * 1024 * 1024;
 const defaultMaxActionRecords = 2000;
 const defaultActionRetentionMs = 30 * 24 * 60 * 60 * 1000;
 const defaultMaxNotifications = 200;
+const defaultMaxStateHistory = 500;
+const defaultMaxNotificationHistory = 500;
 const defaultManifestPath = fileURLToPath(new URL('./body-modules.json', import.meta.url));
 
 function resolveDefaultPort() {
@@ -32,6 +35,8 @@ export function startGateway({
   actionRetentionMs = defaultActionRetentionMs,
   maxNotifications = defaultMaxNotifications,
   maxCheckpointBytes = defaultMaxCheckpointBytes,
+  maxStateHistory = defaultMaxStateHistory,
+  maxNotificationHistory = defaultMaxNotificationHistory,
   requireBinding = false,
   defaultNsfw = false,
 } = {}) {
@@ -62,6 +67,12 @@ export function startGateway({
   const absoluteManifestPath = resolve(manifestPath);
   const manifest = readManifest(absoluteManifestPath);
   const destination = resolve(statePath);
+  const logStore = createBodyLogStore({
+    statePath: destination,
+    now,
+    maxStateEntries: maxStateHistory,
+    maxNotificationEntries: maxNotificationHistory,
+  });
   const store = createCheckpointStore({
     statePath: destination,
     legacyStatePath: join(dirname(absoluteManifestPath), 'body-state.json'),
@@ -85,6 +96,7 @@ export function startGateway({
     store,
     actions,
     runner,
+    logs: logStore,
     now,
     autoTick,
     heartbeatIntervalMs,
@@ -124,6 +136,9 @@ export function startGateway({
     getCapabilities: actions.capabilities,
     enqueue,
     ackNotification,
+    confirmNotificationInserted,
+    getStateHistory,
+    getNotificationHistory,
     bindSession,
     unbindSession,
   });
@@ -138,10 +153,47 @@ export function startGateway({
     return actions.enqueue(payload);
   }
 
-  function ackNotification(id) {
+  function ackNotification(id, meta = {}) {
     requireReady();
     if (stopping) throw new Error('Body Gateway is stopping');
-    return store.ackNotification(id);
+    const existing = store.current.notifications.find((notification) => notification.id === id) ?? null;
+    const result = store.ackNotification(id);
+    if (result.acked || existing) {
+      logStore.recordNotificationAck(existing ?? { id }, {
+        messageId: typeof meta?.messageId === 'string' && meta.messageId ? meta.messageId : null,
+        ackedAtWallTimeMs: now(),
+        insertedAtWallTimeMs: Number.isSafeInteger(meta?.insertedAtWallTimeMs) && meta.insertedAtWallTimeMs >= 0
+          ? meta.insertedAtWallTimeMs
+          : null,
+      });
+    }
+    return result;
+  }
+
+  function confirmNotificationInserted({
+    messageId = null,
+    notificationId = null,
+    insertedAtWallTimeMs = null,
+  } = {}) {
+    requireReady();
+    if (stopping) throw new Error('Body Gateway is stopping');
+    return logStore.recordNotificationInserted({
+      messageId,
+      notificationId,
+      insertedAtWallTimeMs: Number.isSafeInteger(insertedAtWallTimeMs) && insertedAtWallTimeMs >= 0
+        ? insertedAtWallTimeMs
+        : now(),
+    });
+  }
+
+  function getStateHistory(options = {}) {
+    requireReady();
+    return logStore.getStateHistory(options);
+  }
+
+  function getNotificationHistory(options = {}) {
+    requireReady();
+    return logStore.getNotificationHistory(options);
   }
 
   async function boot() {
@@ -170,6 +222,19 @@ export function startGateway({
       return null;
     }
     store.commit(initial);
+    if (saved === null) {
+      logStore.recordStateCommit(store.current, { reason: 'boot' });
+    } else if (
+      initial.startup.caughtUpSeconds > 0
+      || !jsonValuesEqual(saved.snapshot?.parts ?? {}, store.current.snapshot.parts)
+    ) {
+      logStore.seedBaseline(saved.snapshot);
+      logStore.recordStateCommit(store.current, {
+        reason: initial.startup.caughtUpSeconds > 0 ? 'catch-up' : 'startup',
+      });
+    } else {
+      logStore.seedBaseline(store.current.snapshot);
+    }
     const info = {
       port: address.port,
       host,
@@ -226,6 +291,9 @@ export function startGateway({
       return structuredClone(requireReady().notifications);
     },
     ackNotification,
+    confirmNotificationInserted,
+    getStateHistory,
+    getNotificationHistory,
     bindSession,
     unbindSession,
     getHealth() {

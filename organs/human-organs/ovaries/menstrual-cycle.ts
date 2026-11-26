@@ -6,8 +6,9 @@
  * - SRC-BULL-2019 (`bull-2019.md`): 周期长度 29.3 d、卵泡期 16.9 d、黄体期 12.4 d (`prior`)；
  * - SRC-STRICKER-2006 (`stricker-2006.md`): 健康女性排卵周期按 LH 峰日（Day 0）对齐的
  *   day `-15..+14` 每日血清 LH (`IU/L`), FSH (`IU/L`), E2 (`pmol/L`), P4 (`nmol/L`) 中位数轨迹；
- * - SRC-PAGEWILSON-2007 & SRC-HOSKOVA-2022: 短期高 PRL 不立刻抑周期，慢性持续高 PRL 与
- *   哺乳刺激通过 `cycleSuppression` 慢时间常数（半衰期 5 d）压低激素高峰并延缓周期推进。
+ * - SRC-PAGEWILSON-2007 & SRC-HOSKOVA-2022: `highProlactinDays` 累计高 PRL 暴露，满 7 d 前
+ *   不改变周期；慢性高 PRL 与已建立哺乳通过 `cycleSuppression` 慢时间常数（半衰期 5 d）
+ *   压低激素高峰并延缓周期推进。
  */
 import {
   getNsfwSetting,
@@ -30,6 +31,7 @@ type OvariesState = {
   lhIuL: number;
   fshIuL: number;
   cycleSuppression: number;
+  highProlactinDays: number;
 };
 
 type SavedOvariesState = Partial<OvariesState>;
@@ -53,6 +55,7 @@ const hyperprolactinemiaThresholdNgMl = requireParameter(
   parameters,
   'ovaries.hyperprolactinemiaThresholdNgMl',
 );
+const suppressionOnsetDays = requireParameter(parameters, 'ovaries.suppressionOnsetDays');
 const suppressionHalfTimeDays = requireParameter(parameters, 'ovaries.suppressionHalfTimeDays');
 
 // SRC-STRICKER-2006: dayOffset = -15..+14 每日中位数；末尾 +15 连续衔接回 -15。
@@ -149,6 +152,28 @@ function computeHormones(cycleDay: number, suppression: number) {
   };
 }
 
+function stepSuppressionSegment(
+  start: number,
+  target: number,
+  segmentDays: number,
+): { end: number; suppressionIntegral: number } {
+  if (segmentDays <= 0) {
+    return { end: start, suppressionIntegral: 0 };
+  }
+  if (suppressionHalfTimeDays <= 0) {
+    return { end: target, suppressionIntegral: target * segmentDays };
+  }
+  const end = clamp(
+    target + (start - target) * 2 ** (-segmentDays / suppressionHalfTimeDays),
+    0,
+    0.95,
+  );
+  // 解析积分 ∫[0, Δ] (target + (start - target) * 2^(-τ / T)) dτ，使大 dt 的 cycleDay 与细步长一致。
+  const suppressionIntegral = target * segmentDays
+    + (suppressionHalfTimeDays / Math.LN2) * (start - end);
+  return { end, suppressionIntegral };
+}
+
 const presetLactating = getNsfwSetting() !== false && getProfileLactating();
 const initialCycleDay = wrapCycleDay(startCycleDay);
 const initialSuppression = presetLactating ? 0.75 : 0;
@@ -163,6 +188,7 @@ export const initialState: OvariesState = {
   lhIuL: initialHormones.lhIuL,
   fshIuL: initialHormones.fshIuL,
   cycleSuppression: initialSuppression,
+  highProlactinDays: 0,
 };
 
 export const fields = {
@@ -174,6 +200,7 @@ export const fields = {
   lhIuL: { unit: 'IU/L', mode: 'absolute' },
   fshIuL: { unit: 'IU/L', mode: 'absolute' },
   cycleSuppression: { unit: '1', mode: 'absolute' },
+  highProlactinDays: { unit: 'd', mode: 'absolute' },
 };
 
 export function heartbeat(io: IO): void {
@@ -184,6 +211,7 @@ export function heartbeat(io: IO): void {
     0,
     0.95,
   );
+  const prevHighProlactinDays = Math.max(0, finiteOr(prev?.highProlactinDays, 0));
   const dtDays = Math.max(0, finiteOr(io.dt, 0) / 60 / 1440);
 
   const prolactinNgMl = Math.max(0, finiteOr(io.read('pituitary')?.prolactinNgMl, 8));
@@ -192,18 +220,29 @@ export function heartbeat(io: IO): void {
   const mammaryLactating = nsfwEnabled && mammary?.lactating === true;
   const stimulationMin = Math.max(0, finiteOr(mammary?.stimulationMin, 0));
 
-  const prlExcess = Math.max(0, (prolactinNgMl - hyperprolactinemiaThresholdNgMl) / 65);
+  const highProlactin = prolactinNgMl >= hyperprolactinemiaThresholdNgMl;
+  const highProlactinDays = dtDays <= 0
+    ? prevHighProlactinDays
+    : (highProlactin ? prevHighProlactinDays + dtDays : 0);
+  const postOnsetDays = highProlactin
+    ? Math.min(dtDays, Math.max(0, highProlactinDays - suppressionOnsetDays))
+    : 0;
+  const preOnsetDays = dtDays - postOnsetDays;
+  const prlExcess = postOnsetDays > 0
+    ? Math.max(0, (prolactinNgMl - hyperprolactinemiaThresholdNgMl) / 65)
+    : 0;
   const lactationDrive = mammaryLactating ? (stimulationMin > 0 ? 0.85 : 0.65) : 0;
-  const suppressionTarget = clamp(Math.max(prlExcess, lactationDrive), 0, 0.95);
-  const cycleSuppression = dtDays <= 0
-    ? prevSuppression
-    : clamp(
-      suppressionTarget + (prevSuppression - suppressionTarget) * 2 ** (-dtDays / suppressionHalfTimeDays),
-      0,
-      0.95,
-    );
+  const preOnsetTarget = clamp(lactationDrive, 0, 0.95);
+  const postOnsetTarget = clamp(Math.max(prlExcess, lactationDrive), 0, 0.95);
+  const preSegment = stepSuppressionSegment(prevSuppression, preOnsetTarget, preOnsetDays);
+  const postSegment = stepSuppressionSegment(preSegment.end, postOnsetTarget, postOnsetDays);
+  const cycleSuppression = postSegment.end;
 
-  const cycleDay = wrapCycleDay(prevDay + dtDays * (1 - 0.85 * cycleSuppression));
+  const effectiveCycleAdvanceDays = Math.max(
+    0,
+    dtDays - 0.85 * (preSegment.suppressionIntegral + postSegment.suppressionIntegral),
+  );
+  const cycleDay = wrapCycleDay(prevDay + effectiveCycleAdvanceDays);
   const hormones = computeHormones(cycleDay, cycleSuppression);
 
   io.write({
@@ -215,5 +254,6 @@ export function heartbeat(io: IO): void {
     lhIuL: hormones.lhIuL,
     fshIuL: hormones.fshIuL,
     cycleSuppression,
+    highProlactinDays,
   });
 }

@@ -12,15 +12,19 @@
  *   prevTransitMin = max(0, prev.transitMin)
  *   transitMin = max(0, prevTransitMin − dtMin)
  *   本轮递减后仍有转运（transitMin > 0）时保留 prev.bolusVolumeMl，否则视为已到胃、按 0 起算
- *   每条合法 eat/drink：bolusVolumeMl += 动作体积；transitMin = bolusTransitMin
+ *   每轮先推进 `intakeQueue` 中持续进食/饮水的一轮切片；再按与胃一致的 `rounds` 解析新动作
+ *   rounds = durationMin > 0 ? ceil(durationMin × 60 / io.dt) : 1
+ *   rounds > 1 时每轮吞下体积的 `1 / rounds`，余量写入 `intakeQueue` 跨轮释放，避免慢饮触发虚假高呛咳
+ *   swallowedMl = 本轮队列切片与即时摄入之和
+ *   swallowedMl > 0 时 bolusVolumeMl += swallowedMl；transitMin = bolusTransitMin
  *   chokingMm = clamp(chokeGain × max(0, bolusVolumeMl / referenceBolusMl − 1), 0, 100)
  *
  * 工程假设（design）：
  * - “合法 eat/drink”沿用胃 `motility-core.parseIntake` 的输入契约：type 为 eat/drink、volumeMl
  *   为有限正数；durationMin / carbohydrateG 若提供必须有限且非负；drink 的 energyKcal 可缺省、
  *   提供时必须有限非负；eat 的 energyKcal 必须有限非负且 mealKind 为 liquid/solid/mixed。
- *   非法动作整条忽略，不报错。`durationMin` 只影响胃的按轮分摊；食管仍把该动作的完整体积
- *   记入吞下轮，不按轮拆分，也不反推食团含水率或固液组成。
+ *   非法动作或因极小 `dt` 无法有限分片的动作整条忽略，不报错。`durationMin > 0` 时与胃按相同
+ *   轮数分摊吞咽体积（不跨部位耦合胃参数），单轮吞咽不反推食团含水率或固液组成。
  * - 转运计时从轮初值递减；食团在 `transitMin` 到达 0 时视为已进入胃并清零。胃的接收由既有
  *   动作队列时序表达（胃在动作结算轮收到摄入），本脚本不新增 transfer，也不重复写入胃；
  *   因此 `transitMin` 只是读数，不改变胃的摄入时刻。60 s 轮长大于 0.2 min，正常一轮后
@@ -42,22 +46,31 @@ import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 export const id = 'esophagus';
 export const actionTypes: string[] = ['eat', 'drink'];
 
+export type EsophagusIntakeEntry = {
+  remainingMl: number;
+  rateMlPerRound: number;
+  remainingRounds: number;
+};
+
 type EsophagusState = {
   bolusVolumeMl: number;
   transitMin: number;
   chokingMm: number;
+  intakeQueue: EsophagusIntakeEntry[];
 };
 
 export const initialState: EsophagusState = {
   bolusVolumeMl: 0,
   transitMin: 0,
   chokingMm: 0,
+  intakeQueue: [],
 };
 
 export const fields = {
   bolusVolumeMl: { unit: 'mL', mode: 'absolute' },
   transitMin: { unit: 'min', mode: 'absolute' },
   chokingMm: { unit: 'mm', mode: 'absolute' },
+  intakeQueue: { unit: '1', mode: 'absolute' },
 };
 
 type Action = {
@@ -96,18 +109,50 @@ function isMealKind(value: unknown): value is 'liquid' | 'solid' | 'mixed' {
   return value === 'liquid' || value === 'solid' || value === 'mixed';
 }
 
-function intakeVolume(action: Action | null | undefined): number | null {
+function parseQueue(raw: unknown): EsophagusIntakeEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const entries: EsophagusIntakeEntry[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== 'object') continue;
+    const rec = item as Partial<EsophagusIntakeEntry>;
+    if (
+      typeof rec.remainingMl !== 'number' || !Number.isFinite(rec.remainingMl) || rec.remainingMl <= 0
+      || typeof rec.rateMlPerRound !== 'number' || !Number.isFinite(rec.rateMlPerRound) || rec.rateMlPerRound <= 0
+      || typeof rec.remainingRounds !== 'number' || !Number.isFinite(rec.remainingRounds) || rec.remainingRounds < 1
+    ) {
+      continue;
+    }
+    entries.push({
+      remainingMl: rec.remainingMl,
+      rateMlPerRound: rec.rateMlPerRound,
+      remainingRounds: Math.ceil(rec.remainingRounds),
+    });
+  }
+  return entries;
+}
+
+function parseIntakeSpec(
+  action: Action | null | undefined,
+  dt: number,
+): { volumeMl: number; rounds: number } | null {
   if (action === null || action === undefined || typeof action !== 'object') return null;
   if (action.type !== 'eat' && action.type !== 'drink') return null;
   if (typeof action.volumeMl !== 'number' || !Number.isFinite(action.volumeMl) || action.volumeMl <= 0) {
     return null;
   }
-  if (action.durationMin !== undefined
-    && (typeof action.durationMin !== 'number'
-      || !Number.isFinite(action.durationMin)
-      || action.durationMin < 0)) {
+  let durationMin = 0;
+  if (action.durationMin !== undefined) {
+    if (typeof action.durationMin !== 'number' || !Number.isFinite(action.durationMin) || action.durationMin < 0) {
+      return null;
+    }
+    durationMin = action.durationMin;
+  }
+  if (durationMin > 0 && !(Number.isFinite(dt) && dt > 0)) {
     return null;
   }
+  const rounds = durationMin > 0 ? Math.ceil((durationMin * 60) / dt) : 1;
+  if (!Number.isFinite(rounds) || rounds < 1) return null;
+
   if (action.carbohydrateG !== undefined
     && (typeof action.carbohydrateG !== 'number'
       || !Number.isFinite(action.carbohydrateG)
@@ -121,13 +166,13 @@ function intakeVolume(action: Action | null | undefined): number | null {
         || action.energyKcal < 0)) {
       return null;
     }
-    return action.volumeMl;
+    return { volumeMl: action.volumeMl, rounds };
   }
   if (typeof action.energyKcal !== 'number' || !Number.isFinite(action.energyKcal) || action.energyKcal < 0) {
     return null;
   }
   if (!isMealKind(action.mealKind)) return null;
-  return action.volumeMl;
+  return { volumeMl: action.volumeMl, rounds };
 }
 
 export function heartbeat(io: IO): void {
@@ -137,10 +182,48 @@ export function heartbeat(io: IO): void {
   let transitMin = Math.max(0, prevTransitMin - dtMin);
   let bolusVolumeMl = transitMin > 0 ? Math.max(0, finiteOrZero(prev.bolusVolumeMl)) : 0;
 
+  let swallowedMl = 0;
+  const nextQueue: EsophagusIntakeEntry[] = [];
+
+  for (const entry of parseQueue(prev.intakeQueue)) {
+    const sliceMl = entry.remainingRounds <= 1
+      ? entry.remainingMl
+      : Math.min(entry.remainingMl, entry.rateMlPerRound);
+    swallowedMl = Math.min(Number.MAX_VALUE, swallowedMl + sliceMl);
+    const remainingMl = entry.remainingMl - sliceMl;
+    const remainingRounds = entry.remainingRounds - 1;
+    if (remainingRounds > 0 && remainingMl > 0) {
+      nextQueue.push({
+        remainingMl,
+        rateMlPerRound: entry.rateMlPerRound,
+        remainingRounds,
+      });
+    }
+  }
+
   for (const action of io.actions) {
-    const volumeMl = intakeVolume(action);
-    if (volumeMl === null) continue;
-    bolusVolumeMl = Math.min(Number.MAX_VALUE, bolusVolumeMl + volumeMl);
+    const intake = parseIntakeSpec(action, io.dt);
+    if (intake === null) continue;
+    if (intake.rounds <= 1) {
+      swallowedMl = Math.min(Number.MAX_VALUE, swallowedMl + intake.volumeMl);
+      continue;
+    }
+    const rateMlPerRound = intake.volumeMl / intake.rounds;
+    const sliceMl = Math.min(intake.volumeMl, rateMlPerRound);
+    swallowedMl = Math.min(Number.MAX_VALUE, swallowedMl + sliceMl);
+    const remainingMl = intake.volumeMl - sliceMl;
+    const remainingRounds = intake.rounds - 1;
+    if (remainingRounds > 0 && remainingMl > 0) {
+      nextQueue.push({
+        remainingMl,
+        rateMlPerRound,
+        remainingRounds,
+      });
+    }
+  }
+
+  if (swallowedMl > 0) {
+    bolusVolumeMl = Math.min(Number.MAX_VALUE, bolusVolumeMl + swallowedMl);
     transitMin = bolusTransitMin;
   }
 
@@ -150,5 +233,5 @@ export function heartbeat(io: IO): void {
     MAX_MM,
   );
 
-  io.write({ bolusVolumeMl, transitMin, chokingMm });
+  io.write({ bolusVolumeMl, transitMin, chokingMm, intakeQueue: nextQueue });
 }

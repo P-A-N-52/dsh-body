@@ -17,10 +17,6 @@ type AdrenalState = {
   cortisolNmolL: number;
 };
 
-type SavedAdrenalState = Partial<AdrenalState> & {
-  cortisolRelative?: unknown;
-};
-
 type PituitaryReading = {
   acthPgMl?: unknown;
 };
@@ -45,7 +41,7 @@ export const fields = {
 };
 
 type IO = {
-  read(id: 'adrenal'): Readonly<SavedAdrenalState> | undefined;
+  read(id: 'adrenal'): Readonly<Partial<AdrenalState>> | undefined;
   read(id: 'pituitary'): Readonly<PituitaryReading> | undefined;
   readonly dt: number;
   write(next: AdrenalState): void;
@@ -68,13 +64,10 @@ const basalSecretionNmolLPerMin = Math.max(
   (referenceCortisolNmolL * kElim - maxSecretionNmolLPerMin * refHill) / Math.max(1e-6, 1 - refHill),
 );
 
-function resolvePrevCortisol(saved: Readonly<SavedAdrenalState> | undefined): number {
+function resolvePrevCortisol(saved: Readonly<Partial<AdrenalState>> | undefined): number {
   if (!saved) return initialState.cortisolNmolL;
   if (typeof saved.cortisolNmolL === 'number' && Number.isFinite(saved.cortisolNmolL)) {
     return saved.cortisolNmolL;
-  }
-  if (typeof saved.cortisolRelative === 'number' && Number.isFinite(saved.cortisolRelative)) {
-    return referenceCortisolNmolL * saved.cortisolRelative;
   }
   return initialState.cortisolNmolL;
 }

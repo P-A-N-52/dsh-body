@@ -10,6 +10,7 @@ import {
   id,
   initialState,
 } from '../organs/human-organs/brain/hypothalamus-endocrine.ts';
+import { heartbeat as sleepHeartbeat } from '../organs/human-organs/brain/sleep.ts';
 
 const HALF_TIME_MIN = 30;
 const MAX_RELATIVE = 3;
@@ -61,6 +62,8 @@ function round({
       if (partId === 'physicalActivity') return physicalActivity;
       if (partId === 'autonomic') return autonomic;
       if (partId === 'sleep') return sleep;
+      if (partId === 'pineal') return undefined;
+      if (['interoception', 'bladder', 'colon', 'blood', 'uterus', 'mammaryGlands'].includes(partId)) return undefined;
       if (partId === 'reward') return reward;
       if (partId === 'pituitary') return pituitary;
       throw new Error(`unexpected read: ${partId}`);
@@ -83,8 +86,9 @@ test('hypothalamus endocrine exports the organ module contract', () => {
   assert.deepEqual(fields, {
     trhRelative: { unit: '1', mode: 'absolute' },
     crhRelative: { unit: '1', mode: 'absolute' },
+    carElapsedMin: { unit: 'min', mode: 'absolute' },
   });
-  assert.deepEqual(initialState, { trhRelative: 1, crhRelative: 1 });
+  assert.deepEqual(initialState, { trhRelative: 1, crhRelative: 1, carElapsedMin: null });
 });
 
 test('the feedback gains are design parameters with no source', () => {
@@ -172,26 +176,26 @@ test('peripheral signals at baseline keep TRH and CRH exactly at 1', () => {
     thyroid: { thyroxineRelative: 1 },
     adrenal: { cortisolNmolL: 180 },
   });
-  assert.deepEqual(next, { trhRelative: 1, crhRelative: 1 });
+  assert.deepEqual(next, { trhRelative: 1, crhRelative: 1, carElapsedMin: null });
 });
 
 test('missing thyroid or adrenal parts fall back to baseline and stay inert', () => {
-  assert.deepEqual(round(), { trhRelative: 1, crhRelative: 1 });
+  assert.deepEqual(round(), { trhRelative: 1, crhRelative: 1, carElapsedMin: null });
   assert.deepEqual(
     round({ thyroid: { thyroxineRelative: 1 } }),
-    { trhRelative: 1, crhRelative: 1 },
+    { trhRelative: 1, crhRelative: 1, carElapsedMin: null },
   );
   assert.deepEqual(
     round({ adrenal: { cortisolNmolL: 180 } }),
-    { trhRelative: 1, crhRelative: 1 },
+    { trhRelative: 1, crhRelative: 1, carElapsedMin: null },
   );
   assert.deepEqual(
     round({ adrenal: { cortisolNmolL: 360 } }),
-    { trhRelative: 1, crhRelative: retention(1) },
+    { trhRelative: 1, crhRelative: retention(1), carElapsedMin: null },
   );
   assert.deepEqual(
     round({ thyroid: { thyroxineRelative: 2 } }),
-    { trhRelative: retention(1), crhRelative: 1 },
+    { trhRelative: retention(1), crhRelative: 1, carElapsedMin: null },
   );
 });
 
@@ -232,7 +236,7 @@ test('a 30 min round halves the distance to the target', () => {
     adrenal: { cortisolNmolL: 360 },
     dt: 30 * 60,
   });
-  assert.deepEqual(next, { trhRelative: 1, crhRelative: 1 });
+  assert.deepEqual(next, { trhRelative: 1, crhRelative: 1, carElapsedMin: null });
 });
 
 test('a 15 min round keeps 2^-1/2 and a 60 s round keeps 2^-2 of the state', () => {
@@ -334,6 +338,69 @@ test('a valid thyroid reading does not hide an invalid adrenal reading', () => {
   assert.equal(writes.length, 0);
 });
 
+test('CAR starts on the same action-wake transition as the sleep module', () => {
+  const previousSleep = {
+    sleeping: true,
+    sleepStage: 'light',
+    sleepPressureMm: 80,
+    sleepDurationMin: 10,
+    sleepInertiaMm: 0,
+    wakeEvent: 'none',
+  };
+  const actions = [{ type: 'wake_up' }];
+  let nextSleep;
+  sleepHeartbeat({
+    read: (partId) => partId === 'sleep' ? previousSleep : undefined,
+    actions,
+    dt: 60,
+    write: (next) => { nextSleep = next; },
+  });
+  assert.equal(nextSleep.sleeping, false);
+  assert.equal(nextSleep.wakeEvent, 'action');
+
+  const waking = round({
+    state: { trhRelative: 1, crhRelative: 1, carElapsedMin: null },
+    sleep: previousSleep,
+    actions,
+  });
+  assert.equal(waking.carElapsedMin, 0);
+});
+
+test('CAR uses elapsed wake time with a ten minute ramp and a finite window', () => {
+  const waking = round({
+    state: { trhRelative: 1, crhRelative: 1, carElapsedMin: null },
+    sleep: {
+      sleeping: true,
+      sleepStage: 'light',
+      sleepPressureMm: 80,
+      sleepDurationMin: 10,
+      wakeEvent: 'none',
+    },
+    actions: [{ type: 'wake_up' }],
+  });
+  assert.deepEqual(waking, { trhRelative: 1, crhRelative: 1, carElapsedMin: 0 });
+
+  const atFive = round({
+    state: { trhRelative: 1, crhRelative: 1, carElapsedMin: 4 },
+    sleep: { sleeping: false, sleepInertiaMm: 0, wakeEvent: 'none' },
+  });
+  assert.equal(atFive.carElapsedMin, 5);
+  assertClose(atFive.crhRelative, 1 + 0.225 * (1 - retention(1)), 'half the CAR target at minute 5');
+
+  const atTen = round({
+    state: { trhRelative: 1, crhRelative: 1, carElapsedMin: 9 },
+    sleep: { sleeping: false, sleepInertiaMm: 0, wakeEvent: 'none' },
+  });
+  assert.equal(atTen.carElapsedMin, 10);
+  assertClose(atTen.crhRelative, 1 + 0.45 * (1 - retention(1)), 'full CAR target at minute 10');
+
+  const atEnd = round({
+    state: { trhRelative: 1, crhRelative: 1, carElapsedMin: 44 },
+    sleep: { sleeping: false, sleepInertiaMm: 0, wakeEvent: 'none' },
+  });
+  assert.deepEqual(atEnd, { trhRelative: 1, crhRelative: 1, carElapsedMin: 45 });
+});
+
 test('actions do not change the output and nothing is notified or transferred', () => {
   const withActions = round({
     thyroid: { thyroxineRelative: 2 },
@@ -364,9 +431,9 @@ test('the written state is finite and JSON-safe', () => {
   ];
 
   for (const next of cases) {
-    assert.deepEqual(Object.keys(next), ['trhRelative', 'crhRelative']);
+    assert.deepEqual(Object.keys(next), ['trhRelative', 'crhRelative', 'carElapsedMin']);
     for (const value of Object.values(next)) {
-      assert.ok(Number.isFinite(value));
+      assert.ok(value === null || Number.isFinite(value));
     }
     assert.doesNotThrow(() => assertJsonValue(next));
     assert.deepEqual(JSON.parse(JSON.stringify(next)), next);
@@ -381,19 +448,19 @@ test('upstream cold, hypoglycemia and hard exercise drivers activate TRH/CRH whi
     glucose: { concentrationMgDl: 90 },
     physicalActivity: { remainingExerciseMin: 0, intensity: 0 },
   });
-  assert.deepEqual(resting, { trhRelative: 1, crhRelative: 1 });
+  assert.deepEqual(resting, { trhRelative: 1, crhRelative: 1, carElapsedMin: null });
 
   const deadband = round({
     thermoregulation: { coreTemperatureC: 36.8 },
     dt: 30 * 60,
   });
-  assert.deepEqual(deadband, { trhRelative: 1, crhRelative: 1 }, '36.8C sits at the cold-stress deadband');
+  assert.deepEqual(deadband, { trhRelative: 1, crhRelative: 1, carElapsedMin: null }, '36.8C sits at the cold-stress deadband');
 
   const nearResting = round({
     thermoregulation: { coreTemperatureC: 36.99999993 },
     dt: 30 * 60,
   });
-  assert.deepEqual(nearResting, { trhRelative: 1, crhRelative: 1 }, '36.99999993C stays inside deadband');
+  assert.deepEqual(nearResting, { trhRelative: 1, crhRelative: 1, carElapsedMin: null }, '36.99999993C stays inside deadband');
 
   const cold = round({
     thermoregulation: { coreTemperatureC: 35 },

@@ -11,6 +11,10 @@ import {
   id,
   initialState,
 } from '../organs/human-organs/brain/sleep.ts';
+import { heartbeat as autonomicHeartbeat } from '../organs/human-organs/brain/autonomic.ts';
+import { heartbeat as hypothalamusEndocrineHeartbeat } from '../organs/human-organs/brain/hypothalamus-endocrine.ts';
+import { heartbeat as rewardHeartbeat } from '../organs/human-organs/brain/reward.ts';
+import { evaluateSleepTransition } from '../organs/human-organs/brain/wake-evaluation.ts';
 import {
   actionTypes as activityActionTypes,
   heartbeat as activityHeartbeat,
@@ -441,4 +445,91 @@ test('sleep staging, inertia, active-action wake, and emergency startle wake beh
   assert.equal(startleWritten.sleeping, false);
   assert.equal(startleWritten.wakeEvent, 'startle');
   assert.equal(startleWritten.sleepInertiaMm, 25);
+});
+
+test('same-round wake-then-sleep resets sleepDurationMin in shared transition and downstream brains', () => {
+  // Deeply rested sleeper close to circadian and full-rest natural-wake thresholds wakes then returns to sleep in the same round.
+  const sleep = {
+    sleeping: true,
+    sleepStage: 'deep',
+    sleepPressureMm: 3,
+    sleepDurationMin: 419,
+    sleepInertiaMm: 0,
+    wakeEvent: 'none',
+  };
+  const pineal = { melatoninRelative: 1.0 };
+  const sexualResponse = { arousalMm: 80, phase: 'plateau', lastOrgasmAtSimMin: null, afterglowMm: 0 };
+
+  for (const wakingAction of [{ type: 'wake_up' }, { type: 'orgasm' }]) {
+    const actions = [wakingAction, { type: 'sleep' }];
+    const parts = {
+      sleep,
+      pineal,
+      sexualResponse,
+      autonomic: { sympatheticMm: 0, parasympatheticMm: 20, startleActive: false },
+      reward: { wantingMm: 25, hedonicMm: 15, satietyMm: 0 },
+      hypothalamusEndocrine: { trhRelative: 1, crhRelative: 1, carElapsedMin: null },
+    };
+    const read = (partId) => parts[partId];
+
+    const sleepNext = roundSleep({ state: sleep, pineal, actions, dt: 60 });
+    assert.equal(sleepNext.sleeping, true, `${wakingAction.type} + sleep keeps sleep`);
+    assert.equal(sleepNext.wakeEvent, 'none');
+    assert.equal(sleepNext.sleepDurationMin, 1);
+    assert.equal(sleepNext.sleepStage, 'light');
+
+    const transition = evaluateSleepTransition(
+      { read, actions },
+      {
+        prevSleeping: true,
+        sleepStage: 'deep',
+        sleepPressureMm: sleep.sleepPressureMm,
+        sleepDurationMin: sleep.sleepDurationMin,
+        pinealMelatoninRelative: pineal.melatoninRelative,
+        hasPineal: true,
+        dtMin: 1,
+      },
+    );
+    assert.deepEqual(
+      transition,
+      { sleeping: true, wakeEvent: 'none' },
+      `${wakingAction.type} + sleep must match sleep.ts transition`,
+    );
+
+    let rewardNext;
+    rewardHeartbeat({ read, actions, dt: 60, simulatedSeconds: 60, write: (next) => { rewardNext = next; } });
+    assert.equal(rewardNext.hedonicMm, 15, `${wakingAction.type} + sleep must not emit awake orgasm reward`);
+    assert.equal(rewardNext.satietyMm, 0);
+    assert.ok(rewardNext.wantingMm < 25);
+
+    let hpaNext;
+    hypothalamusEndocrineHeartbeat({ read, actions, dt: 60, wallTimeMs: 0, write: (next) => { hpaNext = next; } });
+    assert.equal(hpaNext.carElapsedMin, null, `${wakingAction.type} + sleep must not start CAR window`);
+
+    let autonomicNext;
+    autonomicHeartbeat({ read, actions, dt: 60, simulatedSeconds: 60, write: (next) => { autonomicNext = next; } });
+    assert.equal(autonomicNext.sympatheticMm, 0, `${wakingAction.type} + sleep must not fire awake orgasm burst`);
+    assert.ok(autonomicNext.parasympatheticMm > 20, `${wakingAction.type} + sleep raises sleep parasympathetic tone`);
+  }
+
+  // Repeated sleep action without prior wake does NOT reset sleepDurationMin in sleep.ts or evaluateSleepTransition.
+  const repeatedSleepActions = [{ type: 'sleep' }];
+  const repeatedSleepNext = roundSleep({ state: sleep, pineal, actions: repeatedSleepActions, dt: 60 });
+  assert.equal(repeatedSleepNext.sleeping, false);
+  assert.equal(repeatedSleepNext.wakeEvent, 'natural');
+  assert.deepEqual(
+    evaluateSleepTransition(
+      { read: (partId) => ({ sleep, pineal }[partId]), actions: repeatedSleepActions },
+      {
+        prevSleeping: true,
+        sleepStage: 'deep',
+        sleepPressureMm: sleep.sleepPressureMm,
+        sleepDurationMin: sleep.sleepDurationMin,
+        pinealMelatoninRelative: pineal.melatoninRelative,
+        hasPineal: true,
+        dtMin: 1,
+      },
+    ),
+    { sleeping: false, wakeEvent: 'natural' },
+  );
 });

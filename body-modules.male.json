@@ -28,6 +28,8 @@
     "./organs/human-organs/brain/pituitary.ts",
     "./organs/human-organs/thyroid/thyroid.ts",
     "./organs/human-organs/adrenal/cortisol.ts",
+    "./organs/human-organs/parathyroid/parathyroid.ts",
+    "./organs/human-compartments/calcium/calcium.ts",
     "./organs/human-organs/pineal/melatonin.ts",
     "./organs/human-organs/kidney/urine-production.ts",
     "./organs/human-organs/bladder/storage.ts",

@@ -525,9 +525,9 @@ test('invalid upstream readings throw before writing or transferring', () => {
     ['glucose', { concentrationMgDl: Number.NaN }],
     ['glucose', { concentrationMgDl: -1 }],
     ['pancreasEndocrine', {}],
-    ['pancreasEndocrine', { insulinRelative: Number.NaN }],
-    ['pancreasEndocrine', { insulinRelative: Number.POSITIVE_INFINITY }],
-    ['pancreasEndocrine', { insulinRelative: -1 }],
+    ['pancreasEndocrine', { insulinPmolL: Number.NaN }],
+    ['pancreasEndocrine', { insulinPmolL: Number.POSITIVE_INFINITY }],
+    ['pancreasEndocrine', { insulinPmolL: -1 }],
   ];
   for (const [partId, reading] of cases) {
     let written;

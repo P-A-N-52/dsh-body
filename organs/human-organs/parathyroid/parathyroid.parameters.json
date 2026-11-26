@@ -12,13 +12,40 @@
       "note": "PTH 目标的血钙参考值，工程占位；不是人群血钙正常值、个体基线或实验室参考区间，也不区分白蛋白校正。未来由具备钙稳态证据的模型替换。range 是工程调参范围"
     },
     {
-      "id": "parathyroid.pthGain",
-      "unit": "1",
-      "value": 0.5,
+      "id": "parathyroid.baselinePthPgMl",
+      "unit": "pg/mL",
+      "value": 30,
       "status": "design",
-      "range": [0.1, 2],
+      "range": [10, 80],
       "source": null,
-      "note": "血钙每偏离参考值 1 mg/dL 时 PTH 相对目标的斜率，工程占位；不是钙感受受体敏感性、PTH 分泌曲线或实测拟合。未来由具备 PTH-血钙剂量反应证据的模型替换。range 是工程调参范围"
+      "note": "参考血钙 9.5 mg/dL 时的静息血浆 PTH 参考基线（pg/mL），工程占位；不是实验室参考区间或实测均值。未来由具备人体 PTH 稳态证据的模型替换。range 是工程调参范围"
+    },
+    {
+      "id": "parathyroid.pthGainPgMlPerMgDl",
+      "unit": "pg/mL/(mg/dL)",
+      "value": 15,
+      "status": "design",
+      "range": [1, 60],
+      "source": null,
+      "note": "血钙每偏离参考值 1 mg/dL 时 PTH 稳态目标的线性斜率（pg/mL/(mg/dL)），工程占位；等效于相对基线每 mg/dL ±0.5 倍，不是钙感受受体敏感性或实测分泌曲线。range 是工程调参范围"
+    },
+    {
+      "id": "parathyroid.maxPthPgMl",
+      "unit": "pg/mL",
+      "value": 90,
+      "status": "design",
+      "range": [30, 300],
+      "source": null,
+      "note": "PTH 稳态目标上限（pg/mL），工程占位（对应 3 倍基线钳位）；不是最大分泌能力或甲旁亢临床界值。range 是工程调参范围"
+    },
+    {
+      "id": "parathyroid.halfTimeMin",
+      "unit": "min",
+      "value": 15,
+      "status": "design",
+      "range": [1, 120],
+      "source": null,
+      "note": "PTH 浓度向目标值一阶趋近的工程半时（min），工程占位；不是实测体内 PTH 分泌或清除半衰期。range 是工程调参范围"
     }
   ]
 }

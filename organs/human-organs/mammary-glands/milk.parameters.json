@@ -113,7 +113,7 @@
     {
       "id": "mammaryGlands.letdownOxytocinThresholdPgMl",
       "unit": "pg/mL",
-      "value": 4,
+      "value": 5,
       "status": "design",
       "range": [1, 20],
       "source": "SRC-UVNASMOBERG-2020",

@@ -54,7 +54,7 @@
       "status": "design",
       "range": [0, 0.001],
       "source": null,
-      "note": "每毫升肾小球滤过对应的钙排泄质量，工程占位；在 PTH 相对值低于 1 时按 max(0, 1 − pthRelative) 缩放，1 及以上为 0，作为 PTH 促进肾小管钙重吸收的 design 代理；不是肾钙排泄分数、肌酐清除率或实测尿钙。未建模肾小管重吸收的分子机制与分段，未来由具备肾钙处理证据的模型替换。range 是工程调参范围"
+      "note": "每毫升肾小球滤过对应的钙排泄质量，工程占位；在 PTH 低于 referencePthPgMl 时按 max(0, 1 − pthPgMl / referencePthPgMl) 缩放，达到及以上为 0，作为 PTH 促进肾小管钙重吸收的 design 代理；不是肾钙排泄分数、肌酐清除率或实测尿钙。未建模肾小管重吸收的分子机制与分段，未来由具备肾钙处理证据的模型替换。range 是工程调参范围"
     },
     {
       "id": "calcium.distributionVolumeDl",
@@ -64,6 +64,15 @@
       "range": [10, 500],
       "source": null,
       "note": "血钙表观分布体积，工程占位；不是血浆容量、细胞外液体积或示踪稀释实测。浓度积分按 * 1000 / distributionVolumeDl 将 g 换算为 mg/dL。未来由具备钙分布证据的模型替换。range 是工程调参范围"
+    },
+    {
+      "id": "calcium.referencePthPgMl",
+      "unit": "pg/mL",
+      "value": 30,
+      "status": "design",
+      "range": [10, 80],
+      "source": null,
+      "note": "用于把 parathyroid.pthPgMl 归一化为无量纲驱动比的静息 PTH 参考浓度（与 parathyroid.baselinePthPgMl 默认值一致，实现跨器官参数文件解耦）；design，不是临床参考值"
     }
   ]
 }

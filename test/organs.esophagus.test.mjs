@@ -44,11 +44,13 @@ test('esophagus exports the organ module contract', () => {
     bolusVolumeMl: { unit: 'mL', mode: 'absolute' },
     transitMin: { unit: 'min', mode: 'absolute' },
     chokingMm: { unit: 'mm', mode: 'absolute' },
+    intakeQueue: { unit: '1', mode: 'absolute' },
   });
   assert.deepEqual(initialState, {
     bolusVolumeMl: 0,
     transitMin: 0,
     chokingMm: 0,
+    intakeQueue: [],
   });
 });
 
@@ -141,11 +143,34 @@ test('invalid intake actions are ignored', () => {
   }
 });
 
-test('valid eat and drink payloads follow the stomach intake contract', () => {
+test('valid eat and drink payloads follow the stomach intake contract and spread sustained durationMin across rounds', () => {
   assert.equal(round(initialState, [drink(200, { energyKcal: 140, carbohydrateG: 42 })]).bolusVolumeMl, 200);
-  assert.equal(round(initialState, [drink(200, { durationMin: 5 })]).bolusVolumeMl, 200);
   assert.equal(round(initialState, [eat(200, { mealKind: 'liquid' })]).bolusVolumeMl, 200);
   assert.equal(round(initialState, [eat(200, { mealKind: 'mixed' })]).bolusVolumeMl, 200);
+
+  let state = round(initialState, [drink(200, { durationMin: 5 })]);
+  assertClose(state.bolusVolumeMl, 40, '5-min drink slice 1');
+  assert.equal(state.chokingMm, 0);
+  let totalDeliveredMl = state.bolusVolumeMl;
+  for (let i = 2; i <= 5; i++) {
+    state = round(state, []);
+    assertClose(state.bolusVolumeMl, 40, `5-min drink slice ${i}`);
+    totalDeliveredMl += state.bolusVolumeMl;
+  }
+  assertClose(totalDeliveredMl, 200, '5-min total delivered volume');
+  assert.deepEqual(state.intakeQueue, []);
+
+  let slowState = round(initialState, [drink(1000, { durationMin: 60 })]);
+  assertClose(slowState.bolusVolumeMl, 1000 / 60, 'slow 60-min drink avoids single-bolus choking spike');
+  assert.equal(slowState.chokingMm, 0);
+  let slowTotalMl = slowState.bolusVolumeMl;
+  for (let i = 2; i <= 60; i++) {
+    slowState = round(slowState, []);
+    assert.equal(slowState.chokingMm, 0);
+    slowTotalMl += slowState.bolusVolumeMl;
+  }
+  assertClose(slowTotalMl, 1000, '60-min total delivered volume');
+  assert.deepEqual(slowState.intakeQueue, []);
 });
 
 test('the output stays finite and JSON-safe for corrupt state and huge intakes', () => {

@@ -6,10 +6,10 @@
  * - `SRC-ZEITZER-2000` (Zeitzer et al., 2000, J Physiol 526 Pt 3:695–702, 摘要 Results)：
  *   夜间光照对血浆褪黑素的急性抑制呈 logistic 剂量-反应关系，仅约 ~100 lx 昏暗室内光即可
  *   产生 ~9000 lx 强光约一半的最大抑制效应。
- * - `SRC-DIJK-1995` (Dijk et al., 1995) 与 `responseHalfTimeMin = 39.4 min`（`design`）：当 Body 未加载
- *   `sleep`（纯孤立测试）时保留纯时钟 SCN 余弦曲线；当加载 `sleep` 时结合清醒/入睡状态推导环境
- *   入眼照度（夜间清醒维持室内光 `120 lx` 部分抑制褪黑素，闭眼入睡撤除室内人工光照），并受
- *   `autonomic.sympatheticMm` 高交感轻微抑控；当上一轮 `melatoninRelative` 存在时按 `39.4 min`
+ * - `SRC-DIJK-1995` (Dijk et al., 1995) 与 `responseHalfTimeMin = 39.4 min`（`design`）：未加载
+ *   `sleep` 时以纯时钟 SCN 余弦曲线为目标；加载 `sleep` 时结合清醒/入睡状态推导环境入眼照度
+ *   （夜间清醒维持室内光 `120 lx` 部分抑制褪黑素，闭眼入睡撤除室内人工光照），并受
+ *   `autonomic.sympatheticMm` 高交感轻微抑控；上一轮 `melatoninRelative` 存在时始终按 `39.4 min`
  *   半衰期一阶平滑趋近目标（首次无历史直接落到目标）。
  *
  * design / 未建模（不是人体血浆 pg/mL 实测、光史拟合或独立验证）
@@ -87,32 +87,30 @@ export function heartbeat(io: IO): void {
   );
 
   const sleep = io.read('sleep');
-  if (sleep === undefined) {
-    io.write({ melatoninRelative: circadianCurve });
-    return;
+  let target = circadianCurve;
+  if (sleep !== undefined) {
+    const sleeping = sleep.sleeping === true;
+    const solarLux = solarAmbientLux(hour);
+    const retinalLux = sleeping
+      ? solarLux * eyelidTransmittance
+      : Math.max(solarLux, awakeNightRoomLux);
+    const photicSuppression = retinalLux > 0 && photicHalfMaxLux > 0
+      ? retinalLux / (retinalLux + photicHalfMaxLux)
+      : 0;
+    const rawSympathetic = io.read('autonomic')?.sympatheticMm;
+    const sympatheticMm = typeof rawSympathetic === 'number' && Number.isFinite(rawSympathetic)
+      ? clamp(rawSympathetic, 0, 100)
+      : 0;
+    const sympatheticFactor = 1 - 0.35 * (sympatheticMm / 100);
+
+    const minFloor = Math.max(MIN_RELATIVE, baseRelative - amplitudeRelative);
+    const nightDrive = Math.max(0, circadianCurve - minFloor);
+    target = clamp(
+      minFloor + nightDrive * (1 - photicSuppression) * sympatheticFactor,
+      MIN_RELATIVE,
+      MAX_RELATIVE,
+    );
   }
-
-  const sleeping = sleep.sleeping === true;
-  const solarLux = solarAmbientLux(hour);
-  const retinalLux = sleeping
-    ? solarLux * eyelidTransmittance
-    : Math.max(solarLux, awakeNightRoomLux);
-  const photicSuppression = retinalLux > 0 && photicHalfMaxLux > 0
-    ? retinalLux / (retinalLux + photicHalfMaxLux)
-    : 0;
-  const rawSympathetic = io.read('autonomic')?.sympatheticMm;
-  const sympatheticMm = typeof rawSympathetic === 'number' && Number.isFinite(rawSympathetic)
-    ? clamp(rawSympathetic, 0, 100)
-    : 0;
-  const sympatheticFactor = 1 - 0.35 * (sympatheticMm / 100);
-
-  const minFloor = Math.max(MIN_RELATIVE, baseRelative - amplitudeRelative);
-  const nightDrive = Math.max(0, circadianCurve - minFloor);
-  const target = clamp(
-    minFloor + nightDrive * (1 - photicSuppression) * sympatheticFactor,
-    MIN_RELATIVE,
-    MAX_RELATIVE,
-  );
 
   const prev = io.read(id);
   const prevValue = prev?.melatoninRelative;

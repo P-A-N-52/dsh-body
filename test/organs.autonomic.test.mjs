@@ -27,8 +27,14 @@ function round({
   interoception,
   bladder,
   colon,
+  sexualResponse,
+  ovaries,
+  testes,
+  pituitary,
+  reward,
   actions = [],
   dt = 60,
+  simulatedSeconds = 60,
 } = {}) {
   let written;
   heartbeat({
@@ -43,10 +49,16 @@ function round({
       if (partId === 'interoception') return interoception;
       if (partId === 'bladder') return bladder;
       if (partId === 'colon') return colon;
+      if (partId === 'sexualResponse') return sexualResponse;
+      if (partId === 'ovaries') return ovaries;
+      if (partId === 'testes') return testes;
+      if (partId === 'pituitary') return pituitary;
+      if (partId === 'reward') return reward;
       return undefined;
     },
     actions,
     dt,
+    simulatedSeconds,
     write: (next) => { written = next; },
   });
   return written;
@@ -165,4 +177,31 @@ test('autonomic timing: ignores startle when awake, avoids overnight 74 mg/dL & 
   });
   assert.ok(enteringSleep.sympatheticMm < 50, 'sleep entry stops exercise drive immediately');
   assert.ok(enteringSleep.parasympatheticMm > 20, 'sleep entry immediately begins shifting parasympathetic upward');
+});
+
+
+test('only a valid orgasm triggers sympathetic burst and afterglow raises parasympathetic tone', () => {
+  const belowThreshold = round({
+    sexualResponse: { arousalMm: 60, lastOrgasmAtSimMin: null, afterglowMm: 0 },
+    actions: [{ type: 'orgasm' }],
+  });
+  assert.equal(belowThreshold.sympatheticMm, 0);
+
+  const released = round({
+    sexualResponse: { arousalMm: 80, lastOrgasmAtSimMin: null, afterglowMm: 0 },
+    actions: [{ type: 'orgasm' }],
+  });
+  assert.equal(released.sympatheticMm, 70);
+
+  const resting = round({
+    sexualResponse: { arousalMm: 0, lastOrgasmAtSimMin: null, afterglowMm: 0 },
+    pituitary: { oxytocinPgMl: 2 },
+    reward: { hedonicMm: 15 },
+  });
+  const afterglow = round({
+    sexualResponse: { arousalMm: 0, lastOrgasmAtSimMin: 1, afterglowMm: 80 },
+    pituitary: { oxytocinPgMl: 2 },
+    reward: { hedonicMm: 15 },
+  });
+  assert.ok(afterglow.parasympatheticMm > resting.parasympatheticMm);
 });

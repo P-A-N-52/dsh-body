@@ -64,6 +64,15 @@
       "range": [0, 0.01],
       "source": null,
       "note": "autonomic.sympatheticMm 每单位对应的舒张压外周阻力缩血管乘数增益；design"
+    },
+    {
+      "id": "blood.referenceMaxCardiacOutputMlMin",
+      "unit": "mL/min",
+      "value": 16380,
+      "status": "design",
+      "range": [1000, 50000],
+      "source": null,
+      "note": "未加载 heart 或缺少 heart.maxCardiacOutputMlMin 时的最大心输出回退基线（按体重缩放）；design"
     }
   ]
 }

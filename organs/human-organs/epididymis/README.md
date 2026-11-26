@@ -4,7 +4,7 @@
 
 `epididymis/` 目前只有一个部位 `epididymis`，脚本为 [`storage.ts`](storage.ts)，没有动作、通知或 `transfer`，也不写其他部位。它以恒定恢复速率累计 `spermStorageMl` 至容量上限，并在检测到轮初 `sexualResponse.lastOrgasmAtSimMin` 等于本轮轮初仿真分钟时，将轮初存量记入 `ejaculatedMl` 并把 `spermStorageMl` 归零。这两个字段都是模型内的精液体积占位，不是精液分析、精子计数/活力/形态、附睾容量或生育力指标。
 
-**实现状态：** 脚本、参数与单元测试已落地，并已挂载进男性清单 `body-modules.male.json`（当前根清单 39 部位 / 35 份唯一参数文件，女性清单 42 部位 / 38 份，男性清单 41 部位 / 37 份；硬 `transfer` 闭包仍为根与男性 15 部位、女性 17 部位）。两项参数全部 `design`、`source: null`。本文只描述当前代码实现的模型与契约，未做真实 DSH 会话、精液测量或临床验证。
+**实现状态：** 脚本、参数与单元测试已落地，并已挂载进男性清单 `body-modules.male.json`（当前根清单 43 部位 / 39 份唯一参数文件，女性清单 46 部位 / 42 份，男性清单 45 部位 / 41 份；硬 `transfer` 闭包仍为根与男性 15 部位、女性 17 部位）。两项参数全部 `design`、`source: null`。本文只描述当前代码实现的模型与契约，未做真实 DSH 会话、精液测量或临床验证。
 
 ## 1. 脚本与读写关系
 

@@ -13,24 +13,22 @@
  *                   耦合；未加载时原样带出轮初自身状态（缺字段回退 referenceBloodVolumeMl）
  *   arterialContent = bloodOxygen.spo2Percent × oxygenContentPerPercentMlPerL
  *   oxygenDeliveryMlMin = cardiacOutputMlMin × arterialContent / 1000（读数）
- *   maxDrive = 1 + heart.activityGain + heart.catecholamineGain × (maxCortisolRelative − 1)
- *   maxOxygenDeliveryMlPerMin = heart.maxHeartRatePerMin × heart.restingStrokeVolumeMl
- *                              × (1 + 0.2 × (maxDrive − 1)) × arterialContent / 1000
+ *   maxCardiacOutput = heart?.maxCardiacOutputMlMin ?? blood.referenceMaxCardiacOutputMlMin（未加载 heart 时回退）
+ *   maxOxygenDeliveryMlPerMin = maxCardiacOutput × arterialContent / 1000
  *   systolicMmHg = clamp(baselineSystolicMmHg
- *                        × (cardiacOutputMlMin / referenceCardiacOutputMlMin) ^ 0.5, 80, 200)
+ *                        × (cardiacOutputMlMin / referenceCardiacOutputMlMin) ^ 0.5
+ *                        + sympatheticSystolicGain × sympatheticMm, 80, 200)
  *   diastolicMmHg = clamp(baselineDiastolicMmHg
- *                         × (cardiacOutputMlMin / referenceCardiacOutputMlMin) ^ 0.3, 40, 120)
+ *                         × (cardiacOutputMlMin / referenceCardiacOutputMlMin) ^ 0.3
+ *                         + sympatheticDiastolicGain × sympatheticMm, 40, 120)
  *   gfrMlMin = baselineGfrMlMin
  *              × clamp(bloodVolumeMl / referenceBloodVolumeMl, 0.5, 1.2)
  *
  * `oxygenDeliveryMlMin` 是轮初心输出与轮初 SpO2 的乘积，含一轮滞后，只是读数；
- * `bloodOxygen` 用 `maxOxygenDeliveryMlPerMin` 判定供氧是否受限。后者是按最大驱动
- * （活动 1 + 皮质醇到上限）算出的循环能力上限，与当前心输出无关，所以健康人在活动首轮
- * 不会因上一轮静息心输出而假性去饱和。`maxDrive` 用 `maxCortisolRelative = 3`
- * （与 `interoception` 把皮质醇映射到应激读数的 100% 点一致）和与 `heart.ts` 相同的
- * 0.2 搏出量增益；这两个是脚本内 design 常量，不是人体测量。心率直接用
- * `heart.maxHeartRatePerMin`，与 heart 自身 `clamp(restingHeartRatePerMin × drive, …)`
- * 在默认参数下等价（70 × 3.5 > 180）。
+ * `bloodOxygen` 用 `maxOxygenDeliveryMlPerMin` 判定供氧是否受限。后者使用 `heart`
+ * 输出的能力上限 `heart.maxCardiacOutputMlMin`，与当前心输出无关，所以健康人在活动首轮
+ * 不会因上一轮静息心输出而假性去饱和；若 `heart` 未加载或未提供该字段（如孤立 mock），
+ * 则回退到 `blood.referenceMaxCardiacOutputMlMin`。
  *
  * `bodyFluid` 存在时 `bloodVolumeMl` 随 `bodyFluid.waterVolumeMl / 30000` 比例缩放并钳到
  * `[2500, 6000] mL`（`design` 血管-体液耦合代理）；`bodyFluid` 未加载时原样带出轮初
@@ -38,13 +36,13 @@
  * 4900 回退，使静息态血压精确为 `120.0 / 80.0 mmHg`；未加载 `bloodOxygen` 时 SpO2 按
  * 97% 回退（与 `bloodOxygen.baselineSpo2Percent` 的 design 默认值同步，不另立参数）。已加载的
  * `heart` / `bloodOxygen` / `bodyFluid` 若缺字段、非数值、非有限或为负，抛错使本轮失败且不写状态。
- * `heart` 的四个参数从 `heart.parameters.json` 只读加载；替换 heart 脚本时需保持这些
- * 参数 id。
+ * 替换或简化 `heart` 脚本时只需保留 `cardiacOutputMlMin`（以及可选的 `maxCardiacOutputMlMin`），
+ * `blood` 不再读取 `heart.parameters.json`。
  *
  * 血压与 GFR 都是代理读数：血压不是袖带或动脉压测量，GFR 不是菊粉/肌酐清除率、肾血浆
- * 流量或临床肾功能，氧输送也不是血气或氧耗实测。参数来自同目录
- * `blood.parameters.json` 与只读的 `heart.parameters.json`，状态 `design`、
- * `source: null`；4900 / 30000 / 120 / 80 / 100 / 2、指数 0.5 与 0.3、钳位
+ * 流量或临床肾功能，氧输送也不是血气或氧耗实测。参数全部来自同目录
+ * `blood.parameters.json`，状态 `design`、
+ * `source: null`；4900 / 16380 / 30000 / 120 / 80 / 100 / 2、指数 0.5 与 0.3、钳位
  * 2500–6000 / 80–200 / 40–120 / 0.5–1.2 都是工程占位，不是人体测量或拟合结果，不能称 `validated`。
  * 不建模血管分区、微循环、血细胞/血红蛋白、CO2/酸碱、血压分级诊断或运动性高血压。
  * 输出只含七个有限数字段，JSON-safe。
@@ -71,6 +69,7 @@ type BloodState = {
 
 type HeartReading = {
   cardiacOutputMlMin?: unknown;
+  maxCardiacOutputMlMin?: unknown;
 };
 
 type BloodOxygenReading = {
@@ -102,6 +101,10 @@ const oxygenContentPerPercentMlPerL = requireParameter(
 );
 const sympatheticSystolicGain = requireParameter(parameters, 'blood.sympatheticSystolicGain');
 const sympatheticDiastolicGain = requireParameter(parameters, 'blood.sympatheticDiastolicGain');
+const referenceMaxCardiacOutputMlMin = scaleByBodyWeight(
+  requireParameter(parameters, 'blood.referenceMaxCardiacOutputMlMin'),
+  'blood.referenceMaxCardiacOutputMlMin',
+);
 
 const referenceCardiacOutputMlMin = scaleByBodyWeight(4900);
 const referenceBodyWaterMl = getNumericParameterOverride('bodyFluid.referenceVolumeMl')
@@ -112,24 +115,8 @@ const systolicRange = { min: 80, max: 200 };
 const diastolicRange = { min: 40, max: 120 };
 const gfrVolumeRatioRange = { min: 0.5, max: 1.2 };
 
-const heartParameters = loadParameters(
-  new URL('../../human-organs/heart/heart.parameters.json', import.meta.url),
-);
-const maxHeartRatePerMin = requireParameter(heartParameters, 'heart.maxHeartRatePerMin');
-const restingStrokeVolumeMl = scaleByBodyWeight(
-  requireParameter(heartParameters, 'heart.restingStrokeVolumeMl'),
-  'heart.restingStrokeVolumeMl',
-);
-const activityGain = requireParameter(heartParameters, 'heart.activityGain');
-const sympatheticDriveGain = requireParameter(heartParameters, 'heart.sympatheticDriveGain');
-const strokeVolumeGain = requireParameter(heartParameters, 'heart.strokeVolumeGain');
-
-const maxDrive = 1 + Math.max(activityGain, sympatheticDriveGain * 100);
-const maxStrokeVolumeMl = restingStrokeVolumeMl * (1 + strokeVolumeGain * (maxDrive - 1));
-
-function maxOxygenDeliveryAt(spo2Percent: number): number {
-  return maxHeartRatePerMin * maxStrokeVolumeMl
-    * (spo2Percent * oxygenContentPerPercentMlPerL) / 1000;
+function maxOxygenDeliveryAt(maxCardiacOutputMlMin: number, spo2Percent: number): number {
+  return maxCardiacOutputMlMin * (spo2Percent * oxygenContentPerPercentMlPerL) / 1000;
 }
 
 export const initialState: BloodState = {
@@ -139,7 +126,7 @@ export const initialState: BloodState = {
   diastolicMmHg: baselineDiastolicMmHg,
   oxygenDeliveryMlMin:
     referenceCardiacOutputMlMin * (fallbackSpo2Percent * oxygenContentPerPercentMlPerL) / 1000,
-  maxOxygenDeliveryMlPerMin: maxOxygenDeliveryAt(fallbackSpo2Percent),
+  maxOxygenDeliveryMlPerMin: maxOxygenDeliveryAt(referenceMaxCardiacOutputMlMin, fallbackSpo2Percent),
   gfrMlMin: baselineGfrMlMin,
 };
 
@@ -210,6 +197,20 @@ function readCardiacOutput(heart: Readonly<HeartReading> | undefined): number {
   return cardiacOutputMlMin;
 }
 
+function readMaxCardiacOutput(heart: Readonly<HeartReading> | undefined): number {
+  if (heart === undefined || heart.maxCardiacOutputMlMin === undefined) {
+    return referenceMaxCardiacOutputMlMin;
+  }
+  const maxCardiacOutputMlMin = requireFinite(
+    heart.maxCardiacOutputMlMin,
+    'heart.maxCardiacOutputMlMin',
+  );
+  if (maxCardiacOutputMlMin < 0) {
+    throw new Error('blood: heart.maxCardiacOutputMlMin must not be negative');
+  }
+  return maxCardiacOutputMlMin;
+}
+
 function readSpo2Percent(bloodOxygen: Readonly<BloodOxygenReading> | undefined): number {
   if (bloodOxygen === undefined) return fallbackSpo2Percent;
   const spo2Percent = requireFinite(
@@ -224,7 +225,9 @@ function readSpo2Percent(bloodOxygen: Readonly<BloodOxygenReading> | undefined):
 
 export function heartbeat(io: IO): void {
   const bloodVolumeMl = readBloodVolume(io.read(id) ?? initialState, io.read('bodyFluid'));
-  const cardiacOutputMlMin = readCardiacOutput(io.read('heart'));
+  const heart = io.read('heart');
+  const cardiacOutputMlMin = readCardiacOutput(heart);
+  const maxCardiacOutputMlMin = readMaxCardiacOutput(heart);
   const spo2Percent = readSpo2Percent(io.read('bloodOxygen'));
   const rawSympathetic = io.read('autonomic')?.sympatheticMm;
   const sympatheticMm = typeof rawSympathetic === 'number' && Number.isFinite(rawSympathetic)
@@ -245,7 +248,7 @@ export function heartbeat(io: IO): void {
   );
   const oxygenDeliveryMlMin =
     cardiacOutputMlMin * (spo2Percent * oxygenContentPerPercentMlPerL) / 1000;
-  const maxOxygenDeliveryMlPerMin = maxOxygenDeliveryAt(spo2Percent);
+  const maxOxygenDeliveryMlPerMin = maxOxygenDeliveryAt(maxCardiacOutputMlMin, spo2Percent);
   const gfrMlMin = baselineGfrMlMin * clamp(
     bloodVolumeMl / referenceBloodVolumeMl,
     gfrVolumeRatioRange.min,

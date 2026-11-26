@@ -4,7 +4,7 @@
 
 `bloodOxygen` 位于 `organs/human-compartments/blood-oxygen/`，由 `oxygen.ts` 维护。它每轮按轮初快照合成需氧 `oxygenConsumptionMlMin`（基础 + 活动 + 消化），其中基础项按轮初 `thyroid.thyroxineRelative` 缩放为 `basalMlMin × max(0.2, 0.6 + 0.4 × T4)`（`T4 = 1` 时正好为 `1.0 × basalMlMin = 250 mL/min`）；再读取轮初 `lungsVentilation.alveolarO2CapacityMlMin`（通气能力上限）与 `blood.maxOxygenDeliveryMlPerMin`（循环能力上限），取两者较紧者为供给能力，按缺口写 `oxygenDeficit` 与 `spo2Percent`。**它是供—需平衡，不是可耗空的氧气账本**：不保存氧气质量，不做逐轮扣减，也不累计“氧债”；每轮重算供需，供 ≥ 需时 SpO2 停在基线，供 < 需时按缺口比例下降。它没有动作、通知或 `transfer`，也不写其他部位。
 
-实现状态（2026-11-24）：脚本与参数在 `organs/human-compartments/blood-oxygen/`，已加入根清单。当前根清单为 39 部位、35 份唯一参数文件，女性清单 42 部位、38 份，男性清单 41 部位、37 份；硬 transfer 闭包为根/男性 15 部位、女性 17 部位，本切片不新增 transfer。同期相关部位包括 `lungsVentilation`（见 [`lungs`](../../human-organs/lungs/README.md)）、`heart` / `blood`（见 [`heart`](../../human-organs/heart/README.md) 与 [`blood`](../blood/README.md)）、`interoception.dyspneaMm`（见 [`brain`](../../human-organs/brain/README.md)）与 `thyroid.thyroxineRelative`（见 [`thyroid`](../../human-organs/thyroid/README.md)）。本切片有模块测试与真实 Gateway 进程的离线集成测试；未做真实 DSH 会话、独立人体氧耗/通气/SpO2 数据或临床验证。
+实现状态（2026-11-26）：脚本与参数在 `organs/human-compartments/blood-oxygen/`，已加入根清单。当前根清单为 43 部位、39 份唯一参数文件，女性清单 46 部位、42 份，男性清单 45 部位、41 份；硬 transfer 闭包为根/男性 15 部位、女性 17 部位，本切片不新增 transfer。同期相关部位包括 `lungsVentilation`（见 [`lungs`](../../human-organs/lungs/README.md)）、`heart` / `blood`（见 [`heart`](../../human-organs/heart/README.md) 与 [`blood`](../blood/README.md)）、`interoception.dyspneaMm`（见 [`brain`](../../human-organs/brain/README.md)）与 `thyroid.thyroxineRelative`（见 [`thyroid`](../../human-organs/thyroid/README.md)）。本切片有模块测试与真实 Gateway 进程的离线集成测试；未做真实 DSH 会话、独立人体氧耗/通气/SpO2 数据或临床验证。
 
 ## 1. 脚本与读写关系
 
@@ -103,7 +103,7 @@ bloodOxygen.spo2Percent / oxygenDeficit ─► GET /state / gateway.getState()�
 | 33 | 0 / 0 | 250 / 250（97%） | 250 → 6000 mL/min |
 
 - 第 1 轮活动状态在轮末提交，血氧与通气都还读不到；第 2 轮血氧先看到活动，通气仍读第 1 轮的 250 mL/min 基础需氧。
-- 默认参数下循环能力上限约 3666.6 mL/min、通气能力上限对应约 2500 mL/min 肺泡氧，均高于活动需氧 1250 mL/min，所以 SpO2 停在 97%。若能力上限低于需氧，缺口才会持续存在；具体见 [`blood`](../blood/README.md) 与 [`lungs`](../../human-organs/lungs/README.md)。
+- 默认参数下循环能力上限约 3177.72 mL/min、通气能力上限对应约 2500 mL/min 肺泡氧，均高于活动需氧 1250 mL/min，所以 SpO2 停在 97%。若能力上限低于需氧，缺口才会持续存在；具体见 [`blood`](../blood/README.md) 与 [`lungs`](../../human-organs/lungs/README.md)。
 - 活动结束后，需氧先回落，通气再晚一轮回到静息；血氧仍按轮初能力上限判断，不产生额外缺口。
 - 本表的数值是模型内算例，不是实测氧耗、通气或 SpO2 时程；表中通气值未计升温后的喘息项，默认核心温度从 37°C 起步。
 

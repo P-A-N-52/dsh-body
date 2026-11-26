@@ -32,6 +32,8 @@ const BASELINE = {
   sweatDampMm: 0,
   muscleFatigueMm: 0,
   uterineCrampMm: 0,
+  mammaryFullnessMm: 0,
+  hedonicCalmMm: 0,
 };
 const parametersUrl = new URL('../organs/human-organs/brain/interoception.parameters.json', import.meta.url);
 const parameterValues = loadParameters(parametersUrl);
@@ -63,6 +65,10 @@ function round(inputs = {}) {
     blood: inputs.blood,
     physicalActivity: inputs.physicalActivity,
     skin: inputs.skin,
+    reward: inputs.reward,
+    ovaries: inputs.ovaries,
+    pituitary: inputs.pituitary,
+    autonomic: inputs.autonomic,
     muscleHead: inputs.muscleHead,
     muscleTrunk: inputs.muscleTrunk,
     muscleLimbs: inputs.muscleLimbs,
@@ -110,6 +116,8 @@ test('interoception exports the organ module contract', () => {
     sweatDampMm: { unit: 'mm', mode: 'absolute' },
     muscleFatigueMm: { unit: 'mm', mode: 'absolute' },
     uterineCrampMm: { unit: 'mm', mode: 'absolute' },
+    mammaryFullnessMm: { unit: 'mm', mode: 'absolute' },
+    hedonicCalmMm: { unit: 'mm', mode: 'absolute' },
   });
   assert.deepEqual(initialState, BASELINE);
 });
@@ -399,7 +407,7 @@ test('libido is a readout: other readings and discomfort stay point-identical', 
     bladder: { volumeMl: 205 },
     testes: { testosteroneRelative: 2 },
   });
-  assert.equal(withLibido.libidoMm, 100);
+  assert.equal(withLibido.libidoMm, 75);
   assert.equal(withLibido.discomfort, baseline.discomfort);
   assert.deepEqual({ ...withLibido, libidoMm: baseline.libidoMm }, baseline);
 });
@@ -636,7 +644,7 @@ test('NaN and missing readings fall back without producing NaN', () => {
       duodenum: { nutrientExposure: Number.NaN },
       thirst: { thirst: Number.NaN },
       bladder: { volumeMl: Number.NaN },
-      adrenal: { cortisolRelative: Number.NaN },
+      adrenal: { cortisolNmolL: Number.NaN },
       pineal: { melatoninRelative: Number.NaN },
     }),
     BASELINE,
@@ -658,12 +666,12 @@ test('stress and sleepiness are 0-100 mm readouts with a zero baseline', () => {
   assert.equal(round().sleepinessMm, 0);
 });
 
-test('cortisol above the relative baseline drives stressMm and clamps at 0-100', () => {
-  assert.equal(round({ adrenal: { cortisolRelative: 0.5 } }).stressMm, 0);
-  assert.equal(round({ adrenal: { cortisolRelative: 1 } }).stressMm, 0);
-  assert.equal(round({ adrenal: { cortisolRelative: 2 } }).stressMm, 50);
-  assert.equal(round({ adrenal: { cortisolRelative: 3 } }).stressMm, 100);
-  assert.equal(round({ adrenal: { cortisolRelative: 4 } }).stressMm, 100);
+test('cortisol above the 180 nmol/L baseline drives stressMm and clamps at 0-100', () => {
+  assert.equal(round({ adrenal: { cortisolNmolL: 90 } }).stressMm, 0);
+  assert.equal(round({ adrenal: { cortisolNmolL: 180 } }).stressMm, 0);
+  assert.equal(round({ adrenal: { cortisolNmolL: 360 } }).stressMm, 50);
+  assert.equal(round({ adrenal: { cortisolNmolL: 540 } }).stressMm, 100);
+  assert.equal(round({ adrenal: { cortisolNmolL: 720 } }).stressMm, 100);
 });
 
 test('melatonin above the 0.2 trough drives sleepinessMm and clamps at 0-100', () => {
@@ -686,9 +694,9 @@ test('missing, missing field, NaN or non-finite adrenal and pineal readings coun
   for (const adrenal of [
     undefined,
     {},
-    { cortisolRelative: Number.NaN },
-    { cortisolRelative: Number.POSITIVE_INFINITY },
-    { cortisolRelative: Number.NEGATIVE_INFINITY },
+    { cortisolNmolL: Number.NaN },
+    { cortisolNmolL: Number.POSITIVE_INFINITY },
+    { cortisolNmolL: Number.NEGATIVE_INFINITY },
   ]) {
     assert.equal(round({ adrenal }).stressMm, 0, `adrenal ${String(adrenal)}`);
   }
@@ -708,7 +716,7 @@ test('stress and sleepiness are readouts: other readings and discomfort stay poi
   const withAxes = round({
     thirst: { thirst: 85 },
     bladder: { volumeMl: 205 },
-    adrenal: { cortisolRelative: 3 },
+    adrenal: { cortisolNmolL: 540 },
     pineal: { melatoninRelative: 1.8 },
   });
   assert.equal(withAxes.stressMm, 100);
@@ -1146,6 +1154,18 @@ test('sleepinessMm uses pure pineal when sleep is absent and blends when sleep i
   );
 });
 
+test('mammary fullness and reward afterglow expose nonzero interoception readouts', () => {
+  assert.equal(round({ mammaryGlands: { fullnessMm: 85 } }).mammaryFullnessMm, 85);
+  assertClose(
+    round({
+      reward: { hedonicMm: 65 },
+      sexualResponse: { afterglowMm: 80 },
+    }).hedonicCalmMm,
+    86.5,
+    'hedonic reward and sexual afterglow combine without stress',
+  );
+});
+
 test('getNsfwSetting hides sexualArousalMm, libidoMm, and mammary fullness from discomfort when false while preserving choking discomfort', (t) => {
   t.after(() => setWorkerParameterConfig());
 
@@ -1157,6 +1177,7 @@ test('getNsfwSetting hides sexualArousalMm, libidoMm, and mammary fullness from 
   });
   assert.equal(hidden.sexualArousalMm, 0);
   assert.equal(hidden.libidoMm, 0);
+  assert.equal(hidden.mammaryFullnessMm, 0);
   assert.equal(hidden.discomfort, 0);
 
   // Choking still feeds discomfort even when nsfw is false
@@ -1175,6 +1196,7 @@ test('getNsfwSetting hides sexualArousalMm, libidoMm, and mammary fullness from 
     mammaryGlands: { fullnessMm: 85 },
   });
   assert.equal(shown.sexualArousalMm, 90);
-  assert.equal(shown.libidoMm, 100);
+  assert.equal(shown.libidoMm, 75);
+  assert.equal(shown.mammaryFullnessMm, 85);
   assert.equal(shown.discomfort, 50);
 });

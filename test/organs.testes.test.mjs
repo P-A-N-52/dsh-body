@@ -20,10 +20,24 @@ const baselineRelative = 1;
 const circadianAmplitude = 0.1;
 const responseHalfTimeMin = 60;
 
-function round({ state, dt = 60, simulatedSeconds = 0, actions = [] } = {}) {
+function round({
+  state,
+  dt = 60,
+  simulatedSeconds = 0,
+  actions = [],
+  sleep,
+  adrenal,
+  pituitary,
+} = {}) {
   const writes = [];
   heartbeat({
-    read: (partId) => (partId === 'testes' ? state : undefined),
+    read: (partId) => {
+      if (partId === 'testes') return state;
+      if (partId === 'sleep') return sleep;
+      if (partId === 'adrenal') return adrenal;
+      if (partId === 'pituitary') return pituitary;
+      return undefined;
+    },
     actions,
     dt,
     simulatedSeconds,
@@ -56,8 +70,9 @@ test('testes exports the testosterone contract without actions', () => {
   assert.deepEqual(actionTypes, []);
   assert.deepEqual(fields, {
     testosteroneRelative: { unit: '1', mode: 'absolute' },
+    sleepDebtDays: { unit: 'd', mode: 'absolute' },
   });
-  assert.deepEqual(initialState, { testosteroneRelative: 1 });
+  assert.deepEqual(initialState, { testosteroneRelative: 1, sleepDebtDays: 0 });
 
   const withoutActions = round({
     state: initialState,
@@ -74,10 +89,10 @@ test('testes exports the testosterone contract without actions', () => {
     ],
   });
   assert.deepEqual(withActions.written, withoutActions.written);
-  assert.deepEqual(Object.keys(withActions.written), ['testosteroneRelative']);
+  assert.deepEqual(Object.keys(withActions.written), ['testosteroneRelative', 'sleepDebtDays']);
 });
 
-test('the testes parameters are design defaults with no source', () => {
+test('the testes parameters keep design values and their declared sources', () => {
   const data = JSON.parse(readFileSync(parametersUrl, 'utf8'));
   assert.equal(data.schemaVersion, 1);
   assert.equal(data.owner, 'testes');
@@ -92,7 +107,9 @@ test('the testes parameters are design defaults with no source', () => {
     'testes.phaseShiftHours': { value: 0, unit: 'h' },
     'testes.sleepDebtSuppressionThresholdMm': { value: 60, unit: 'mm', source: 'SRC-LEPROULT-2011' },
     'testes.sleepDebtMaxSuppressionFraction': { value: 0.15, unit: '1', source: 'SRC-LEPROULT-2011' },
+    'testes.sleepDebtRecoveryHalfTimeHours': { value: 36, unit: 'h' },
     'testes.stressCortisolSuppressionGain': { value: 0.1, unit: '1' },
+    'testes.prolactinSuppressionGain': { value: 0.006, unit: '1/(ng/mL)' },
   };
   assert.deepEqual(Object.keys(byId).sort(), Object.keys(expectedParameters).sort());
 
@@ -225,9 +242,43 @@ test('testes output is finite and JSON-safe across hours and deviations', () => 
   for (const { label, options } of cases) {
     const { written, writes } = round(options);
     assert.equal(writes.length, 1, label);
-    assert.deepEqual(Object.keys(written), ['testosteroneRelative']);
-    assert.ok(Number.isFinite(written.testosteroneRelative), `${label}: finite`);
+    assert.deepEqual(Object.keys(written), ['testosteroneRelative', 'sleepDebtDays']);
+    assert.ok(Number.isFinite(written.testosteroneRelative), `${label}: finite testosterone`);
+    assert.ok(Number.isFinite(written.sleepDebtDays), `${label}: finite sleep debt`);
     assertJsonValue(written);
     assert.deepEqual(JSON.parse(JSON.stringify(written)), written, label);
   }
+});
+
+
+test('sleep debt accumulates across a high-pressure day and recovers during sleep', () => {
+  const awake = round({
+    state: initialState,
+    sleep: { sleeping: false, sleepPressureMm: 100 },
+    dt: 1440 * 60,
+    simulatedSeconds: 14 * 3600,
+  }).written;
+  assertClose(awake.sleepDebtDays, 3, 'one high-pressure day adds three debt days');
+
+  const recovered = round({
+    state: { testosteroneRelative: 1, sleepDebtDays: 2 },
+    sleep: { sleeping: true, sleepPressureMm: 20 },
+    dt: 36 * 3600,
+    simulatedSeconds: 8 * 3600,
+  }).written;
+  assertClose(recovered.sleepDebtDays, 1, '36 hours of sleep halve the debt');
+});
+
+test('high prolactin mildly suppresses the testosterone target', () => {
+  const options = {
+    state: initialState,
+    dt: 3600,
+    simulatedSeconds: 8 * 3600,
+  };
+  const baseline = round(options).written;
+  const highPrl = round({
+    ...options,
+    pituitary: { prolactinNgMl: 50 },
+  }).written;
+  assert.ok(highPrl.testosteroneRelative < baseline.testosteroneRelative);
 });

@@ -2,9 +2,9 @@
 
 **功能标签：** 内分泌（昼夜节律薄切片）。
 
-`pineal/` 目前只有一个部位 `pineal`，脚本为 [`melatonin.ts`](melatonin.ts)，没有动作、通知或 `transfer`。它通过 `lib/circadian.js` 按本地时钟 `io.wallTimeMs`（未传入时回退 `io.simulatedSeconds`）计算内源 SCN 生物夜昼夜曲线（当地 02:00 峰值 1.8、14:00 谷值 0.2），并在加载 `sleep` 部位时结合当前清醒/闭眼入睡状态与日光/室内人工光照代理施加 Zeitzer 2000 方向（`SRC-ZEITZER-2000`）的 logistic 光照抑制及 `autonomic.sympatheticMm` 高交感压低；若 Body 未加载 `sleep`（纯孤立测试），则保持纯时钟 SCN 曲线。消费者是 `interoception.sleepinessMm` 与 `sleep` 自然转醒门控及分期深睡参考。
+`pineal/` 目前只有一个部位 `pineal`，脚本为 [`melatonin.ts`](melatonin.ts)，没有动作、通知或 `transfer`。它通过 `lib/circadian.js` 按本地时钟 `io.wallTimeMs`（未传入时回退 `io.simulatedSeconds`）计算内源 SCN 生物夜昼夜曲线（当地 02:00 峰值 1.8、14:00 谷值 0.2），并在加载 `sleep` 部位时结合当前清醒/闭眼入睡状态与日光/室内人工光照代理施加 Zeitzer 2000 方向（`SRC-ZEITZER-2000`）的 logistic 光照抑制及 `autonomic.sympatheticMm` 高交感压低；若 Body 未加载 `sleep`（纯孤立测试），则以纯时钟 SCN 曲线为平滑目标。消费者是 `interoception.sleepinessMm` 与 `sleep` 自然转醒门控及分期深睡参考。
 
-实现状态：脚本、参数与模块契约测试已落地；根清单为 41 部位、37 份唯一参数文件，女性清单为 44 部位、40 份，男性清单为 43 部位、39 份；本切片不新增 `transfer`，硬闭包为根/男性 15 / 女性 17 个部位。10 项参数中 `pineal.responseHalfTimeMin = 39.4 min`（参考 `SRC-DIJK-1995` 清醒光照/遮蔽后褪黑素变化速率尺度）与 `pineal.photicHalfMaxLux = 100 lx`（`SRC-ZEITZER-2000` 方向锚点）均保留 `design` 口径；无历史（单元测试隔离首轮）时直接取光照调节稳态目标，存在 `prev.melatoninRelative` 时按 `39.4 min` 半衰期一阶平滑趋近目标。本文只描述离线模型与契约，未做真实 DSH 会话、褪黑素实测或睡眠验证。
+实现状态：脚本、参数与模块契约测试已落地；根清单为 43 部位、39 份唯一参数文件，女性清单为 46 部位、42 份，男性清单为 45 部位、41 份；本切片不新增 `transfer`，硬闭包为根/男性 15 / 女性 17 个部位。10 项参数中 `pineal.responseHalfTimeMin = 39.4 min`（参考 `SRC-DIJK-1995` 清醒光照/遮蔽后褪黑素变化速率尺度）与 `pineal.photicHalfMaxLux = 100 lx`（`SRC-ZEITZER-2000` 方向锚点）均保留 `design` 口径；无历史（单元测试隔离首轮）时直接取当前目标，存在 `prev.melatoninRelative` 时无论是否加载 `sleep` 都按 `39.4 min` 半衰期一阶平滑趋近目标。本文只描述离线模型与契约，未做真实 DSH 会话、褪黑素实测或睡眠验证。
 
 ## 1. 脚本与读写关系
 
@@ -84,7 +84,7 @@ melatoninRelative = prev?.melatoninRelative 有限
 - 睡眠分期、昼夜偏好、体温与心率节律；`pineal` 自身不建睡眠压力或自动入睡行为（睡眠状态与清醒睡眠压力由 `brain/sleep.ts` 独立建模）。
 - 松果体钙化、肿瘤、褪黑素受体与免疫/生殖效应。
 
-**未验证：** 没有褪黑素昼夜节律实测、光照实验、独立数据、临床验证或真实 DSH 会话验收。曲线形状、相位、振幅与固定 24 h 周期全是 `design`、`source: null` 的工程假设；02:00/14:00 的峰谷只是模型内约定，不是人体测量。本切片未做 38 部位性能实测。
+**未验证：** 没有褪黑素昼夜节律实测、光照实验、独立数据、临床验证或真实 DSH 会话验收。曲线形状、相位、振幅与固定 24 h 周期全是 `design`、`source: null` 的工程假设；02:00/14:00 的峰谷只是模型内约定，不是人体测量。本切片未做全清单性能实测。
 
 ## 7. 证据入口
 

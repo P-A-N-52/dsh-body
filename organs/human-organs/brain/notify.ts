@@ -22,12 +22,12 @@
 import { getNsfwSetting, loadParameters, requireParameter } from '../../../lib/parameters.js';
 import {
   DYSPNEA_CRISIS_MM,
+  evaluateSleepTransition,
   evaluateSleepWakeSignals,
   resolveSleepImportantThresholdMm,
   SEVERE_HYPOTENSION_SBP_MMHG,
   type SleepStage,
   type WakeEvent,
-  willNaturallyWakeThisRound,
 } from './wake-evaluation.ts';
 
 export const id = 'brainNotify';
@@ -41,6 +41,8 @@ type ExpandedKey =
   | 'heat'
   | 'cold'
   | 'hypoglycemia'
+  | 'hypocalcemia'
+  | 'hypercalcemia'
   | 'palpitation'
   | 'sweatDamp'
   | 'muscleFatigue'
@@ -111,6 +113,8 @@ type InteroceptionReading = {
   heatMm?: number;
   coldMm?: number;
   hypoglycemiaMm?: number;
+  hypocalcemiaMm?: number;
+  hypercalcemiaMm?: number;
   palpitationMm?: number;
   sweatDampMm?: number;
   muscleFatigueMm?: number;
@@ -227,6 +231,8 @@ const EXPANDED_KEYS: readonly ExpandedKey[] = [
   'hypoglycemia',
   'heat',
   'cold',
+  'hypocalcemia',
+  'hypercalcemia',
   'bowelUrgency',
   'dryMouth',
   'uterineCramp',
@@ -290,6 +296,14 @@ const EXPANDED_CLAUSES: Record<ExpandedKey, Record<2 | 3, string>> = {
     2: '觉得有点发虚乏力，精神微微发晃',
     3: '脑子发昏、手脚发软发慌，整个人很虚脱',
   },
+  hypocalcemia: {
+    2: '指尖和口周有些隐隐发麻、肌肉略微抽紧',
+    3: '四肢和口周明显麻木刺痛，肌肉阵阵抽搐发紧',
+  },
+  hypercalcemia: {
+    2: '浑身有些倦怠发沉，隐隐觉得乏力口渴',
+    3: '浑身极度沉重倦怠，精神混浊、反胃无力',
+  },
   heat: {
     2: '身上有些燥热冒温',
     3: '浑身滚烫发昏，热得很难受',
@@ -350,6 +364,8 @@ const RESOLVED_EPISODE_LABELS: Readonly<Record<string, string>> = {
   dyspnea: '呼吸一度发闷',
   palpitation: '心跳一度发快发慌',
   hypoglycemia: '一度发虚乏力',
+  hypocalcemia: '手脚口周一度发麻发紧',
+  hypercalcemia: '浑身一度沉重倦怠',
   heat: '一度燥热出过温',
   cold: '一度觉得发凉',
   uterineCramp: '下腹一度隐隐发紧发痛',
@@ -376,6 +392,8 @@ const SIGNAL_PRIORITY: Readonly<Record<string, number>> = {
   hypoglycemia: 3,
   heat: 4,
   cold: 5,
+  hypocalcemia: 5.5,
+  hypercalcemia: 5.6,
   urinary: 6,
   bowelUrgency: 7,
   thirst: 8,
@@ -668,6 +686,8 @@ function observeExpandedSignals(
     dyspnea: finiteOr(reading?.dyspneaMm, 0),
     palpitation: finiteOr(reading?.palpitationMm, 0),
     hypoglycemia: finiteOr(reading?.hypoglycemiaMm, 0),
+    hypocalcemia: finiteOr(reading?.hypocalcemiaMm, 0),
+    hypercalcemia: finiteOr(reading?.hypercalcemiaMm, 0),
     heat: finiteOr(reading?.heatMm, 0),
     cold: finiteOr(reading?.coldMm, 0),
     bowelUrgency: options.suppressBowel ? 0 : finiteOr(reading?.bowelUrgencyMm, 0),
@@ -1223,38 +1243,28 @@ export function heartbeat(io: IO): void {
       : 'light';
   const nsfwEnabled = getNsfwSetting() !== false;
 
-  const evalResult = evaluateSleepWakeSignals(
-    {
-      read: (partId) => io.read(partId as never) as Readonly<Record<string, unknown>> | undefined,
-      actions: io.actions,
-    },
-    { sleepStage, nsfwEnabled },
-  );
+  const evalIo = {
+    read: (partId: string) => io.read(partId as never) as Readonly<Record<string, unknown>> | undefined,
+    actions: io.actions,
+  };
+  const evalResult = evaluateSleepWakeSignals(evalIo, { sleepStage, nsfwEnabled });
   let wakeReason: Exclude<WakeEvent, 'none'> | null = null;
   if (prevSleeping) {
-    if (evalResult.emergencyTriggered || evalResult.explicitStartleRequested) {
-      wakeReason = 'startle';
-    } else if (evalResult.endsWithWakeAction) {
-      wakeReason = evalResult.hasWakeUpAction
-        ? (evalResult.wakeUpReason ?? 'action')
-        : 'action';
-    } else if (!evalResult.endsWithSleepAction && evalResult.importantSleepTriggered) {
-      wakeReason = 'important';
-    } else if (!evalResult.endsWithSleepAction) {
-      const pineal = io.read('pineal');
-      const dtMin = Math.max(0, finiteOr(io.dt, 60) / 60);
-      if (
-        willNaturallyWakeThisRound({
-          sleepPressureMm: sleep?.sleepPressureMm,
-          sleepDurationMin: sleep?.sleepDurationMin,
-          pinealMelatoninRelative: pineal?.melatoninRelative,
-          hasPineal: pineal !== undefined,
-          dtMin,
-        })
-      ) {
-        wakeReason = 'natural';
-      }
-    }
+    const pineal = io.read('pineal');
+    const transition = evaluateSleepTransition(evalIo, {
+      prevSleeping,
+      sleepStage,
+      sleepPressureMm: sleep?.sleepPressureMm,
+      sleepDurationMin: sleep?.sleepDurationMin,
+      pinealMelatoninRelative: pineal?.melatoninRelative,
+      hasPineal: pineal !== undefined,
+      dtMin: Math.max(0, finiteOr(io.dt, 60) / 60),
+      nsfwEnabled,
+      signals: evalResult,
+    });
+    wakeReason = transition.sleeping || transition.wakeEvent === 'none'
+      ? null
+      : transition.wakeEvent;
   } else if (session.wasSleeping === true) {
     const rawWakeEvent = sleep?.wakeEvent;
     wakeReason = rawWakeEvent === 'startle'

@@ -28,6 +28,7 @@ export function createBodySimulation({
   store,
   actions,
   runner,
+  logs = null,
   now,
   autoTick,
   heartbeatIntervalMs,
@@ -382,6 +383,8 @@ export function createBodySimulation({
       const result = await runHeartbeat(store.current, batch);
       if (isStopping()) return { ran: true, failed: false };
       store.commit(applyBatch(store.current, result, batch));
+      logs?.recordStateCommit(store.current, { reason: 'heartbeat', actionIds: batch.actionIds });
+      logs?.recordNotificationsQueued(result.notifications);
       lastHeartbeat = {
         lastSuccessAtMs: now(),
         lastErrorAtMs: lastHeartbeat.lastErrorAtMs,

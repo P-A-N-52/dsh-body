@@ -6,7 +6,7 @@
 
 - **性别分化与周期耦合（design）：** 男性（`testes` 加载）与中性身体保留 `refractoryMin = 20 min` 基础不应期，并在 `pituitary.prolactinNgMl > 14 ng/mL` 时温和延长（`+0.5 × (PRL − 14)`，最多 `+15 min`）；女性（加载 `ovaries` 且无 `testes`）取消固定 20 min 绝对不应期，仅保留 `femalePostOrgasmPauseMin = 2 min` 防连跳短停顿，持续刺激可连续唤起与多次高潮，高含 E2 / 排卵窗口对目标与上升速率给出温和正向增益。
 
-**状态口径。** 当前实现：脚本与参数在 `organs/human-organs/sexual-response/`，三份清单均注册同一脚本（根 41 部位 / 37 份唯一参数文件，女性 44 / 40，男性 43 / 39）。8 项参数均标 `design`；PRL 性后饱和方向参考 `SRC-KRUGER-2003`；尚未做真实 DSH 会话或临床验证。
+**状态口径。** 当前实现：脚本与参数在 `organs/human-organs/sexual-response/`，三份清单均注册同一脚本（根 43 部位 / 39 份唯一参数文件，女性 46 / 42，男性 45 / 41）。8 项参数均标 `design`；PRL 性后饱和方向参考 `SRC-KRUGER-2003`；尚未做真实 DSH 会话或临床验证。
 
 ## 1. 脚本与部位
 

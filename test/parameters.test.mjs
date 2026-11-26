@@ -8,6 +8,7 @@ import {
   getNsfwSetting,
   getNumericParameterOverride,
   getParameterOverride,
+  getProfileLactating,
   hasParameterOverride,
   loadParameters,
   requireParameter,
@@ -79,18 +80,20 @@ test('setWorkerParameterConfig overrides loaded parameters and scales by weight 
 
   setWorkerParameterConfig({});
   assert.deepEqual(getBodyProfile(), { weightKg: 75, heightCm: 170 });
+  assert.equal(getProfileLactating(), false);
   assert.equal(scaleByBodyWeight(100), 100);
   assert.equal(hasParameterOverride('glucose.baselineConcentrationMgDl'), false);
   assert.equal(getParameterOverride('glucose.baselineConcentrationMgDl'), undefined);
 
   setWorkerParameterConfig({
-    profile: { weightKg: 50, heightCm: 160 },
+    profile: { weightKg: 50, heightCm: 160, lactating: true },
     parameters: {
       'glucose.baselineConcentrationMgDl': 98,
       'bodyFluid.referenceVolumeMl': 22000,
     },
   });
   assert.deepEqual(getBodyProfile(), { weightKg: 50, heightCm: 160 });
+  assert.equal(getProfileLactating(), true);
   assert.equal(hasParameterOverride('bodyFluid.referenceVolumeMl'), true);
   assert.equal(getNumericParameterOverride('bodyFluid.referenceVolumeMl'), 22000);
   assert.equal(scaleByBodyWeight(30000, 'bodyFluid.referenceVolumeMl'), 30000);
@@ -263,6 +266,7 @@ test('heart, blood and thermoregulation parameters are design defaults with no s
       'blood.oxygenContentPerPercentMlPerL': [2, 'mL/L/%'],
       'blood.sympatheticSystolicGain': [0.002, '1/mm'],
       'blood.sympatheticDiastolicGain': [0.001, '1/mm'],
+      'blood.referenceMaxCardiacOutputMlMin': [16380, 'mL/min'],
     },
     'organs/human-organs/brain/thermoregulation.parameters.json': {
       'thermoregulation.setpointC': [37, '°C'],
@@ -487,6 +491,9 @@ test('ovaries carries the Bull cycle priors and hyperprolactinemia design entrie
   assert.equal(ovariesById['ovaries.hyperprolactinemiaThresholdNgMl'].value, 35);
   assert.equal(ovariesById['ovaries.hyperprolactinemiaThresholdNgMl'].status, 'design');
   assert.equal(ovariesById['ovaries.hyperprolactinemiaThresholdNgMl'].source, 'SRC-HOSKOVA-2022');
+  assert.equal(ovariesById['ovaries.suppressionOnsetDays'].value, 7);
+  assert.equal(ovariesById['ovaries.suppressionOnsetDays'].status, 'design');
+  assert.equal(ovariesById['ovaries.suppressionOnsetDays'].source, 'SRC-PAGEWILSON-2007');
   assert.equal(ovariesById['ovaries.suppressionHalfTimeDays'].value, 5);
   assert.equal(ovariesById['ovaries.suppressionHalfTimeDays'].status, 'design');
   assert.equal(ovariesById['ovaries.suppressionHalfTimeDays'].source, 'SRC-PAGEWILSON-2007');
@@ -776,7 +783,7 @@ test('muscleGlucose, kidneyGluconeogenesis, mammaryGlands, smallIntestine, colon
     'mammaryGlands.breastfeedPamr': 0.673,
     'mammaryGlands.expressPamr': 0.75,
     'mammaryGlands.engorgementPamrPenaltyPer100Ml': 0.14,
-    'mammaryGlands.letdownOxytocinThresholdPgMl': 4,
+    'mammaryGlands.letdownOxytocinThresholdPgMl': 5,
     'mammaryGlands.fullnessHalfTimeMin': 15,
   });
   const mammaryRaw = readParameters(new URL(
@@ -814,6 +821,16 @@ test('muscleGlucose, kidneyGluconeogenesis, mammaryGlands, smallIntestine, colon
     'colon.reclamationRatePerMin': 0.01,
     'colon.stoolFormationGPerMin': 0.01,
     'colon.referenceStoolG': 200,
+  });
+
+  const duodenum = loadParameters(new URL(
+    '../organs/human-organs/duodenum/nutrient-exposure.parameters.json',
+    import.meta.url,
+  ));
+  assert.deepEqual(duodenum, {
+    'duodenum.exposure.timeConstantMin': 10,
+    'duodenum.salivaryAmylaseGain': 0.05,
+    'duodenum.referenceSalivaRateMlPerMin': 0.5,
   });
 
   const notify = readParameters(new URL(

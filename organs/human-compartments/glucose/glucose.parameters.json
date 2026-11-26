@@ -36,7 +36,7 @@
       "status": "design",
       "range": [10, 300],
       "source": null,
-      "note": "工程占位：glucose 自身超基线残余清除的半时，与胰岛素信号无关，不随 insulinRelative 缩放。不是组织摄糖总清除半时，也不是 Dalla Man 2007 报告值；未来由更完整的非器官组织清除模型替换。range 是工程调参范围"
+      "note": "工程占位：glucose 自身超基线残余清除的半时，与胰岛素信号无关，不随 insulinPmolL 缩放。不是组织摄糖总清除半时，也不是 Dalla Man 2007 报告值；未来由更完整的非器官组织清除模型替换。range 是工程调参范围"
     },
     {
       "id": "glucose.basalConsumptionGPerMin",
@@ -45,7 +45,7 @@
       "status": "design",
       "range": [0, 0.5],
       "source": null,
-      "note": "非胰岛素依赖的基础葡萄糖消耗速率工程占位（172.8 g/day，对应脑与红细胞等基础利用；结构方向见 Dalla Man 2007 §III.C.3），不随 insulinRelative 缩放，在低血糖（< 50 mg/dL）时按比例平滑衰减以防池质量变负。不是实测个人基础利用率，无登记来源。range 是工程调参范围"
+      "note": "非胰岛素依赖的基础葡萄糖消耗速率工程占位（172.8 g/day，对应脑与红细胞等基础利用；结构方向见 Dalla Man 2007 §III.C.3），不随 insulinPmolL 缩放，在低血糖（< 50 mg/dL）时按比例平滑衰减以防池质量变负。不是实测个人基础利用率，无登记来源。range 是工程调参范围"
     }
   ]
 }

@@ -18,10 +18,6 @@ type PancreasState = {
   glucagonRelative: number;
 };
 
-type SavedPancreasState = Partial<PancreasState> & {
-  insulinRelative?: unknown;
-};
-
 type GlucoseState = {
   concentrationMgDl: unknown;
 };
@@ -68,7 +64,7 @@ export const fields = {
 };
 
 type IO = {
-  read(id: 'pancreasEndocrine'): Readonly<SavedPancreasState> | undefined;
+  read(id: 'pancreasEndocrine'): Readonly<Partial<PancreasState>> | undefined;
   read(id: 'glucose'): Readonly<GlucoseState> | undefined;
   readonly dt: number;
   write(next: PancreasState): void;
@@ -81,13 +77,11 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function resolvePrevState(saved: Readonly<SavedPancreasState> | undefined): PancreasState {
+function resolvePrevState(saved: Readonly<Partial<PancreasState>> | undefined): PancreasState {
   if (!saved) return initialState;
   const insulinPmolL = typeof saved.insulinPmolL === 'number' && Number.isFinite(saved.insulinPmolL)
     ? saved.insulinPmolL
-    : typeof saved.insulinRelative === 'number' && Number.isFinite(saved.insulinRelative)
-      ? basalInsulinPmolL * saved.insulinRelative
-      : basalInsulinPmolL;
+    : basalInsulinPmolL;
   const glucagonRelative = typeof saved.glucagonRelative === 'number' && Number.isFinite(saved.glucagonRelative)
     ? saved.glucagonRelative
     : 1;

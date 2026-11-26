@@ -1,8 +1,8 @@
 /**
  * 睡眠唤醒与紧急惊醒共享判据（纯函数，无副作用）。
  *
- * 供 `brain/sleep`、`brain/autonomic`、`heart/heart` 与 `brain/notify` 在同一轮心跳内基于相同的
- * 轮初冻结快照判定：
+ * 供 `brain/sleep`、`brain/autonomic`、`heart/heart`、`brain/notify`、`brain/reward` 与
+ * `brain/hypothalamusEndocrine` 在同一轮心跳内基于相同的轮初冻结快照判定：
  * - `emergencyTriggered`：高危生理危机（严重缺氧、高热、失温、严重低血糖、休克低血压、
  *   非自主漏尿或扩展 `urgent: true`），睡眠中触发同轮惊醒与交感活跃；
  * - `importantSleepTriggered`：一般强烈不适在睡眠期跨过抬高阈值（浅睡/REM 默认 92 mm，
@@ -213,6 +213,8 @@ export function evaluateSleepWakeSignals(
   const heat = finiteOr(intero?.heatMm, 0);
   const cold = finiteOr(intero?.coldMm, 0);
   const hypoglycemia = finiteOr(intero?.hypoglycemiaMm, 0);
+  const hypocalcemia = finiteOr(intero?.hypocalcemiaMm, 0);
+  const hypercalcemia = finiteOr(intero?.hypercalcemiaMm, 0);
   const systolic = blood?.systolicMmHg;
   const severeHypotension = typeof systolic === 'number'
     && Number.isFinite(systolic)
@@ -234,6 +236,8 @@ export function evaluateSleepWakeSignals(
     ['dyspnea', dyspnea],
     ['palpitation', finiteOr(intero?.palpitationMm, 0)],
     ['hypoglycemia', hypoglycemia],
+    ['hypocalcemia', hypocalcemia],
+    ['hypercalcemia', hypercalcemia],
     ['heat', heat],
     ['cold', cold],
     ['uterineCramp', finiteOr(intero?.uterineCrampMm ?? uterus?.crampMm, 0)],
@@ -286,4 +290,51 @@ export function evaluateSleepWakeSignals(
     explicitStartleRequested,
     wakeUpReason,
   };
+}
+
+export function evaluateSleepTransition(
+  io: WakeEvalIo,
+  options: {
+    prevSleeping: boolean;
+    sleepStage: SleepStage;
+    sleepPressureMm: unknown;
+    sleepDurationMin: unknown;
+    pinealMelatoninRelative: unknown;
+    hasPineal: boolean;
+    dtMin: number;
+    nsfwEnabled?: boolean;
+    signals?: WakeEvaluationResult;
+  },
+): { sleeping: boolean; wakeEvent: WakeEvent } {
+  const signals = options.signals ?? evaluateSleepWakeSignals(io, {
+    sleepStage: options.sleepStage,
+    nsfwEnabled: options.nsfwEnabled,
+  });
+  if (options.prevSleeping && (signals.emergencyTriggered || signals.explicitStartleRequested)) {
+    return { sleeping: false, wakeEvent: 'startle' };
+  }
+  if (signals.endsWithWakeAction) {
+    return {
+      sleeping: false,
+      wakeEvent: options.prevSleeping ? (signals.wakeUpReason ?? 'action') : 'none',
+    };
+  }
+  if (options.prevSleeping && signals.importantSleepTriggered && !signals.endsWithSleepAction) {
+    return { sleeping: false, wakeEvent: 'important' };
+  }
+
+  const sleeping = options.prevSleeping || signals.endsWithSleepAction;
+  const durationReset = !options.prevSleeping
+    || (signals.endsWithSleepAction && (signals.hasWakeUpAction || signals.hasActiveWakingAction));
+  const effectiveSleepDurationMin = durationReset ? 0 : options.sleepDurationMin;
+  if (sleeping && willNaturallyWakeThisRound({
+    sleepPressureMm: options.sleepPressureMm,
+    sleepDurationMin: effectiveSleepDurationMin,
+    pinealMelatoninRelative: options.pinealMelatoninRelative,
+    hasPineal: options.hasPineal,
+    dtMin: options.dtMin,
+  })) {
+    return { sleeping: false, wakeEvent: 'natural' };
+  }
+  return { sleeping, wakeEvent: 'none' };
 }

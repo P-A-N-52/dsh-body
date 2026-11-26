@@ -33,9 +33,14 @@ function boot(manifestPath, statePath, { defaultNsfw = false } = {}) {
   });
 }
 
-function writeState(dir, parts = {}) {
+function writeState(dir, parts = {}, profile) {
   const statePath = join(dir, 'body-state.json');
-  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts })));
+  writeFileSync(statePath, JSON.stringify(checkpoint({
+    wallTimeMs: 0,
+    simulatedSeconds: 0,
+    parts,
+    ...(profile === undefined ? {} : { profile }),
+  })));
   return statePath;
 }
 
@@ -75,7 +80,7 @@ function assertClose(actual, expected, label, tolerance = 1e-9) {
   );
 }
 
-test('default female manifest does not lactate, keeps zero water drain and prolactin at 1', async (t) => {
+test('default female manifest does not lactate and starts with prolactin 8 ng/mL', async (t) => {
   silence(t);
   const dir = mkdtempSync(join(tmpdir(), 'dsh-mammary-default-'));
   const statePath = writeState(dir);
@@ -88,7 +93,7 @@ test('default female manifest does not lactate, keeps zero water drain and prola
 
   const booted = gateway.getState().parts;
   assert.equal(booted.mammaryGlands.lactating, false);
-  assert.equal(booted.pituitary.prolactinRelative, 1);
+  assert.equal(booted.pituitary.prolactinNgMl, 8);
 
   const accumulator = emptyAccumulator();
   for (let round = 1; round <= 10; round++) {
@@ -100,7 +105,8 @@ test('default female manifest does not lactate, keeps zero water drain and prola
     assert.equal(parts.mammaryGlands.lactoseRequestG, 0);
     assert.equal(parts.mammaryGlands.lactoseG, 0);
     assert.equal(parts.mammaryGlands.fullnessMm, 0);
-    assert.equal(parts.pituitary.prolactinRelative, 1);
+    assert.ok(parts.pituitary.prolactinNgMl > 0);
+    assert.equal(Object.hasOwn(parts.pituitary, 'prolactinRelative'), false);
     assertClose(parts.glucose.concentrationMgDl, 90, `round ${round}: fasting glucose`);
     accumulate(accumulator, parts);
     assertClose(waterLedgerMl(parts, accumulator), 0, `round ${round}: water ledger`);
@@ -112,8 +118,8 @@ test('seeded lactating female with prolactin drives milk, the lactose sink and d
   silence(t);
   const safeDir = mkdtempSync(join(tmpdir(), 'dsh-mammary-safe-'));
   const safeStatePath = writeState(safeDir, {
-    pituitary: { prolactinRelative: 3 },
-    mammaryGlands: { lactating: true, fullnessMm: 68 },
+    pituitary: { prolactinNgMl: 24 },
+    mammaryGlands: { lactating: true, fullnessMm: 80 },
   });
   const safeGateway = boot(femaleManifestPath, safeStatePath);
   t.after(async () => {
@@ -131,8 +137,8 @@ test('seeded lactating female with prolactin drives milk, the lactose sink and d
 
   const dir = mkdtempSync(join(tmpdir(), 'dsh-mammary-'));
   const statePath = writeState(dir, {
-    pituitary: { prolactinRelative: 3 },
-    mammaryGlands: { lactating: true, fullnessMm: 68 },
+    pituitary: { prolactinNgMl: 24 },
+    mammaryGlands: { lactating: true, fullnessMm: 80 },
   });
   const gateway = boot(femaleManifestPath, statePath, { defaultNsfw: true });
   t.after(async () => {
@@ -142,31 +148,32 @@ test('seeded lactating female with prolactin drives milk, the lactose sink and d
   await gateway.ready;
 
   const booted = gateway.getState().parts;
-  assert.equal(Object.keys(booted).length, 43);
+  assert.equal(Object.keys(booted).length, 46);
   assert.ok(booted.mammaryGlands, 'the female manifest must load mammaryGlands');
+  assert.ok(booted.reward, 'the female manifest must load reward');
   assert.equal(booted.mammaryGlands.lactating, true);
-  assert.equal(booted.pituitary.prolactinRelative, 3);
-  assert.equal(booted.mammaryGlands.fullnessMm, 68);
+  assert.equal(booted.pituitary.prolactinNgMl, 24);
+  assert.equal(booted.mammaryGlands.fullnessMm, 80);
 
   const accumulator = emptyAccumulator();
 
   await gateway.tick();
   const first = gateway.getState().parts;
-  assertClose(first.mammaryGlands.milkRequestMl, 1.5, 'round 1 milk request at prolactin 3');
-  assertClose(first.mammaryGlands.lactoseRequestG, 0.105, 'round 1 lactose request');
+  assertClose(first.mammaryGlands.milkRequestMl, 0.5184, 'round 1 milk request at prolactin 24');
+  assertClose(first.mammaryGlands.lactoseRequestG, 0.0383616, 'round 1 lactose request');
   assert.equal(first.mammaryGlands.milkMl, 0, 'round 1 pays the round-start request of zero');
   assert.equal(first.mammaryGlands.lactoseG, 0);
-  const expectedFullness1 = 68 * (2 ** (-1 / 30)) + 4 * 1.5;
-  assertClose(first.mammaryGlands.fullnessMm, expectedFullness1, 'fullness decays and adds unemptied milk');
-  assert.equal(first.interoception.discomfort, 0, 'round 1 still reads the seeded fullness 68');
-  assert.ok(first.pituitary.prolactinRelative > 2.9, 'prolactin decays toward its target');
+  const expectedFullness1 = 80 * 2 ** (-1 / 15);
+  assertClose(first.mammaryGlands.fullnessMm, expectedFullness1, 'empty storage lets fullness decay');
+  assertClose(first.interoception.discomfort, 100 / 3, 'round 1 reads the seeded fullness 80');
+  assert.ok(first.pituitary.prolactinNgMl > 24, 'the lactation floor raises prolactin');
   accumulate(accumulator, first);
   assertClose(waterLedgerMl(first, accumulator), 0, 'round 1 water ledger');
 
   await gateway.tick();
   const second = gateway.getState().parts;
-  assertClose(second.mammaryGlands.milkMl, 1.5, 'round 2 pays the 1.5 mL milk request');
-  assertClose(second.mammaryGlands.lactoseG, 0.105, 'round 2 pays the lactose request');
+  assertClose(second.mammaryGlands.milkMl, 0.5184, 'round 2 pays the first milk request');
+  assertClose(second.mammaryGlands.lactoseG, 0.0383616, 'round 2 pays the lactose request');
   assert.ok(second.mammaryGlands.lactoseG > 0);
   assertClose(
     second.interoception.discomfort,
@@ -193,6 +200,71 @@ test('seeded lactating female with prolactin drives milk, the lactose sink and d
   assertClose(waterLedgerMl(later, accumulator), 0, 'round 60 water ledger');
 });
 
+test('profile.lactating starts a female body in the established lactation state', async (t) => {
+  silence(t);
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-mammary-profile-'));
+  const statePath = writeState(dir, {}, { lactating: true });
+  const gateway = boot(femaleManifestPath, statePath, { defaultNsfw: true });
+  t.after(async () => {
+    await gateway.stop();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  await gateway.ready;
+
+  const booted = gateway.getState().parts;
+  assert.equal(booted.mammaryGlands.lactating, true);
+  assert.equal(booted.mammaryGlands.inductionProgress, 1);
+  assert.equal(booted.mammaryGlands.storedMilkMl, 120);
+  assert.equal(booted.pituitary.prolactinNgMl, 60);
+  assert.equal(booted.ovaries.cycleSuppression, 0.75);
+
+  await gateway.tick();
+  const after = gateway.getState().parts;
+  assert.equal(after.mammaryGlands.lactating, true);
+  assert.ok(after.mammaryGlands.milkRequestMl > 0);
+});
+
+test('a default-oxytocin expression survives restart and ejects once when let-down arrives', async (t) => {
+  silence(t);
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-mammary-delayed-ejection-'));
+  const statePath = writeState(dir, {}, { lactating: true });
+  let gateway = boot(femaleManifestPath, statePath, { defaultNsfw: true });
+  t.after(async () => {
+    await gateway.stop();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  await gateway.ready;
+
+  assert.equal(gateway.getState().parts.pituitary.oxytocinPgMl, 2);
+  assert.equal(gateway.submitAction({
+    id: 'delayed-expression',
+    type: 'express_milk',
+    durationMin: 15,
+    bilateral: true,
+  }).statusCode, 202);
+
+  await gateway.tick();
+  assert.equal(gateway.getState().parts.mammaryGlands.ejectedMilkMl, 0);
+  await gateway.stop();
+
+  gateway = boot(femaleManifestPath, statePath, { defaultNsfw: true });
+  await gateway.ready;
+  await gateway.tick();
+  const beforeLetdown = gateway.getState().parts;
+  assert.equal(beforeLetdown.mammaryGlands.ejectedMilkMl, 0);
+  assert.ok(beforeLetdown.pituitary.oxytocinPgMl > 5);
+  const availableMilkMl = beforeLetdown.mammaryGlands.storedMilkMl
+    + beforeLetdown.mammaryGlands.milkMl;
+
+  await gateway.tick();
+  const ejected = gateway.getState().parts;
+  assertClose(ejected.mammaryGlands.ejectedMilkMl, availableMilkMl * 0.75, 'one bilateral PAMR');
+  assertClose(ejected.mammaryGlands.storedMilkMl, availableMilkMl * 0.25, 'remaining stored milk');
+
+  await gateway.tick();
+  assert.equal(gateway.getState().parts.mammaryGlands.ejectedMilkMl, 0, 'stimulation continuation cannot eject twice');
+});
+
 test('the root manifest has no mammary part and still boots with the three-sink glucose entry', async (t) => {
   silence(t);
   const dir = mkdtempSync(join(tmpdir(), 'dsh-mammary-root-'));
@@ -205,9 +277,10 @@ test('the root manifest has no mammary part and still boots with the three-sink 
   await gateway.ready;
 
   const parts = gateway.getState().parts;
-  assert.equal(Object.keys(parts).length, 40);
+  assert.equal(Object.keys(parts).length, 43);
   assert.equal(Object.hasOwn(parts, 'mammaryGlands'), false);
-  assert.equal(parts.pituitary.prolactinRelative, 1);
+  assert.ok(parts.reward);
+  assert.equal(parts.pituitary.prolactinNgMl, 8);
 
   await gateway.tick();
   await gateway.tick();
@@ -217,7 +290,7 @@ test('the root manifest has no mammary part and still boots with the three-sink 
   assertClose(after.glucose.concentrationMgDl, 90, 'fasting glucose concentration holds steady');
   assertClose(after.glucose.disposedGlucoseG, 0.12, 'basal consumption per minute');
   assert.equal(after.glucose.excessMassG, 0);
-  assert.equal(after.pituitary.prolactinRelative, 1);
+  assert.ok(after.pituitary.prolactinNgMl > 0);
   assert.equal(after.interoception.discomfort, 0);
 });
 
@@ -250,7 +323,7 @@ test('a restart on the same state path continues lactating mammary requests and 
   silence(t);
   const dir = mkdtempSync(join(tmpdir(), 'dsh-mammary-restart-'));
   const statePath = writeState(dir, {
-    pituitary: { prolactinRelative: 3 },
+    pituitary: { prolactinNgMl: 24 },
     mammaryGlands: { lactating: true },
   });
   let gateway = boot(femaleManifestPath, statePath, { defaultNsfw: true });
@@ -278,5 +351,5 @@ test('a restart on the same state path continues lactating mammary requests and 
   assert.equal(after.mammaryGlands.milkMl > 0, true, 'milk payout resumes after restart');
   assert.equal(after.mammaryGlands.lactoseG > 0, true, 'lactose payout resumes after restart');
   assert.ok(after.mammaryGlands.milkRequestMl > 0);
-  assert.ok(after.pituitary.prolactinRelative > 1);
+  assert.ok(after.pituitary.prolactinNgMl > 8);
 });

@@ -48,6 +48,15 @@
       "note": "慢性高催乳素血症开始累积抑制 HPO 周期轴的血清 PRL 参考起坡门限（参考 Hoskova 2022 慢性队列 24.6 至 >150 ng/mL）；design"
     },
     {
+      "id": "ovaries.suppressionOnsetDays",
+      "unit": "d",
+      "value": 7,
+      "status": "design",
+      "range": [0, 30],
+      "source": "SRC-PAGEWILSON-2007",
+      "note": "高 PRL 需持续满 7 天才进入慢性周期抑制窗口，短期暴露不改变 cycleSuppression；design"
+    },
+    {
       "id": "ovaries.suppressionHalfTimeDays",
       "unit": "d",
       "value": 5,

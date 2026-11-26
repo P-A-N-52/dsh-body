@@ -34,6 +34,8 @@ const organModules = [
   ['pituitary', 'pituitary', '../organs/human-organs/brain/pituitary.ts'],
   ['thyroid', 'thyroid', '../organs/human-organs/thyroid/thyroid.ts'],
   ['adrenal', 'adrenal', '../organs/human-organs/adrenal/cortisol.ts'],
+  ['parathyroid', 'parathyroid', '../organs/human-organs/parathyroid/parathyroid.ts'],
+  ['blood calcium', 'bloodCalcium', '../organs/human-compartments/calcium/calcium.ts'],
   ['pineal', 'pineal', '../organs/human-organs/pineal/melatonin.ts'],
   ['kidney', 'kidney', '../organs/human-organs/kidney/urine-production.ts'],
   ['bladder', 'bladder', '../organs/human-organs/bladder/storage.ts'],
@@ -70,9 +72,9 @@ for (const [label, expectedId, modulePath] of organModules) {
   });
 }
 
-test('the root manifest lists forty-one scripts with the bowel slice, activity, sleep, autonomic, reward, sweat, lung water loss, circulation, thermoregulation, liver glycogen, renal gluconeogenesis, the endocrine axes and salivary glands', () => {
+test('the root manifest lists forty-three scripts with the bowel slice, activity, sleep, autonomic, reward, sweat, lung water loss, circulation, thermoregulation, liver glycogen, renal gluconeogenesis, the endocrine axes, parathyroid calcium and salivary glands', () => {
   const manifest = JSON.parse(readFileSync(new URL('../body-modules.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.scripts.length, 41);
+  assert.equal(manifest.scripts.length, 43);
   assert.ok(manifest.scripts.includes('./organs/human-organs/brain/sleep.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/brain/autonomic.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/brain/reward.ts'));
@@ -101,6 +103,8 @@ test('the root manifest lists forty-one scripts with the bowel slice, activity, 
   assert.ok(manifest.scripts.includes('./organs/human-organs/brain/pituitary.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/thyroid/thyroid.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/adrenal/cortisol.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/parathyroid/parathyroid.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-compartments/calcium/calcium.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/pineal/melatonin.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/salivary-glands/saliva.ts'));
   assert.equal(manifest.scripts.includes('./organs/human-organs/stomach/motility.ts'), false);
@@ -109,9 +113,9 @@ test('the root manifest lists forty-one scripts with the bowel slice, activity, 
   assert.equal(manifest.scripts.includes('./organs/human-organs/epididymis/storage.ts'), false);
 });
 
-test('the female manifest lists forty-four scripts with the glucose variant, reward and mammary glands', () => {
+test('the female manifest lists forty-six scripts with the glucose variant, reward, parathyroid calcium and mammary glands', () => {
   const manifest = JSON.parse(readFileSync(new URL('../body-modules.female.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.scripts.length, 44);
+  assert.equal(manifest.scripts.length, 46);
   assert.ok(manifest.scripts.includes('./organs/human-organs/brain/reward.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-compartments/glucose/glucose.female.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/kidney/gluconeogenesis.ts'));
@@ -125,7 +129,7 @@ test('the female manifest lists forty-four scripts with the glucose variant, rew
 test('the male manifest adds only testes and epididymis to the root list', () => {
   const rootManifest = JSON.parse(readFileSync(new URL('../body-modules.json', import.meta.url), 'utf8'));
   const manifest = JSON.parse(readFileSync(new URL('../body-modules.male.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.scripts.length, 43);
+  assert.equal(manifest.scripts.length, 45);
   assert.equal(manifest.scripts.length, rootManifest.scripts.length + 2);
   assert.ok(manifest.scripts.includes('./organs/human-organs/testes/testosterone.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/epididymis/storage.ts'));
@@ -330,9 +334,9 @@ function collectAllParameterFiles(dir) {
 }
 
 for (const { file, scriptCount, parameterCount, transferPartCount } of [
-  { file: 'body-modules.json', scriptCount: 41, parameterCount: 37, transferPartCount: 15 },
-  { file: 'body-modules.female.json', scriptCount: 44, parameterCount: 40, transferPartCount: 17 },
-  { file: 'body-modules.male.json', scriptCount: 43, parameterCount: 39, transferPartCount: 15 },
+  { file: 'body-modules.json', scriptCount: 43, parameterCount: 39, transferPartCount: 15 },
+  { file: 'body-modules.female.json', scriptCount: 46, parameterCount: 42, transferPartCount: 17 },
+  { file: 'body-modules.male.json', scriptCount: 45, parameterCount: 41, transferPartCount: 15 },
 ]) {
   test(`${file} passes createFieldRegistry, parameter inventory, and transfer closure checks`, async () => {
     const manifestPath = join(root, file);
@@ -423,4 +427,32 @@ test('startup/reset-parts.js resets only declared resetOnStart fields while pres
     blood: { volumeMl: 5100 },
     bladder: { volumeMl: 180, voidedMl: 0 },
   });
+});
+
+test('organ and compartment modules only load parameter files in their own directory', () => {
+  const organsRoot = join(dirname(fileURLToPath(import.meta.url)), '..', 'organs');
+  const scriptFiles = [];
+  function walk(dir) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) walk(fullPath);
+      else if (entry.isFile() && /\.(ts|js|mjs)$/.test(entry.name)) scriptFiles.push(fullPath);
+    }
+  }
+  walk(organsRoot);
+
+  const unitKey = (filePath) => filePath.slice(organsRoot.length + 1).split(/[\\/]/).slice(0, 2).join('/');
+  const crossImports = [];
+  for (const file of scriptFiles) {
+    const source = readFileSync(file, 'utf8');
+    const dir = dirname(file);
+    const ownerUnit = unitKey(file);
+    for (const match of source.matchAll(/['"]([^'"]*\.parameters\.json)['"]/g)) {
+      const target = join(dir, match[1]);
+      if (unitKey(target) !== ownerUnit) {
+        crossImports.push({ file, target: match[1] });
+      }
+    }
+  }
+  assert.deepEqual(crossImports, [], `unexpected cross-organ parameter imports: ${JSON.stringify(crossImports)}`);
 });

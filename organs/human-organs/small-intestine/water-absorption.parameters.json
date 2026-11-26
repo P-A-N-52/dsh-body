@@ -45,7 +45,7 @@
       "status": "design",
       "range": [0, 1],
       "source": null,
-      "note": "carbFactor 中 (pancreasEndocrine.insulinRelative − 1) 的权重；肠腔 SGLT1 碳水吸收不依赖胰岛素，故默认 0（保留参数 ID 兼容）。工程假设，不是胰岛素-吸收实测斜率"
+      "note": "carbFactor 中 (pancreasEndocrine.insulinPmolL / 60 − 1) 的权重；肠腔 SGLT1 碳水吸收不依赖胰岛素，故默认 0（保留参数 ID 兼容）。工程假设，不是胰岛素-吸收实测斜率"
     },
     {
       "id": "smallIntestine.carbAbsorptionGradientGain",

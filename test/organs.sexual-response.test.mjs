@@ -17,12 +17,22 @@ const parametersUrl = new URL(
 );
 const parameterFile = JSON.parse(readFileSync(parametersUrl, 'utf8'));
 
-function round({ state, actions = [], dt = 60, simulatedSeconds = 60, testes } = {}) {
+function round({
+  state,
+  actions = [],
+  dt = 60,
+  simulatedSeconds = 60,
+  testes,
+  ovaries,
+  pituitary,
+} = {}) {
   const writes = [];
   heartbeat({
     read: (partId) => {
       if (partId === 'sexualResponse') return state;
       if (partId === 'testes') return testes;
+      if (partId === 'ovaries') return ovaries;
+      if (partId === 'pituitary') return pituitary;
       return undefined;
     },
     actions,
@@ -53,6 +63,7 @@ test('sexualResponse exports the organ module contract', () => {
     remainingSexMin: { unit: 'min', mode: 'absolute' },
     sexIntensity: { unit: '1', mode: 'absolute' },
     lastOrgasmAtSimMin: { unit: 'min', mode: 'absolute' },
+    afterglowMm: { unit: 'mm', mode: 'absolute' },
   });
   assert.deepEqual(initialState, {
     arousalMm: 0,
@@ -60,6 +71,7 @@ test('sexualResponse exports the organ module contract', () => {
     remainingSexMin: 0,
     sexIntensity: 0,
     lastOrgasmAtSimMin: null,
+    afterglowMm: 0,
   });
 
   const { written, writes } = round();
@@ -67,7 +79,7 @@ test('sexualResponse exports the organ module contract', () => {
   assert.deepEqual(written, initialState);
 });
 
-test('the six response parameters are design defaults with no source', () => {
+test('the eight response parameters are design defaults with no source', () => {
   assert.equal(parameterFile.schemaVersion, 1);
   assert.equal(parameterFile.owner, 'sexualResponse');
 
@@ -78,6 +90,8 @@ test('the six response parameters are design defaults with no source', () => {
     'sexualResponse.orgasmForcedMm': { unit: 'mm', value: 95 },
     'sexualResponse.orgasmDurationMin': { unit: 'min', value: 1 },
     'sexualResponse.refractoryMin': { unit: 'min', value: 20 },
+    'sexualResponse.femalePostOrgasmPauseMin': { unit: 'min', value: 2 },
+    'sexualResponse.afterglowHalfTimeMin': { unit: 'min', value: 22 },
   };
   const byId = Object.fromEntries(
     parameterFile.parameters.map((parameter) => [parameter.id, parameter]),
@@ -99,6 +113,8 @@ test('the six response parameters are design defaults with no source', () => {
     'sexualResponse.orgasmForcedMm': 95,
     'sexualResponse.orgasmDurationMin': 1,
     'sexualResponse.refractoryMin': 20,
+    'sexualResponse.femalePostOrgasmPauseMin': 2,
+    'sexualResponse.afterglowHalfTimeMin': 22,
   });
 });
 
@@ -481,6 +497,87 @@ test('lastOrgasmAtSimMin null survives JSON round-trip and restart', () => {
   const refractory = round({ state: savedAfterOrgasm, simulatedSeconds: 8 * 60 }).written;
   assert.equal(refractory.lastOrgasmAtSimMin, 7);
   assert.equal(refractory.phase, 'refractory');
+});
+
+test('orgasm writes an 80 mm afterglow that halves after 22 minutes', () => {
+  const released = round({
+    state: {
+      arousalMm: 80,
+      phase: 'plateau',
+      remainingSexMin: 0,
+      sexIntensity: 0,
+      lastOrgasmAtSimMin: null,
+      afterglowMm: 0,
+    },
+    actions: [{ type: 'orgasm' }],
+    simulatedSeconds: 60,
+  }).written;
+  assert.equal(released.afterglowMm, 80);
+
+  const later = round({ state: released, dt: 22 * 60, simulatedSeconds: 23 * 60 }).written;
+  assertClose(later.afterglowMm, 40, '22 minute afterglow half-time');
+});
+
+test('female release uses only the two minute pause during continued stimulation', () => {
+  const state = {
+    arousalMm: 80,
+    phase: 'orgasm',
+    remainingSexMin: 10,
+    sexIntensity: 1,
+    lastOrgasmAtSimMin: 1,
+    afterglowMm: 80,
+  };
+  const ovaries = { estradiolPmolL: 500, progesteroneNmolL: 2 };
+  const paused = round({
+    state,
+    ovaries,
+    actions: [{ type: 'orgasm' }],
+    simulatedSeconds: 120,
+  }).written;
+  assert.equal(paused.lastOrgasmAtSimMin, 1);
+  assert.equal(paused.phase, 'refractory');
+
+  const releasedAgain = round({
+    state,
+    ovaries,
+    actions: [{ type: 'orgasm' }],
+    simulatedSeconds: 180,
+  }).written;
+  assert.equal(releasedAgain.lastOrgasmAtSimMin, 3);
+  assert.equal(releasedAgain.phase, 'orgasm');
+  assert.equal(releasedAgain.afterglowMm, 80);
+});
+
+test('high prolactin prolongs the male refractory window', () => {
+  const state = {
+    arousalMm: 80,
+    phase: 'orgasm',
+    remainingSexMin: 0,
+    sexIntensity: 0,
+    lastOrgasmAtSimMin: 1,
+    afterglowMm: 80,
+  };
+  const options = {
+    state,
+    testes: { testosteroneRelative: 1 },
+    actions: [{ type: 'orgasm' }],
+    simulatedSeconds: 21 * 60,
+  };
+  assert.equal(round(options).written.lastOrgasmAtSimMin, 21);
+
+  const prolonged = round({
+    ...options,
+    pituitary: { prolactinNgMl: 40 },
+  }).written;
+  assert.equal(prolonged.lastOrgasmAtSimMin, 1);
+  assert.equal(prolonged.phase, 'refractory');
+
+  const ended = round({
+    ...options,
+    pituitary: { prolactinNgMl: 40 },
+    simulatedSeconds: 34 * 60,
+  }).written;
+  assert.equal(ended.lastOrgasmAtSimMin, 34);
 });
 
 test('sexualResponse output is finite and JSON-safe across the cycle', () => {

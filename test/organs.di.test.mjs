@@ -23,6 +23,7 @@ const partIds = [
   'autonomic',
   'bladder',
   'blood',
+  'bloodCalcium',
   'bloodOxygen',
   'bodyFluid',
   'brainNotify',
@@ -46,6 +47,7 @@ const partIds = [
   'muscleLimbs',
   'muscleTrunk',
   'pancreasEndocrine',
+  'parathyroid',
   'physicalActivity',
   'pineal',
   'pituitary',
@@ -162,7 +164,7 @@ function snapshot(parts) {
 
 test('the root manifest keeps the normal water chain with no DI variant loaded', () => {
   const manifest = JSON.parse(readFileSync(rootManifestPath, 'utf8'));
-  assert.equal(manifest.scripts.length, 41);
+  assert.equal(manifest.scripts.length, 43);
   assert.ok(manifest.scripts.includes(normalAdhPath));
   assert.ok(manifest.scripts.includes(normalKidneyPath));
   assert.ok(manifest.scripts.includes(lungsPath));

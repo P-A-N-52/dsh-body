@@ -157,7 +157,7 @@ function snapshotFor(
       ...mammary,
     };
   }
-  if (withPancreas) parts.pancreasEndocrine = { insulinRelative: insulin };
+  if (withPancreas) parts.pancreasEndocrine = { insulinPmolL: 60 * insulin };
   if (withKidney) parts.kidneyGlucose = { excretionRequestG: request, excretedGlucoseG: 0 };
   return parts;
 }

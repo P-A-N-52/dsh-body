@@ -10,7 +10,7 @@
 
 - **已实现（P0/P1/P2 主体已随 `358a968` 提交；2026-11-24 审查修复尚未提交）**：Gateway 运行时、回环 HTTP API、v1→v2 原子存档、`active` 开关、`write → add → transfer` 结算、`body_act`（7 动作）/`body_state`/带重入互斥保护的 4 路通知泵；中性 38 模块（34 份唯一参数文件、15 部位传输闭包）、男性 40 模块（36 份唯一参数文件）、女性 41 模块（37 份唯一参数文件、17 部位闭包）；另含 7 个未挂载入口（含 `parathyroid`/`bloodCalcium`）。`tools/replay.mjs` 已同时支持 5 模块旧模式与 `--manifest` 完整清单重放；31 份器官 README 已全部补齐并同步。
 - **已验证**：当前工作树 `npm test` **988/988** 全部通过（0 fail，Node `v24.19.0`），`git diff --check` 退出码 `0`。新增的 `test/gateway.regressions.test.mjs` activeBatch 失败重试用例计入该总数；原 6 条针对不可能输入（`add`/`transfer` 传函数、停机人工双服务器 503、`Number.MAX_VALUE` 溢出、垂体/下丘脑 `NaN` 自身状态）的过度防御单测已按约定精简。
-- **24 小时测试的逐项断言**（[organs.steady-state-24h.test.mjs](file:///home/pan/桌面/dsh-body/test/organs.steady-state-24h.test.mjs)，中性/男性/女性三份完整清单各跑 1440 轮）：
+- **24 小时测试的逐项断言**（[`organs.steady-state-24h.test.mjs`](../../../test/organs.steady-state-24h.test.mjs)，中性/男性/女性三份完整清单各跑 1440 轮）：
   - 每轮核心体温 `[36.5, 37.5] °C`、血糖 `[60, 95] mg/dL`（并另断言血糖 `<= 105`）。
   - 第 1 轮 `systolicMmHg = 120`、`diastolicMmHg = 80`、`mouthMoistureMm = 100`、`dryMouthMm = 0`。
   - 第 360 轮（6 h）血糖 `[85, 95] mg/dL` 且 `liver.glycogenG < 80`。
@@ -87,7 +87,7 @@
 
 - [x] **P1-1. 修复通知泵无重入保护导致的重复投递**（`notifications.js` + `index.js`）：已加入 `activeRun` 重入锁并新增 `test/dsh.index.test.mjs` 生命周期与真实 Gateway 联调测试及并发防重投单测。
 - [x] **P1-2. 修复启动 `catchUp` 携带 `activeBatch` 时击穿 `catchUpMinutes` 上限**（`gateway/simulation.js`）：`remaining <= 0` 返回前快进 `wallTimeMs` 跳过超出上限的时段；清理存档顶层冗余 `catchUpError` 键；`start()` 不再覆盖 `catchUp` 触发的 `fatalFailure` 或虚假写入 `lastSuccessAtMs`；补齐回归测试。
-- [x] **P1-3. 保留 `applyOperations` 输入类型与有限性校验，移除 `Number.MAX_VALUE` 极端溢出防御**（`gateway/operations.js`）：继续把非有限/错类型 `delta`、`base`、`amount`、`available`、`targetValue` 判为 `FatalOperationError`；瘦身移除生理量下不可能触及的 `Number.MAX_VALUE` 求和溢出检查与专项测试。
+- [x] **P1-3. 保留 `applyOperations` 输入类型与有限性校验（2026-11-26 收口已补回求和后有限性检查）**（`gateway/operations.js`）：继续把非有限/错类型 `delta`、`base`、`amount`、`available`、`targetValue` 判为 `FatalOperationError`，并在累加 `group.delta`、`base + delta`、`pair.amount` 与 `targetValue + amount` 后复查 `Number.isFinite`（回归测试见 `test/gateway.operations.test.mjs`）。
 - [x] **P1-4. 修复次级运行边界**
   - `tools.js` 与 `lib/parameters.js` 补 `Object.hasOwn` 校验，并补 `loadParameters` 异常分支测试；
   - `gateway/checkpoint.js` 已调整为先 `prune(next)` 再校验 `maxCheckpointBytes - actionReserveBytes`；
@@ -103,8 +103,12 @@
 - [x] **P2-2. 补齐缺失与过期器官文档**：已新增 `testes/`、`epididymis/`、`parathyroid/`、`calcium/` 四个 `README.md`，并更新 18 份过期或受 P0 影响的器官 `README.md`（全库 31 份器官 README 零断链）。
 - [x] **P2-3. 把清单计数/闭包/README 存在性校验纳入测试**：已在 `test/organs.modules.test.mjs` 中自动校验三份清单 `createFieldRegistry`、脚本数、唯一参数文件数、传输闭包数、31 份器官 README 非空存在性及 `startup/reset-parts.js`。
 - [x] **P2-4. 升级 `tools/replay.mjs`**：已保留默认 5 模块兼容路径并新增 `--manifest [path]` 全清单 `createFieldRegistry` + `applyOperations` 重放支持，补齐测试。
-- [ ] **P2-5. 需用户拍板的剩余清理与决策**：
-  - 根目录 219 MiB 传输压缩包 `dsh-body-transfer-20261122-144024.tar.gz` 已按用户明确要求在本次修复中删除（2026-11-24），不保留、不移动、不入库；
-  - 是否将已修好 `* 1000` 与骨容量守恒且补齐 README 的 `parathyroid` + `bloodCalcium` 正式挂载进三份 `body-modules*.json` 清单；
-  - 两处历史跨器官参数导入遗留（`blood.ts` 读 `heart.parameters.json`、`duodenum/nutrient-exposure.ts` 读 `saliva.parameters.json`）是否值得后续解耦；
-  - 核对本地领先 `origin/main` 的 4 个提交与当前工作区全部改动并提交/推送。
+- [x] **P2-5. 收口与后置扩展已完成实现（2026-11-26 更新）**：
+  - [x] 根目录 219 MiB 传输压缩包已删除（2026-11-24）；
+  - [x] 已将 `parathyroid` + `bloodCalcium` 正式挂载进三份 `body-modules*.json` 清单（43/39、46/42、45/41）并补齐 `test/organs.parathyroid-gateway.test.mjs`；
+  - [x] **后置 4 项扩展已完成并验证**：
+    1. `<bodyDir>/logs/` 状态变更（`state-history.jsonl`）与通知滚动历史（`notification-history.json`，均默认上限 500 条）；
+    2. `agent/inbox/inserted` 通知收件箱回执（`notifications.js` + `index.js` + `gateway/http.js` `/notifications/receipt`）；
+    3. 跨器官参数直接导入解耦（`heart` 输出 `maxCardiacOutputMlMin`、`blood.ts` 回退本目录 `blood.referenceMaxCardiacOutputMlMin`、`duodenum` 读取本目录 `duodenum.referenceSalivaRateMlPerMin` 并附目录级防回归单测）；
+    4. 甲状旁腺/血钙纯物理统一（`parathyroid.pthPgMl` `pg/mL`，移除旧 `pthRelative`，仍标 `design`/`source: null`）与 `hypocalcemia` / `hypercalcemia` 接入 `brainNotify` 及 `wake-evaluation`。
+  - [ ] 提交/推送待用户明确指令后再执行（不未经授权改写远程历史或强推）。

@@ -52,7 +52,6 @@ const FOCUS_AREA_ALIASES = new Map([
   ['stomachghrelin', 'hunger'],
   ['stomachsensory', 'hunger'],
   ['duodenum', 'hunger'],
-  ['esophagus', 'hunger'],
   ['digestion', 'hunger'],
   ['thirst', 'thirst'],
   ['hydration', 'thirst'],
@@ -432,11 +431,13 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
   const hypercalcemiaMm = readMm(intero, 'hypercalcemiaMm');
 
   const adrenalPart = readPart(parts, 'adrenal');
-  const cortisol = readNum(adrenalPart, 'cortisolNmolL') !== undefined
-    ? readNum(adrenalPart, 'cortisolNmolL') / 180
-    : readNum(adrenalPart, 'cortisolRelative');
+  const rawCortisolNmolL = readNum(adrenalPart, 'cortisolNmolL');
+  const cortisol = rawCortisolNmolL !== undefined ? rawCortisolNmolL / 180 : undefined;
   const stressMm = readMm(intero, 'stressMm')
     ?? (cortisol !== undefined ? clamp((100 * (cortisol - 1)) / 2, 0, 100) : undefined);
+  const rewardPart = readPart(parts, 'reward');
+  const wantingMm = readMm(rewardPart, 'wantingMm');
+  const rewardSatietyMm = readMm(rewardPart, 'satietyMm');
   const hedonicCalmMm = readMm(intero, 'hedonicCalmMm');
 
   const uterusPart = readPart(parts, 'uterus');
@@ -461,11 +462,24 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
     push('sleep', 'steady', sleepFeeling);
   } else {
     const sleepBand = bandOf(sleepinessMm);
+    const wakeNoticeHandled = wakeEvent !== 'none' && wakeEvent !== 'startle';
+    if (wakeEvent === 'important') {
+      push('sleep', 'marked', '刚才被明显的身体不适从睡眠中唤醒，人还带着醒后沉重。');
+    } else if (wakeEvent === 'speech') {
+      push('sleep', 'mild', '刚从睡眠中被说话举动打断醒来，意识还有些迷糊。');
+    } else if (wakeEvent === 'action') {
+      push('sleep', 'mild', '刚从睡眠中被身体活动唤醒，正从迷糊中慢慢回神。');
+    } else if (wakeEvent === 'natural') {
+      push('sleep', 'steady', '刚自然睡醒脱离睡眠，精力恢复得比较充分。');
+    }
     if (sleepBand === 3) push('sleep', 'strong', '困意极重，上下眼皮直打架，几乎撑不住。');
     else if (sleepBand === 2) push('sleep', 'marked', '眼皮有些发沉，脑子开始明显犯困。');
-    else if (sleepInertiaMm >= 40) push('sleep', 'marked', '刚醒过来脑子还有些发懵发沉，尚在缓神中。');
-    else if (sleepBand === 1) push('sleep', 'mild', '略微有些犯困，精神稍微发沉。');
-    else if (sleepInertiaMm >= 12) push('sleep', 'mild', '刚醒来还有些轻微犯迷糊，正慢慢清醒。');
+    else if (sleepInertiaMm >= 40 && wakeEvent !== 'important') {
+      push('sleep', 'marked', '刚醒过来脑子还有些发懵发沉，尚在缓神中。');
+    } else if (sleepBand === 1) push('sleep', 'mild', '略微有些犯困，精神稍微发沉。');
+    else if (sleepInertiaMm >= 12 && !wakeNoticeHandled) {
+      push('sleep', 'mild', '刚醒来还有些轻微犯迷糊，正慢慢清醒。');
+    }
   }
 
   const startleStressShown = !sleeping && (wakeEvent === 'startle' || (startleActive && sympatheticMm >= 35));
@@ -586,7 +600,8 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
 
   if ((hypocalcemiaMm ?? 0) >= 85) push('metabolism', 'urgent', '四肢与口周明显麻木抽紧。');
   else if ((hypocalcemiaMm ?? 0) >= 65) push('metabolism', 'marked', '手脚指尖隐约有些发麻发紧。');
-  if ((hypercalcemiaMm ?? 0) >= 65) push('metabolism', 'marked', '浑身有些倦怠发沉，口干无力。');
+  if ((hypercalcemiaMm ?? 0) >= 85) push('metabolism', 'urgent', '浑身极度沉重无力，精神混浊、恶心烦躁。');
+  else if ((hypercalcemiaMm ?? 0) >= 65) push('metabolism', 'marked', '浑身有些倦怠发沉，口干无力。');
 
   if (!startleStressShown) {
     const stressBand = bandOf(stressMm);
@@ -601,6 +616,15 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
           ? '身心格外舒畅愉悦，紧绷感消散得很快。'
           : '神清气爽，心绪柔和放松。',
       );
+    } else if (!sleeping && (rewardSatietyMm ?? 0) >= 65) {
+      push('stress', 'steady', '内心感到饱足惬意，渴望感明显平息下来。');
+    }
+  }
+  if (!sleeping && (wantingMm ?? 0) >= 70) {
+    if ((hungerMm ?? 0) >= 60) {
+      push('hunger', 'marked', '心里正涌起明显的进食渴求，很想吃点可口的东西。');
+    } else if (!nsfwEnabled) {
+      push('stress', 'marked', '心里升起一阵强烈的期待与渴求感，情绪跃跃欲试。');
     }
   }
 
@@ -642,6 +666,9 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
     const mammaryPart = readPart(parts, 'mammaryGlands');
     const mammaryFullnessMm = readMm(mammaryPart, 'fullnessMm') ?? readMm(intero, 'mammaryFullnessMm');
     const ejectedMilkMl = readNum(mammaryPart, 'ejectedMilkMl') ?? 0;
+    const pendingEjectionCount = Array.isArray(mammaryPart?.pendingEjections)
+      ? mammaryPart.pendingEjections.length
+      : 0;
     const mammaryLactating = mammaryPart?.lactating === true;
     const galactorrhea = mammaryPart?.galactorrhea === true;
 
@@ -675,6 +702,8 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
     const mammaryBand = bandOf(mammaryFullnessMm);
     if (ejectedMilkMl > 0) {
       push('mammary', 'mild', '正在顺利排乳，温热乳汁涌出后胸部胀重感明显舒缓。');
+    } else if (pendingEjectionCount > 0) {
+      push('mammary', 'mild', '胸部正承受持续的刺激与牵拉感，伴随隐约发麻的排乳前兆。');
     } else if (mammaryBand === 3) {
       push('mammary', 'strong', '胸部胀痛沉重得十分明显。');
     } else if (mammaryBand === 2) {
@@ -733,6 +762,7 @@ function steadyMessageForArea(area, { sleeping, exercising, nsfwEnabled }) {
     case 'fatigue': return '四肢肌肉轻松有力，没有酸痛疲乏感。';
     case 'metabolism': return '精力平稳，没有头晕发虚或低血糖乏力感。';
     case 'stress': return '神情平缓放松，没有紧张焦虑感。';
+    case 'discomfort': return '目前没有明显的呛咳、梗堵或躯体不适感。';
     case 'reproductive': return '下腹平稳舒适，没有坠胀或绞痛感。';
     case 'sexual':
       return nsfwEnabled
@@ -859,6 +889,27 @@ export function buildBodyFeelingsSummary(
       matched = feelings.filter(
         (item) => item.area === 'reproductive' || item.area === 'sexual' || item.area === 'mammary',
       );
+    } else if (mappedArea === 'discomfort') {
+      const discomfortSources = new Set([
+        'discomfort',
+        'hunger',
+        'thirst',
+        'urinary',
+        'reproductive',
+        ...(nsfwEnabled ? ['mammary'] : []),
+      ]);
+      const interoDiscomfortMm = readMm(readPart(parts, 'interoception'), 'discomfort') ?? 0;
+      matched = feelings.filter(
+        (item) => item.area === 'discomfort'
+          || (interoDiscomfortMm >= 25 && (item.level === 'strong' || item.level === 'urgent') && discomfortSources.has(item.area)),
+      );
+      if (matched.length === 0 && interoDiscomfortMm >= 25) {
+        matched = [{
+          area: 'discomfort',
+          level: bandToLevel(bandOf(interoDiscomfortMm)),
+          feeling: sanitizeNoDigits('身体正因过饱、憋闷、缺水或局部疼痛而明显不适。'),
+        }];
+      }
     } else {
       matched = feelings.filter((item) => item.area === mappedArea);
     }
@@ -1264,8 +1315,8 @@ export function createBodyTools(gateway, options = {}) {
     name: 'body_state',
     description: 'Sense your current subjective qualitative bodily feelings without raw numbers or measurements. '
       + 'Pass part or focus (such as all, hunger, thirst, urinary, bowel, respiration, circulation, '
-      + 'temperature, sleep, fatigue, metabolism, stress, or a body part id) to focus on one sensation area, '
-      + 'or omit it to sense the whole body. Actions still queued with 202 take effect in a later heartbeat.',
+      + 'temperature, sleep, activity, fatigue, metabolism, stress, discomfort, reproductive, or a body part id) '
+      + 'to focus on one sensation area, or omit it to sense the whole body. Actions still queued with 202 take effect in a later heartbeat.',
     parameters: {
       type: 'object',
       properties: {

@@ -23,7 +23,7 @@
 滤波逻辑：
 
 - 本轮到达速率 `arrivalRate = stomach.emptiedKcal / dtMin × amylaseFactor`，单位 `kcal/min`；`amylaseFactor` 只在轮初 `stomach.emptiedCarbohydrateG` 为有限正数时生效。
-- `amylaseFactor = 1 + duodenum.salivaryAmylaseGain × salivaRateMlPerMin / salivaryGlands.basalRateMlPerMin`。归一化用的 `salivaryGlands.basalRateMlPerMin` 从唾液腺参数文件只读加载，不复制常数；`salivaryGlands` 未加载时按增益 0（`amylaseFactor = 1`）。已加载但 `salivaRateMlPerMin` 缺失、非数、非有限或为负时抛错，本轮不写状态；不含碳水的餐不读取该字段，因此不受损坏的唾液状态影响。
+- `amylaseFactor = 1 + duodenum.salivaryAmylaseGain × salivaRateMlPerMin / duodenum.referenceSalivaRateMlPerMin`。归一化用的参考静息唾液产率由本目录参数 `duodenum.referenceSalivaRateMlPerMin`（默认值 `0.5 mL/min`）提供，不再跨器官读取唾液腺参数文件；`salivaryGlands` 未加载时按增益 0（`amylaseFactor = 1`）。已加载但 `salivaRateMlPerMin` 缺失、非数、非有限或为负时抛错，本轮不写状态；不含碳水的餐不读取该字段，因此不受损坏的唾液状态影响。
 - `nutrientExposure` 以时间常数 `duodenum.exposure.timeConstantMin` 一阶跟随：`next = exposure + (1 − e^(−dtMin/τ)) × (arrivalRate − exposure)`，结果截到非负。增益乘在到达速率上，不乘在滤波状态上，避免逐轮复利。
 - 读的是轮初快照里的 `stomach.emptiedKcal` 与 `stomach.emptiedCarbohydrateG`，即胃上一轮结算后的排出量，所以胃→十二指肠在时间上有**一轮偏移**；`stomach` 缺失、非有限或负数时按 0 流入处理。`salivaryGlands` 也读轮初快照，因此唾液刺激最早在下一轮改变增益，而含碳水餐的暴露还要再等胃排入后才上升。
 
@@ -35,8 +35,9 @@
 | --- | --- | --- | --- | --- |
 | `duodenum.exposure.timeConstantMin` | 10 | `min` | `design` | — |
 | `duodenum.salivaryAmylaseGain` | 0.05 | `1` | `design` | — |
+| `duodenum.referenceSalivaRateMlPerMin` | 0.5 | `mL/min` | `design` | — |
 
-`duodenum.salivaryAmylaseGain` 是相对增益：唾液产率等于基线时含碳水餐的到达速率乘 1.05，等于 3 倍基线时乘 1.15。0.05、线性缩放和“只看碳水”的判定都是 `design`，没有淀粉酶浓度、餐食成分或人体测量支撑。脚本从本目录 `nutrient-exposure.parameters.json` 读取该参数；唾液腺参数文件的 `consumerParameters` 另保留一份同值声明供读者对照，`salivaryGlands` 脚本不读取它。
+`duodenum.salivaryAmylaseGain` 是相对增益：唾液产率等于参考基线 `duodenum.referenceSalivaRateMlPerMin`（`0.5 mL/min`）时含碳水餐的到达速率乘 1.05，等于 3 倍基线时乘 1.15。0.05、`0.5 mL/min`、线性缩放和“只看碳水”的判定都是 `design`，没有淀粉酶浓度、餐食成分或人体测量支撑。脚本仅从本目录 `nutrient-exposure.parameters.json` 读取上述三项参数，不再读取 `saliva.parameters.json`。
 
 ## 3. 调节方式
 

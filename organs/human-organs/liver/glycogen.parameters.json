@@ -36,7 +36,7 @@
       "status": "design",
       "range": [0, 1],
       "source": null,
-      "note": "超基线量远大于 halfMaxExcessG、insulinRelative = 1 时肝摄糖请求速率的工程占位；实际请求还乘半饱和项、胰岛素响应与 dtMin，并按剩余容量钳位。不是实测肝糖摄取率、糖原合成速率或胰岛素剂量反应，无登记来源。range 是工程调参范围，不是人体测量范围"
+      "note": "超基线量远大于 halfMaxExcessG、insulinPmolL = 60 pmol/L 时肝摄糖请求速率的工程占位；实际请求还乘半饱和项、胰岛素响应与 dtMin，并按剩余容量钳位。不是实测肝糖摄取率、糖原合成速率或胰岛素剂量反应，无登记来源。range 是工程调参范围，不是人体测量范围"
     },
     {
       "id": "liver.halfMaxExcessG",
@@ -54,7 +54,7 @@
       "status": "design",
       "range": [0, 2],
       "source": null,
-      "note": "胰岛素相对信号对肝摄糖请求的敏感度工程占位：response = max(0, 1 + sensitivity × (insulinRelative − 1))，insulinRelative = 1 时不影响请求；0.5 低于肌肉的 1.0 只是本切片的工程设定，不是实测肝/肌胰岛素敏感性比，也不作用于释放。无登记来源。range 是工程调参范围，不是人体测量范围"
+      "note": "胰岛素信号对肝摄糖请求的敏感度工程占位：response = max(0, 1 + sensitivity × (insulinPmolL / 60 − 1))，insulinPmolL = 60 pmol/L 时不影响请求；0.5 低于肌肉的 1.0 只是本切片的工程设定，不是实测肝/肌胰岛素敏感性比，也不作用于释放。无登记来源。range 是工程调参范围，不是人体测量范围"
     },
     {
       "id": "liver.basalOutputRateGPerMin",
@@ -63,7 +63,7 @@
       "status": "design",
       "range": [0, 0.5],
       "source": null,
-      "note": "空腹基线（90 mg/dL、glucagonRelative = 1、cortisolRelative = 1）时的基础肝糖输出速率工程占位，约占静息总内源产糖 0.12 g/min 的 80%；餐后随高血糖平滑抑制。不是实测肝糖输出率，无登记来源。range 是工程调参范围"
+      "note": "空腹基线（90 mg/dL、glucagonRelative = 1、cortisolNmolL = 180 nmol/L）时的基础肝糖输出速率工程占位，约占静息总内源产糖 0.12 g/min 的 80%；餐后随高血糖平滑抑制。不是实测肝糖输出率，无登记来源。range 是工程调参范围"
     },
     {
       "id": "liver.hypoglycemiaOutputGainGPerMinPerMgDl",

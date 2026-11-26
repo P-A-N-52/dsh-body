@@ -4,7 +4,7 @@
 
 `thyroid/` 目前只有一个部位 `thyroid`，脚本为 `thyroid.ts`，没有动作、通知或 `transfer`，也不写其他部位。它把轮初 `pituitary.tshRelative` 一阶趋近成 `thyroxineRelative`（T4 相对量，0–3，1 为工程基线）：TSH 高于基线时 T4 上升，低于基线时下降。T4 的消费者是 `bloodOxygen`（基础氧耗缩放）以及 `hypothalamusEndocrine` / `pituitary` 的负反馈读取；T4 升高会反向压低 TRH 与 TSH。本切片只建相对信号与一阶时滞，不是甲状腺功能检查、T4 浓度、分泌率或临床甲状腺模型。
 
-实现状态：脚本、参数与模块契约测试已落地；当前根清单为 41 部位、37 份唯一参数文件，女性清单为 44 部位、40 份，男性清单为 43 部位、39 份；硬闭包为根与男性 15 个部位、女性 17 个部位，本切片不新增 `transfer`。`thyroid.thyroxineHalfTimeMin = 1440 min`（24 h）引用 `SRC-NICOLOFF-1972` 游离 T3 清除半衰期作为表观代谢池时间尺度（标 `prior`），其余方程形式与钳位仍为 `design`。本文只描述离线模型与契约，未做真实 DSH 会话、激素实测或临床验证。
+实现状态：脚本、参数与模块契约测试已落地；当前根清单为 43 部位、39 份唯一参数文件，女性清单为 46 部位、42 份，男性清单为 45 部位、41 份；硬闭包为根与男性 15 个部位、女性 17 个部位，本切片不新增 `transfer`。`thyroid.thyroxineHalfTimeMin = 1440 min`（24 h）引用 `SRC-NICOLOFF-1972` 游离 T3 清除半衰期作为表观代谢池时间尺度（标 `prior`），其余方程形式与钳位仍为 `design`。本文只描述离线模型与契约，未做真实 DSH 会话、激素实测或临床验证。
 
 ## 1. 脚本与读写关系
 
