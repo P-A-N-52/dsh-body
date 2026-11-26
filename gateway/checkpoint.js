@@ -119,6 +119,8 @@ function migrateV1(saved, statePath) {
     startup: saved.startup ?? null,
     ...(saved.profile !== undefined ? { profile: saved.profile } : {}),
     ...(saved.parameters !== undefined ? { parameters: saved.parameters } : {}),
+    ...(saved.nsfw !== undefined ? { nsfw: saved.nsfw } : {}),
+    ...(saved.boundSessionId !== undefined ? { boundSessionId: saved.boundSessionId } : {}),
   };
 }
 
@@ -138,6 +140,19 @@ function assertCheckpointProfile(profile, statePath) {
   }
   if (profile.heightCm !== undefined) {
     assertPositiveFinite(profile.heightCm, 'profile.heightCm', statePath);
+  }
+  if (profile.timezoneOffsetMin !== undefined && profile.timezoneOffsetMin !== null) {
+    if (
+      typeof profile.timezoneOffsetMin !== 'number'
+      || !Number.isFinite(profile.timezoneOffsetMin)
+      || profile.timezoneOffsetMin < -720
+      || profile.timezoneOffsetMin > 840
+    ) {
+      throw new Error(`Invalid profile.timezoneOffsetMin in body checkpoint at ${statePath}`);
+    }
+  }
+  if (profile.lactating !== undefined && profile.lactating !== null && typeof profile.lactating !== 'boolean') {
+    throw new Error(`Invalid profile.lactating in body checkpoint at ${statePath}`);
   }
 }
 
@@ -161,11 +176,27 @@ function checkpointActive(saved, statePath) {
   return saved.active;
 }
 
+function assertCheckpointNsfw(nsfw, statePath) {
+  if (nsfw === undefined) return;
+  if (typeof nsfw !== 'boolean') {
+    throw new Error(`Invalid body nsfw flag at ${statePath}`);
+  }
+}
+
+function assertCheckpointBinding(boundSessionId, statePath) {
+  if (boundSessionId === undefined || boundSessionId === null) return;
+  if (typeof boundSessionId !== 'string' || !boundSessionId.trim()) {
+    throw new Error(`Invalid body boundSessionId at ${statePath}`);
+  }
+}
+
 function migrateCheckpoint(saved, statePath) {
   if (!isRecord(saved)) throw new Error(`Invalid body checkpoint at ${statePath}`);
   const active = checkpointActive(saved, statePath);
   assertCheckpointProfile(saved.profile, statePath);
   assertCheckpointParameters(saved.parameters, statePath);
+  assertCheckpointNsfw(saved.nsfw, statePath);
+  assertCheckpointBinding(saved.boundSessionId, statePath);
   const version = saved.schemaVersion ?? 1;
   if (!Number.isSafeInteger(version) || version < 1) {
     throw new Error(`Invalid body checkpoint schemaVersion ${String(saved.schemaVersion)} at ${statePath}`);
@@ -189,6 +220,8 @@ function encodeCheckpoint(checkpoint, statePath, limitBytes, serialized) {
   }
   assertCheckpointProfile(checkpoint.profile, statePath);
   assertCheckpointParameters(checkpoint.parameters, statePath);
+  assertCheckpointNsfw(checkpoint.nsfw, statePath);
+  assertCheckpointBinding(checkpoint.boundSessionId, statePath);
   const snapshot = checkpoint.snapshot;
   if (!isRecord(snapshot)
     || !Number.isSafeInteger(snapshot.simulatedSeconds)

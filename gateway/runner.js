@@ -13,7 +13,7 @@ export function formatError(error) {
 }
 
 export function createBodyRunner({ scripts, scriptTimeoutMs }) {
-  let workerConfig = { profile: null, parameters: null };
+  let workerConfig = { profile: null, parameters: null, nsfw: false };
   let worker;
   let pending;
   let termination;
@@ -48,6 +48,7 @@ export function createBodyRunner({ scripts, scriptTimeoutMs }) {
         scripts,
         profile: workerConfig.profile,
         parameters: workerConfig.parameters,
+        nsfw: workerConfig.nsfw,
       },
       name: 'dsh-body',
     });
@@ -95,6 +96,7 @@ export function createBodyRunner({ scripts, scriptTimeoutMs }) {
         workerConfig = {
           profile: config?.profile ?? null,
           parameters: config?.parameters ?? null,
+          nsfw: Boolean(config?.nsfw),
         };
       }
       return request('describe');

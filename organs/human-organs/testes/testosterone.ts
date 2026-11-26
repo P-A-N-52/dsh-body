@@ -1,25 +1,13 @@
 /*
- * 部位 `testes`：睾酮相对信号薄切片；本部位唯一写者，无动作、无 transfer，也不写其他部位。
+ * 部位 `testes`：睾酮相对信号与多日睡眠债追踪脚本；本部位唯一写者。
  *
- * 消费者（本切片设计）：`sexualResponse` 的唤醒目标按 `testosteroneRelative` 缩放，
- * `interoception` 用它派生 `libidoMm`。本脚本只提供无量纲相对信号，1 表示工程基线；
- * 它不是血清睾酮浓度、游离激素、分泌率或脉冲幅度，不能与 nmol/L、ng/dL 等实测值换算。
- *
- * 公式（design，dtMin = io.dt / 60，hour = (io.simulatedSeconds / 3600) % 24）：
- *   target = baselineRelative + circadianAmplitude × cos(2π × (hour − 8) / 24)
- *   testosteroneRelative = target + (prev − target) × 2^(−dtMin / responseHalfTimeMin)
- * 即相对信号以 60 min 半时向当前昼夜目标一阶趋近；本切片没有刻意外源驱动，半时只作用于
- * 旧存档或预置值的回落，稳态跟随基线 ±0.1 的余弦曲线（08:00 峰值 1.1、20:00 谷值 0.9）。
- * `hour` 以仿真起点为 0 时，只读 `io.simulatedSeconds`，绝不读现实时间或本地钟点，所以
- * 同一仿真时刻在任意真实时间运行结果相同。
- *
- * 参数在同目录 `testosterone.parameters.json`，三项全部 `status: design`、`source: null`；
- * 基线、振幅、相位与半时都是工程假设，不是人体测量、拟合或独立验证。
- *
- * 未建模（design）：HPG 轴（GnRH/LH/FSH）、负反馈、脉冲分泌、昼夜相位个体差异、性腺功能
- * 减退/亢进、年龄/BMI/疾病/药物影响、结合蛋白与绝对浓度、睾酮对肌肉/骨骼/情绪的效应；
- * 这些效应由各自脚本或后续切片决定。输出只含一个有限数字段，JSON-safe。
+ * 动力学（design，对齐 SRC-LEPROULT-2011 与 SRC-KEENAN-2004）：
+ * - 引入跨日睡眠债 `sleepDebtDays`（d）：清醒期间当睡眠压力 > 60 mm 时缓慢累积，
+ *   充分睡眠期间按 36 h 半衰期恢复；单日偶发晚睡不会骤降，连续多日限睡压低 10%–15%；
+ * - 软读 `adrenal.cortisolNmolL`（> 1.5×180 nmol/L 应激抑制）与 `pituitary.prolactinNgMl`
+ *   （> 25 ng/mL 高催乳素抑制），合并作用于 08:00 峰 / 20:00 谷昼夜目标。
  */
+import { resolveCircadianHour } from '../../../lib/circadian.js';
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
 export const id = 'testes';
@@ -27,12 +15,19 @@ export const actionTypes: string[] = [];
 
 type TestesState = {
   testosteroneRelative: number;
+  sleepDebtDays: number;
 };
 
+type SavedTestesState = Partial<TestesState>;
+
 type IO = {
-  read(id: 'testes'): Readonly<TestesState> | undefined;
+  read(id: 'testes'): Readonly<SavedTestesState> | undefined;
+  read(id: 'sleep'): Readonly<{ sleeping?: unknown; sleepPressureMm?: unknown }> | undefined;
+  read(id: 'adrenal'): Readonly<{ cortisolNmolL?: unknown }> | undefined;
+  read(id: 'pituitary'): Readonly<{ prolactinNgMl?: unknown }> | undefined;
   readonly dt: number;
   readonly simulatedSeconds: number;
+  readonly wallTimeMs?: number;
   write(next: TestesState): void;
 };
 
@@ -40,26 +35,93 @@ const parameters = loadParameters(new URL('./testosterone.parameters.json', impo
 const baselineRelative = requireParameter(parameters, 'testes.baselineRelative');
 const circadianAmplitude = requireParameter(parameters, 'testes.circadianAmplitude');
 const responseHalfTimeMin = requireParameter(parameters, 'testes.responseHalfTimeMin');
+const phaseShiftHours = requireParameter(parameters, 'testes.phaseShiftHours');
+const sleepDebtThresholdMm = requireParameter(parameters, 'testes.sleepDebtSuppressionThresholdMm');
+const sleepDebtMaxSuppression = requireParameter(parameters, 'testes.sleepDebtMaxSuppressionFraction');
+const sleepDebtRecoveryHalfTimeHours = requireParameter(
+  parameters,
+  'testes.sleepDebtRecoveryHalfTimeHours',
+);
+const stressCortisolSuppressionGain = requireParameter(parameters, 'testes.stressCortisolSuppressionGain');
+const prolactinSuppressionGain = requireParameter(parameters, 'testes.prolactinSuppressionGain');
 
+const REFERENCE_CORTISOL_NMOL_L = 180;
 const periodHours = 24;
 const peakHour = 8;
 
 export const initialState: TestesState = {
   testosteroneRelative: 1,
+  sleepDebtDays: 0,
 };
 
 export const fields = {
   testosteroneRelative: { unit: '1', mode: 'absolute' },
+  sleepDebtDays: { unit: 'd', mode: 'absolute' },
 };
 
-export function heartbeat(io: IO): void {
-  const prev = io.read(id) ?? initialState;
-  const dtMin = io.dt / 60;
-  const hour = (io.simulatedSeconds / 3600) % periodHours;
-  const target = baselineRelative
-    + circadianAmplitude * Math.cos((2 * Math.PI * (hour - peakHour)) / periodHours);
-  const retention = 2 ** (-dtMin / responseHalfTimeMin);
-  const testosteroneRelative = target + (prev.testosteroneRelative - target) * retention;
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
-  io.write({ testosteroneRelative });
+function finiteOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+export function heartbeat(io: IO): void {
+  const prev = io.read(id);
+  const prevTestosterone = Math.max(0, finiteOr(prev?.testosteroneRelative, initialState.testosteroneRelative));
+  const prevDebtDays = clamp(finiteOr(prev?.sleepDebtDays, 0), 0, 7);
+  const dtMin = Math.max(0, io.dt / 60);
+
+  const hour = typeof io.wallTimeMs === 'number' && Number.isFinite(io.wallTimeMs)
+    ? resolveCircadianHour(io.wallTimeMs, { periodHours, phaseShiftHours })
+    : resolveCircadianHour((io.simulatedSeconds ?? 0) * 1000, {
+      periodHours,
+      phaseShiftHours,
+      timezoneOffsetMin: 0,
+    });
+  const circadianTarget = baselineRelative
+    + circadianAmplitude * Math.cos((2 * Math.PI * (hour - peakHour)) / periodHours);
+
+  const sleep = io.read('sleep');
+  const sleeping = sleep?.sleeping === true;
+  const sleepPressureMm = clamp(finiteOr(sleep?.sleepPressureMm, 0), 0, 100);
+  const sleepDebtSpan = Math.max(1, 100 - sleepDebtThresholdMm);
+
+  let sleepDebtDays = prevDebtDays;
+  if (sleep !== undefined && dtMin > 0) {
+    if (sleeping) {
+      sleepDebtDays = clamp(
+        prevDebtDays * 2 ** (-(dtMin / 60) / sleepDebtRecoveryHalfTimeHours),
+        0,
+        7,
+      );
+    } else if (sleepPressureMm > sleepDebtThresholdMm) {
+      const excessFrac = (sleepPressureMm - sleepDebtThresholdMm) / sleepDebtSpan;
+      sleepDebtDays = clamp(prevDebtDays + (dtMin / 1440) * excessFrac * 3, 0, 7);
+    }
+  }
+  const sleepDebtSuppression = sleepDebtMaxSuppression * clamp(sleepDebtDays / 3, 0, 1);
+
+  const cortisolNmolL = Math.max(0, finiteOr(io.read('adrenal')?.cortisolNmolL, REFERENCE_CORTISOL_NMOL_L));
+  const cortisolRatio = cortisolNmolL / REFERENCE_CORTISOL_NMOL_L;
+  const stressSuppression = cortisolRatio > 1.5
+    ? stressCortisolSuppressionGain * (cortisolRatio - 1.5)
+    : 0;
+
+  const prolactinNgMl = Math.max(0, finiteOr(io.read('pituitary')?.prolactinNgMl, 8));
+  const prolactinSuppression = prolactinNgMl > 25
+    ? prolactinSuppressionGain * (prolactinNgMl - 25)
+    : 0;
+
+  const totalSuppression = clamp(
+    sleepDebtSuppression + stressSuppression + prolactinSuppression,
+    0,
+    0.55,
+  );
+  const target = Math.max(0, circadianTarget * (1 - totalSuppression));
+  const retention = 2 ** (-dtMin / responseHalfTimeMin);
+  const testosteroneRelative = target + (prevTestosterone - target) * retention;
+
+  io.write({ testosteroneRelative, sleepDebtDays });
 }

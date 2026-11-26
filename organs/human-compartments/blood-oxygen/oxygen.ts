@@ -229,10 +229,17 @@ export function heartbeat(io: IO): void {
   const activity = readActivity(io.read('physicalActivity'));
   const nutrientExposure = readNutrientExposure(io.read('duodenum'));
   const thyroxineRelative = readThyroxineRelative(io.read('thyroid'));
+  const sleep = (io as { read(id: 'sleep'): Readonly<{ sleeping?: unknown; sleepStage?: unknown }> | undefined }).read('sleep');
+  const sleeping = sleep?.sleeping === true;
+  const sleepMetabolicFactor = !sleeping
+    ? 1
+    : sleep?.sleepStage === 'deep'
+      ? 0.85
+      : 0.9;
 
-  const basalDemandMlMin = thyroxineRelative === undefined
+  const basalDemandMlMin = (thyroxineRelative === undefined
     ? basalMlMin
-    : basalMlMin * Math.max(0.2, 0.6 + 0.4 * thyroxineRelative);
+    : basalMlMin * Math.max(0.2, 0.6 + 0.4 * thyroxineRelative)) * sleepMetabolicFactor;
   const activityDemandMlMin = activity !== undefined && activity.remainingExerciseMin > 0
     ? activityGainMlMin * activity.intensity
     : 0;

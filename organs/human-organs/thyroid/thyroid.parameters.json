@@ -5,11 +5,11 @@
     {
       "id": "thyroid.thyroxineHalfTimeMin",
       "unit": "min",
-      "value": 60,
-      "status": "design",
-      "range": [1, 240],
-      "source": null,
-      "note": "T4 相对信号一阶趋近轮初 TSH 的半时；工程假设，不是甲状腺激素生成、分泌、转运或清除的实测半时。60 min 让 T4 对 TSH 变化平滑滞后，不是甲状腺功能检查或临床指标。未来由具备 T4/TSH 动力学的证据替换"
+      "value": 1440,
+      "status": "prior",
+      "range": [60, 14400],
+      "source": "SRC-NICOLOFF-1972",
+      "note": "Nicoloff 1972（正常组活性甲状腺激素 T3 同位素示踪平均半衰期 1.0 d = 1440 min）；单池代理，未建模 T4 7 天超慢储库与外周转化，摘要未单列正常组 n"
     }
   ]
 }

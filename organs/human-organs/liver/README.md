@@ -4,7 +4,7 @@
 
 `liver` 是肝目录下唯一的部位，脚本为 `glycogen.ts`，没有动作、通知，也不写其他部位。它维护五个以克为单位的量：本轮储存请求 `storageRequestG`、本轮实际储存 `storageG`、肝糖原存量 `glycogenG`、常量容量 `glycogenCapacityG` 与本轮实际释放记录 `outputG`。高血糖时 `liver` 自己按轮初 `glucose.excessMassG`、`insulinRelative` 与本节参数计算储存请求，并先钳到 `glycogenCapacityG − (glycogenG + storageG)` 的剩余容量；下一轮 `glucose` 按请求结算，实际支付经 transfer 进入 `liver.storageG`，再下一轮并入存量。肝满时请求为 0，未接收部分自然留在血糖池，血糖下降相应变慢。糖原输出采用**平滑比例内源产糖（EGP）**：空腹基线（90 mg/dL、`glucagonRelative = 1`、`cortisolRelative = 1`）时输出基础速率 `0.096 g/min`（与肾糖异生 `0.024 g/min` 合计 `0.12 g/min` 平衡血糖基础消耗），高血糖时按 `1 / (1 + excessMgDl / 30)` 平滑抑制，低血糖或胰高血糖素升高时按比例增加并乘以轮初 `adrenal.cortisolRelative`，当轮经 transfer 把 `glycogenG` 转回 `glucose.glucoseMassG`；释放量恒受存量限制。只有肝（以及肾糖异生）向血液放糖，肌肉不参与。它不模拟胆汁生成与排泄、解毒、蛋白合成、脂肪代谢、尿素循环、肝血流或肝糖异生，也不是完整肝功能或糖代谢模型。
 
-实现状态：脚本、参数与模块契约测试已落地，当前根清单为 38 个部位、34 份唯一参数文件（另含 3 份 DI 变体与 1 份缺区域变体），女性清单为 41 个部位、37 份参数文件，男性清单为 40 个部位、36 份参数文件；硬 transfer 闭包为根与男性 15 部位、女性 17 部位。九个参数全部是 `design`、`source: null`，没有登记人体来源。本文只描述离线模型与契约，未做真实 DSH 会话、肝糖原实测、独立血糖曲线或临床验证。
+实现状态：脚本、参数与模块契约测试已落地，当前根清单为 39 个部位、35 份唯一参数文件（另含 3 份 DI 变体与 1 份缺区域变体），女性清单为 42 个部位、38 份参数文件，男性清单为 41 个部位、37 份参数文件；硬 transfer 闭包为根与男性 15 部位、女性 17 部位。九个参数全部是 `design`、`source: null`，没有登记人体来源。本文只描述离线模型与契约，未做真实 DSH 会话、肝糖原实测、独立血糖曲线或临床验证。
 
 ## 1. 脚本、部位与 transfer
 

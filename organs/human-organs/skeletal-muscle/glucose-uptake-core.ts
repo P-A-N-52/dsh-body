@@ -64,7 +64,7 @@
  * 有效值。旧存档携带的 `glycogenG` / `glycogenConsumedG` 不参与本脚本计算，第一次 write 后
  * 不再保留。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import { loadParameters, requireParameter, scaleByBodyWeight } from '../../../lib/parameters.js';
 
 export type MuscleRegionId = 'muscleHead' | 'muscleTrunk' | 'muscleLimbs';
 
@@ -117,17 +117,20 @@ type IO = {
 const parameters = loadParameters(
   new URL('./glucose-uptake.parameters.json', import.meta.url),
 );
-const maxUptakeRateGPerMin = requireParameter(
-  parameters,
+const maxUptakeRateGPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'muscleGlucose.maxUptakeRateGPerMin'),
   'muscleGlucose.maxUptakeRateGPerMin',
 );
-const halfMaxExcessG = requireParameter(parameters, 'muscleGlucose.halfMaxExcessG');
+const halfMaxExcessG = scaleByBodyWeight(
+  requireParameter(parameters, 'muscleGlucose.halfMaxExcessG'),
+  'muscleGlucose.halfMaxExcessG',
+);
 const insulinSensitivity = requireParameter(
   parameters,
   'muscleGlucose.insulinSensitivity',
 );
-const exerciseUptakeRateGPerMin = requireParameter(
-  parameters,
+const exerciseUptakeRateGPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'muscleGlucose.exerciseUptakeRateGPerMin'),
   'muscleGlucose.exerciseUptakeRateGPerMin',
 );
 
@@ -192,7 +195,10 @@ export function createMuscleGlucose(regionShares: readonly MuscleRegionShare[]) 
     const pancreas = io.read('pancreasEndocrine');
     const insulinRelative = pancreas === undefined
       ? 1
-      : requireReading(pancreas.insulinRelative, 'pancreasEndocrine.insulinRelative');
+      : requireReading(
+        (pancreas as Readonly<{ insulinPmolL?: unknown }>).insulinPmolL,
+        'pancreasEndocrine.insulinPmolL',
+      ) / 60;
     const activity = readActivity(io);
 
     const dtMin = io.dt / 60;

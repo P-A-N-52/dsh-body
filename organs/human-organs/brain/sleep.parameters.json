@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "owner": "sleep",
+  "parameters": [
+    {
+      "id": "sleep.wakePressureRateMmMin",
+      "unit": "mm/min",
+      "value": 0.08,
+      "status": "design",
+      "range": [0.01, 0.5],
+      "source": null,
+      "note": "清醒状态下每分钟累积的 Process S 睡眠压力工程速率；按 0.08 mm/min 估算清醒 16 小时约达 76.8 mm，非人类 EEG 实测值"
+    },
+    {
+      "id": "sleep.sleepRecoveryHalfTimeMin",
+      "unit": "min",
+      "value": 150,
+      "status": "design",
+      "range": [30, 480],
+      "source": null,
+      "note": "睡眠状态下睡眠压力按指数衰减恢复的半衰期；按 150 min 估算入睡 8 小时后约降至原值的 10.9%，属工程动力学参数"
+    },
+    {
+      "id": "sleep.naturalWakePressureThresholdMm",
+      "unit": "mm",
+      "value": 10,
+      "status": "design",
+      "range": [0, 50],
+      "source": null,
+      "note": "自然醒来的睡眠压力上限阈值；低于该值且满足最短睡眠时长和褪黑素回落条件时自动转醒"
+    },
+    {
+      "id": "sleep.naturalWakeMinDurationMin",
+      "unit": "min",
+      "value": 360,
+      "status": "design",
+      "range": [60, 720],
+      "source": null,
+      "note": "允许触发自然醒来判定前的最短连续睡眠时长（默认 6 小时）"
+    },
+    {
+      "id": "sleep.naturalWakeMelatoninCeilingRelative",
+      "unit": "1",
+      "value": 1.45,
+      "status": "design",
+      "range": [0.2, 2],
+      "source": null,
+      "note": "允许自然转醒时 pineal.melatoninRelative 须已回落到的上限；1.45 对应夜间峰值 1.8 后清晨 ~06:00 起已开始明显回落时即可自然醒，午夜峰值期间仍继续熟睡；design"
+    },
+    {
+      "id": "sleep.fullRestNaturalWakePressureMm",
+      "unit": "mm",
+      "value": 4,
+      "status": "design",
+      "range": [0, 20],
+      "source": null,
+      "note": "完全睡足时绕过褪黑素上限直接自然醒来的睡眠压力上限（结合 fullRestNaturalWakeMinDurationMin）；design"
+    },
+    {
+      "id": "sleep.fullRestNaturalWakeMinDurationMin",
+      "unit": "min",
+      "value": 420,
+      "status": "design",
+      "range": [60, 720],
+      "source": null,
+      "note": "允许绕过褪黑素上限自然睡醒的最短连续睡眠时长（默认 7 小时）；design"
+    },
+    {
+      "id": "sleep.cyclePeriodMin",
+      "unit": "min",
+      "value": 90,
+      "status": "design",
+      "range": [30, 180],
+      "source": null,
+      "note": "工程睡眠周期时长（浅睡→深睡→浅睡→REM 循环）；design，不是人体 PSG 实测周期"
+    },
+    {
+      "id": "sleep.earlyDeepWindowMin",
+      "unit": "min",
+      "value": 240,
+      "status": "design",
+      "range": [60, 480],
+      "source": null,
+      "note": "前半夜高深睡倾向窗口时长（配合褪黑素生物夜相位或高睡眠压力）；design"
+    },
+    {
+      "id": "sleep.deepStageMaxPressureThresholdMm",
+      "unit": "mm",
+      "value": 40,
+      "status": "design",
+      "range": [10, 100],
+      "source": null,
+      "note": "睡眠压力达到该阈值时扩展单周期深睡占比；design"
+    },
+    {
+      "id": "sleep.lightPreFraction",
+      "unit": "1",
+      "value": 0.15,
+      "status": "design",
+      "range": [0.05, 0.4],
+      "source": null,
+      "note": "单个 90 min 睡眠周期中前段浅睡过渡占比；design"
+    },
+    {
+      "id": "sleep.highDeepFraction",
+      "unit": "1",
+      "value": 0.45,
+      "status": "design",
+      "range": [0.1, 0.7],
+      "source": null,
+      "note": "高压力或生物夜前期单个周期深睡占比；design"
+    },
+    {
+      "id": "sleep.lowDeepFraction",
+      "unit": "1",
+      "value": 0.2,
+      "status": "design",
+      "range": [0.05, 0.5],
+      "source": null,
+      "note": "低压力或后半程单个周期深睡占比；design"
+    },
+    {
+      "id": "sleep.dyspneaCrisisMm",
+      "unit": "mm",
+      "value": 90,
+      "status": "policy",
+      "range": [60, 100],
+      "source": null,
+      "note": "睡眠期触发紧急气促惊醒的阈值；policy"
+    },
+    {
+      "id": "sleep.severeHypotensionSbpMmHg",
+      "unit": "mmHg",
+      "value": 78,
+      "status": "design",
+      "range": [50, 95],
+      "source": null,
+      "note": "睡眠期触发严重低血压紧急惊醒的收缩压阈值；design"
+    },
+    {
+      "id": "sleep.highSympatheticLightOnlyThresholdMm",
+      "unit": "mm",
+      "value": 35,
+      "status": "design",
+      "range": [10, 100],
+      "source": null,
+      "note": "高交感张力入睡时暂限制为浅睡（不立刻进入深睡）的交感阈值；design"
+    },
+    {
+      "id": "sleep.deepRecoveryMultiplier",
+      "unit": "1",
+      "value": 1.3,
+      "status": "design",
+      "range": [1, 2],
+      "source": null,
+      "note": "深睡期对 sleepPressureMm 的恢复加速乘数；design"
+    },
+    {
+      "id": "sleep.remRecoveryMultiplier",
+      "unit": "1",
+      "value": 0.9,
+      "status": "design",
+      "range": [0.5, 1.5],
+      "source": null,
+      "note": "REM 期对 sleepPressureMm 的恢复速率乘数；design"
+    },
+    {
+      "id": "sleep.inertiaNaturalWakeMm",
+      "unit": "mm",
+      "value": 15,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "自然睡饱转醒瞬间残留的轻度睡眠惯性；design"
+    },
+    {
+      "id": "sleep.inertiaLightWakeMm",
+      "unit": "mm",
+      "value": 40,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "浅睡或 REM 被非自然唤醒时触发的睡眠惯性；design"
+    },
+    {
+      "id": "sleep.inertiaDeepWakeMm",
+      "unit": "mm",
+      "value": 65,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "深睡被打断唤醒时触发的较高睡眠惯性；design"
+    },
+    {
+      "id": "sleep.inertiaStartleWakeMm",
+      "unit": "mm",
+      "value": 25,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "紧急惊醒时受交感冲动压制后仍残留的基础睡眠惯性；design"
+    },
+    {
+      "id": "sleep.inertiaHalfTimeMin",
+      "unit": "min",
+      "value": 20,
+      "status": "design",
+      "range": [1, 120],
+      "source": null,
+      "note": "醒来后睡眠惯性指数消退的半衰期；design"
+    }
+  ]
+}

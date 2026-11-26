@@ -9,7 +9,25 @@
       "status": "design",
       "range": [0, 5],
       "source": null,
-      "note": "T4 低于参考值 1 时对 TSH 目标的相对增益；纯工程假设，不是 HPT 轴剂量—反应、受体亲和力或人体测量，未来由促甲状腺激素反馈证据替换"
+      "note": "T4 低于参考值 1 时对 TSH 目标的相对增益；工程假设，design"
+    },
+    {
+      "id": "pituitary.tshHalfTimeMin",
+      "unit": "min",
+      "value": 53.9,
+      "status": "prior",
+      "range": [5, 240],
+      "source": "SRC-ODELL-1967",
+      "note": "Odell 1967（n=12 正常甲功者放射示踪 TSH 平均消除半衰期 53.9 min）；未报告 SD/IQR"
+    },
+    {
+      "id": "pituitary.acthBasalPgMl",
+      "unit": "pg/mL",
+      "value": 12,
+      "status": "design",
+      "range": [2, 40],
+      "source": "SRC-HORROCKS-1990",
+      "note": "垂体 ACTH 静息参考基线（落于 Horrocks 1990 健康成人 mesor 9.2–18.6 ng/L [= pg/mL] 区间）；工程选值 design"
     },
     {
       "id": "pituitary.acthFeedbackGain",
@@ -18,7 +36,115 @@
       "status": "design",
       "range": [0, 5],
       "source": null,
-      "note": "皮质醇低于参考值 1 时对 ACTH 目标的相对增益；纯工程假设，不是 HPA 轴剂量—反应、受体亲和力或人体测量，未来由皮质醇反馈证据替换"
+      "note": "皮质醇偏离静息参考 180 nmol/L 时对 ACTH 目标的线性负反馈增益；design"
+    },
+    {
+      "id": "pituitary.acthHalfTimeMin",
+      "unit": "min",
+      "value": 20,
+      "status": "prior",
+      "range": [2, 120],
+      "source": "SRC-KEENAN-2004",
+      "note": "Keenan 2004（n=32 健康成人 24 h 去卷积拟合 ACTH 半衰期 20 ± 1.3 min SE）"
+    },
+    {
+      "id": "pituitary.prolactinBasalNgMl",
+      "unit": "ng/mL",
+      "value": 8,
+      "status": "design",
+      "range": [2, 25],
+      "source": "SRC-VELDHUIS-1988",
+      "note": "清醒非哺乳非高潮状态血清催乳素基础参考值（参考 Veldhuis 1988 与健康成人常规基线量级）；design"
+    },
+    {
+      "id": "pituitary.prolactinCircadianAmplitudeNgMl",
+      "unit": "ng/mL",
+      "value": 2.1,
+      "status": "prior",
+      "range": [0, 10],
+      "source": "SRC-VELDHUIS-1988",
+      "note": "Veldhuis 1988（n=12 健康男性 24 h Fourier 昼夜谐波振幅 2.1 ± 0.3 ng/mL SEM）"
+    },
+    {
+      "id": "pituitary.prolactinSleepBoostNgMl",
+      "unit": "ng/mL",
+      "value": 6,
+      "status": "design",
+      "range": [0, 30],
+      "source": null,
+      "note": "睡眠期催乳素分泌抬升工程幅度；design"
+    },
+    {
+      "id": "pituitary.prolactinSucklingGainNgMl",
+      "unit": "ng/mL",
+      "value": 82,
+      "status": "design",
+      "range": [0, 250],
+      "source": null,
+      "note": "乳头机械吸吮/泵乳刺激期对 PRL 分泌目标的最大驱动增量（与刺激时长相关、与排出体积解耦）；design"
+    },
+    {
+      "id": "pituitary.prolactinOrgasmBoostNgMl",
+      "unit": "ng/mL",
+      "value": 14,
+      "status": "design",
+      "range": [0, 60],
+      "source": "SRC-KRUGER-2003",
+      "note": "性高潮后急性 PRL 脉冲增量（方向参考 Krüger 2003 高潮后催乳素特异升高并持续回落）；design"
+    },
+    {
+      "id": "pituitary.prolactinHalfTimeMin",
+      "unit": "min",
+      "value": 34.6,
+      "status": "design",
+      "range": [5, 180],
+      "source": null,
+      "note": "内源 PRL 慢相清除时间尺度（取健康成人 34.6 min 清除尺度代理，因该 2012 摘录缺第一作者故标 design）"
+    },
+    {
+      "id": "pituitary.oxytocinBasalPgMl",
+      "unit": "pg/mL",
+      "value": 2,
+      "status": "design",
+      "range": [0.5, 10],
+      "source": "SRC-UVNASMOBERG-2020",
+      "note": "提取/传统 RIA 口径下的非刺激血浆催产素基线（Uvnäs-Moberg 2020 0–20 pg/mL，严格排除高 100 倍的未提取 EIA）；design"
+    },
+    {
+      "id": "pituitary.oxytocinSucklingBoostPgMl",
+      "unit": "pg/mL",
+      "value": 14,
+      "status": "design",
+      "range": [0, 50],
+      "source": "SRC-UVNASMOBERG-2020",
+      "note": "吸吮刺激下 RIA 口径催产素脉冲突增幅度（参考 Uvnäs-Moberg 2020 平均 ~5 倍升高方向）；design"
+    },
+    {
+      "id": "pituitary.oxytocinArousalGainPgMl",
+      "unit": "pg/mL",
+      "value": 6,
+      "status": "design",
+      "range": [0, 30],
+      "source": null,
+      "note": "性唤起期随唤醒程度柔和上调的催产素目标增益；design"
+    },
+    {
+      "id": "pituitary.oxytocinOrgasmBoostPgMl",
+      "unit": "pg/mL",
+      "value": 22,
+      "status": "design",
+      "range": [0, 80],
+      "source": "SRC-BLAICHER-1999",
+      "note": "性高潮瞬间及高潮后最初数分钟的催产素突增（方向参考 Blaicher 1999）；design"
+    },
+    {
+      "id": "pituitary.oxytocinHalfTimeMin",
+      "unit": "min",
+      "value": 3.8,
+      "status": "design",
+      "range": [1, 30],
+      "source": "SRC-FABIAN-1969",
+      "note": "催产素血浆清除半衰期（取 Fabian 1969 健康人 3.2–4.8 min 区间工程均值）；因摘要缺 n 故标 design"
     }
   ]
 }

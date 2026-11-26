@@ -27,7 +27,15 @@ function methodNotAllowed(response, allow) {
   return reply(response, 405, { error: 'Method not allowed' }, { allow });
 }
 
-export function createBodyHttpServer({ store, getHealth, getCapabilities, enqueue, ackNotification }) {
+export function createBodyHttpServer({
+  store,
+  getHealth,
+  getCapabilities,
+  enqueue,
+  ackNotification,
+  bindSession,
+  unbindSession,
+}) {
   async function readJsonBody(request) {
     const type = String(request.headers['content-type'] ?? '');
     if (!/^application\/json\s*(;|$)/i.test(type)) {
@@ -113,6 +121,32 @@ export function createBodyHttpServer({ store, getHealth, getCapabilities, enqueu
     return reply(response, 200, ackNotification(payload.id));
   }
 
+  async function handleBindPost(request, response) {
+    let payload;
+    try {
+      payload = await readJsonBody(request);
+    } catch (error) {
+      return reply(response, error.statusCode ?? 400, { error: error.message });
+    }
+    if (!isRecord(payload) || typeof payload.sessionId !== 'string' || !payload.sessionId.trim()) {
+      return reply(response, 400, { error: 'Expected a nonempty sessionId' });
+    }
+    if (typeof bindSession !== 'function') {
+      return reply(response, 501, { error: 'Binding is not supported' });
+    }
+    const result = await bindSession(payload.sessionId.trim());
+    return reply(response, 200, result);
+  }
+
+  async function handleUnbindPost(request, response) {
+    request.resume();
+    if (typeof unbindSession !== 'function') {
+      return reply(response, 501, { error: 'Binding is not supported' });
+    }
+    const result = await unbindSession();
+    return reply(response, 200, result);
+  }
+
   async function handleRequest(request, response) {
     const denied = checkRequest(request);
     if (denied) {
@@ -132,6 +166,14 @@ export function createBodyHttpServer({ store, getHealth, getCapabilities, enqueu
     if (pathname === '/health') {
       if (request.method !== 'GET') return methodNotAllowed(response, 'GET');
       return reply(response, 200, getHealth(server.address().port));
+    }
+    if (pathname === '/bind') {
+      if (request.method !== 'POST') return methodNotAllowed(response, 'POST');
+      return handleBindPost(request, response);
+    }
+    if (pathname === '/unbind') {
+      if (request.method !== 'POST') return methodNotAllowed(response, 'POST');
+      return handleUnbindPost(request, response);
     }
     if (pathname === '/state') {
       if (request.method !== 'GET') return methodNotAllowed(response, 'GET');

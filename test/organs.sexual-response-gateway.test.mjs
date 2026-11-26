@@ -46,7 +46,7 @@ function assertClose(actual, expected, label, tolerance = 1e-9) {
   );
 }
 
-async function startBody(t, { manifestPath = rootManifestPath, parts = {} } = {}) {
+async function startBody(t, { manifestPath = rootManifestPath, parts = {}, defaultNsfw = true } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-sexual-gateway-'));
   const statePath = join(dir, 'body-state.json');
   writeFileSync(statePath, JSON.stringify(checkpoint({
@@ -61,6 +61,7 @@ async function startBody(t, { manifestPath = rootManifestPath, parts = {} } = {}
     port: 0,
     autoTick: false,
     now: () => 0,
+    defaultNsfw,
   });
   t.after(async () => {
     await gateway.stop();
@@ -196,7 +197,7 @@ test('the female manifest loads sexualResponse and releases on orgasm', async (t
     parts: { sexualResponse: arousalState(80) },
   });
 
-  assert.equal(Object.keys(gateway.getState().parts).length, 41);
+  assert.equal(Object.keys(gateway.getState().parts).length, 43);
   assert.ok(gateway.getState().parts.liver, 'liver must be loaded');
   assert.ok(gateway.getState().parts.muscleHead, 'muscleHead must be loaded');
   assert.ok(gateway.getState().parts.muscleTrunk, 'muscleTrunk must be loaded');
@@ -215,4 +216,16 @@ test('the female manifest loads sexualResponse and releases on orgasm', async (t
   const parts = gateway.getState().parts;
   assert.equal(parts.sexualResponse.lastOrgasmAtSimMin, 1);
   assert.equal(parts.sexualResponse.phase, 'orgasm');
+});
+
+test('nsfw false hides sex and orgasm capabilities and rejects them with 403', async (t) => {
+  const { gateway } = await startBody(t, {
+    defaultNsfw: false,
+    parts: { sexualResponse: arousalState(80) },
+  });
+  const capabilities = gateway.getCapabilities();
+  assert.equal(Object.hasOwn(capabilities, 'sex'), false);
+  assert.equal(Object.hasOwn(capabilities, 'orgasm'), false);
+  assert.equal(gateway.submitAction({ id: 'sex-403', type: 'sex', intensity: 1, durationMin: 10 }).statusCode, 403);
+  assert.equal(gateway.submitAction({ id: 'orgasm-403', type: 'orgasm' }).statusCode, 403);
 });

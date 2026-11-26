@@ -68,6 +68,7 @@ type BloodOxygenReading = {
 
 type ThermoregulationReading = {
   coreTemperatureC?: unknown;
+  setpointC?: unknown;
 };
 
 type IO = {
@@ -96,6 +97,16 @@ const deadSpaceFactor = requireParameter(parameters, 'lungsVentilation.deadSpace
 const pantingGain = scaleByBodyWeight(
   requireParameter(parameters, 'lungsVentilation.pantingGain'),
   'lungsVentilation.pantingGain',
+);
+const deepSleepFloorFactor = requireParameter(parameters, 'lungsVentilation.deepSleepFloorFactor');
+const lightSleepFloorFactor = requireParameter(parameters, 'lungsVentilation.lightSleepFloorFactor');
+const sleepSympatheticBypassThresholdMm = requireParameter(
+  parameters,
+  'lungsVentilation.sleepSympatheticBypassThresholdMm',
+);
+const sympatheticVentilationGainMlPerMinPerMm = scaleByBodyWeight(
+  requireParameter(parameters, 'lungsVentilation.sympatheticVentilationGainMlPerMinPerMm'),
+  'lungsVentilation.sympatheticVentilationGainMlPerMinPerMm',
 );
 
 const fallbackBasalDemandMlMin =
@@ -136,7 +147,7 @@ function readDemandMlMin(io: IO): number {
   return demand;
 }
 
-function readCoreTemperatureC(io: IO): number | undefined {
+function readThermoregulation(io: IO): { coreTemperatureC: number; setpointC: number } | undefined {
   const thermoregulation = io.read('thermoregulation');
   if (thermoregulation === undefined) return undefined;
   const coreTemperatureC = thermoregulation.coreTemperatureC;
@@ -145,26 +156,56 @@ function readCoreTemperatureC(io: IO): number | undefined {
       'lungsVentilation: thermoregulation.coreTemperatureC must be a finite number',
     );
   }
-  return coreTemperatureC;
+  const setpointC = typeof thermoregulation.setpointC === 'number'
+    && Number.isFinite(thermoregulation.setpointC)
+    ? thermoregulation.setpointC
+    : thermoregulationSetpointC;
+  return { coreTemperatureC, setpointC };
 }
 
 export function heartbeat(io: IO): void {
   const demandMlMin = readDemandMlMin(io);
-  const coreTemperatureC = readCoreTemperatureC(io);
-  const pantingMlMin = coreTemperatureC === undefined
+  const thermoregulation = readThermoregulation(io);
+  const readAny = (partId: string) => (io as { read(id: string): Readonly<Record<string, unknown>> | undefined }).read(partId);
+  const sleep = readAny('sleep');
+  const sleeping = sleep?.sleeping === true;
+  const sleepStage = sleep?.sleepStage;
+  const activity = readAny('physicalActivity');
+  const exercising = typeof activity?.remainingExerciseMin === 'number'
+    && activity.remainingExerciseMin > 0
+    && typeof activity?.intensity === 'number'
+    && activity.intensity > 0;
+  const rawSympathetic = readAny('autonomic')?.sympatheticMm;
+  const sympatheticMm = typeof rawSympathetic === 'number' && Number.isFinite(rawSympathetic)
+    ? clamp(rawSympathetic, 0, 100)
+    : 0;
+  const sleepFloorFactor = sleeping && sympatheticMm < sleepSympatheticBypassThresholdMm
+    ? (sleepStage === 'deep' ? deepSleepFloorFactor : lightSleepFloorFactor)
+    : 1;
+  const minVentilationMlMin = restingVentilationMlMin * sleepFloorFactor;
+  const minRatePerMin = restingRatePerMin * sleepFloorFactor;
+
+  const thermalThresholdC = thermoregulation === undefined
+    ? thermoregulationSetpointC
+    : Math.max(thermoregulationSetpointC, thermoregulation.setpointC);
+  const pantingMlMin = thermoregulation === undefined
     ? 0
-    : pantingGain * Math.max(0, coreTemperatureC - thermoregulationSetpointC);
+    : pantingGain * Math.max(0, thermoregulation.coreTemperatureC - thermalThresholdC);
+  const sympatheticVentilationMlMin = exercising
+    ? 0
+    : sympatheticVentilationGainMlPerMinPerMm * sympatheticMm;
   const metabolicVentilationMlMin = (demandMlMin * deadSpaceFactor) / inspiredO2Fraction;
-  const targetVentilationMlMin = Math.max(restingVentilationMlMin, metabolicVentilationMlMin)
-    + pantingMlMin;
+  const targetVentilationMlMin = Math.max(minVentilationMlMin, metabolicVentilationMlMin)
+    + pantingMlMin
+    + sympatheticVentilationMlMin;
   const ventilationMlMin = clamp(
     targetVentilationMlMin,
-    restingVentilationMlMin,
+    minVentilationMlMin,
     maxVentilationMlMin,
   );
   const respiratoryRatePerMin = clamp(
     ventilationMlMin / restingTidalVolumeMl,
-    restingRatePerMin,
+    minRatePerMin,
     maxRatePerMin,
   );
   const alveolarO2MlMin = ventilationMlMin * (inspiredO2Fraction / deadSpaceFactor);

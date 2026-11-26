@@ -4,7 +4,7 @@
 
 `bloodOxygen` 位于 `organs/human-compartments/blood-oxygen/`，由 `oxygen.ts` 维护。它每轮按轮初快照合成需氧 `oxygenConsumptionMlMin`（基础 + 活动 + 消化），其中基础项按轮初 `thyroid.thyroxineRelative` 缩放为 `basalMlMin × max(0.2, 0.6 + 0.4 × T4)`（`T4 = 1` 时正好为 `1.0 × basalMlMin = 250 mL/min`）；再读取轮初 `lungsVentilation.alveolarO2CapacityMlMin`（通气能力上限）与 `blood.maxOxygenDeliveryMlPerMin`（循环能力上限），取两者较紧者为供给能力，按缺口写 `oxygenDeficit` 与 `spo2Percent`。**它是供—需平衡，不是可耗空的氧气账本**：不保存氧气质量，不做逐轮扣减，也不累计“氧债”；每轮重算供需，供 ≥ 需时 SpO2 停在基线，供 < 需时按缺口比例下降。它没有动作、通知或 `transfer`，也不写其他部位。
 
-实现状态（2026-11-24）：脚本与参数在 `organs/human-compartments/blood-oxygen/`，已加入根清单。当前根清单为 38 部位、34 份唯一参数文件，女性清单 41 部位、37 份，男性清单 40 部位、36 份；硬 transfer 闭包为根/男性 15 部位、女性 17 部位，本切片不新增 transfer。同期相关部位包括 `lungsVentilation`（见 [`lungs`](../../human-organs/lungs/README.md)）、`heart` / `blood`（见 [`heart`](../../human-organs/heart/README.md) 与 [`blood`](../blood/README.md)）、`interoception.dyspneaMm`（见 [`brain`](../../human-organs/brain/README.md)）与 `thyroid.thyroxineRelative`（见 [`thyroid`](../../human-organs/thyroid/README.md)）。本切片有模块测试与真实 Gateway 进程的离线集成测试；未做真实 DSH 会话、独立人体氧耗/通气/SpO2 数据或临床验证。
+实现状态（2026-11-24）：脚本与参数在 `organs/human-compartments/blood-oxygen/`，已加入根清单。当前根清单为 39 部位、35 份唯一参数文件，女性清单 42 部位、38 份，男性清单 41 部位、37 份；硬 transfer 闭包为根/男性 15 部位、女性 17 部位，本切片不新增 transfer。同期相关部位包括 `lungsVentilation`（见 [`lungs`](../../human-organs/lungs/README.md)）、`heart` / `blood`（见 [`heart`](../../human-organs/heart/README.md) 与 [`blood`](../blood/README.md)）、`interoception.dyspneaMm`（见 [`brain`](../../human-organs/brain/README.md)）与 `thyroid.thyroxineRelative`（见 [`thyroid`](../../human-organs/thyroid/README.md)）。本切片有模块测试与真实 Gateway 进程的离线集成测试；未做真实 DSH 会话、独立人体氧耗/通气/SpO2 数据或临床验证。
 
 ## 1. 脚本与读写关系
 
@@ -80,12 +80,12 @@ lungsVentilation.alveolarO2CapacityMlMin ────────────┘
         └──────────── 下一轮通气能力上限 ────────────┘
 
 bloodOxygen.oxygenDeficit ─► interoception.dyspneaMm = clamp(100 × deficit, 0, 100)
-bloodOxygen.spo2Percent / oxygenDeficit ─► body_state / GET /state（只读）
+bloodOxygen.spo2Percent / oxygenDeficit ─► GET /state / gateway.getState()（原始数值只读；body_state 仅返回纯定性感受）
 ```
 
 - `lungsVentilation` 是**自动调节**：它下一轮读 `oxygenConsumptionMlMin`，按死腔与吸入氧分数换算目标通气量；LLM 不提交呼吸动作，也不能直接写通气或 SpO2。
-- `interoception` 软读 `oxygenDeficit` 写 `dyspneaMm`；`bloodOxygen` 未加载、字段缺失或非有限时按 0。`dyspneaMm` 不进入 `discomfort`，`brainNotify` 不读它，也没有气促通知。
-- `spo2Percent` 与 `oxygenDeficit` 只通过 `body_state` / `GET /state` 暴露；`blood` 读 SpO2 只用于计算下一轮循环能力上限，不把它当作临床读数。
+- `interoception` 软读 `oxygenDeficit` 写 `dyspneaMm`；`bloodOxygen` 未加载、字段缺失或非有限时按 0。`dyspneaMm` 不进入 `discomfort`，现已接入 `brainNotify`（≥ 90 mm 触发高危紧急 `wake`）与纯定性 `body_state`（无数字）。
+- `spo2Percent` 与 `oxygenDeficit` 原始数值只通过 `GET /state` / `gateway.getState()` 暴露（`body_state` 仅返回纯定性感受，不含数值）；`blood` 读 SpO2 只用于计算下一轮循环能力上限，不把它当作临床读数。
 - 本隔室没有生理反向消费者：血氧变化不反馈到活动、消化、肌糖原或体温，也不自动停止运动。`blood` 的能力上限会随轮初 SpO2 缩放，这是 `blood` 的内部工程近似，不是本隔室的反馈方程。
 
 ## 5. 时序与一轮滞后
@@ -128,7 +128,7 @@ bloodOxygen.spo2Percent / oxygenDeficit ─► body_state / GET /state（只读�
 - 高原、贫血、肺部疾病、心血管疾病等病理缺氧，以及吸氧、通气支持或呼吸机。
 - 甲状腺激素的生成、转运、T3 转换与甲状腺疾病；本隔室只读相对 T4 信号，不建甲状腺轴本身，细节归 [`thyroid`](../../human-organs/thyroid/README.md)。
 - 通气动作与自主呼吸控制：LLM 不能提交呼吸、屏气或过度通气动作；呼吸频率与潮气量只由 `lungsVentilation` 自动写。
-- 气促通知：`dyspneaMm` 只是 `interoception` 的软读，不进入 `discomfort`，不进入 `brainNotify`，也不产生任何提醒或动作。
+- 气促通道：`dyspneaMm` 只是 `interoception` 的软读，不进入 `discomfort`，也不自动产生呼吸动作；现已接入 `brainNotify`（≥ 90 mm 触发高危紧急 `wake`）与纯定性 `body_state`。
 - 氧气质量守恒、累计氧债、组织缺氧损伤、乳酸、疲劳与运动耐量反馈；血氧下降不会自动限制活动或改变动作校验。
 - 运动类型、MET、能量消耗、体温调节、环境温度/湿度/海拔、年龄、性别、BMI、训练状态与个体差异；`intensity` 只是模型内相对强度，`thermoregulation` 只经 `skin` / `lungsVentilation` 间接影响本隔室，不进入供需方程。
 

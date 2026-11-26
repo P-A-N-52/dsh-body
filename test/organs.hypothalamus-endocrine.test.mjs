@@ -42,6 +42,11 @@ function round({
   thermoregulation,
   glucose,
   physicalActivity,
+  autonomic,
+  sleep,
+  reward,
+  pituitary,
+  wallTimeMs,
   dt = 60,
   actions = [],
   writes = [],
@@ -54,11 +59,16 @@ function round({
       if (partId === 'thermoregulation') return thermoregulation;
       if (partId === 'glucose') return glucose;
       if (partId === 'physicalActivity') return physicalActivity;
+      if (partId === 'autonomic') return autonomic;
+      if (partId === 'sleep') return sleep;
+      if (partId === 'reward') return reward;
+      if (partId === 'pituitary') return pituitary;
       throw new Error(`unexpected read: ${partId}`);
     },
     actions,
     dt,
     simulatedSeconds: 60,
+    ...(wallTimeMs !== undefined ? { wallTimeMs } : {}),
     write: (next) => { writes.push(next); },
     notify: () => { throw new Error('hypothalamusEndocrine must not notify'); },
     transfer: () => { throw new Error('hypothalamusEndocrine must not transfer'); },
@@ -83,6 +93,13 @@ test('the feedback gains are design parameters with no source', () => {
   assert.deepEqual(parameterValues, {
     'hypothalamusEndocrine.trhFeedbackGain': 1,
     'hypothalamusEndocrine.crhFeedbackGain': 1,
+    'hypothalamusEndocrine.crhCircadianAmplitude': 0.35,
+    'hypothalamusEndocrine.crhPeakHour': 7,
+    'hypothalamusEndocrine.sympatheticCrhGain': 0.01,
+    'hypothalamusEndocrine.carAmplitude': 0.45,
+    'hypothalamusEndocrine.carLatentMin': 10,
+    'hypothalamusEndocrine.sleepCrhSuppression': 0.15,
+    'hypothalamusEndocrine.rewardBufferingGain': 0.25,
   });
   assert.deepEqual(
     parameterFile.parameters.map(({ id: parameterId, unit, status, source }) => ({
@@ -104,30 +121,72 @@ test('the feedback gains are design parameters with no source', () => {
         status: 'design',
         source: null,
       },
+      {
+        parameterId: 'hypothalamusEndocrine.crhCircadianAmplitude',
+        unit: '1',
+        status: 'design',
+        source: null,
+      },
+      {
+        parameterId: 'hypothalamusEndocrine.crhPeakHour',
+        unit: 'h',
+        status: 'design',
+        source: null,
+      },
+      {
+        parameterId: 'hypothalamusEndocrine.sympatheticCrhGain',
+        unit: '1/mm',
+        status: 'design',
+        source: null,
+      },
+      {
+        parameterId: 'hypothalamusEndocrine.carAmplitude',
+        unit: '1',
+        status: 'design',
+        source: 'SRC-CLOW-2004',
+      },
+      {
+        parameterId: 'hypothalamusEndocrine.carLatentMin',
+        unit: 'min',
+        status: 'design',
+        source: null,
+      },
+      {
+        parameterId: 'hypothalamusEndocrine.sleepCrhSuppression',
+        unit: '1',
+        status: 'design',
+        source: null,
+      },
+      {
+        parameterId: 'hypothalamusEndocrine.rewardBufferingGain',
+        unit: '1',
+        status: 'design',
+        source: null,
+      },
     ],
   );
 });
 
-test('peripheral signals at 1 keep TRH and CRH exactly at 1', () => {
+test('peripheral signals at baseline keep TRH and CRH exactly at 1', () => {
   const next = round({
     thyroid: { thyroxineRelative: 1 },
-    adrenal: { cortisolRelative: 1 },
+    adrenal: { cortisolNmolL: 180 },
   });
   assert.deepEqual(next, { trhRelative: 1, crhRelative: 1 });
 });
 
-test('missing thyroid or adrenal parts fall back to 1 and stay inert', () => {
+test('missing thyroid or adrenal parts fall back to baseline and stay inert', () => {
   assert.deepEqual(round(), { trhRelative: 1, crhRelative: 1 });
   assert.deepEqual(
     round({ thyroid: { thyroxineRelative: 1 } }),
     { trhRelative: 1, crhRelative: 1 },
   );
   assert.deepEqual(
-    round({ adrenal: { cortisolRelative: 1 } }),
+    round({ adrenal: { cortisolNmolL: 180 } }),
     { trhRelative: 1, crhRelative: 1 },
   );
   assert.deepEqual(
-    round({ adrenal: { cortisolRelative: 2 } }),
+    round({ adrenal: { cortisolNmolL: 360 } }),
     { trhRelative: 1, crhRelative: retention(1) },
   );
   assert.deepEqual(
@@ -154,14 +213,14 @@ test('thyroxine 0.5 raises TRH toward 1.5', () => {
   assert.ok(next.trhRelative < target);
 });
 
-test('cortisol 2 lowers CRH and cortisol 0.5 raises it', () => {
-  const high = round({ adrenal: { cortisolRelative: 2 } });
-  assertClose(high.crhRelative, retention(1), 'cortisol=2');
+test('cortisol 360 lowers CRH and cortisol 90 raises it', () => {
+  const high = round({ adrenal: { cortisolNmolL: 360 } });
+  assertClose(high.crhRelative, retention(1), 'cortisol=360');
   assert.ok(high.crhRelative < 1);
   assert.equal(high.trhRelative, 1);
 
-  const low = round({ adrenal: { cortisolRelative: 0.5 } });
-  assertClose(low.crhRelative, 1.5 - 0.5 * retention(1), 'cortisol=0.5');
+  const low = round({ adrenal: { cortisolNmolL: 90 } });
+  assertClose(low.crhRelative, 1.5 - 0.5 * retention(1), 'cortisol=90');
   assert.ok(low.crhRelative > 1);
   assert.equal(low.trhRelative, 1);
 });
@@ -170,7 +229,7 @@ test('a 30 min round halves the distance to the target', () => {
   const next = round({
     state: { trhRelative: 2, crhRelative: 2 },
     thyroid: { thyroxineRelative: 2 },
-    adrenal: { cortisolRelative: 2 },
+    adrenal: { cortisolNmolL: 360 },
     dt: 30 * 60,
   });
   assert.deepEqual(next, { trhRelative: 1, crhRelative: 1 });
@@ -180,7 +239,7 @@ test('a 15 min round keeps 2^-1/2 and a 60 s round keeps 2^-2 of the state', () 
   const fifteenMinutes = round({
     state: { trhRelative: 2, crhRelative: 2 },
     thyroid: { thyroxineRelative: 2 },
-    adrenal: { cortisolRelative: 2 },
+    adrenal: { cortisolNmolL: 360 },
     dt: 15 * 60,
   });
   assertClose(fifteenMinutes.trhRelative, 2 * 2 ** (-0.5), 'dt=15 min TRH');
@@ -189,7 +248,7 @@ test('a 15 min round keeps 2^-1/2 and a 60 s round keeps 2^-2 of the state', () 
   const oneMinute = round({
     state: { trhRelative: 2, crhRelative: 2 },
     thyroid: { thyroxineRelative: 2 },
-    adrenal: { cortisolRelative: 2 },
+    adrenal: { cortisolNmolL: 360 },
   });
   assertClose(oneMinute.trhRelative, 2 * retention(1), 'dt=60 s TRH');
   assertClose(oneMinute.crhRelative, 2 * retention(1), 'dt=60 s CRH');
@@ -201,11 +260,11 @@ test('repeated rounds converge on the clamped targets', () => {
     state = round({
       state,
       thyroid: { thyroxineRelative: 0 },
-      adrenal: { cortisolRelative: 2 },
+      adrenal: { cortisolNmolL: 360 },
     });
   }
   assertClose(state.trhRelative, 2, 'T4=0 converges to 2', 1e-9);
-  assertClose(state.crhRelative, 0, 'cortisol=2 converges to 0', 1e-9);
+  assertClose(state.crhRelative, 0, 'cortisol=360 converges to 0', 1e-9);
 });
 
 test('targets clamp to the 0-3 band', () => {
@@ -246,13 +305,13 @@ test('a loaded thyroid part with an invalid reading fails before writing', () =>
 test('a loaded adrenal part with an invalid reading fails before writing', () => {
   const invalid = [
     ['empty part', {}],
-    ['undefined field', { cortisolRelative: undefined }],
-    ['null field', { cortisolRelative: null }],
-    ['NaN', { cortisolRelative: Number.NaN }],
-    ['positive infinity', { cortisolRelative: Number.POSITIVE_INFINITY }],
-    ['negative infinity', { cortisolRelative: Number.NEGATIVE_INFINITY }],
-    ['negative', { cortisolRelative: -1 }],
-    ['non-number', { cortisolRelative: '2' }],
+    ['undefined field', { cortisolNmolL: undefined }],
+    ['null field', { cortisolNmolL: null }],
+    ['NaN', { cortisolNmolL: Number.NaN }],
+    ['positive infinity', { cortisolNmolL: Number.POSITIVE_INFINITY }],
+    ['negative infinity', { cortisolNmolL: Number.NEGATIVE_INFINITY }],
+    ['negative', { cortisolNmolL: -1 }],
+    ['non-number', { cortisolNmolL: '360' }],
   ];
 
   for (const [label, adrenal] of invalid) {
@@ -267,7 +326,7 @@ test('a valid thyroid reading does not hide an invalid adrenal reading', () => {
   assert.throws(
     () => round({
       thyroid: { thyroxineRelative: 1.5 },
-      adrenal: { cortisolRelative: Number.NaN },
+      adrenal: { cortisolNmolL: Number.NaN },
       writes,
     }),
     Error,
@@ -278,7 +337,7 @@ test('a valid thyroid reading does not hide an invalid adrenal reading', () => {
 test('actions do not change the output and nothing is notified or transferred', () => {
   const withActions = round({
     thyroid: { thyroxineRelative: 2 },
-    adrenal: { cortisolRelative: 0.5 },
+    adrenal: { cortisolNmolL: 90 },
     actions: [
       { type: 'eat', energyKcal: 100 },
       { type: 'drink', volumeMl: 240 },
@@ -286,7 +345,7 @@ test('actions do not change the output and nothing is notified or transferred', 
   });
   const withoutActions = round({
     thyroid: { thyroxineRelative: 2 },
-    adrenal: { cortisolRelative: 0.5 },
+    adrenal: { cortisolNmolL: 90 },
   });
   assert.deepEqual(withActions, withoutActions);
 });
@@ -295,11 +354,11 @@ test('the written state is finite and JSON-safe', () => {
   const cases = [
     round(),
     round({ thyroid: { thyroxineRelative: 0 } }),
-    round({ adrenal: { cortisolRelative: 0 } }),
+    round({ adrenal: { cortisolNmolL: 0 } }),
     round({
       state: { trhRelative: 2.5, crhRelative: 0.5 },
       thyroid: { thyroxineRelative: 2 },
-      adrenal: { cortisolRelative: 2 },
+      adrenal: { cortisolNmolL: 360 },
       dt: 0.5,
     }),
   ];
@@ -317,7 +376,7 @@ test('the written state is finite and JSON-safe', () => {
 test('upstream cold, hypoglycemia and hard exercise drivers activate TRH/CRH while resting baseline stays 1.0', () => {
   const resting = round({
     thyroid: { thyroxineRelative: 1 },
-    adrenal: { cortisolRelative: 1 },
+    adrenal: { cortisolNmolL: 180 },
     thermoregulation: { coreTemperatureC: 37 },
     glucose: { concentrationMgDl: 90 },
     physicalActivity: { remainingExerciseMin: 0, intensity: 0 },
@@ -368,6 +427,21 @@ test('upstream cold, hypoglycemia and hard exercise drivers activate TRH/CRH whi
   });
   assertClose(hardExercise.crhRelative, 1 + (1.2 - 1) * 0.5, 'hard exercise drives CRH toward 1.2');
 
+  const bufferedExercise = round({
+    physicalActivity: { remainingExerciseMin: 10, intensity: 1 },
+    reward: { hedonicMm: 100 },
+    pituitary: { oxytocinPgMl: 27 },
+    dt: 30 * 60,
+  });
+  assert.ok(bufferedExercise.crhRelative < hardExercise.crhRelative, 'hedonic reward & oxytocin buffer non-hypoglycemic CRH stress');
+
+  const unbufferedHypoglycemia = round({
+    glucose: { concentrationMgDl: 60 },
+    reward: { hedonicMm: 100 },
+    dt: 30 * 60,
+  });
+  assertClose(unbufferedHypoglycemia.crhRelative, hypoglycemia.crhRelative, 'hypoglycemia alarm is not blunted by reward buffering');
+
   const extremeCombined = round({
     thermoregulation: { coreTemperatureC: 20 },
     glucose: { concentrationMgDl: 0 },
@@ -378,7 +452,7 @@ test('upstream cold, hypoglycemia and hard exercise drivers activate TRH/CRH whi
   assertClose(extremeCombined.crhRelative, 2.8, 'hypoglycemia 1.6 + exercise 0.2');
 
   const clampedCombined = round({
-    adrenal: { cortisolRelative: 0 },
+    adrenal: { cortisolNmolL: 0 },
     thermoregulation: { coreTemperatureC: 20 },
     glucose: { concentrationMgDl: 0 },
     physicalActivity: { remainingExerciseMin: 10, intensity: 1 },

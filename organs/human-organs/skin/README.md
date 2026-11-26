@@ -4,7 +4,7 @@
 
 `skin` 位于 `organs/human-organs/skin/sweat.ts`，只持有两个 mL 字段：按轮初 `physicalActivity` 和固定环境参数算出下一轮出汗请求，以及记录本轮由 `bodyFluid` 实际转入的汗液。它不持有体液水、不调用 `transfer`，也不模拟皮肤分区、皮肤温度、湿润度、蒸发残余或汗液电解质。汗液只以 mL 表示，不换算成 METs、热量、心率或代谢率。
 
-实现状态：脚本与参数文件在 `organs/human-organs/skin/`，模块定向测试见 [`test/organs.skin.test.mjs`](../../../test/organs.skin.test.mjs)。根清单与 `bodyFluid` 三出口已接入；当前根清单为 38 个部位、34 份唯一参数文件，女性清单 41 个部位、37 份，男性清单 40 个部位、36 份。端到端水账测试见 [`test/organs.sweat-gateway.test.mjs`](../../../test/organs.sweat-gateway.test.mjs)，体温—出汗集成测试见 [`test/organs.thermoregulation-gateway.test.mjs`](../../../test/organs.thermoregulation-gateway.test.mjs)。完整 `npm test` 结果以当前 HEAD 为准。尚未做真实 DSH 会话、独立人体出汗数据或临床验证。
+实现状态：脚本与参数文件在 `organs/human-organs/skin/`，模块定向测试见 [`test/organs.skin.test.mjs`](../../../test/organs.skin.test.mjs)。根清单与 `bodyFluid` 三出口已接入；当前根清单为 39 个部位、35 份唯一参数文件，女性清单 42 个部位、38 份，男性清单 41 个部位、37 份。端到端水账测试见 [`test/organs.sweat-gateway.test.mjs`](../../../test/organs.sweat-gateway.test.mjs)，体温—出汗集成测试见 [`test/organs.thermoregulation-gateway.test.mjs`](../../../test/organs.thermoregulation-gateway.test.mjs)。完整 `npm test` 结果以当前 HEAD 为准。尚未做真实 DSH 会话、独立人体出汗数据或临床验证。
 
 **清单依赖（transfer 配对校验）。** `sweatVolumeMl` 声明 `transferIn: ["bodyFluid.waterVolumeMl"]`；`bodyFluid.waterVolumeMl` 同时声明 `transferOut: ["bladder.volumeMl", "lungs.respiratoryWaterLossMl", "skin.sweatVolumeMl"]`。完整硬 transfer 闭包为根与男性清单 15 个部位（`stomach/hydration.ts`、`smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGlucose`、`kidneyGluconeogenesis`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、`skin`、`lungs`），女性清单另加 `uterus` 与 `mammaryGlands` 共 17 个部位。缺任一个都会在 `createFieldRegistry` 启动校验时报字段配对错误；不能用一个未加载的槽位或“先欠着”的请求绕过。`physicalActivity` 只是 `skin`、`lungs`、`muscleGlucose` 等的普通轮初读取，不是 transfer 配对依赖；根清单仍包含它，以提供 `exercise` 能力。
 
@@ -115,7 +115,7 @@ transfer bodyFluid → skin: U_sweat
 
 未加载 `thermoregulation` 时，30 min、`intensity=1` 的同一次活动产生 18 mL 汗液和 9 mL 运动相关呼吸失水，二者分别记账；加载 `thermoregulation` 后核心温度升高，`thermalRate > 0`，汗量会高于 18 mL，具体取决于温度轨迹。18 mL 只是未计热致出汗的时序算例。18 mL 仍是皮肤汗量，不是 27 mL；9 mL 肺失水不属于皮肤字段，也不能合并成皮肤读数。
 
-体液下降后，口渴仍由既有 `waterDeficit → hypothalamusThirst → interoception` 按各自轮初快照逐轮读出；本切片不新增通知、不改变阈值，也不自动饮水。
+体液下降后，口渴仍由既有 `waterDeficit → hypothalamusThirst → interoception` 按各自轮初快照逐轮读出；本模块自身不发通知，也不自动饮水。此外，`interoception.sweatDampMm` 现已读取轮初 `skin.sweatVolumeMl` 并结合半时 20 min 衰减合成出汗潮湿黏腻感，接入纯定性 `body_state` 与 `brainNotify`（`stop_exercise` 会复位其通知冷却）。
 
 ## 6. 旧档、缺失与异常
 

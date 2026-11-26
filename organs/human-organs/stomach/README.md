@@ -90,7 +90,7 @@ transfer stomach → smallIntestine: Ec
 - 摄入切片在本轮排空之后进入总量；只有 `eat` 的 `mealKind: "solid"` 进入固餐小计，`drink`、`liquid`、`mixed` 进入非固餐组。`mealQueue` 只保留待释放量，并保留每份切片的 `mealKind`；同一个动作只登记一次。
 - 旧存档缺少 `solidVolumeMl` / `solidEnergyKcal` 时按 0 加载；已经入胃的存量（`volumeMl` / `energyKcal`）全部按原算法推进，不猜历史餐型。`mealQueue` 里尚未释放的切片保留原来的 `mealKind`，以后逐轮释放时照常入账：`solid` 进固餐小计，其余进非固餐组。
 
-摄入动作：`drink` 需要 `volumeMl > 0`，可选 `energyKcal`（有限数、`>= 0`，缺省 0）、`carbohydrateG`（有限数、`>= 0`，缺省 0）与 `durationMin`，固定按 `liquid` 处理；白水省略能量/碳水或填 0，可乐、果汁、牛奶等含能饮料填实际已知成分。`eat` 需要 `volumeMl`、`energyKcal ≥ 0`、`mealKind`（`liquid` / `solid` / `mixed`），碳水与时长可选。两者都按轮切片进入，避免一次大餐整体落在同一轮；仅有 `mealKind: "solid"` 的 `eat` 计入固餐小计。字段缺失、单位或取值非法的动作被忽略；`body_act` 新增可选 `carbohydrateG`，`body_state` 结构不变。体积/能量之外的成分、黏度、碳酸、甜味剂不进入方程。
+摄入动作：`drink` 需要 `volumeMl > 0`，可选 `energyKcal`（有限数、`>= 0`，缺省 0）、`carbohydrateG`（有限数、`>= 0`，缺省 0）与 `durationMin`，固定按 `liquid` 处理；白水省略能量/碳水或填 0，可乐、果汁、牛奶等含能饮料填实际已知成分。`eat` 需要 `volumeMl`、`energyKcal ≥ 0`、`mealKind`（`liquid` / `solid` / `mixed`），碳水与时长可选。两者都按轮切片进入，避免一次大餐整体落在同一轮；仅有 `mealKind: "solid"` 的 `eat` 计入固餐小计。字段缺失、单位或取值非法的动作被忽略；`body_act` 支持可选 `carbohydrateG`，`body_state` 仅返回纯定性感受摘要（无数字），原始数值由 `GET /state` / `gateway.getState()` 返回。体积/能量之外的成分、黏度、碳酸、甜味剂不进入方程。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
@@ -130,11 +130,11 @@ transfer stomach → smallIntestine: Ec
 
 摄入轮只抑制相对浓度并清零计时，不同时执行上升；经 `parseIntake` 判为非法的动作整条忽略，纯水与合法的 0 kcal 饮料不触发能量摄入项抑制、也不重置空腹计时，但仍可能受机械扩张与十二指肠营养暴露项的抑制。`parseIntake` 要求 `volumeMl` 为有限正数；`eat` 还要求有限非负 `energyKcal` 与 `mealKind ∈ {liquid, solid, mixed}`；`drink.energyKcal` 缺省为 0，给出时必须是有限非负数；可选 `durationMin` 与 `carbohydrateG` 给出时必须是有限非负数。轮初计时缺失、负值或非有限时按 0，相对浓度缺失或非有限时按基线 1。`actionTypes = ['eat', 'drink']` 只是声明，脚本复用 `motility-core.parseIntake` 做与胃完全相同的合法性校验，再检查能量是否大于 0。
 
-上升是空腹时长驱动的工程曲线：`onsetMin` 之前保持原有的向基线恢复，之后目标值按表观半时逼近 `peak`，浓度随之饱和，不会无界增长。在胃机械与营养输入为 0、沿用当前 `interoception` 参数试算时，约 6.3 h 达到 `hunger = 65 mm` 明显档、约 12.1 h 达到 85 mm 强档，20 h 时约 `G = 1.80`、`hunger = 90 mm`。这些是设计试算，不是临床阈值或论文曲线；实际通知还受会话、档位、冷却与配额约束，没有会话时不保证提醒。
+上升是空腹时长驱动的工程曲线：`onsetMin` 之前保持原有的向基线恢复，之后目标值按表观半时逼近 `peak`，浓度随之饱和，不会无界增长。在胃机械与营养输入为 0、沿用当前 `interoception` 参数试算时，约 6.3 h 达到 `hunger = 65 mm` 明显档、约 12.1 h 达到 85 mm 强档，20 h 时约 `G = 1.80`、`hunger = 90 mm`。这些是设计试算，不是临床阈值或论文曲线；实际通知还受会话绑定、档位与逐级退避冷却约束（已取消小时/每日硬配额），没有绑定会话时不发提醒。
 
 旧存档缺少 `minutesSinceEnergyIntake` 时由 `initialState` 补 0；保留原 `relativeConcentration`，从升级时刻重新累计，不根据 `lastIntakeAt`、存档 `simulatedSeconds` 或当前浓度反推过去空腹时长。升级第一轮不会凭空出现高饥饿；后续重启保留该字段，不反复清零。
 
-P1 的 `brain/interoception.ts` 读取 `relativeConcentration`，`brainNotify` 再决定是否提醒；通知历史与模型已读确认仍未实现。含能饮料的抑制方向是从含能餐证据外推的 `design` 假设，没有登记饮料专属来源。
+P1 的 `brain/interoception.ts` 读取 `relativeConcentration`，`brainNotify` 按会话水位与退避冷却决定是否提醒；模型已读确认仍未实现。含能饮料的抑制方向是从含能餐证据外推的 `design` 假设，没有登记饮料专属来源。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
@@ -155,7 +155,7 @@ P1 的 `brain/interoception.ts` 读取 `relativeConcentration`，`brainNotify` �
 
 `mechanical = min(1, volumeMl / referenceVolumeMl) ^ exponent`。
 
-`mechanical` 读的是轮初快照里的 `stomach.volumeMl`，同一轮摄入要到下一轮才反映。P1 的 `brain/interoception.ts` 读取这个字段，`brainNotify` 再决定是否提醒；通知历史与模型已读确认仍未实现。
+`mechanical` 读的是轮初快照里的 `stomach.volumeMl`，同一轮摄入要到下一轮才反映。P1 的 `brain/interoception.ts` 读取这个字段，`brainNotify` 按会话水位与退避冷却决定是否提醒；模型已读确认仍未实现。
 
 | 参数 ID | 值 | 单位 | 状态 | 来源 |
 | --- | --- | --- | --- | --- |
@@ -206,4 +206,4 @@ P1 的 `brain/interoception.ts` 读取 `relativeConcentration`，`brainNotify` �
 - **水是饮料体积的代理**：`drink` 的全部 `volumeMl` 记为水，不反推纯水含量；含糖、含奶、碳酸或含酒精饮料一律按总体积入水账本。`eat`（含 `liquid` / `mixed`）不产水。这是 `design`，不是实测。
 - **水比例拆分是工程近似**：`emptiedWaterMl` 按非固餐排出量中的水占比计算，不区分饮品成分、胃内分层、研磨或胃酸分泌；固餐排出不带水。
 - **13 min 不是吸收半时**：它只是白水胃排空的工程截距；真实小肠吸收时间尺度在 `small-intestine/water-absorption.ts`，20 min 也是 `design`。
-- 不做胃内混合、分层、胃酸、温度和黏膜状态；`mechanical` 与 `relativeConcentration` 由 `brain/interoception.ts` 读取，`brainNotify` 决定提醒，但通知历史与模型已读确认仍未实现。
+- 不做胃内混合、分层、胃酸、温度和黏膜状态；`mechanical` 与 `relativeConcentration` 由 `brain/interoception.ts` 读取，`brainNotify` 按会话水位与退避冷却决定提醒，模型已读确认仍未实现。

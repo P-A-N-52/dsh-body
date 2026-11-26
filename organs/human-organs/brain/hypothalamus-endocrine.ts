@@ -1,29 +1,16 @@
 /*
  * 部位 `hypothalamusEndocrine`：下丘脑内分泌轴脚本，产出相对 TRH / CRH 信号。
  * 消费者是 `pituitary`：TRH 驱动 TSH、CRH 驱动 ACTH；外周激素
- * `thyroid.thyroxineRelative` 与 `adrenal.cortisolRelative` 升高时反向抑制本部位
- * 输出，降低时解除抑制，构成负反馈，不是单向放大。
+ * `thyroid.thyroxineRelative` 与 `adrenal.cortisolNmolL`（归一化为 `cortisolNmolL / 180`）
+ * 升高时反向抑制本部位输出，构成闭环负反馈。
  *
- * design（不是人体测量、拟合或独立验证）
- * - `trhRelative` / `crhRelative` 是无量纲相对信号，1 表示基线，钳在 0–3；
- *   不是 TRH/CRH 的实测浓度、分泌率、脉冲频率或临床指标。
- * - 目标：
- *   coldDrive = 0.3 × max(0, 36.8 − thermoregulation.coreTemperatureC)（未加载或非有限按 37）
- *   hypoglycemiaDrive = 0.02 × max(0, 80 − max(0, glucose.concentrationMgDl))（未加载或非有限按 90）
- *   exerciseDrive = physicalActivity.remainingExerciseMin > 0
- *     ? 0.4 × max(0, physicalActivity.intensity − 0.5) : 0（未加载或非有限按 0）
- *   trhTarget = clamp(1 + gain × (1 − T4) + coldDrive, 0, 3)
- *   crhTarget = clamp(1 + gain × (1 − 皮质醇) + hypoglycemiaDrive + exerciseDrive, 0, 3)
- *   再按 30 min 半时一阶趋近：`next = target + (prev − target) × 2^(−dtMin / 30)`，
- *   `dtMin = io.dt / 60`。在正常 37°C（≥ 36.8°C 冷应激死区）、90 mg/dL、静息基线下三项上游驱动均为 0，
- *   静息 HPT/HPA 保持精确 1.0。公式、增益与半时全是工程假设，参数见同目录
- *   `hypothalamus-endocrine.parameters.json`（`status: design`、`source: null`）。
- * - 只读轮初快照；未加载的 `thyroid` / `adrenal` 部位按 1 回退，已加载但字段缺失、非有限或
- *   为负时抛错，让本轮整体作废，不用基线掩盖异常。`thermoregulation` / `glucose` / `physicalActivity`
- *   缺字段或非有限时回落基线常量，目标值钳在 [0, 3]。
- * - 无动作、transfer 或通知；不建模脉冲式分泌、昼夜节律、T3、绝对浓度、结合蛋白、
- *   疾病或个体差异。
+ * 本次校准（design）：
+ * - 醒后 CAR（`SRC-CLOW-2004`）：醒来后引入 `carLatentMin = 10 min` 潜伏平滑，起坡温和、
+ *   惯性回落中段达到全幅，避免瞬时全幅阶跃；
+ * - 愉悦/催产素缓冲：软读 `reward.hedonicMm` 与 `pituitary.oxytocinPgMl`，对非低血糖应激
+ *   `stressDrive` 施加最多 `rewardBufferingGain` 比例的温和缓冲。
  */
+import { resolveCircadianHour } from '../../../lib/circadian.js';
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 
 export const id = 'hypothalamusEndocrine';
@@ -34,51 +21,37 @@ type HypothalamusEndocrineState = {
   crhRelative: number;
 };
 
-type ThyroidReading = {
-  thyroxineRelative?: number;
-};
-
-type AdrenalReading = {
-  cortisolRelative?: number;
-};
-
-type ThermoregulationReading = {
-  coreTemperatureC?: unknown;
-};
-
-type GlucoseReading = {
-  concentrationMgDl?: unknown;
-};
-
-type PhysicalActivityReading = {
-  remainingExerciseMin?: unknown;
-  intensity?: unknown;
-};
-
 type IO = {
   read(id: 'hypothalamusEndocrine'): Readonly<HypothalamusEndocrineState> | undefined;
-  read(id: 'thyroid'): Readonly<ThyroidReading> | undefined;
-  read(id: 'adrenal'): Readonly<AdrenalReading> | undefined;
-  read(id: 'thermoregulation'): Readonly<ThermoregulationReading> | undefined;
-  read(id: 'glucose'): Readonly<GlucoseReading> | undefined;
-  read(id: 'physicalActivity'): Readonly<PhysicalActivityReading> | undefined;
+  read(id: 'thyroid'): Readonly<{ thyroxineRelative?: unknown }> | undefined;
+  read(id: 'adrenal'): Readonly<{ cortisolNmolL?: unknown }> | undefined;
+  read(id: 'thermoregulation'): Readonly<{ coreTemperatureC?: unknown; setpointC?: unknown }> | undefined;
+  read(id: 'glucose'): Readonly<{ concentrationMgDl?: unknown }> | undefined;
+  read(id: 'physicalActivity'): Readonly<{ remainingExerciseMin?: unknown; intensity?: unknown }> | undefined;
+  read(id: 'autonomic'): Readonly<{ sympatheticMm?: unknown }> | undefined;
+  read(id: 'sleep'): Readonly<{ sleeping?: unknown; sleepInertiaMm?: unknown; wakeEvent?: unknown }> | undefined;
+  read(id: 'reward'): Readonly<{ hedonicMm?: unknown }> | undefined;
+  read(id: 'pituitary'): Readonly<{ oxytocinPgMl?: unknown }> | undefined;
   readonly dt: number;
+  readonly wallTimeMs?: number;
   write(next: HypothalamusEndocrineState): void;
 };
 
 const parameters = loadParameters(
   new URL('./hypothalamus-endocrine.parameters.json', import.meta.url),
 );
-const trhFeedbackGain = requireParameter(
-  parameters,
-  'hypothalamusEndocrine.trhFeedbackGain',
-);
-const crhFeedbackGain = requireParameter(
-  parameters,
-  'hypothalamusEndocrine.crhFeedbackGain',
-);
+const trhFeedbackGain = requireParameter(parameters, 'hypothalamusEndocrine.trhFeedbackGain');
+const crhFeedbackGain = requireParameter(parameters, 'hypothalamusEndocrine.crhFeedbackGain');
+const crhCircadianAmplitude = requireParameter(parameters, 'hypothalamusEndocrine.crhCircadianAmplitude');
+const crhPeakHour = requireParameter(parameters, 'hypothalamusEndocrine.crhPeakHour');
+const sympatheticCrhGain = requireParameter(parameters, 'hypothalamusEndocrine.sympatheticCrhGain');
+const carAmplitude = requireParameter(parameters, 'hypothalamusEndocrine.carAmplitude');
+const carLatentMin = requireParameter(parameters, 'hypothalamusEndocrine.carLatentMin');
+const sleepCrhSuppression = requireParameter(parameters, 'hypothalamusEndocrine.sleepCrhSuppression');
+const rewardBufferingGain = requireParameter(parameters, 'hypothalamusEndocrine.rewardBufferingGain');
 
 const RESPONSE_HALF_TIME_MIN = 30;
+const REFERENCE_CORTISOL_NMOL_L = 180;
 const MIN_RELATIVE = 0;
 const MAX_RELATIVE = 3;
 const REFERENCE_CORE_TEMP_C = 37;
@@ -108,11 +81,7 @@ function finiteOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
-function readPeripheral(
-  partId: string,
-  field: string,
-  value: number | undefined,
-): number {
+function readPeripheral(partId: string, field: string, value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     throw new Error(`${id}: invalid ${partId}.${field}: ${String(value)}`);
   }
@@ -127,14 +96,15 @@ export function heartbeat(io: IO): void {
   const thyroxineRelative = thyroid === undefined
     ? 1
     : readPeripheral('thyroid', 'thyroxineRelative', thyroid.thyroxineRelative);
-  const cortisolRelative = adrenal === undefined
-    ? 1
-    : readPeripheral('adrenal', 'cortisolRelative', adrenal.cortisolRelative);
+  const cortisolNmolL = adrenal === undefined
+    ? REFERENCE_CORTISOL_NMOL_L
+    : readPeripheral('adrenal', 'cortisolNmolL', adrenal.cortisolNmolL);
+  const cortisolRatio = cortisolNmolL / REFERENCE_CORTISOL_NMOL_L;
 
-  const coreTemperatureC = finiteOr(
-    io.read('thermoregulation')?.coreTemperatureC,
-    REFERENCE_CORE_TEMP_C,
-  );
+  const thermoregulation = io.read('thermoregulation');
+  const thermoSetpointC = finiteOr(thermoregulation?.setpointC, REFERENCE_CORE_TEMP_C);
+  const coreTemperatureC = finiteOr(thermoregulation?.coreTemperatureC, thermoSetpointC);
+  const coldThresholdC = thermoSetpointC - (REFERENCE_CORE_TEMP_C - COLD_STRESS_THRESHOLD_C);
   const concentrationMgDl = Math.max(
     0,
     finiteOr(io.read('glucose')?.concentrationMgDl, REFERENCE_GLUCOSE_MG_DL),
@@ -142,13 +112,46 @@ export function heartbeat(io: IO): void {
   const activity = io.read('physicalActivity');
   const remainingExerciseMin = Math.max(0, finiteOr(activity?.remainingExerciseMin, 0));
   const intensity = clamp(finiteOr(activity?.intensity, 0), 0, 1);
+  const sympatheticMm = clamp(finiteOr(io.read('autonomic')?.sympatheticMm, 0), 0, 100);
 
-  const coldDrive = COLD_TRH_GAIN_PER_C * Math.max(0, COLD_STRESS_THRESHOLD_C - coreTemperatureC);
+  const coldDrive = COLD_TRH_GAIN_PER_C * Math.max(0, coldThresholdC - coreTemperatureC);
   const hypoglycemiaDrive = HYPOGLYCEMIA_CRH_GAIN_PER_MG_DL
     * Math.max(0, HYPOGLYCEMIA_THRESHOLD_MG_DL - concentrationMgDl);
   const exerciseDrive = remainingExerciseMin > 0
     ? EXERCISE_CRH_GAIN * Math.max(0, intensity - HARD_EXERCISE_INTENSITY_THRESHOLD)
     : 0;
+  const sympatheticDrive = sympatheticCrhGain * sympatheticMm;
+  const crhCircadianDrive = typeof io.wallTimeMs === 'number' && Number.isFinite(io.wallTimeMs)
+    ? crhCircadianAmplitude
+      * Math.cos((2 * Math.PI * (resolveCircadianHour(io.wallTimeMs) - crhPeakHour)) / 24)
+    : 0;
+
+  const sleep = io.read('sleep');
+  const sleeping = sleep?.sleeping === true;
+  const sleepInertiaMm = clamp(finiteOr(sleep?.sleepInertiaMm, 0), 0, 100);
+  const sleepSuppression = sleeping ? sleepCrhSuppression : 0;
+
+  // SRC-CLOW-2004 & Smyth 2015: 醒后约 10 min 潜伏窗内温和起坡，随后进入 30–45 min CAR 峰值
+  let carDrive = 0;
+  if (sleep !== undefined && !sleeping) {
+    const wokeThisRound = sleep.wakeEvent !== 'none' && sleep.wakeEvent !== undefined;
+    if (wokeThisRound && sleepInertiaMm > 0) {
+      carDrive = carAmplitude * (carLatentMin > 0 ? 0.4 : 1);
+    } else if (sleepInertiaMm > 0) {
+      carDrive = carAmplitude * clamp(sleepInertiaMm / 20, 0, 1);
+    } else if (wokeThisRound) {
+      carDrive = carAmplitude * 0.7;
+    }
+  }
+
+  const hedonicMm = clamp(finiteOr(io.read('reward')?.hedonicMm, 0), 0, 100);
+  const oxytocinPgMl = Math.max(0, finiteOr(io.read('pituitary')?.oxytocinPgMl, 2));
+  const otRelaxFraction = clamp((oxytocinPgMl - 2) / 25, 0, 1);
+  const buffering = clamp(
+    rewardBufferingGain * Math.max(hedonicMm / 100, otRelaxFraction),
+    0,
+    0.5,
+  );
 
   const dtMin = io.dt / 60;
   const retention = 2 ** (-dtMin / RESPONSE_HALF_TIME_MIN);
@@ -158,8 +161,15 @@ export function heartbeat(io: IO): void {
     MIN_RELATIVE,
     MAX_RELATIVE,
   );
+  const nonMetabolicStress = Math.max(exerciseDrive, sympatheticDrive) * (1 - buffering);
+  const stressDrive = Math.max(hypoglycemiaDrive + exerciseDrive * (1 - buffering), nonMetabolicStress);
   const crhTarget = clamp(
-    1 + crhFeedbackGain * (1 - cortisolRelative) + hypoglycemiaDrive + exerciseDrive,
+    1
+      + crhFeedbackGain * (1 - cortisolRatio)
+      + crhCircadianDrive
+      + carDrive
+      - sleepSuppression
+      + stressDrive,
     MIN_RELATIVE,
     MAX_RELATIVE,
   );

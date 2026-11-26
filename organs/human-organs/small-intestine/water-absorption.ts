@@ -183,14 +183,16 @@ function readWaterDeficit(bodyFluid: Readonly<BodyFluidReading> | undefined): nu
   return clamp(deficit, 0, 1);
 }
 
-function readInsulinRelative(pancreas: Readonly<PancreasReading> | undefined): number {
+const BASAL_INSULIN_PMOL_L = 60;
+
+function readInsulinRelative(pancreas: Readonly<{ insulinPmolL?: unknown }> | undefined): number {
   if (pancreas === undefined || pancreas === null) return 1;
   if (typeof pancreas !== 'object') throw new Error('pancreasEndocrine must be an object');
-  const insulinRelative = pancreas.insulinRelative;
-  if (typeof insulinRelative !== 'number' || !Number.isFinite(insulinRelative) || insulinRelative < 0) {
-    throw new Error('pancreasEndocrine.insulinRelative must be a finite non-negative number');
+  const insulinPmolL = pancreas.insulinPmolL;
+  if (typeof insulinPmolL !== 'number' || !Number.isFinite(insulinPmolL) || insulinPmolL < 0) {
+    throw new Error('pancreasEndocrine.insulinPmolL must be a finite non-negative number');
   }
-  return insulinRelative;
+  return insulinPmolL / BASAL_INSULIN_PMOL_L;
 }
 
 function readConcentrationMgDl(glucose: Readonly<GlucoseReading> | undefined): number {

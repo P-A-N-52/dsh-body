@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "owner": "reward",
+  "parameters": [
+    {
+      "id": "reward.basalWantingMm",
+      "unit": "mm",
+      "value": 25,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "中枢趋近动机基线；design"
+    },
+    {
+      "id": "reward.basalHedonicMm",
+      "unit": "mm",
+      "value": 15,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "基础平缓愉悦弛豫基线；design"
+    },
+    {
+      "id": "reward.sexWantingGain",
+      "unit": "1",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 2],
+      "source": "SRC-OEI-2012",
+      "note": "性唤起对趋近动机 wantingMm 的促进权重（方向参考 Oei 2012）；design"
+    },
+    {
+      "id": "reward.ghrelinWantingGainMm",
+      "unit": "mm",
+      "value": 18,
+      "status": "design",
+      "range": [0, 50],
+      "source": null,
+      "note": "空腹饥饿素升高对寻食趋近动机的驱动；design"
+    },
+    {
+      "id": "reward.orgasmHedonicBoostMm",
+      "unit": "mm",
+      "value": 68,
+      "status": "design",
+      "range": [0, 100],
+      "source": "SRC-BLAICHER-1999",
+      "note": "高潮瞬间触发的中枢愉悦余韵跃升；design"
+    },
+    {
+      "id": "reward.orgasmSatietyBoostMm",
+      "unit": "mm",
+      "value": 78,
+      "status": "design",
+      "range": [0, 100],
+      "source": "SRC-KRUGER-2003",
+      "note": "高潮瞬间触发的性饱足抑制跃升（随后随 PRL 缓慢回落）；design"
+    },
+    {
+      "id": "reward.exerciseHedonicGainMm",
+      "unit": "mm",
+      "value": 32,
+      "status": "design",
+      "range": [0, 80],
+      "source": null,
+      "note": "中等强度有氧运动期间/后内大麻素样愉悦缓冲增量；design"
+    },
+    {
+      "id": "reward.mealHedonicGainMm",
+      "unit": "mm",
+      "value": 18,
+      "status": "design",
+      "range": [0, 50],
+      "source": null,
+      "note": "进食营养暴露期间的中枢愉悦增量；design"
+    },
+    {
+      "id": "reward.mealSatietyGainMm",
+      "unit": "mm",
+      "value": 28,
+      "status": "design",
+      "range": [0, 80],
+      "source": null,
+      "note": "餐后营养暴露诱发的享乐饱足增量；design"
+    },
+    {
+      "id": "reward.oxytocinHedonicGainMmPerPgMl",
+      "unit": "mm/(pg/mL)",
+      "value": 1.2,
+      "status": "design",
+      "range": [0, 10],
+      "source": "SRC-UVNASMOBERG-2020",
+      "note": "血浆催产素高于基线 2 pg/mL 时对弛豫愉悦的增益；design"
+    },
+    {
+      "id": "reward.stressSuppressionGain",
+      "unit": "1",
+      "value": 0.35,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "高皮质醇/剧痛对趋近与愉悦的抑制权重；design"
+    },
+    {
+      "id": "reward.wantingHalfTimeMin",
+      "unit": "min",
+      "value": 8,
+      "status": "design",
+      "range": [1, 120],
+      "source": null,
+      "note": "趋近动机一阶响应半衰期；design"
+    },
+    {
+      "id": "reward.hedonicHalfTimeMin",
+      "unit": "min",
+      "value": 25,
+      "status": "design",
+      "range": [1, 180],
+      "source": null,
+      "note": "愉悦余韵一阶消退半衰期；design"
+    },
+    {
+      "id": "reward.satietyHalfTimeMin",
+      "unit": "min",
+      "value": 40,
+      "status": "design",
+      "range": [1, 240],
+      "source": "SRC-KRUGER-2003",
+      "note": "饱足抑制回落半衰期（约 40–60 min 窗口参考 Krüger 2003）；design"
+    }
+  ]
+}

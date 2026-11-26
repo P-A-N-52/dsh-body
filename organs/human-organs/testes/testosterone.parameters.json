@@ -9,7 +9,7 @@
       "status": "design",
       "range": [0.5, 1.5],
       "source": null,
-      "note": "睾酮相对信号的工程基线；1 表示未受刺激的基线，不是血清睾酮浓度、分泌率或人体正常值。range 是工程调参范围，不是人体测量范围"
+      "note": "睾酮相对信号的工程基线；1 表示未受刺激的基线；design"
     },
     {
       "id": "testes.circadianAmplitude",
@@ -18,7 +18,7 @@
       "status": "design",
       "range": [0, 0.5],
       "source": null,
-      "note": "昼夜余弦项相对基线的振幅；曲线峰值 08:00、谷值 20:00，纯工程假设，不是实测昼夜幅度或个体相位。range 是工程调参范围"
+      "note": "昼夜余弦项相对基线的振幅（08:00 峰、20:00 谷）；design"
     },
     {
       "id": "testes.responseHalfTimeMin",
@@ -27,7 +27,61 @@
       "status": "design",
       "range": [1, 720],
       "source": null,
-      "note": "相对信号向当前昼夜目标一阶趋近的工程半时；不是睾酮半衰期、HPG 轴响应时间或实测动力学。range 是工程调参范围"
+      "note": "相对信号向当前目标一阶趋近的工程半时；design"
+    },
+    {
+      "id": "testes.phaseShiftHours",
+      "unit": "h",
+      "value": 0,
+      "status": "design",
+      "range": [-12, 12],
+      "source": null,
+      "note": "昼夜时钟相对本地钟点的相位偏移（小时）；design"
+    },
+    {
+      "id": "testes.sleepDebtSuppressionThresholdMm",
+      "unit": "mm",
+      "value": 60,
+      "status": "design",
+      "range": [20, 100],
+      "source": "SRC-LEPROULT-2011",
+      "note": "清醒睡眠压力超过该阈值时开始累积多日睡眠债；design"
+    },
+    {
+      "id": "testes.sleepDebtMaxSuppressionFraction",
+      "unit": "1",
+      "value": 0.15,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": "SRC-LEPROULT-2011",
+      "note": "连续多日重度睡眠欠债对睾酮昼夜目标的最大相对压低比例（15% 量级参考 Leproult & Van Cauter 2011）；design"
+    },
+    {
+      "id": "testes.sleepDebtRecoveryHalfTimeHours",
+      "unit": "h",
+      "value": 36,
+      "status": "design",
+      "range": [6, 168],
+      "source": null,
+      "note": "充足睡眠期间多日累积睡眠债的回落半衰期；design"
+    },
+    {
+      "id": "testes.stressCortisolSuppressionGain",
+      "unit": "1",
+      "value": 0.1,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": null,
+      "note": "高皮质醇（ratio > 1.5）应激对睾酮靶标的温和抑制斜率；design"
+    },
+    {
+      "id": "testes.prolactinSuppressionGain",
+      "unit": "1/(ng/mL)",
+      "value": 0.006,
+      "status": "design",
+      "range": [0, 0.05],
+      "source": null,
+      "note": "高催乳素（> 25 ng/mL）对睾酮靶标的温和抑制斜率；design"
     }
   ]
 }

@@ -9,7 +9,7 @@
       "status": "design",
       "range": [0, 5],
       "source": null,
-      "note": "T4 相对值每偏离 1 时对 TRH 相对目标的线性反馈增益；工程假设，不是实测下丘脑—垂体—甲状腺轴剂量反应"
+      "note": "T4 相对值每偏离 1 时对 TRH 相对目标的线性反馈增益；工程假设，design"
     },
     {
       "id": "hypothalamusEndocrine.crhFeedbackGain",
@@ -18,7 +18,70 @@
       "status": "design",
       "range": [0, 5],
       "source": null,
-      "note": "皮质醇相对值每偏离 1 时对 CRH 相对目标的线性反馈增益；工程假设，不是实测下丘脑—垂体—肾上腺轴剂量反应"
+      "note": "皮质醇比值（cortisolNmolL / 180）每偏离 1 时对 CRH 相对目标的线性反馈增益；design"
+    },
+    {
+      "id": "hypothalamusEndocrine.crhCircadianAmplitude",
+      "unit": "1",
+      "value": 0.35,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "HPA 轴 CRH 昼夜节律余弦振幅（07:00 晨峰、19:00 夜谷）；design"
+    },
+    {
+      "id": "hypothalamusEndocrine.crhPeakHour",
+      "unit": "h",
+      "value": 7,
+      "status": "design",
+      "range": [0, 24],
+      "source": null,
+      "note": "CRH 昼夜驱动的本地峰值时刻（小时）；design"
+    },
+    {
+      "id": "hypothalamusEndocrine.sympatheticCrhGain",
+      "unit": "1/mm",
+      "value": 0.01,
+      "status": "design",
+      "range": [0, 0.1],
+      "source": null,
+      "note": "autonomic.sympatheticMm 每单位对 CRH 目标的应激增益；design"
+    },
+    {
+      "id": "hypothalamusEndocrine.carAmplitude",
+      "unit": "1",
+      "value": 0.45,
+      "status": "design",
+      "range": [0, 1.5],
+      "source": "SRC-CLOW-2004",
+      "note": "皮质醇觉醒反应（CAR）在睡-醒切换窗口期对 CRH 的附加脉冲振幅；design"
+    },
+    {
+      "id": "hypothalamusEndocrine.carLatentMin",
+      "unit": "min",
+      "value": 10,
+      "status": "design",
+      "range": [0, 30],
+      "source": null,
+      "note": "醒后最初 0–10 min CAR 潜伏平滑代理（醒来瞬时起坡、惯性中段达峰）；design"
+    },
+    {
+      "id": "hypothalamusEndocrine.sleepCrhSuppression",
+      "unit": "1",
+      "value": 0.15,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": null,
+      "note": "睡眠安静期对 CRH 基础目标的下调幅度；design"
+    },
+    {
+      "id": "hypothalamusEndocrine.rewardBufferingGain",
+      "unit": "1",
+      "value": 0.25,
+      "status": "design",
+      "range": [0, 0.8],
+      "source": null,
+      "note": "高愉悦余韵/催产素对非低血糖应激 CRH 驱动的最大温和缓冲比例；design"
     }
   ]
 }

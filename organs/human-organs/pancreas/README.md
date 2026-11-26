@@ -1,20 +1,19 @@
-# 胰腺内分泌（pancreasEndocrine）：相对胰岛素与胰高血糖素信号
+# 胰腺内分泌（pancreasEndocrine）：血浆胰岛素（pmol/L）与胰高血糖素相对信号
 
 **功能标签：** 内分泌（葡萄糖调节代理）。
 
-`pancreasEndocrine` 读取轮初血浆葡萄糖浓度代理，写入两个无量纲的相对信号：高血糖侧 `insulinRelative`，低血糖侧 `glucagonRelative`。`insulinRelative` 由各摄糖部位各自使用：骨骼肌按敏感度 1.0、肝按 0.5 把相对信号换算成自己的摄糖请求；`glucagonRelative` 只由肝用于放大肝糖原释放。葡萄糖隔室自身的残余清除与胰岛素信号无关。它位于 `organs/human-organs/pancreas/`，只实现 `glucose.concentrationMgDl → pancreasEndocrine.insulinRelative → muscleGlucose / liver 摄糖请求` 与 `glucose.concentrationMgDl → pancreasEndocrine.glucagonRelative → liver 释放` 两条工程薄切片，不是胰岛素/胰高血糖素浓度、分泌率、C-peptide 或完整血糖—激素模型。
+`pancreasEndocrine` 读取轮初血浆葡萄糖浓度代理，写入血浆胰岛素绝对浓度代理 `insulinPmolL`（单位 `pmol/L`，静息基准 `60 pmol/L`）与低血糖反调节信号 `glucagonRelative`（单位 `1`）。`insulinPmolL` 在体内按 Michaelis-Menten 可饱和清除 ODE（参考 Thorsteinsson 1985 正常人可饱和半饱和尺度 `Km = 3890 pmol/L`）积分，由各下游摄糖部位（`muscleGlucose`、`liver`、`smallIntestine`）通过 `insulinPmolL / 60` 归一化消费；`glucagonRelative` 在血糖低于参考值 `90 mg/dL` 时温和升高，跌破反调节阈值 `68 mg/dL` 后叠加陡增增益，由 `liver` 与 `kidneyGluconeogenesis` 消费。
 
-实现状态：胰腺脚本、参数与模块契约测试已落地；葡萄糖浓度、肌肉/肝摄糖请求与肝糖原释放的耦合、根清单注册均已接入，当前根清单为 38 个部位、34 份唯一参数文件（女性清单 41 个部位、37 份，男性清单 40 个部位、36 份；另有 3 份 DI 变体、`parathyroid` 与 `calcium` 参数不随任何清单加载，全库共 44 份）。`muscleGlucose` 与 `liver` 各自读取 `insulinRelative` 并用自己的敏感度计算请求；`liver` 另读 `glucagonRelative`；`glucose` 不再读本信号。尚未做真实 DSH 会话验收或独立生理数据验证。
+实现状态：胰腺脚本、参数与模块契约测试已落地；葡萄糖浓度、肌肉/肝摄糖请求与肝糖原释放的耦合、三清单注册均已接入，当前根清单为 41 个部位、37 份唯一参数文件（女性清单 44 个部位、40 份，男性清单 43 个部位、39 份；全库共 47 份唯一参数文件）。参数标 `design`；尚未做真实 DSH 会话验收或独立人体餐后曲线验证。
 
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `insulin.ts` | `pancreasEndocrine` | `insulinRelative`、`glucagonRelative` | 轮初 `glucose.concentrationMgDl`；自己的轮初 `insulinRelative` 与 `glucagonRelative`；`io.dt` | `insulin.parameters.json` |
+| `insulin.ts` | `pancreasEndocrine` | `insulinPmolL`、`glucagonRelative` | 轮初 `glucose.concentrationMgDl`；自己的轮初 `insulinPmolL` / `glucagonRelative`（兼容旧 `insulinRelative`）；`io.dt` | `insulin.parameters.json` |
 
 - 无动作、无 transfer、无通知；不写葡萄糖、肌肉或肝，也不搬任何胰岛素/胰高血糖素质量。
-- 三类消费者：`muscleGlucose` 与 `liver` 各自用 `insulinRelative` 计算摄糖请求（肌肉敏感度 1.0、肝 0.5），`liver` 用 `glucagonRelative` 放大肝糖原释放。三者都已接入；各部位只读轮初快照，不做同轮迭代。
-- 胰腺只读血糖、只写相对信号；血糖偏离参考值时，两条信号按各自方向改变下游计算，但信号本身不修改任何质量，也不把不同组织的响应合并成一个“总清除”。
+- 三类消费者：`muscleGlucose` 与 `liver` 各自用 `I = insulinPmolL / 60` 计算摄糖请求（肌肉敏感度 1.0、肝 0.5），`smallIntestine` 在高血糖碳水梯度读 `I`（当前灵敏度 0）；`liver` 与 `kidneyGluconeogenesis` 读 `glucagonRelative` 放大内源升糖。
 
 ## 2. 字段与单位
 
@@ -22,39 +21,50 @@
 
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
-| `insulinRelative` | `1` | 轮末写入的无量纲相对胰岛素信号，供下一轮 `muscleGlucose`（敏感度 1.0）与 `liver`（敏感度 0.5）各自计算摄糖请求；初值 1。不是 µU/mL、pmol/L、分泌率、血浆胰岛素浓度或实测值，不能与实测胰岛素换算 |
-| `glucagonRelative` | `1` | 轮末写入的无量纲相对胰高血糖素信号，供下一轮 `liver` 放大肝糖原释放；初值 1。不是 pg/mL、pmol/L、分泌率、血浆胰高血糖素浓度或实测值，不能与实测胰高血糖素换算 |
+| `insulinPmolL` | `pmol/L` | 血浆胰岛素浓度代理（空腹 90 mg/dL 静息稳态精确保持 `60 pmol/L`，保护上限 `900 pmol/L`）；下游通过 `I = insulinPmolL / 60` 消费。不是 C-peptide 或临床实验室个体测定 |
+| `glucagonRelative` | `1` | 轮末写入的无量纲相对胰高血糖素信号，供下一轮 `liver` 与 `kidneyGluconeogenesis` 使用；初值 1，不是 pg/mL |
 
-时间原点：本轮轮末写出的两个值都表示下一轮的相对信号；`muscleGlucose`、`liver` 与 `glucose` 在本轮轮初读取上一轮已提交的值。两个字段都是状态，不是每轮通量。
+时间原点：本轮轮末写出的两个值供下一轮下游读取；兼容旧存档时 `saved.insulinRelative` 按 `60 * saved.insulinRelative` 迁移。
 
 ## 3. 方程与参数
 
-设 `G = glucose.concentrationMgDl` 的轮初读数，`I`、`H` 分别为胰腺轮初的 `insulinRelative`、`glucagonRelative`，`dtMin = io.dt / 60`：
+设 `G = glucose.concentrationMgDl`（未加载按 90），`dtMin = max(0, io.dt / 60)`：
 
 ```text
-insulinTarget = clamp(1 + 0.02 × (G − 90), 0, 5)
-I_next = insulinTarget + (I − insulinTarget) × 2^(−dtMin / 10)
-glucagonTarget = clamp(1 + 0.02 × (90 − G), 0, 5)
-H_next = glucagonTarget + (H − glucagonTarget) × 2^(−dtMin / 10)
-write.insulinRelative = I_next
-write.glucagonRelative = H_next
+basalSecretion = clearanceVmax × basalPmolL / (clearanceKm + basalPmolL)
+secretion = G >= 90
+  ? basalSecretion + glucoseGain × (G − 90)
+  : max(0, basalSecretion × max(0, (G − 45) / 45))
+
+// RK2 亚步积分（每步 <= 0.5 min，clamp [0, maxPmolL]）：
+dC/dt = secretion − clearanceVmax × C / (clearanceKm + C)
+
+deepDrop = max(0, hypoglycemiaThresholdMgDl − G)   // 68 mg/dL 阈值
+glucagonTarget = clamp(1 + glucoseGainPerMgDl × (90 − G) + counterregGainPerMgDl × deepDrop, 0, maxRelative)
+H_next = glucagonTarget + (H − glucagonTarget) × 2^(−dtMin / responseHalfTimeMin)
 ```
 
-`G = 90` 且两个信号都为 1 时精确保持 1；`G` 偏离参考值时两路各以一阶指数趋近目标，10 min 闭合剩余差距的一半。胰岛素目标在 `G = 70` 时为 0.6，在 `G = 0` 时钳到 0，在 `G ≥ 290` 时钳到 5；低糖只降低相对信号，不产生负值。胰高血糖素目标方向相反：`G = 70` 时为 1.4，`G = 110` 时为 0.6，`G = 90` 时为 1；当前增益与参考值下 `G = 0` 的目标只有 2.8，`maxRelative = 5` 只是未来参数变化时的保护，正常 0–600 mg/dL 血糖不会触顶；`G` 高于 90 时目标低于 1（最低 0）。两路都不区分分泌增加与清除变化，也不表示 α/β 细胞相互抑制。
+- `G = 90`、初值 `insulinPmolL = 60`、`glucagonRelative = 1` 时，`secretion = basalSecretion` 与饱和清除精确抵消，稳态精确维持 `60 pmol/L` 与 `1`。
+- 高血糖时，`glucoseGainPmolLPerMinPerMgDl = 0.085` 在稳态下于 `+50..+100 mg/dL` 升幅区间温和抬升胰岛素至约 `2–3×` 基线而不致过度清除餐后峰值。
+- 跌破 `68 mg/dL` 低血糖反调节阈值后，额外叠加 `0.06 / (mg/dL)` 陡增反调节增益加速动员肝释放与肾糖异生。
 
-| 参数 ID | 默认值 | 单位 | 状态 | 来源与替换点 |
+| 参数 ID | 默认值 | 单位 | 状态 | 来源与说明 |
 | --- | ---: | --- | --- | --- |
-| `pancreasEndocrine.referenceGlucoseMgDl` | 90 | `mg/dL` | `design` | `source: null`；暂与 `glucose.baselineConcentrationMgDl` 重复配置，测试固定两者相等；未来由共享身体预设/个体空腹基线替换 |
-| `pancreasEndocrine.insulin.glucoseGainPerMgDl` | 0.02 | `1/(mg/dL)` | `design` | `source: null`；纯工程增益，不是 Dalla Man 2007 的分泌方程或拟合结果；未来由标准化餐后胰岛素剂量—反应替换 |
-| `pancreasEndocrine.insulin.responseHalfTimeMin` | 10 | `min` | `design` | `source: null`；工程一阶时间尺度，不是实测分泌/清除半时；未来由 C-peptide/胰岛素分泌与清除证据替换 |
-| `pancreasEndocrine.insulin.maxRelative` | 5 | `1` | `design` | `source: null`；防止无界响应的工程上限，不是 β 细胞饱和测量或临床界值；未来由饱和 β 细胞响应替换 |
-| `pancreasEndocrine.glucagon.glucoseGainPerMgDl` | 0.02 | `1/(mg/dL)` | `design` | `source: null`；血糖低于参考值每 1 mg/dL 对相对胰高血糖素目标的线性增益，方向与胰岛素相反；消费者是 `liver`。纯工程假设，不是 α 细胞分泌方程或拟合结果；未来由胰高血糖素剂量—反应替换 |
-| `pancreasEndocrine.glucagon.responseHalfTimeMin` | 10 | `min` | `design` | `source: null`；相对胰高血糖素信号一阶趋近目标的时间尺度；消费者是 `liver`。不是实测分泌/清除半时；未来由分泌与清除证据替换 |
-| `pancreasEndocrine.glucagon.maxRelative` | 5 | `1` | `design` | `source: null`；相对胰高血糖素目标的工程上限；当前增益与参考值下 `G = 0` 的目标为 2.8，5 只是参数变化时的保护，不是测量或临床界值；未来由饱和 α 细胞响应替换 |
+| `pancreasEndocrine.referenceGlucoseMgDl` | 90 | `mg/dL` | `design` | 与 `glucose.baselineConcentrationMgDl` 对齐的稳态参考血糖 |
+| `pancreasEndocrine.insulin.basalPmolL` | 60 | `pmol/L` | `design` | 空腹静息基础血浆胰岛素浓度代理 |
+| `pancreasEndocrine.insulin.glucoseGainPmolLPerMinPerMgDl` | 0.085 | `pmol/(L·min·mg/dL)` | `design` | 高糖分泌刺激斜率（保证正常餐后稳态 ~2–3x） |
+| `pancreasEndocrine.insulin.clearanceKmPmolL` | 3890 | `pmol/L` | `design` | 可饱和清除半饱和常数（量级参考 Thorsteinsson 1985 3.89 nmol/L；design） |
+| `pancreasEndocrine.insulin.clearanceVmaxPmolLPerMin` | 274 | `pmol/(L·min)` | `design` | 血浆室表观最大饱和清除速率 |
+| `pancreasEndocrine.insulin.maxPmolL` | 900 | `pmol/L` | `design` | 浓度保护上限 |
+| `pancreasEndocrine.glucagon.hypoglycemiaThresholdMgDl` | 68 | `mg/dL` | `design` | 低血糖反调节陡增门槛（量级参考 Cryer 阶梯钳夹；design） |
+| `pancreasEndocrine.glucagon.glucoseGainPerMgDl` | 0.02 | `1/(mg/dL)` | `design` | 低于 90 mg/dL 的温和斜率 |
+| `pancreasEndocrine.glucagon.counterregGainPerMgDl` | 0.06 | `1/(mg/dL)` | `design` | 跌破 68 mg/dL 的反调节增益 |
+| `pancreasEndocrine.glucagon.responseHalfTimeMin` | 10 | `min` | `design` | 胰高血糖素一阶半衰期 |
+| `pancreasEndocrine.glucagon.maxRelative` | 5 | `1` | `design` | 目标上限 |
 
-这些数值都不是人体测量、文献报告值或拟合结果。参考血糖与葡萄糖基线分属两份参数文件，不跨模块 import 对方参数；当前靠测试固定二者相等。`glucagonRelative` 的曲线是纯工程反向占位，Dalla Man 2007 不含胰高血糖素方程或参数。
+## 4. 消费者（`I = insulinPmolL / 60`）与时序
 
-## 4. 摄糖请求与肝释放的消费者
+`liver`、`muscleGlucose` 与 `smallIntestine` 在本轮轮初读取 `pancreasEndocrine.insulinPmolL` 并除以 `60` 换算为无量纲归一化因子 `I`（未加载胰腺时回退 `1`；已加载但 `insulinPmolL` 缺失、非有限或为负时抛错）；`liver` 与 `kidneyGluconeogenesis` 读取 `glucagonRelative`。其余结算、质量守恒与轮次滞后边界保持不变。
 
 `insulinRelative` 不再统一缩放一个“总清除量”，而是由各组织各自使用。设 `E = max(0, glucose.excessMassG)`、`I = insulinRelative`、`dtMin = io.dt / 60`：
 
@@ -109,13 +119,11 @@ Gateway 先应用 write，再把本轮 transfer 按 transfer 对键排序后逐�
 
 必须区分“上游按设计未接入”和“已接入但异常”：
 
-- **自定义清单没有 `pancreasEndocrine`：** `muscleGlucose` 与 `liver` 按 `I = 1` 计算摄糖请求，`liver` 按 `H = 1` 使用基线释放；`glucose` 的自身残余清除不受影响，保持清单可替换性。
-- **自定义清单没有 `glucose`：** 胰腺按 `G = 90` 令两个目标都为 1，已有相对信号按 10 min 一阶形式趋近 1，而不是把非 1 状态冻结。
-- **已加载 `glucose` 但读数异常：** 缺 `concentrationMgDl`、非有限或为负数时抛错，让本轮失败并暴露错误；不写两个相对信号，也不回退健康常量。合法 0 是有效低血糖读数，不是缺失。
-- **旧根存档缺该部位：** 启动时只补 `insulinRelative = 1`、`glucagonRelative = 1`，不反推升级前的激素，也不重置已有葡萄糖。第一轮肌肉与肝按 `I = 1` 写请求、肝按 `H = 1` 基线释放，后续再响应。
-- **重启：** 保留已提交的两个相对信号，不从当前血糖反推历史；餐后或低血糖重启后的第一轮使用恢复的信号。
+- **自定义清单没有 `pancreasEndocrine`：** `muscleGlucose`、`liver` 与 `smallIntestine` 按 `I = 1`、`H = 1` 回退；`glucose` 的自身残余清除不受影响。
+- **旧根存档只有 `insulinRelative`：** 首轮按 `60 × insulinRelative` 换算初值，不反推历史。
+- **已加载 `glucose` 但读数异常：** 缺 `concentrationMgDl`、非有限或为负时抛错，让本轮失败并暴露错误。
 
-根清单（`body-modules.json`）当前为 38 个部位、34 份唯一参数文件，包含胰腺、肝糖原、肾糖、活动—皮肤切片加入的 [`physicalActivity`](../skeletal-muscle/README.md) 与 [`skin`](../skin/README.md)、肺切片加入的 [`lungs`](../lungs/README.md)，以及肌摄糖切片加入的 [`muscleGlucose`](../skeletal-muscle/README.md)；自定义清单可以省略胰腺（两部位按 `I = 1` 写请求、肝按 `H = 1` 释放），但不能只加载胰腺而期待它改变不存在的葡萄糖、肌肉或肝状态。`liver` 与 `muscleGlucose` 是含 `glucose` 清单的硬依赖，不能靠省略它们来跳过请求—结算链。
+根清单（`body-modules.json`）当前为 41 个部位、37 份唯一参数文件。
 
 ## 7. 证据入口
 

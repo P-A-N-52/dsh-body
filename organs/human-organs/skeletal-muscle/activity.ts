@@ -16,7 +16,7 @@
  * - 未登记来源：本切片不引入实测代谢或体温数据，字段、阈值与行为均无人体测量支撑。
  */
 export const id = 'physicalActivity';
-export const actionTypes = ['exercise', 'sex'];
+export const actionTypes = ['exercise', 'sex', 'stop_exercise'];
 
 type ActivityState = {
   remainingExerciseMin: number;
@@ -83,6 +83,10 @@ export function heartbeat(io: IO): void {
   };
 
   for (const action of io.actions) {
+    if (action.type === 'stop_exercise' || action.type === 'sleep') {
+      next = { remainingExerciseMin: 0, intensity: 0 };
+      continue;
+    }
     const replacement = activityReplacement(action);
     if (replacement !== undefined) next = replacement;
   }

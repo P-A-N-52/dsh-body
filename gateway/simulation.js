@@ -25,8 +25,19 @@ function withDefaults(defaults, saved, label = 'body part') {
 }
 
 export function createBodySimulation({
-  store, actions, runner, now, autoTick, heartbeatIntervalMs, catchUpMinutes, maxNotifications, isStopping,
+  store,
+  actions,
+  runner,
+  now,
+  autoTick,
+  heartbeatIntervalMs,
+  catchUpMinutes,
+  maxNotifications,
+  isStopping,
+  requireBinding = false,
+  getNsfw = (checkpoint) => Boolean(checkpoint?.nsfw),
 }) {
+  const isDormant = (checkpoint = store.current) => Boolean(requireBinding && !checkpoint?.boundSessionId);
   let heartbeatWork;
   let timer;
   let registry = new Map();
@@ -62,6 +73,7 @@ export function createBodySimulation({
       simulatedSeconds: batch.targetSimulatedSeconds,
       wallTimeMs: batch.targetWallTimeMs,
       suppressNotifications,
+      boundSessionId: current.boundSessionId ?? null,
     });
     const nextParts = applyOperations({
       registry,
@@ -265,7 +277,8 @@ export function createBodySimulation({
       },
     };
 
-    const { checkpoint: restored, catchUpError } = resumedFromPause
+    const dormantOnBoot = isDormant(seeded);
+    const { checkpoint: restored, catchUpError } = (resumedFromPause || dormantOnBoot)
       ? {
         checkpoint: {
           ...seeded,
@@ -314,6 +327,9 @@ export function createBodySimulation({
       ok: status === 'ok',
       status,
       active: checkpoint.active,
+      dormant: isDormant(checkpoint),
+      boundSessionId: checkpoint.boundSessionId ?? null,
+      nsfw: Boolean(getNsfw(checkpoint)),
       port,
       simulatedSeconds: checkpoint.snapshot.simulatedSeconds,
       wallTimeMs: checkpoint.wallTimeMs,
@@ -339,6 +355,7 @@ export function createBodySimulation({
   async function heartbeatOnce({ force = false } = {}) {
     if (isStopping() || !store.current) return { ran: false, failed: false };
     if (!store.current.active) return { ran: false, failed: false, paused: true };
+    if (isDormant(store.current)) return { ran: false, failed: false, dormant: true };
     if (fatalFailure) return { ran: false, failed: true, fatal: true };
     let warning;
     let failed = false;
@@ -435,7 +452,7 @@ export function createBodySimulation({
 
   function start() {
     const checkpoint = store.current;
-    if (!checkpoint.active || fatalFailure) return;
+    if (!checkpoint.active || isDormant(checkpoint) || fatalFailure) return;
     const lastError = checkpoint.startup.catchUpError;
     lastHeartbeat = {
       lastSuccessAtMs: lastError ? null : now(),
@@ -448,8 +465,52 @@ export function createBodySimulation({
 
   function stop() {
     clearTimeout(timer);
+    timer = null;
     return heartbeatWork;
   }
 
-  return { restore, health, start, stop, tick };
+  async function bind(sessionId) {
+    if (typeof sessionId !== 'string' || !sessionId.trim()) {
+      throw new TypeError('sessionId must be a nonempty string');
+    }
+    const normalized = sessionId.trim();
+    const pendingWork = stop();
+    if (pendingWork) await pendingWork.catch(() => undefined);
+    const current = store.current;
+    if (!current) throw new Error('Body Gateway is not ready');
+    const wasDormant = isDormant(current);
+    if (current.boundSessionId === normalized) {
+      start();
+      return current;
+    }
+    const nowMs = now();
+    const next = {
+      ...current,
+      boundSessionId: normalized,
+      ...(wasDormant && current.active
+        ? {
+          wallTimeMs: nowMs,
+          activeBatch: current.activeBatch
+            ? { ...current.activeBatch, targetWallTimeMs: nowMs + heartbeatIntervalMs }
+            : null,
+        }
+        : {}),
+    };
+    store.commit(next);
+    start();
+    return next;
+  }
+
+  async function unbind() {
+    const pendingWork = stop();
+    if (pendingWork) await pendingWork.catch(() => undefined);
+    const current = store.current;
+    if (!current) throw new Error('Body Gateway is not ready');
+    if (!current.boundSessionId) return current;
+    const next = { ...current, boundSessionId: null };
+    store.commit(next);
+    return next;
+  }
+
+  return { restore, health, start, stop, tick, bind, unbind, isDormant };
 }

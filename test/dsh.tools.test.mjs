@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startGateway } from '../gateway.js';
 import { checkpoint } from '../test-support/harness.mjs';
-import { buildActionPayload, createBodyTools, registerBodyTools } from '../tools.js';
+import { buildActionPayload, buildBodyFeelingsSummary, createBodyTools, registerBodyTools } from '../tools.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -19,18 +19,40 @@ function fakeExec({ sessionId = 'session-a', callId = 'call-1' } = {}) {
   };
 }
 
-async function startBody(t, { parts = {} } = {}) {
+function assertNoDigits(value, label = 'result') {
+  const json = JSON.stringify(value);
+  assert.equal(/\d/.test(json), false, `${label} must not contain ASCII digits: ${json}`);
+  assert.equal(/[\d０-９]/u.test(json), false, `${label} must not contain digits: ${json}`);
+}
+
+async function startBody(t, {
+  manifestPath = join(root, 'body-modules.json'),
+  parts = {},
+  defaultNsfw = false,
+  requireBinding = false,
+  active,
+  nsfw,
+  boundSessionId,
+} = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-tools-'));
   const statePath = join(dir, 'body-state.json');
-  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts })));
+  const seed = {
+    ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts }),
+    ...(active !== undefined ? { active } : {}),
+    ...(nsfw !== undefined ? { nsfw } : {}),
+    ...(boundSessionId !== undefined ? { boundSessionId } : {}),
+  };
+  writeFileSync(statePath, JSON.stringify(seed));
   t.mock.method(console, 'log', () => {});
   t.mock.method(console, 'error', () => {});
   const gateway = startGateway({
-    manifestPath: join(root, 'body-modules.json'),
+    manifestPath,
     statePath,
     port: 0,
     autoTick: false,
     now: () => 0,
+    requireBinding,
+    defaultNsfw,
   });
   t.after(async () => {
     await gateway.stop();
@@ -237,8 +259,12 @@ test('body_act rejects invalid exercise intensity and duration without enqueuing
   assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).pendingActionIds, []);
 });
 
-test('body_act enqueues sex and orgasm and exposes both capabilities', async (t) => {
-  const { gateway, statePath, tools } = await startBody(t);
+test('body_act enqueues sex and orgasm when defaultNsfw is true and exposes both capabilities', async (t) => {
+  const { gateway, statePath, tools } = await startBody(t, { defaultNsfw: true });
+
+  assert.equal(gateway.getNsfw(), true);
+  assert.ok(tools.body_act.parameters.properties.type.enum.includes('sex'));
+  assert.ok(tools.body_act.parameters.properties.type.enum.includes('orgasm'));
 
   const sexResult = await tools.body_act.execute(
     { type: 'sex', intensity: 0.8, durationMin: 30 },
@@ -275,7 +301,7 @@ test('body_act enqueues sex and orgasm and exposes both capabilities', async (t)
 });
 
 test('body_act rejects invalid sex with the exercise validation without enqueuing', async (t) => {
-  const { statePath, tools } = await startBody(t);
+  const { statePath, tools } = await startBody(t, { defaultNsfw: true });
   const invalid = [
     [{ type: 'sex', durationMin: 30 }, /intensity/, 'missing intensity'],
     [{ type: 'sex', intensity: 0, durationMin: 30 }, /intensity/, 'zero intensity'],
@@ -300,6 +326,33 @@ test('body_act rejects invalid sex with the exercise validation without enqueuin
   assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).pendingActionIds, []);
 });
 
+test('body_act rejects sex and orgasm and omits them from schema when defaultNsfw is false', async (t) => {
+  const { gateway, statePath, tools } = await startBody(t, { defaultNsfw: false });
+
+  assert.equal(gateway.getNsfw(), false);
+  assert.deepEqual(
+    tools.body_act.parameters.properties.type.enum,
+    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'stop_exercise', 'sleep', 'wake_up'],
+  );
+  assert.equal(tools.body_act.parameters.properties.type.enum.includes('sex'), false);
+  assert.equal(tools.body_act.parameters.properties.type.enum.includes('orgasm'), false);
+  assert.equal(/\bsex\b|\borgasm\b/.test(tools.body_act.description), false);
+  assert.equal(Object.hasOwn(gateway.getCapabilities(), 'sex'), false);
+  assert.equal(Object.hasOwn(gateway.getCapabilities(), 'orgasm'), false);
+
+  for (const [args, callId] of [
+    [{ type: 'sex', intensity: 0.8, durationMin: 20 }, 'nsfw-off-sex'],
+    [{ type: 'orgasm' }, 'nsfw-off-orgasm'],
+  ]) {
+    const result = await tools.body_act.execute(args, fakeExec({ sessionId: 'session-nsfw-off', callId }));
+    assert.equal(result.ok, false);
+    assert.equal(result.statusCode, 400);
+    assert.equal(result.receipt.error, 'NSFW actions are disabled for this body');
+  }
+
+  assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).pendingActionIds, []);
+});
+
 test('body_act is idempotent for the same session and callId', async (t) => {
   const { gateway, statePath, tools } = await startBody(t);
   const exec = fakeExec();
@@ -318,14 +371,14 @@ test('body_act is idempotent for the same session and callId', async (t) => {
   assert.equal(gateway.getReceipt(first.receipt.id).type, 'drink');
 });
 
-test('body_state returns all parts or one part', async (t) => {
+test('gateway.getState returns all raw numeric parts while body_state returns zero-digit qualitative feelings', async (t) => {
   const { gateway, tools } = await startBody(t);
   await tools.body_act.execute({ type: 'drink', volumeMl: 250 }, fakeExec());
   await gateway.tick();
 
-  const all = await tools.body_state.execute({}, fakeExec({ callId: 'call-2' }));
+  const all = gateway.getState();
   assert.equal(all.simulatedSeconds, 60);
-  assert.equal(Object.keys(all.parts).length, 38);
+  assert.equal(Object.keys(all.parts).length, 41);
   for (const part of [
     'esophagus',
     'stomach',
@@ -356,6 +409,7 @@ test('body_state returns all parts or one part', async (t) => {
     'pineal',
     'kidney',
     'bladder',
+    'sleep',
     'interoception',
     'thermoregulation',
     'brainNotify',
@@ -368,6 +422,14 @@ test('body_state returns all parts or one part', async (t) => {
   ]) {
     assert.ok(Object.hasOwn(all.parts, part), `missing part ${part}`);
   }
+  assert.deepEqual(all.parts.sleep, {
+    sleeping: false,
+    sleepPressureMm: 0.08,
+    sleepDurationMin: 0,
+    sleepStage: 'awake',
+    sleepInertiaMm: 0,
+    wakeEvent: 'none',
+  });
   assert.deepEqual(all.parts.physicalActivity, { remainingExerciseMin: 0, intensity: 0 });
   assert.deepEqual(all.parts.sexualResponse, {
     arousalMm: 0,
@@ -375,6 +437,7 @@ test('body_state returns all parts or one part', async (t) => {
     remainingSexMin: 0,
     sexIntensity: 0,
     lastOrgasmAtSimMin: null,
+    afterglowMm: 0,
   });
   assert.equal(all.parts.interoception.sexualArousalMm, 0);
   assert.equal(all.parts.interoception.libidoMm, 0);
@@ -391,7 +454,7 @@ test('body_state returns all parts or one part', async (t) => {
     systolicMmHg: 120,
     diastolicMmHg: 80,
     oxygenDeliveryMlMin: 4900 * (97 * 2) / 1000,
-    maxOxygenDeliveryMlPerMin: 3666.6,
+    maxOxygenDeliveryMlPerMin: 3177.72,
     gfrMlMin: 100,
   });
   assert.ok(
@@ -423,13 +486,17 @@ test('body_state returns all parts or one part', async (t) => {
     disposedGlucoseG: 0.12,
     excessMassG: 0,
   });
-  assert.deepEqual(all.parts.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
-  assert.deepEqual(all.parts.hypothalamusEndocrine, { trhRelative: 1, crhRelative: 1 });
-  assert.deepEqual(all.parts.pituitary, { tshRelative: 1, acthRelative: 1, prolactinRelative: 1 });
+  assert.deepEqual(all.parts.pancreasEndocrine, { insulinPmolL: 60, glucagonRelative: 1 });
+  assert.equal(all.parts.hypothalamusEndocrine.trhRelative, 1);
+  assert.ok(Number.isFinite(all.parts.hypothalamusEndocrine.crhRelative));
+  assert.equal(all.parts.pituitary.tshRelative, 1);
+  assert.ok(all.parts.pituitary.acthPgMl > 0 && Number.isFinite(all.parts.pituitary.acthPgMl));
+  assert.ok(all.parts.pituitary.prolactinNgMl > 0 && Number.isFinite(all.parts.pituitary.prolactinNgMl));
+  assert.ok(all.parts.pituitary.oxytocinPgMl > 0 && Number.isFinite(all.parts.pituitary.oxytocinPgMl));
   assert.deepEqual(all.parts.thyroid, { thyroxineRelative: 1 });
-  assert.deepEqual(all.parts.adrenal, { cortisolRelative: 1 });
+  assert.ok(all.parts.adrenal.cortisolNmolL > 170 && all.parts.adrenal.cortisolNmolL < 190);
   assert.equal(all.parts.interoception.stressMm, 0);
-  assert.equal(all.parts.interoception.sleepinessMm, 50);
+  assert.ok(all.parts.interoception.sleepinessMm >= 0 && all.parts.interoception.sleepinessMm <= 25);
   assert.deepEqual(all.parts.liver, {
     glycogenCapacityG: 100,
     glycogenG: 80 - 0.096,
@@ -457,11 +524,31 @@ test('body_state returns all parts or one part', async (t) => {
   assert.deepEqual(all.parts.kidneyGluconeogenesis, { glucoseOutputG: 0 });
   assert.ok(all.parts.stomach.volumeMl > 0);
 
-  const one = await tools.body_state.execute({ part: 'stomach' }, fakeExec({ callId: 'call-3' }));
-  assert.deepEqual(one, { simulatedSeconds: 60, parts: { stomach: all.parts.stomach } });
+  const wholeBody = await tools.body_state.execute({}, fakeExec({ callId: 'call-2' }));
+  assertNoDigits(wholeBody, 'body_state wholeBody');
+  assert.equal(wholeBody.status, 'active');
+  assert.equal(wholeBody.focus, 'all');
+  assert.ok(Array.isArray(wholeBody.feelings));
+  assert.equal(typeof wholeBody.summary, 'string');
+  assert.equal(Object.hasOwn(wholeBody, 'simulatedSeconds'), false);
+  assert.equal(Object.hasOwn(wholeBody, 'parts'), false);
+
+  const stomachFocused = await tools.body_state.execute({ part: 'stomach' }, fakeExec({ callId: 'call-3' }));
+  assertNoDigits(stomachFocused, 'body_state stomach');
+  assert.equal(stomachFocused.status, 'active');
+  assert.equal(stomachFocused.focus, 'stomach');
+  assert.ok(Array.isArray(stomachFocused.feelings));
+  assert.equal(stomachFocused.feelings.length, 1);
+  assert.equal(stomachFocused.feelings[0].area, 'hunger');
 
   const missing = await tools.body_state.execute({ part: 'spleen' }, fakeExec({ callId: 'call-4' }));
-  assert.deepEqual(missing, { simulatedSeconds: 60, parts: { spleen: null } });
+  assertNoDigits(missing, 'body_state spleen');
+  assert.deepEqual(missing, {
+    status: 'active',
+    focus: 'spleen',
+    feelings: null,
+    summary: '没有感知到这个部位或区域。',
+  });
 });
 
 test('solid and liquid meals empty at different rates through the body tools', async (t) => {
@@ -471,7 +558,7 @@ test('solid and liquid meals empty at different rates through the body tools', a
   for (const mealKind of ['solid', 'liquid']) {
     await t.test(`${mealKind} meal is recorded, then empties for 30 rounds`, async (child) => {
       const body = await startBody(child);
-      const readStomach = (callId) => body.tools.body_state.execute({ part: 'stomach' }, fakeExec({ callId }));
+      const readStomach = () => body.gateway.getState();
 
       const queued = await body.tools.body_act.execute(
         { ...meal, mealKind },
@@ -482,19 +569,27 @@ test('solid and liquid meals empty at different rates through the body tools', a
       assert.equal(queued.receipt.type, 'eat');
       assert.equal(queued.receipt.status, 'queued');
 
-      const before = await readStomach(`read-${mealKind}-queued`);
+      const before = readStomach();
       assert.equal(before.simulatedSeconds, 0);
       assert.equal(before.parts.stomach.volumeMl, 0);
 
       await body.gateway.tick();
       assert.equal(body.gateway.getReceipt(queued.receipt.id).status, 'applied');
-      const intake = await readStomach(`read-${mealKind}-intake`);
+      const intake = readStomach();
       assert.equal(intake.simulatedSeconds, 60);
       assert.equal(intake.parts.stomach.volumeMl, 300);
       assert.equal(intake.parts.stomach.energyKcal, 200);
 
+      const feeling = await body.tools.body_state.execute(
+        { focus: 'hunger' },
+        fakeExec({ callId: `feeling-${mealKind}` }),
+      );
+      assertNoDigits(feeling, `hunger feeling (${mealKind})`);
+      assert.equal(feeling.focus, 'hunger');
+      assert.ok(Array.isArray(feeling.feelings));
+
       for (let round = 0; round < 30; round++) await body.gateway.tick();
-      const after = await readStomach(`read-${mealKind}-after`);
+      const after = readStomach();
       assert.equal(after.simulatedSeconds, 1860);
       readings[mealKind] = after.parts.stomach;
     });
@@ -538,9 +633,9 @@ test('a legacy checkpoint keeps its water and delivers a queued solid slice once
     }],
   };
   const { gateway, tools } = await startBody(t, { parts: { stomach: legacyStomach } });
-  const readStomach = (callId) => tools.body_state.execute({ part: 'stomach' }, fakeExec({ callId }));
+  const readStomach = () => gateway.getState();
 
-  const loaded = await readStomach('read-legacy-loaded');
+  const loaded = readStomach();
   assert.equal(loaded.parts.stomach.volumeMl, 240);
   assert.equal(loaded.parts.stomach.energyKcal, 0);
   assert.equal(loaded.parts.stomach.solidVolumeMl, 0);
@@ -548,7 +643,7 @@ test('a legacy checkpoint keeps its water and delivers a queued solid slice once
   assert.equal(loaded.parts.stomach.mealQueue.length, 1);
 
   await gateway.tick();
-  const after = await readStomach('read-legacy-after');
+  const after = readStomach();
   const waterRemainingMl = 240 * 2 ** (-1 / 13);
   assert.ok(Math.abs(after.parts.stomach.volumeMl - (waterRemainingMl + 100)) < 1e-9);
   assert.ok(Math.abs(after.parts.stomach.energyKcal - 50) < 1e-9);
@@ -557,6 +652,167 @@ test('a legacy checkpoint keeps its water and delivers a queued solid slice once
   assert.ok(Math.abs(after.parts.stomach.emptiedMl - (240 - waterRemainingMl)) < 1e-9);
   assert.equal(after.parts.stomach.emptiedKcal, 0);
   assert.equal(after.parts.stomach.mealQueue.length, 0);
+
+  const feeling = await tools.body_state.execute({}, fakeExec({ callId: 'legacy-feeling' }));
+  assertNoDigits(feeling, 'legacy body_state');
+});
+
+test('body_state returns strictly zero-digit qualitative feelings, honors focus/part, and masks NSFW when disabled', async (t) => {
+  const parts = {
+    sleep: { sleeping: false, sleepPressureMm: 75, sleepDurationMin: 0 },
+    physicalActivity: { remainingExerciseMin: 15, intensity: 0.8 },
+    interoception: {
+      hunger: 88,
+      thirst: 70,
+      sleepinessMm: 90,
+      sexualArousalMm: 92,
+      libidoMm: 88,
+      sensations: {
+        'customOrgan.ache': {
+          intensityMm: 72,
+          contextText: '左肋隐隐发酸 123',
+          wakeText: '左肋剧烈抽痛',
+        },
+        'customOrgan.secret': {
+          intensityMm: 95,
+          nsfw: true,
+          wakeText: '敏感部位燥热悸动 99',
+        },
+      },
+    },
+    thermoregulation: { coreTemperatureC: 38.9 },
+    heart: { heartRatePerMin: 145 },
+    blood: { systolicMmHg: 74 },
+    sexualResponse: { phase: 'plateau', arousalMm: 92 },
+    mammaryGlands: { fullnessMm: 86 },
+  };
+
+  const { tools: safeTools } = await startBody(t, { parts, defaultNsfw: false });
+  const safeAll = await safeTools.body_state.execute({}, fakeExec({ callId: 'safe-all' }));
+  assertNoDigits(safeAll, 'safeAll');
+  assert.equal(safeAll.status, 'active');
+  assert.equal(safeAll.focus, 'all');
+  assert.equal(safeAll.feelings.some((f) => f.area === 'sexual' || f.area === 'mammary'), false);
+  assert.equal(safeAll.feelings.some((f) => f.area === 'customOrgan' && f.feeling.includes('123')), false);
+  assert.equal(safeAll.feelings.some((f) => f.feeling.includes('敏感部位')), false);
+
+  for (const [key, expectedArea] of [
+    [{ focus: 'all' }, 'all'],
+    [{ focus: 'hunger' }, 'hunger'],
+    [{ part: 'sleep' }, 'sleep'],
+    [{ focus: 'temperature' }, 'temperature'],
+    [{ focus: 'circulation' }, 'circulation'],
+  ]) {
+    const focused = await safeTools.body_state.execute(key, fakeExec({ callId: `focus-${expectedArea}` }));
+    assertNoDigits(focused, `focused ${expectedArea}`);
+    assert.ok(Array.isArray(focused.feelings) && focused.feelings.length >= 1, expectedArea);
+    if (expectedArea !== 'all') {
+      assert.ok(focused.feelings.every((f) => f.area === expectedArea), expectedArea);
+    }
+  }
+
+  for (const nsfwFocus of ['nsfw', 'sex', 'sexualResponse', 'arousal', 'libido', 'mammaryGlands', 'testes', 'epididymis', 'lactation']) {
+    const masked = await safeTools.body_state.execute({ focus: nsfwFocus }, fakeExec({ callId: `mask-${nsfwFocus}` }));
+    assertNoDigits(masked, `masked ${nsfwFocus}`);
+    assert.deepEqual(masked, {
+      status: 'active',
+      focus: nsfwFocus,
+      feelings: null,
+      summary: '该感知功能当前未开启。',
+    });
+  }
+
+  const { tools: nsfwTools } = await startBody(t, { parts, defaultNsfw: true });
+  const nsfwAll = await nsfwTools.body_state.execute({}, fakeExec({ callId: 'nsfw-all' }));
+  assertNoDigits(nsfwAll, 'nsfwAll');
+  assert.ok(nsfwAll.feelings.some((f) => f.area === 'sexual'));
+  assert.ok(nsfwAll.feelings.some((f) => f.area === 'mammary'));
+  assert.ok(nsfwAll.feelings.some((f) => f.area === 'customOrgan'));
+
+  const nsfwFocused = await nsfwTools.body_state.execute({ focus: 'nsfw' }, fakeExec({ callId: 'nsfw-only' }));
+  assertNoDigits(nsfwFocused, 'nsfwFocused');
+  assert.ok(nsfwFocused.feelings.some((f) => f.area === 'sexual'));
+  assert.ok(nsfwFocused.feelings.some((f) => f.area === 'mammary'));
+});
+
+test('body_state reports dormant and paused states cleanly and never leaks numbers via buildBodyFeelingsSummary', async (t) => {
+  const { tools: dormantTools } = await startBody(t, { requireBinding: true, defaultNsfw: false });
+  const dormantResult = await dormantTools.body_state.execute({ focus: 'hunger' }, fakeExec({ callId: 'dormant-1' }));
+  assertNoDigits(dormantResult, 'dormant body_state');
+  assert.equal(dormantResult.status, 'dormant');
+  assert.equal(dormantResult.focus, 'hunger');
+  assert.deepEqual(dormantResult.feelings, []);
+  assert.match(dormantResult.summary, /body_bind/);
+
+  const dormantNsfw = await dormantTools.body_state.execute({ focus: 'sexualResponse' }, fakeExec({ callId: 'dormant-nsfw' }));
+  assertNoDigits(dormantNsfw, 'dormant nsfw body_state');
+  assert.equal(dormantNsfw.status, 'dormant');
+  assert.equal(dormantNsfw.focus, 'redacted');
+  assert.deepEqual(dormantNsfw.feelings, []);
+
+  const { tools: pausedTools } = await startBody(t, { active: false, defaultNsfw: false });
+  const pausedResult = await pausedTools.body_state.execute({}, fakeExec({ callId: 'paused-1' }));
+  assertNoDigits(pausedResult, 'paused body_state');
+  assert.equal(pausedResult.status, 'paused');
+  assert.deepEqual(pausedResult.feelings, []);
+  assert.match(pausedResult.summary, /暂停/);
+
+  const sleepingSummary = buildBodyFeelingsSummary(
+    {
+      simulatedSeconds: 3600,
+      parts: {
+        sleep: { sleeping: true, sleepPressureMm: 45 },
+        glucose: { concentrationMgDl: 50 },
+      },
+    },
+    { focus: 'all', nsfw: false },
+  );
+  assertNoDigits(sleepingSummary, 'sleepingSummary');
+  assert.equal(sleepingSummary.status, 'sleeping');
+  assert.ok(sleepingSummary.feelings.some((f) => f.area === 'metabolism' && f.level === 'urgent'));
+});
+
+test('body_bind binds, unbinds, reports status, and gates dormant body_act with 409', async (t) => {
+  const { gateway, tools } = await startBody(t, { requireBinding: true });
+
+  const initialStatus = await tools.body_bind.execute({ action: 'status' }, fakeExec());
+  assert.equal(initialStatus.ok, true);
+  assert.equal(initialStatus.bound, false);
+  assert.equal(initialStatus.dormant, true);
+  assert.equal(initialStatus.boundSessionId, null);
+
+  const dormantAct = await tools.body_act.execute({ type: 'drink', volumeMl: 200 }, fakeExec());
+  assert.equal(dormantAct.ok, false);
+  assert.equal(dormantAct.statusCode, 409);
+  assert.equal(dormantAct.receipt.dormant, true);
+  assert.equal(dormantAct.receipt.hint, 'Call body_bind first.');
+
+  const bound = await tools.body_bind.execute({}, fakeExec({ sessionId: 'session-bind' }));
+  assert.equal(bound.ok, true);
+  assert.equal(bound.bound, true);
+  assert.equal(bound.dormant, false);
+  assert.equal(bound.active, true);
+  assert.equal(bound.boundSessionId, 'session-bind');
+  assertNoDigits(bound.feeling, 'body_bind feeling');
+  assert.equal(gateway.isDormant(), false);
+
+  const actAfterBind = await tools.body_act.execute(
+    { type: 'sleep' },
+    fakeExec({ sessionId: 'session-bind', callId: 'sleep-1' }),
+  );
+  assert.equal(actAfterBind.ok, true);
+  assert.equal(actAfterBind.statusCode, 202);
+
+  const unbound = await tools.body_bind.execute({ action: 'unbind' }, fakeExec({ sessionId: 'session-bind' }));
+  assert.equal(unbound.ok, true);
+  assert.equal(unbound.bound, false);
+  assert.equal(unbound.dormant, true);
+  assert.equal(unbound.boundSessionId, null);
+  assert.equal(gateway.isDormant(), true);
+
+  const invalidAction = await tools.body_bind.execute({ action: 'reset' }, fakeExec());
+  assert.equal(invalidAction.ok, false);
+  assert.match(invalidAction.error, /bind.*unbind.*status/);
 });
 
 test('buildActionPayload overrides id and sessionId', () => {
@@ -579,20 +835,47 @@ test('buildActionPayload overrides id and sessionId', () => {
 });
 
 test('tool definitions expose JSON Schema and register through ctx.effect', () => {
-  const gateway = { submitAction() {}, getState() {} };
+  let nsfwFlag = false;
+  const gateway = {
+    submitAction() {},
+    getState() {},
+    getNsfw: () => nsfwFlag,
+    isDormant: () => false,
+    bindSession: async () => ({}),
+    unbindSession: async () => ({}),
+  };
   const tools = createBodyTools(gateway);
-  assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_state']);
+  assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_bind', 'body_state']);
 
   assert.deepEqual(tools.body_act.parameters.required, ['type']);
   assert.deepEqual(
     tools.body_act.parameters.properties.type.enum,
-    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'sex', 'orgasm'],
+    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'stop_exercise', 'sleep', 'wake_up'],
   );
   assert.equal(tools.body_act.parameters.properties.intensity.type, 'number');
   assert.equal(tools.body_act.parameters.properties.durationMin.type, 'number');
   assert.match(tools.body_act.description, /exercise/);
+  assert.match(tools.body_act.description, /stop_exercise/);
+  assert.match(tools.body_act.description, /sleep/);
+  assert.match(tools.body_act.description, /wake_up/);
+  assert.equal(/\bsex\b|\borgasm\b/.test(tools.body_act.description), false);
+
+  nsfwFlag = true;
+  assert.deepEqual(
+    tools.body_act.parameters.properties.type.enum,
+    [
+      'drink', 'eat', 'urinate', 'defecate', 'exercise', 'stop_exercise', 'sleep', 'wake_up',
+      'sex', 'orgasm', 'express_milk', 'breastfeed',
+    ],
+  );
   assert.match(tools.body_act.description, /sex/);
   assert.match(tools.body_act.description, /orgasm/);
+  assert.match(tools.body_act.description, /express_milk/);
+  assert.match(tools.body_act.description, /breastfeed/);
+  assert.match(tools.body_act.parameters.properties.intensity.description, /sex/);
+  assert.match(tools.body_act.parameters.properties.durationMin.description, /sex/);
+  nsfwFlag = false;
+
   const carbohydrateG = tools.body_act.parameters.properties.carbohydrateG;
   assert.ok(carbohydrateG, 'body_act schema must expose carbohydrateG');
   assert.equal(carbohydrateG.type, 'number');
@@ -605,6 +888,12 @@ test('tool definitions expose JSON Schema and register through ctx.effect', () =
   assert.deepEqual(tools.body_act.output.schema.required, ['ok', 'statusCode', 'receipt']);
   assert.equal(tools.body_act.output.schema.additionalProperties, false);
   assert.equal(tools.body_state.parameters.additionalProperties, false);
+  assert.deepEqual(tools.body_state.output.schema.required, ['status', 'focus', 'feelings', 'summary']);
+  assert.deepEqual(tools.body_bind.parameters.properties.action.enum, ['bind', 'unbind', 'status']);
+  assert.deepEqual(
+    tools.body_bind.output.schema.required,
+    ['ok', 'bound', 'dormant', 'active', 'nsfw', 'boundSessionId'],
+  );
   assert.deepEqual(
     tools.body_act.output.render(null, { ok: true, statusCode: 202, receipt: {} }),
     [{ type: 'text', text: JSON.stringify({ ok: true, statusCode: 202, receipt: {} }, null, 2) }],
@@ -624,27 +913,33 @@ test('tool definitions expose JSON Schema and register through ctx.effect', () =
     },
   };
   const registeredTools = registerBodyTools(ctx, gateway);
-  assert.deepEqual(Object.keys(registeredTools).sort(), ['body_act', 'body_state']);
-  assert.deepEqual(registered.map((definition) => definition.name), ['body_act', 'body_state']);
+  assert.deepEqual(Object.keys(registeredTools).sort(), ['body_act', 'body_bind', 'body_state']);
+  assert.deepEqual(registered.map((definition) => definition.name), ['body_act', 'body_state', 'body_bind']);
   assert.equal(registered[0], registeredTools.body_act);
   assert.equal(registered[1], registeredTools.body_state);
-  assert.equal(disposers.length, 2);
+  assert.equal(registered[2], registeredTools.body_bind);
+  assert.equal(disposers.length, 3);
 });
 
-test('body_state ignores prototype property names and returns null', async (t) => {
+test('body_state ignores prototype property names and unknown areas cleanly', async (t) => {
   const { tools } = await startBody(t);
 
-  for (const part of ['toString', 'constructor', '__proto__']) {
+  for (const part of ['toString', 'constructor', 'prototype', '__proto__', 'spleen']) {
     const result = await tools.body_state.execute({ part }, fakeExec({ callId: `proto-${part}` }));
-    assert.equal(result.simulatedSeconds, 0);
-    assert.equal(Object.hasOwn(result.parts, part), true);
-    assert.equal(result.parts[part], null);
+    assertNoDigits(result, `proto ${part}`);
+    assert.equal(result.status, 'active');
+    assert.equal(result.focus, part);
+    assert.equal(result.feelings, null);
+    assert.equal(result.summary, '没有感知到这个部位或区域。');
   }
 });
 
 test('body_act dynamically exposes extra capability actionTypes while keeping built-in validation strict', async () => {
   const submitted = [];
+  let nsfw = false;
   const fakeGateway = {
+    getNsfw: () => nsfw,
+    isDormant: () => false,
     getCapabilities() {
       return {
         drink: ['stomach'],
@@ -663,8 +958,22 @@ test('body_act dynamically exposes extra capability actionTypes while keeping bu
   const tools = createBodyTools(fakeGateway);
   assert.deepEqual(
     tools.body_act.parameters.properties.type.enum,
-    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'sex', 'orgasm', 'fold_wings', 'wag_tail'],
+    [
+      'drink', 'eat', 'urinate', 'defecate', 'exercise', 'stop_exercise', 'sleep', 'wake_up',
+      'fold_wings', 'wag_tail',
+    ],
   );
+
+  nsfw = true;
+  assert.deepEqual(
+    tools.body_act.parameters.properties.type.enum,
+    [
+      'drink', 'eat', 'urinate', 'defecate', 'exercise', 'stop_exercise', 'sleep', 'wake_up',
+      'sex', 'orgasm', 'express_milk', 'breastfeed',
+      'fold_wings', 'wag_tail',
+    ],
+  );
+  nsfw = false;
 
   const customOk = await tools.body_act.execute(
     { type: 'fold_wings', angleDeg: 15 },
@@ -689,4 +998,205 @@ test('body_act dynamically exposes extra capability actionTypes while keeping bu
   );
   assert.equal(badDrinkRejected.ok, false);
   assert.equal(badDrinkRejected.statusCode, 400);
+});
+
+test('body_act gates express_milk and breastfeed by nsfw and validates payloads cleanly', async (t) => {
+  const gated = await startBody(t, {
+    manifestPath: join(root, 'body-modules.female.json'),
+    defaultNsfw: false,
+  });
+  assert.equal(gated.tools.body_act.parameters.properties.type.enum.includes('express_milk'), false);
+  assert.equal(gated.tools.body_act.parameters.properties.type.enum.includes('breastfeed'), false);
+
+  const blocked = await gated.tools.body_act.execute(
+    { type: 'express_milk' },
+    fakeExec({ sessionId: 'lact-off', callId: 'c1' }),
+  );
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.statusCode, 400);
+
+  const enabled = await startBody(t, {
+    manifestPath: join(root, 'body-modules.female.json'),
+    defaultNsfw: true,
+    parts: {
+      mammaryGlands: {
+        lactating: true,
+        galactorrhea: false,
+        inductionProgress: 1,
+        storedMilkMl: 80,
+        ejectedMilkMl: 0,
+        stimulationMin: 0,
+        milkRequestMl: 0,
+        milkMl: 0,
+        lactoseRequestG: 0,
+        lactoseG: 0,
+        fullnessMm: 22,
+      },
+      pituitary: { tshRelative: 1, acthPgMl: 12, prolactinNgMl: 60, oxytocinPgMl: 12 },
+    },
+  });
+  assert.equal(enabled.tools.body_act.parameters.properties.type.enum.includes('express_milk'), true);
+  assert.equal(enabled.tools.body_act.parameters.properties.type.enum.includes('breastfeed'), true);
+
+  const zeroArg = await enabled.tools.body_act.execute(
+    { type: 'express_milk' },
+    fakeExec({ sessionId: 'lact-on', callId: 'c2' }),
+  );
+  assert.equal(zeroArg.ok, true);
+  assert.equal(zeroArg.statusCode, 202);
+  assert.equal(zeroArg.receipt.type, 'express_milk');
+  assert.equal(Object.hasOwn(zeroArg.receipt, 'tasteFeedback'), false);
+
+  const withFields = await enabled.tools.body_act.execute(
+    { type: 'breastfeed', durationMin: 8, bilateral: true },
+    fakeExec({ sessionId: 'lact-on', callId: 'c3' }),
+  );
+  assert.equal(withFields.ok, true);
+  assert.equal(withFields.statusCode, 202);
+
+  const invalidDuration = await enabled.tools.body_act.execute(
+    { type: 'breastfeed', durationMin: 0 },
+    fakeExec({ sessionId: 'lact-on', callId: 'c4' }),
+  );
+  assert.equal(invalidDuration.ok, false);
+  assert.equal(invalidDuration.statusCode, 400);
+
+  const invalidBilateral = await enabled.tools.body_act.execute(
+    { type: 'express_milk', bilateral: 'yes' },
+    fakeExec({ sessionId: 'lact-on', callId: 'c5' }),
+  );
+  assert.equal(invalidBilateral.ok, false);
+  assert.equal(invalidBilateral.statusCode, 400);
+
+  await enabled.gateway.tick();
+  assert.ok(enabled.gateway.getState().parts.mammaryGlands.ejectedMilkMl > 0);
+});
+
+test('body_state emits zero-digit qualitative feedback across newly exposed reproductive, secretory, cardiorespiratory and reward cues', async (t) => {
+  const female = await startBody(t, {
+    manifestPath: join(root, 'body-modules.female.json'),
+    defaultNsfw: true,
+    parts: {
+      salivaryGlands: { salivaRateMlPerMin: 1.5, mealStimulusMin: 3, mouthMoistureMm: 90 },
+      bladder: { volumeMl: 0, voidedMl: 200, voluntaryVoidedMl: 200, involuntaryVoidedMl: 0 },
+      colon: { residueWaterMl: 0, stoolG: 0, defecatedG: 80, reclaimedWaterMl: 0, bowelUrgencyMm: 0 },
+      lungsVentilation: {
+        tidalVolumeMl: 700,
+        respiratoryRatePerMin: 30,
+        ventilationMlMin: 30000,
+        alveolarO2MlMin: 350,
+        alveolarO2CapacityMlMin: 500,
+      },
+      heart: { heartRatePerMin: 112, strokeVolumeMl: 70, cardiacOutputMlMin: 7840 },
+      physicalActivity: { remainingExerciseMin: 0, intensity: 0 },
+      ovaries: {
+        cycleDay: 14,
+        cycleLengthDays: 29.3,
+        phase: 'ovulatory',
+        estradiolPmolL: 850,
+        progesteroneNmolL: 1.5,
+        lhIuL: 35,
+        fshIuL: 12,
+        cycleSuppression: 0,
+      },
+      uterus: {
+        endometriumRelative: 0.6,
+        crampMm: 10,
+        bleedingRequestMl: 1,
+        bleedingMl: 2.5,
+        contractionMm: 55,
+        pelvicCongestionMm: 60,
+      },
+      sexualResponse: {
+        arousalMm: 45,
+        phase: 'resolution',
+        remainingSexMin: 0,
+        sexIntensity: 0,
+        lastOrgasmAtSimMin: 2,
+        afterglowMm: 60,
+      },
+      mammaryGlands: {
+        lactating: true,
+        galactorrhea: false,
+        inductionProgress: 1,
+        storedMilkMl: 40,
+        ejectedMilkMl: 12,
+        stimulationMin: 0,
+        milkRequestMl: 0,
+        milkMl: 0,
+        lactoseRequestG: 0,
+        lactoseG: 0,
+        fullnessMm: 20,
+      },
+      interoception: {
+        hunger: 50,
+        fullness: 0,
+        thirst: 50,
+        urinaryUrgency: 0,
+        discomfort: 0,
+        sexualArousalMm: 0,
+        dyspneaMm: 0,
+        stressMm: 10,
+        sleepinessMm: 0,
+        dryMouthMm: 0,
+        libidoMm: 55,
+        bowelUrgencyMm: 0,
+        heatMm: 0,
+        coldMm: 0,
+        hypocalcemiaMm: 0,
+        hypercalcemiaMm: 0,
+        hypoglycemiaMm: 0,
+        palpitationMm: 0,
+        sweatDampMm: 0,
+        muscleFatigueMm: 0,
+        uterineCrampMm: 10,
+        mammaryFullnessMm: 20,
+        hedonicCalmMm: 78,
+      },
+    },
+  });
+
+  const femaleState = await female.tools.body_state.execute({}, fakeExec({ callId: 'female-all' }));
+  assertNoDigits(femaleState, 'female new feedbacks');
+  assert.ok(femaleState.feelings.some((f) => f.area === 'thirst' && f.feeling.includes('唾液')));
+  assert.ok(femaleState.feelings.some((f) => f.area === 'urinary' && f.feeling.includes('排尿')));
+  assert.ok(femaleState.feelings.some((f) => f.area === 'bowel' && f.feeling.includes('排便')));
+  assert.ok(femaleState.feelings.some((f) => f.area === 'respiration' && f.feeling.includes('喘气')));
+  assert.ok(femaleState.feelings.some((f) => f.area === 'circulation' && f.feeling.includes('心跳偏快')));
+  assert.ok(femaleState.feelings.some((f) => f.area === 'stress' && f.feeling.includes('舒畅')));
+  assert.ok(femaleState.feelings.some((f) => f.area === 'reproductive' && f.feeling.includes('经血')));
+  assert.ok(femaleState.feelings.some((f) => f.area === 'reproductive' && f.feeling.includes('排卵')));
+  assert.ok(femaleState.feelings.some((f) => f.area === 'reproductive' && f.feeling.includes('收缩')));
+  assert.ok(femaleState.feelings.some((f) => f.area === 'reproductive' && f.feeling.includes('充盈')));
+  assert.ok(femaleState.feelings.some((f) => f.area === 'sexual' && f.feeling.includes('余韵尚存')));
+  assert.ok(femaleState.feelings.some((f) => f.area === 'mammary' && f.feeling.includes('排乳')));
+
+  const male = await startBody(t, {
+    manifestPath: join(root, 'body-modules.male.json'),
+    defaultNsfw: true,
+    parts: {
+      epididymis: { storedSemenMl: 0, ejaculatedMl: 2.8 },
+      interoception: { libidoMm: 52 },
+      mammaryGlands: undefined,
+    },
+  });
+  const maleSexState = await male.tools.body_state.execute(
+    { focus: 'reproductive' },
+    fakeExec({ callId: 'male-repro' }),
+  );
+  assertNoDigits(maleSexState, 'male ejaculation + libido');
+  assert.ok(maleSexState.feelings.some((f) => f.area === 'sexual' && f.feeling.includes('射精')));
+  assert.ok(maleSexState.feelings.some((f) => f.area === 'sexual' && f.feeling.includes('渴望')));
+
+  const maskedMale = await startBody(t, {
+    manifestPath: join(root, 'body-modules.male.json'),
+    defaultNsfw: false,
+    parts: {
+      epididymis: { storedSemenMl: 0, ejaculatedMl: 2.8 },
+      interoception: { libidoMm: 52 },
+    },
+  });
+  const maskedState = await maskedMale.tools.body_state.execute({}, fakeExec({ callId: 'male-masked' }));
+  assertNoDigits(maskedState, 'masked male');
+  assert.equal(maskedState.feelings.some((f) => f.area === 'sexual' || f.area === 'mammary'), false);
 });

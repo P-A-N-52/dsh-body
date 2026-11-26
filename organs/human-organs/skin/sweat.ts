@@ -39,6 +39,7 @@ type ActivityReading = {
 
 type ThermoregulationReading = {
   coreTemperatureC?: unknown;
+  setpointC?: unknown;
 };
 
 export const initialState: SkinState = {
@@ -79,6 +80,7 @@ type SweatRequestInput = {
   dtMin: number;
   ambientTemperatureC: number;
   coreTemperatureC?: number;
+  setpointC?: number;
 };
 
 export function sweatRequestMl({
@@ -87,12 +89,14 @@ export function sweatRequestMl({
   dtMin,
   ambientTemperatureC: temperatureC,
   coreTemperatureC = thermoregulationSetpointC,
+  setpointC = thermoregulationSetpointC,
 }: SweatRequestInput): number {
   const temperatureFactor = Math.max(0, 1 + ambientGainPerC * (temperatureC - referenceTemperatureC));
   const exerciseRateMlPerMin = remainingExerciseMin > 0
     ? referenceRateMlPerMin * intensity * temperatureFactor
     : 0;
-  const thermalRateMlPerMin = heatGain * Math.max(0, coreTemperatureC - thermoregulationSetpointC);
+  const thermalThresholdC = Math.max(thermoregulationSetpointC, setpointC);
+  const thermalRateMlPerMin = heatGain * Math.max(0, coreTemperatureC - thermalThresholdC);
   const rateMlPerMin = Math.min(maxRateMlPerMin, exerciseRateMlPerMin + thermalRateMlPerMin);
   return dtMin > 0 ? rateMlPerMin * dtMin : 0;
 }
@@ -118,27 +122,35 @@ function readActivity(io: IO): { remainingExerciseMin: number; intensity: number
   return { remainingExerciseMin, intensity };
 }
 
-function readCoreTemperatureC(io: IO): number {
+function readThermoregulation(io: IO): { coreTemperatureC: number; setpointC: number } {
   const thermoregulation = io.read('thermoregulation');
   if (thermoregulation === undefined) {
-    return thermoregulationSetpointC;
+    return {
+      coreTemperatureC: thermoregulationSetpointC,
+      setpointC: thermoregulationSetpointC,
+    };
   }
   const coreTemperatureC = thermoregulation.coreTemperatureC;
   if (typeof coreTemperatureC !== 'number' || !Number.isFinite(coreTemperatureC)) {
     throw new Error('skin: thermoregulation.coreTemperatureC must be a finite number');
   }
-  return coreTemperatureC;
+  const setpointC = typeof thermoregulation.setpointC === 'number'
+    && Number.isFinite(thermoregulation.setpointC)
+    ? thermoregulation.setpointC
+    : thermoregulationSetpointC;
+  return { coreTemperatureC, setpointC };
 }
 
 export function heartbeat(io: IO): void {
   const activity = readActivity(io);
-  const coreTemperatureC = readCoreTemperatureC(io);
+  const { coreTemperatureC, setpointC } = readThermoregulation(io);
   const requestMl = sweatRequestMl({
     remainingExerciseMin: activity?.remainingExerciseMin ?? 0,
     intensity: activity?.intensity ?? 0,
     dtMin: io.dt / 60,
     ambientTemperatureC,
     coreTemperatureC,
+    setpointC,
   });
 
   io.write({ sweatRequestMl: requestMl, sweatVolumeMl: 0 });

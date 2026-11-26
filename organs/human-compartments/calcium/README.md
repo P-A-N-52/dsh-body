@@ -68,7 +68,7 @@ mgDl       = clamp(prevMgDl + (releaseG − depositG − excretionG) × 1000 / d
 | 消费者 | 读什么 | 用途 |
 | --- | --- | --- |
 | [`parathyroid`](../../human-organs/parathyroid/README.md) | 轮初 `bloodCalcium.mgDl` | 调节 `pthRelative` 目标，形成负反馈环路 |
-| [`interoception`](../../human-organs/brain/README.md) | 轮初 `bloodCalcium.mgDl` | 软读输出 `hypocalcemiaMm = clamp(50 × (9.5 − mgDl), 0, 100)` 与 `hypercalcemiaMm = clamp(50 × (mgDl − 9.5), 0, 100)`；未加载或非有限按 `9.5`（两读数为 `0`）。两读数不进入 `discomfort` 或 `brainNotify` |
+| [`interoception`](../../human-organs/brain/README.md) | 轮初 `bloodCalcium.mgDl` | 软读输出 `hypocalcemiaMm = clamp(50 × (9.5 − mgDl), 0, 100)` 与 `hypercalcemiaMm = clamp(50 × (mgDl − 9.5), 0, 100)`；未加载或非有限按 `9.5`（两读数为 `0`）。两读数不进入 `discomfort` 或 `brainNotify`（`notify.ts` 未纳入两钙通道）；若加载且达到阈值，`body_state` 会将其转为纯定性感受（原始数值见 `GET /state` / `gateway.getState()`） |
 
 - `interoception.ts` 已接好上述软读逻辑；在当前三份清单尚未挂载 `bloodCalcium` 时，`hypocalcemiaMm` 与 `hypercalcemiaMm` 恒为 `0`。
 

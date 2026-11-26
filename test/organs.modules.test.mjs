@@ -39,6 +39,8 @@ const organModules = [
   ['bladder', 'bladder', '../organs/human-organs/bladder/storage.ts'],
   ['interoception', 'interoception', '../organs/human-organs/brain/interoception.ts'],
   ['thermoregulation', 'thermoregulation', '../organs/human-organs/brain/thermoregulation.ts'],
+  ['sleep', 'sleep', '../organs/human-organs/brain/sleep.ts'],
+  ['autonomic', 'autonomic', '../organs/human-organs/brain/autonomic.ts'],
   ['brain notify', 'brainNotify', '../organs/human-organs/brain/notify.ts'],
   ['skeletal muscle activity', 'physicalActivity', '../organs/human-organs/skeletal-muscle/activity.ts'],
   ['skeletal muscle glucose uptake', 'muscleGlucose', '../organs/human-organs/skeletal-muscle/glucose-uptake.ts'],
@@ -68,9 +70,12 @@ for (const [label, expectedId, modulePath] of organModules) {
   });
 }
 
-test('the root manifest lists thirty-eight scripts with the bowel slice, activity, sweat, lung water loss, circulation, thermoregulation, liver glycogen, renal gluconeogenesis, the endocrine axes and salivary glands', () => {
+test('the root manifest lists forty-one scripts with the bowel slice, activity, sleep, autonomic, reward, sweat, lung water loss, circulation, thermoregulation, liver glycogen, renal gluconeogenesis, the endocrine axes and salivary glands', () => {
   const manifest = JSON.parse(readFileSync(new URL('../body-modules.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.scripts.length, 38);
+  assert.equal(manifest.scripts.length, 41);
+  assert.ok(manifest.scripts.includes('./organs/human-organs/brain/sleep.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/brain/autonomic.ts'));
+  assert.ok(manifest.scripts.includes('./organs/human-organs/brain/reward.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/esophagus/esophagus.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/colon/colon.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/stomach/hydration.ts'));
@@ -104,9 +109,10 @@ test('the root manifest lists thirty-eight scripts with the bowel slice, activit
   assert.equal(manifest.scripts.includes('./organs/human-organs/epididymis/storage.ts'), false);
 });
 
-test('the female manifest lists forty-one scripts with the glucose variant and mammary glands', () => {
+test('the female manifest lists forty-four scripts with the glucose variant, reward and mammary glands', () => {
   const manifest = JSON.parse(readFileSync(new URL('../body-modules.female.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.scripts.length, 41);
+  assert.equal(manifest.scripts.length, 44);
+  assert.ok(manifest.scripts.includes('./organs/human-organs/brain/reward.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-compartments/glucose/glucose.female.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/kidney/gluconeogenesis.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/skeletal-muscle/regions/head.ts'));
@@ -119,7 +125,7 @@ test('the female manifest lists forty-one scripts with the glucose variant and m
 test('the male manifest adds only testes and epididymis to the root list', () => {
   const rootManifest = JSON.parse(readFileSync(new URL('../body-modules.json', import.meta.url), 'utf8'));
   const manifest = JSON.parse(readFileSync(new URL('../body-modules.male.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.scripts.length, 40);
+  assert.equal(manifest.scripts.length, 43);
   assert.equal(manifest.scripts.length, rootManifest.scripts.length + 2);
   assert.ok(manifest.scripts.includes('./organs/human-organs/testes/testosterone.ts'));
   assert.ok(manifest.scripts.includes('./organs/human-organs/epididymis/storage.ts'));
@@ -324,9 +330,9 @@ function collectAllParameterFiles(dir) {
 }
 
 for (const { file, scriptCount, parameterCount, transferPartCount } of [
-  { file: 'body-modules.json', scriptCount: 38, parameterCount: 34, transferPartCount: 15 },
-  { file: 'body-modules.female.json', scriptCount: 41, parameterCount: 37, transferPartCount: 17 },
-  { file: 'body-modules.male.json', scriptCount: 40, parameterCount: 36, transferPartCount: 15 },
+  { file: 'body-modules.json', scriptCount: 41, parameterCount: 37, transferPartCount: 15 },
+  { file: 'body-modules.female.json', scriptCount: 44, parameterCount: 40, transferPartCount: 17 },
+  { file: 'body-modules.male.json', scriptCount: 43, parameterCount: 39, transferPartCount: 15 },
 ]) {
   test(`${file} passes createFieldRegistry, parameter inventory, and transfer closure checks`, async () => {
     const manifestPath = join(root, file);
@@ -359,7 +365,7 @@ for (const { file, scriptCount, parameterCount, transferPartCount } of [
 
 test('organs directory contains exact total parameter inventory', () => {
   const allParameters = collectAllParameterFiles(join(root, 'organs'));
-  assert.equal(allParameters.length, 44);
+  assert.equal(allParameters.length, 47);
 });
 
 test('every organ and compartment directory has a non-empty README.md', () => {

@@ -165,7 +165,7 @@ test('the parameters keep the shared uptake and glycogen use design defaults', (
 test('the uptake request follows the saturating excess and insulin response formula', () => {
   const baseline = round({
     glucose: { excessMassG: 20 },
-    pancreas: { insulinRelative: 1 },
+    pancreas: { insulinPmolL: 60 },
     dt: 60,
   });
   assertClose(
@@ -176,18 +176,18 @@ test('the uptake request follows the saturating excess and insulin response form
 
   const doubled = round({
     glucose: { excessMassG: 20 },
-    pancreas: { insulinRelative: 2 },
+    pancreas: { insulinPmolL: 120 },
     dt: 60,
   });
   assertClose(
     doubled.written.uptakeRequestG,
     0.5 * (20 / 40) * 2,
-    'insulin sensitivity 1 doubles the response at relative 2',
+    'insulin sensitivity 1 doubles the response at 120 pmol/L (2x basal)',
   );
 
   const fractionalMinute = round({
     glucose: { excessMassG: 20 },
-    pancreas: { insulinRelative: 2 },
+    pancreas: { insulinPmolL: 120 },
     dt: 30,
   });
   assertClose(
@@ -198,14 +198,14 @@ test('the uptake request follows the saturating excess and insulin response form
 
   const noExcess = round({
     glucose: { excessMassG: 0 },
-    pancreas: { insulinRelative: 2 },
+    pancreas: { insulinPmolL: 120 },
     dt: 60,
   });
   assert.equal(noExcess.written.uptakeRequestG, 0, 'no excess yields no request');
 
   const saturating = round({
     glucose: { excessMassG: 60 },
-    pancreas: { insulinRelative: 1 },
+    pancreas: { insulinPmolL: 60 },
     dt: 60,
   });
   assertClose(
@@ -219,20 +219,20 @@ test('the request is rewritten every round from the round-start snapshot', () =>
   const zeroed = round({
     state: { uptakeG: 0, uptakeRequestG: 3 },
     glucose: { excessMassG: 0 },
-    pancreas: { insulinRelative: 1 },
+    pancreas: { insulinPmolL: 60 },
   });
   assert.equal(zeroed.written.uptakeRequestG, 0, 'the old request is not carried over');
 
   const recomputed = round({
     state: { uptakeG: 0, uptakeRequestG: 0 },
     glucose: { excessMassG: 20 },
-    pancreas: { insulinRelative: 2 },
+    pancreas: { insulinPmolL: 120 },
   });
   assertClose(recomputed.written.uptakeRequestG, 0.5, 'the new request uses this round inputs');
 });
 
 test('a missing glucose or pancreas part falls back without hiding invalid loaded data', () => {
-  const noGlucose = round({ glucose: null, pancreas: { insulinRelative: 1 } });
+  const noGlucose = round({ glucose: null, pancreas: { insulinPmolL: 60 } });
   assert.equal(noGlucose.written.uptakeRequestG, 0, 'no glucose part means no excess signal');
 
   const noPancreas = round({ glucose: { excessMassG: 20 }, pancreas: undefined });
@@ -336,9 +336,9 @@ test('a loaded glucose or pancreas part with invalid fields fails with zero writ
     ['infinite excess', { glucose: { excessMassG: Number.POSITIVE_INFINITY } }],
     ['negative excess', { glucose: { excessMassG: -0.1 } }],
     ['missing insulin', { pancreas: {} }],
-    ['non-number insulin', { pancreas: { insulinRelative: '1' } }],
-    ['non-finite insulin', { pancreas: { insulinRelative: Number.NaN } }],
-    ['negative insulin', { pancreas: { insulinRelative: -1 } }],
+    ['non-number insulin', { pancreas: { insulinPmolL: '60' } }],
+    ['non-finite insulin', { pancreas: { insulinPmolL: Number.NaN } }],
+    ['negative insulin', { pancreas: { insulinPmolL: -60 } }],
   ];
 
   for (const [label, parts] of invalid) {
@@ -354,7 +354,7 @@ test('muscleGlucose output is finite and JSON-safe with or without regions', () 
       options: {
         state: { uptakeG: 1.2, uptakeRequestG: 0.3 },
         glucose: { excessMassG: 20 },
-        pancreas: { insulinRelative: 2 },
+        pancreas: { insulinPmolL: 120 },
       },
     },
     {
@@ -363,7 +363,7 @@ test('muscleGlucose output is finite and JSON-safe with or without regions', () 
         state: { uptakeG: 0.7, uptakeRequestG: 0 },
         regions: { muscleHead: {}, muscleLimbs: {} },
         glucose: { excessMassG: 7.5 },
-        pancreas: { insulinRelative: 1.5 },
+        pancreas: { insulinPmolL: 90 },
         dt: 90,
       },
     },

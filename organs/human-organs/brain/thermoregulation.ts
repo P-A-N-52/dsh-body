@@ -6,33 +6,26 @@
  *
  * 公式（dtMin = io.dt / 60，D = 轮初 bloodOxygen.oxygenConsumptionMlMin，
  * W = 轮初 skin.sweatVolumeMl）：
+ *   effectiveSetpointC = setpointC
+ *     + (wallTimeMs 存在 ? circadianAmplitudeC × cos(2π × (hour − circadianPeakHour) / 24) : 0)
+ *     - (sleep.sleeping === true ? sleepSetpointOffsetC : 0)
  *   heatProductionKcalMin = metabolicFactor × D
- *                         + shiveringGain × max(0, setpointC − coreTemperatureC)
+ *                         + shiveringGain × max(0, effectiveSetpointC − coreTemperatureC)
  *   lossKcalMin = evaporationKcalPerMl × (dtMin > 0 ? W / dtMin : 0)
  *               + lossGain × (coreTemperatureC − ambientTemperatureC)
  *   coreTemperatureC = clamp(
  *     prev.coreTemperatureC + dtMin × (heatProductionKcalMin − lossKcalMin) / heatCapacityKcalPerC,
  *     25, 45
  *   )
- * 产热用轮初氧耗（`bloodOxygen` 已含基础代谢、T4 缩放、活动与消化附加氧耗）；寒战只在
- * 低于设定点时加入。散热含轮初实际汗液蒸发与核心—环境温差；温差项在环境更冷时按负损失
- * 处理，即环境向身体传热，没有单独的环境得热公式。
- *
- * 可选回退与异常（design）：
- * - `bloodOxygen` 未加载时按基础氧耗 250 mL/min 回退，与 `lungsVentilation` 的回退常量
- *   一致；`bloodOxygen.basalMlMin` 也以 `design` 参数维护。
- * - `skin` 未加载时按汗液 0 mL 回退；完整清单中 `skin` 仍是实际汗液的写入者。
- * - 部位自身状态缺失或 `coreTemperatureC` 非有限时按设定点重新起步。
- * - 已加载的 `bloodOxygen` / `skin` 字段缺失、非有限或为负时抛错，使本轮整体作废，不写
- *   状态，不用回退值掩盖异常。只读轮初快照，所以活动、出汗与温度之间有一轮滞后。
+ * 产热用轮初氧耗（`bloodOxygen` 已含基础代谢、睡眠下调、T4 缩放、活动与消化附加氧耗）；寒战只在
+ * 低于动态设定点时加入。
  *
  * 证据：无直接人体来源。所有参数见同目录 `thermoregulation.parameters.json`，
- * 全部 `status: design`、`source: null`；37°C、25°C、60 kcal/°C、0.005 kcal/mL、2 与 0.104167
- * kcal/(min·°C)、0.58 kcal/mL 及 [25, 45] °C 安全钳位都是工程假设，不是体温调定点、量热、寒战产热或蒸发散热
- * 的人体测量。不建皮肤分区温度、血管扩张/收缩、寒战肌肉做功细节、发热与疾病、低温症、
- * 绝对核心温度测量、湿度、风速、辐射面积或个体差异；不能称 validated。设计来源：
- * docs/superpowers/specs/2026-11-24-thermoregulation-design.md。
+ * 全部 `status: design`、`source: null`；昼夜调定点振幅（±0.25°C）与睡眠下调（0.2°C）均为
+ * 工程假设。不建皮肤分区温度、血管扩张/收缩、寒战肌肉做功细节、发热与疾病、低温症、
+ * 湿度、风速或个体差异；不能称 validated。
  */
+import { resolveCircadianHour } from '../../../lib/circadian.js';
 import {
   getNumericParameterOverride,
   loadParameters,
@@ -45,6 +38,7 @@ export const actionTypes: string[] = [];
 
 type ThermoregulationState = {
   coreTemperatureC: number;
+  setpointC: number;
 };
 
 type BloodOxygenReading = {
@@ -55,11 +49,17 @@ type SkinReading = {
   sweatVolumeMl?: unknown;
 };
 
+type SleepReading = {
+  sleeping?: unknown;
+};
+
 type IO = {
   read(id: 'thermoregulation'): Readonly<ThermoregulationState> | undefined;
   read(id: 'bloodOxygen'): Readonly<BloodOxygenReading> | null | undefined;
   read(id: 'skin'): Readonly<SkinReading> | null | undefined;
+  read(id: 'sleep'): Readonly<SleepReading> | null | undefined;
   readonly dt: number;
+  readonly wallTimeMs?: number;
   write(next: ThermoregulationState): void;
 };
 
@@ -88,6 +88,18 @@ const evaporationKcalPerMl = requireParameter(
   parameters,
   'thermoregulation.evaporationKcalPerMl',
 );
+const circadianAmplitudeC = requireParameter(
+  parameters,
+  'thermoregulation.circadianAmplitudeC',
+);
+const circadianPeakHour = requireParameter(
+  parameters,
+  'thermoregulation.circadianPeakHour',
+);
+const sleepSetpointOffsetC = requireParameter(
+  parameters,
+  'thermoregulation.sleepSetpointOffsetC',
+);
 
 const fallbackBasalOxygenConsumptionMlMin =
   getNumericParameterOverride('bloodOxygen.basalMlMin') ?? scaleByBodyWeight(250);
@@ -100,17 +112,32 @@ function clamp(value: number, min: number, max: number): number {
 
 export const initialState: ThermoregulationState = {
   coreTemperatureC: setpointC,
+  setpointC,
 };
 
 export const fields = {
   coreTemperatureC: { unit: '°C', mode: 'absolute' },
+  setpointC: { unit: '°C', mode: 'absolute' },
 };
+
+export function effectiveSetpointC(
+  wallTimeMs?: number,
+  sleeping = false,
+): number {
+  const circadianDelta = typeof wallTimeMs === 'number' && Number.isFinite(wallTimeMs)
+    ? circadianAmplitudeC
+      * Math.cos((2 * Math.PI * (resolveCircadianHour(wallTimeMs) - circadianPeakHour)) / 24)
+    : 0;
+  const sleepDelta = sleeping ? sleepSetpointOffsetC : 0;
+  return setpointC + circadianDelta - sleepDelta;
+}
 
 export function heatProductionKcalMin(
   oxygenConsumptionMlMin: number,
   coreTemperatureC: number,
+  targetSetpointC = setpointC,
 ): number {
-  const shiveringKcalMin = shiveringGain * Math.max(0, setpointC - coreTemperatureC);
+  const shiveringKcalMin = shiveringGain * Math.max(0, targetSetpointC - coreTemperatureC);
   return metabolicFactor * oxygenConsumptionMlMin + shiveringKcalMin;
 }
 
@@ -169,11 +196,14 @@ export function heartbeat(io: IO): void {
   const oxygenConsumptionMlMin = readOxygenConsumptionMlMin(io);
   const sweatVolumeMl = readSweatVolumeMl(io);
   const previousTemperatureC = readPreviousTemperatureC(io);
+  const sleeping = io.read('sleep')?.sleeping === true;
+  const targetSetpointC = effectiveSetpointC(io.wallTimeMs, sleeping);
 
   const dtMin = io.dt / 60;
   const productionKcalMin = heatProductionKcalMin(
     oxygenConsumptionMlMin,
     previousTemperatureC,
+    targetSetpointC,
   );
   const lossKcalMin = heatLossKcalMin(sweatVolumeMl, previousTemperatureC, dtMin);
   const coreTemperatureC = clamp(
@@ -182,5 +212,5 @@ export function heartbeat(io: IO): void {
     maxCoreTemperatureC,
   );
 
-  io.write({ coreTemperatureC });
+  io.write({ coreTemperatureC, setpointC: targetSetpointC });
 }

@@ -45,7 +45,70 @@
       "status": "design",
       "range": [0, 2],
       "source": null,
-      "note": "轮初 adrenal.cortisolRelative 相对基线的偏离对 drive 的增益：皮质醇 2 使 drive +0.5。只借用皮质醇作为交感/应激代理，不是肾上腺素、去甲肾上腺素浓度或受体剂量反应。range 只是工程调参范围"
+      "note": "历史兼容保留参数；现心率自主交感增益已改用 heart.sympatheticDriveGain × autonomic.sympatheticMm（0–100 mm），不再直接乘 cortisolRelative"
+    },
+    {
+      "id": "heart.sympatheticDriveGain",
+      "unit": "1/mm",
+      "value": 0.012,
+      "status": "design",
+      "range": [0, 0.05],
+      "source": null,
+      "note": "autonomic.sympatheticMm 每单位对 heart drive 的增益（例如惊醒 85 mm 时 drive +1.02，心率 141.4 bpm）；design"
+    },
+    {
+      "id": "heart.startleFloorSympatheticMm",
+      "unit": "mm",
+      "value": 85,
+      "status": "design",
+      "range": [30, 100],
+      "source": null,
+      "note": "睡眠中发生危机或惊醒动作同轮的瞬时交感下限映射，消除心脏相对自主神经的 1 轮延迟；design"
+    },
+    {
+      "id": "heart.lightSleepDriveBase",
+      "unit": "1",
+      "value": 0.86,
+      "status": "design",
+      "range": [0.5, 1.1],
+      "source": "SRC-SOMERS-1993",
+      "note": "浅睡期静息心率基础乘数（70 × 0.86 = 60.2 bpm）；方向参考 Somers 1993 NREM 低于清醒；design"
+    },
+    {
+      "id": "heart.deepSleepDriveBase",
+      "unit": "1",
+      "value": 0.78,
+      "status": "design",
+      "range": [0.5, 1],
+      "source": "SRC-SOMERS-1993",
+      "note": "深睡期静息心率基础乘数（70 × 0.78 = 54.6 bpm）；方向参考 Somers 1993 Stage 4 低于浅睡与清醒；design"
+    },
+    {
+      "id": "heart.remSleepDriveBase",
+      "unit": "1",
+      "value": 0.94,
+      "status": "design",
+      "range": [0.6, 1.2],
+      "source": "SRC-SOMERS-1993",
+      "note": "REM 睡眠期心率基础乘数（70 × 0.94 = 65.8 bpm）；方向参考 Somers 1993 REM 接近清醒水平且高于深睡；design"
+    },
+    {
+      "id": "heart.minSleepHeartRatePerMin",
+      "unit": "1/min",
+      "value": 42,
+      "status": "design",
+      "range": [30, 70],
+      "source": null,
+      "note": "睡眠状态下心率允许下降的工程下限；design"
+    },
+    {
+      "id": "heart.strokeVolumeGain",
+      "unit": "1",
+      "value": 0.2,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "drive 偏离 1 时对每搏输出量的收缩力增益；design"
     }
   ]
 }

@@ -171,7 +171,7 @@ test('high glucose disposes into muscle and liver, then low glucose releases liv
   assert.equal(high1.muscleGlucose.uptakeG, 0, 'round 1 has no prior uptake request');
   assert.equal(high1.liver.storageG, 0, 'round 1 has no prior storage request');
   assert.ok(high1.glucose.disposedGlucoseG > 0, 'high glucose must drive residual disposal');
-  assert.ok(high1.pancreasEndocrine.insulinRelative > 1, 'high glucose must raise insulin');
+  assert.ok(high1.pancreasEndocrine.insulinPmolL > 60, 'high glucose must raise insulin');
   assert.ok(high1.pancreasEndocrine.glucagonRelative < 1, 'high glucose must lower glucagon');
   assert.equal(high1.muscleGlucose.uptakeRequestG, 0, 'the old excess signal is zero in round 1');
   assert.equal(high1.liver.storageRequestG, 0, 'the old excess signal is zero in round 1');
@@ -224,7 +224,7 @@ test('high glucose disposes into muscle and liver, then low glucose releases liv
       storageG: 0,
       outputG: 0,
     },
-    pancreasEndocrine: { insulinRelative: 1, glucagonRelative: 1 },
+    pancreasEndocrine: { insulinPmolL: 60, glucagonRelative: 1 },
   });
   await low.ready;
   await low.tick();
@@ -236,7 +236,7 @@ test('high glucose disposes into muscle and liver, then low glucose releases liv
   assert.equal(low1.muscleGlucose.uptakeRequestG, 0, 'muscle must not request glucose below baseline');
   assert.equal(low1.liver.storageG, 0, 'the liver must not store while releasing');
   assert.ok(low1.pancreasEndocrine.glucagonRelative > 1, 'low glucose must raise glucagon');
-  assert.ok(low1.pancreasEndocrine.insulinRelative < 1, 'low glucose must lower insulin');
+  assert.ok(low1.pancreasEndocrine.insulinPmolL < 60, 'low glucose must lower insulin');
 
   let peakConcentrationMgDl = 0;
   let releaseRounds = 0;

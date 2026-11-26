@@ -27,11 +27,16 @@ function glucoseAt(concentrationMgDl, excessMassG = 0) {
 }
 
 function pancreasAt(glucagonRelative, insulinRelative = 1) {
-  return { insulinRelative, glucagonRelative };
+  return {
+    insulinPmolL: typeof insulinRelative === 'number' ? 60 * insulinRelative : insulinRelative,
+    glucagonRelative,
+  };
 }
 
 function adrenalAt(cortisolRelative) {
-  return { cortisolRelative };
+  return {
+    cortisolNmolL: typeof cortisolRelative === 'number' ? 180 * cortisolRelative : cortisolRelative,
+  };
 }
 
 function round({
@@ -158,6 +163,7 @@ test('the liver parameters are design defaults with no source', () => {
     'liver.insulinSensitivity',
     'liver.maxOutputRateGPerMin',
     'liver.maxUptakeRateGPerMin',
+    'liver.sympatheticOutputGain',
   ]);
 
   const expected = {
@@ -170,6 +176,7 @@ test('the liver parameters are design defaults with no source', () => {
     'liver.maxUptakeRateGPerMin': [0.2, 'g/min'],
     'liver.halfMaxExcessG': [15, 'g'],
     'liver.insulinSensitivity': [0.5, '1'],
+    'liver.sympatheticOutputGain': [0.005, '1/mm'],
   };
   for (const [parameterId, [value, unit]] of Object.entries(expected)) {
     const parameter = byId[parameterId];
@@ -189,6 +196,7 @@ test('the liver parameters are design defaults with no source', () => {
     'liver.maxUptakeRateGPerMin': 0.2,
     'liver.halfMaxExcessG': 15,
     'liver.insulinSensitivity': 0.5,
+    'liver.sympatheticOutputGain': 0.005,
   });
 });
 
@@ -621,7 +629,7 @@ test('a loaded upstream with missing or invalid fields fails the round without w
     ],
     [
       'pancreas missing glucagonRelative',
-      { glucose: glucoseAt(70), pancreas: { insulinRelative: 1 } },
+      { glucose: glucoseAt(70), pancreas: { insulinPmolL: 60 } },
     ],
     ['pancreas NaN', { glucose: glucoseAt(70), pancreas: pancreasAt(Number.NaN) }],
     [
@@ -635,7 +643,7 @@ test('a loaded upstream with missing or invalid fields fails the round without w
     ['pancreas negative', { glucose: glucoseAt(70), pancreas: pancreasAt(-0.1) }],
     ['pancreas non-number', { glucose: glucoseAt(70), pancreas: pancreasAt('1') }],
     [
-      'pancreas missing insulinRelative',
+      'pancreas missing insulinPmolL',
       { glucose: glucoseAt(70), pancreas: { glucagonRelative: 1 } },
     ],
     [
@@ -665,7 +673,7 @@ test('a loaded upstream with missing or invalid fields fails the round without w
       { glucose: glucoseAt(110, 15), pancreas: pancreasAt(1, '1') },
     ],
     [
-      'adrenal missing cortisolRelative',
+      'adrenal missing cortisolNmolL',
       { glucose: glucoseAt(70), pancreas: pancreasAt(2), adrenal: {} },
     ],
     [

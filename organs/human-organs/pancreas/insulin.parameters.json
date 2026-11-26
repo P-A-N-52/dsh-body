@@ -9,43 +9,79 @@
       "status": "design",
       "range": [60, 120],
       "source": null,
-      "note": "相对胰岛素与胰高血糖素信号的工程参考血糖；测试固定其与 glucose.baselineConcentrationMgDl 相等。不是个体空腹测量或人群正常值，未来由共享身体预设/个体空腹基线替换"
+      "note": "胰岛素与胰高血糖素稳态参考血糖，与 glucose.baselineConcentrationMgDl 对齐；design"
     },
     {
-      "id": "pancreasEndocrine.insulin.glucoseGainPerMgDl",
-      "unit": "1/(mg/dL)",
-      "value": 0.02,
+      "id": "pancreasEndocrine.insulin.basalPmolL",
+      "unit": "pmol/L",
+      "value": 60,
       "status": "design",
-      "range": [0, 0.1],
+      "range": [10, 200],
       "source": null,
-      "note": "血糖每偏离参考值 1 mg/dL 对相对信号目标的线性增益；纯工程假设，不是 Dalla Man 2007 的分泌方程、参数或拟合结果。未来由标准化餐后胰岛素剂量—反应替换"
+      "note": "参考血糖 90 mg/dL 下的稳态基础血浆胰岛素浓度代理（下游消费以 / 60 归一化）；design"
     },
     {
-      "id": "pancreasEndocrine.insulin.responseHalfTimeMin",
-      "unit": "min",
-      "value": 10,
+      "id": "pancreasEndocrine.insulin.glucoseGainPmolLPerMinPerMgDl",
+      "unit": "pmol/(L·min·mg/dL)",
+      "value": 0.085,
       "status": "design",
-      "range": [1, 60],
+      "range": [0, 10],
       "source": null,
-      "note": "相对信号一阶趋近目标的时间尺度；工程假设，不是 C-peptide/胰岛素分泌或清除的实测半时。未来由分泌与清除证据替换"
+      "note": "高糖刺激胰岛素分泌增益（匹配 Michaelis-Menten 清除下高糖 1.5–4x 增量）；design"
     },
     {
-      "id": "pancreasEndocrine.insulin.maxRelative",
-      "unit": "1",
-      "value": 5,
+      "id": "pancreasEndocrine.insulin.clearanceKmPmolL",
+      "unit": "pmol/L",
+      "value": 3890,
       "status": "design",
-      "range": [1, 20],
+      "range": [500, 10000],
       "source": null,
-      "note": "相对信号目标的工程上限，防止无界响应；不是 β 细胞饱和测量或临床界值。未来由饱和 β 细胞响应替换"
+      "note": "胰岛素可饱和清除半饱和常数（量级参考 Thorsteinsson 1985 正常男性 3.89 nmol/L = 3890 pmol/L）；因 n=6 猪胰岛素钳夹方案不同标 design"
+    },
+    {
+      "id": "pancreasEndocrine.insulin.clearanceVmaxPmolLPerMin",
+      "unit": "pmol/(L·min)",
+      "value": 274,
+      "status": "design",
+      "range": [20, 2000],
+      "source": null,
+      "note": "血浆室表观最大饱和清除速率（保证低浓度极限消除率 Vmax/Km ≈ 0.0704 min^-1，即 ~10 min 尺度）；design"
+    },
+    {
+      "id": "pancreasEndocrine.insulin.maxPmolL",
+      "unit": "pmol/L",
+      "value": 900,
+      "status": "design",
+      "range": [100, 3000],
+      "source": null,
+      "note": "血浆胰岛素浓度保护性上限；design"
+    },
+    {
+      "id": "pancreasEndocrine.glucagon.hypoglycemiaThresholdMgDl",
+      "unit": "mg/dL",
+      "value": 68,
+      "status": "design",
+      "range": [45, 85],
+      "source": null,
+      "note": "低血糖反调节胰高血糖素加速分泌阈值（量级参考 Cryer 正常人阶梯钳夹 68 mg/dL）；design"
     },
     {
       "id": "pancreasEndocrine.glucagon.glucoseGainPerMgDl",
       "unit": "1/(mg/dL)",
       "value": 0.02,
       "status": "design",
-      "range": [0, 0.1],
+      "range": [0, 0.2],
       "source": null,
-      "note": "血糖低于参考值每 1 mg/dL 对相对胰高血糖素信号目标的线性增益，方向与胰岛素相反；消费者是 liver。纯工程假设，不是 α 细胞分泌方程、参数或拟合结果。未来由胰高血糖素剂量—反应替换"
+      "note": "血糖偏离参考值 90 mg/dL 时的温和线性胰高血糖素斜率；design"
+    },
+    {
+      "id": "pancreasEndocrine.glucagon.counterregGainPerMgDl",
+      "unit": "1/(mg/dL)",
+      "value": 0.06,
+      "status": "design",
+      "range": [0, 0.3],
+      "source": null,
+      "note": "跌破 68 mg/dL 反调节阈值后的陡增胰高血糖素增益；design"
     },
     {
       "id": "pancreasEndocrine.glucagon.responseHalfTimeMin",
@@ -54,7 +90,7 @@
       "status": "design",
       "range": [1, 60],
       "source": null,
-      "note": "相对胰高血糖素信号一阶趋近目标的时间尺度；消费者是 liver。工程假设，不是胰高血糖素分泌或清除的实测半时。未来由分泌与清除证据替换"
+      "note": "相对胰高血糖素信号一阶趋近目标的时间尺度；design"
     },
     {
       "id": "pancreasEndocrine.glucagon.maxRelative",
@@ -63,7 +99,7 @@
       "status": "design",
       "range": [1, 20],
       "source": null,
-      "note": "相对胰高血糖素信号目标的工程上限；当前增益与参考值下非负血糖最高目标为 G=0 的 2.8，5 只作为未来参数变化时的保护，不是测量或临床界值"
+      "note": "相对胰高血糖素信号目标上限；design"
     }
   ]
 }

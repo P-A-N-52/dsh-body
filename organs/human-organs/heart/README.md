@@ -2,20 +2,18 @@
 
 **功能标签：** 循环（心泵薄切片）。
 
-`heart/` 目前只有一个部位 `heart`，脚本为 [`heart.ts`](heart.ts)，没有动作、通知或 `transfer`，也不写其他部位。它把轮初活动强度与肾上腺皮质醇相对信号合成驱动，并读取轮初 `blood.bloodVolumeMl` 算前负荷因子 `preloadFactor`，写出心率、搏出量（钳位 `[30, 140]` mL）与心输出。唯一消费者是 `blood`：下一轮读取 `heart.cardiacOutputMlMin`，计算氧输送、循环能力上限与血压代理。本切片只建三个有限数字段和一条瞬时映射，不建心电、瓣膜、心律、后负荷、心肌收缩力或心衰。
+`heart/` 目前只有一个部位 `heart`，脚本为 [`heart.ts`](heart.ts)，没有动作、通知或 `transfer`，也不写其他部位。它把轮初活动强度、`autonomic.sympatheticMm` 交感张力、`sleep` 睡眠副交感下调与 `blood.bloodVolumeMl` 前负荷因子 `preloadFactor` 合成驱动，写出心率、搏出量（钳位 `[30, 140]` mL）与心输出（已不再借用 `adrenal.cortisolRelative` 充当交感代理）。唯一消费者是 `blood`：下一轮读取 `heart.cardiacOutputMlMin`，计算氧输送、循环能力上限与血压代理。
 
-实现状态：脚本、参数 [`heart.parameters.json`](heart.parameters.json) 与模块测试 [`test/organs.heart.test.mjs`](../../../test/organs.heart.test.mjs) 已落地；当前根清单为 38 部位、34 份唯一参数文件，女性清单 41 部位、37 份，男性清单 40 部位、36 份。硬闭包为根与男性 15 部位、女性 17 部位，本切片不新增 `transfer`。真实 Gateway 集成测试见 [`test/organs.circulation-gateway.test.mjs`](../../../test/organs.circulation-gateway.test.mjs)。全部参数是 `design`、`source: null`，未做实测心率/搏出量/心输出、独立人体数据、真实 DSH 会话或临床验证。
+实现状态：脚本、参数 [`heart.parameters.json`](heart.parameters.json) 与模块测试 [`test/organs.heart.test.mjs`](../../../test/organs.heart.test.mjs) 已落地；当前根清单为 40 部位、36 份唯一参数文件，女性清单 43 部位、39 份，男性清单 42 部位、38 份。硬闭包为根与男性 15 部位、女性 17 部位，本切片不新增 `transfer`。真实 Gateway 集成测试见 [`test/organs.circulation-gateway.test.mjs`](../../../test/organs.circulation-gateway.test.mjs)。参数均标 `design`（睡眠分期底盘借 `SRC-SOMERS-1993` 方向），未做实测心率/搏出量/心输出或临床验证。
 
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| [`heart.ts`](heart.ts) | `heart` | `heartRatePerMin`、`strokeVolumeMl`、`cardiacOutputMlMin` | 轮初 `physicalActivity.remainingExerciseMin` / `intensity`；轮初 `adrenal.cortisolRelative`；轮初 `blood.bloodVolumeMl`（可选）；同目录参数 | [`heart.parameters.json`](heart.parameters.json) |
+| [`heart.ts`](heart.ts) | `heart` | `heartRatePerMin`、`strokeVolumeMl`、`cardiacOutputMlMin` | 轮初 `physicalActivity`、`autonomic.sympatheticMm`、`sleep` 分期、`blood.bloodVolumeMl`、`interoception`/`bladder` 危机标记与 `io.actions`；同目录参数 | [`heart.parameters.json`](heart.parameters.json) |
 
-- `actionTypes = []`；不读动作，不调用 `transfer` / `notify`，不读自己的轮初状态，也不使用 `io.dt`。
-- 只读轮初快照：本轮新入队的活动、本轮新写出的皮质醇或血容量变化最早下一轮才改变心输出；`blood` 再晚一轮读到，形成两轮链路延迟。
-- `physicalActivity` 未加载时按无活动（`intensity = 0`）；`adrenal` 未加载时按 `cortisolRelative = 1`；`blood` 未加载时按 `preloadFactor = 1`。已加载但字段缺失、非数值、非有限、为负，或 `intensity > 1` 时抛错，本轮不写状态，由 Gateway 整轮作废。
-- 合法的 `remainingExerciseMin = 0`、`intensity = 0`、`cortisolRelative = 0` 与 `bloodVolumeMl = 0` 都是有效输入，不是缺失。
+- `actionTypes = []`；仅观察同轮睡眠切换与危机惊醒动作以便即时响应，不写其他部位或调用 `transfer`/`notify`。
+- 睡眠期仅在轮初处于睡眠（`sleep.sleeping === true`）且发生危机或显式 `wake_up { startle: true }` 时当轮立即触发惊醒下限（`85 mm` 交感等价驱动），避免清醒时误触发。
 
 ## 2. 字段与单位
 
@@ -31,36 +29,20 @@
 
 ## 3. 方程与参数
 
-设轮初活动剩余分钟 `R`、强度 `I`、皮质醇相对量 `C`、血容量 `V`（`blood` 存在时）：
+设轮初活动强度 `I`（仅 `R > 0`）、有效交感张力 `S_eff`（睡眠惊醒同轮保底 `startleFloorSympatheticMm = 85`）、睡眠分期底盘 `sleepBase`（清醒 `1`、浅睡 `0.86`、深睡 `0.78`、REM `0.94`）、血容量 `V`：
 
 ```text
-drive = 1
-      + activityGain × I          （仅 R > 0）
-      + catecholamineGain × (C − 1)
-heartRatePerMin = clamp(restingHeartRatePerMin × drive,
-                        restingHeartRatePerMin, maxHeartRatePerMin)
-preloadFactor = blood 存在 ? clamp(V / 5000, 0.5, 1.15) : 1
-strokeVolumeMl = clamp(restingStrokeVolumeMl × (1 + 0.2 × (drive − 1)) × preloadFactor,
-                       30, 140)
+extraDrive = max(activityGain × I, sympatheticDriveGain × S_eff)
+drive = sleepBase + extraDrive
+minHr = effectiveSleep ? min(restingHeartRatePerMin, minSleepHeartRatePerMin) : restingHeartRatePerMin
+heartRatePerMin = clamp(restingHeartRatePerMin × drive, minHr, maxHeartRatePerMin)
+preloadFactor = blood 存在 ? clamp(V / referenceBloodVolumeMl, 0.5, 1.15) : 1
+strokeVolumeMl = clamp(restingStrokeVolumeMl × (1 + strokeVolumeGain × (drive − 1)) × preloadFactor,
+                       30, 140)（随体重缩放）
 cardiacOutputMlMin = heartRatePerMin × strokeVolumeMl
 ```
 
-- `I = 1` 时活动项为 `+1.5`；`C = 2` 时皮质醇项为 `+0.5`；两者同时满档且正常血容量（`preloadFactor = 1`）时 `drive = 3.5`，心率钳到 180、搏出量 105 mL、心输出 18900 mL/min。
-- `drive < 1` 时心率停在静息下限 70，而搏出量仍按公式低于 70 mL 并受 `[30, 140]` mL 钳位；高血容量（最大 `preloadFactor = 1.15`）或低血容量（最低 `0.5`）同样受 `[30, 140]` mL 安全钳位限制。
-- `R = 0` 时即使 `I` 保留旧值，活动项也为 0。
-- `0.2` 的搏出量增益、`5000 mL` 参考血容量、`preloadFactor` `[0.5, 1.15]` 钳位与 `[30, 140]` mL 搏出量钳位是脚本内 `design` 常量，不在参数文件中；它们只表示模型内相对变化，不是 Frank–Starling 实测曲线或每搏量—交感张力斜率。
-
-同目录参数（`owner: heart`）：
-
-| 参数 ID | 默认值 | 单位 | 状态 | 来源与替换点 |
-| --- | ---: | --- | --- | --- |
-| `heart.restingHeartRatePerMin` | 70 | `1/min` | `design` | `source: null`；静息心率工程占位，也是 drive 下限。不是实测心率、个体基线或运动生理测量 |
-| `heart.maxHeartRatePerMin` | 180 | `1/min` | `design` | `source: null`；模型内钳位上限，不是实测最大心率、年龄预测最大心率或运动试验结果 |
-| `heart.restingStrokeVolumeMl` | 70 | `mL` | `design` | `source: null`；静息每搏量工程占位，初始心输出 4900 mL/min；不区分性别、体型或训练状态 |
-| `heart.activityGain` | 1.5 | `1` | `design` | `source: null`；`intensity = 1` 时对 drive 的增益；不是 MET、%VO₂max 或心率储备剂量反应 |
-| `heart.catecholamineGain` | 0.5 | `1` | `design` | `source: null`；皮质醇相对基线偏离对 drive 的增益；只借用皮质醇作交感/应激代理，不是肾上腺素浓度或受体剂量反应 |
-
-参数文件中的 `range` 只是工程调参范围；五个参数全部 `design`、`source: null`，不能称拟合、实测或 `validated`。
+- 同目录参数（`owner: heart`）已完整外置到 [`heart.parameters.json`](heart.parameters.json)：含基础心率/搏出量/上限、`activityGain`、`sympatheticDriveGain = 0.012`、`startleFloorSympatheticMm = 85`、三项分期底盘（`lightSleepDriveBase = 0.86`、`deepSleepDriveBase = 0.78`、`remSleepDriveBase = 0.94`，方向引自 `SRC-SOMERS-1993`）、`minSleepHeartRatePerMin = 42`、`strokeVolumeGain = 0.2`，以及历史兼容保留项 `catecholamineGain`。
 
 ## 4. 消费者与链路
 
@@ -78,7 +60,7 @@ heart.cardiacOutputMlMin ──────────────────�
 ```
 
 - `blood` 读轮初心输出，写血压代理、氧输送读数与循环能力上限；`bloodOxygen` 再把能力上限当作组织供氧的第三道上限之一。
-- 本部位不直接写 `bloodOxygen`、`kidney` 或 `hypothalamusAdh`，也不产生气促、血压或运动通知。
+- 本部位自身不直接写 `bloodOxygen`、`kidney` 或 `hypothalamusAdh`，也不直接发送通知；但 `interoception.palpitationMm` 现已软读 `heartRatePerMin`（非中高强运动且心率 > 115 /min 时计入，协同收缩压），接入纯定性 `body_state` 与 `brainNotify`（高强运动下只按低血压计入）。
 - 本部位没有负反馈：氧输送不足不会自动降低活动或心率；活动停止后心输出下一轮直接回到静息映射，不建恢复动力学。
 
 ## 5. 旧档、重启与异常

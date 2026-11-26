@@ -348,8 +348,9 @@ test('a failed catch-up batch retries online without delivering its historical n
   assert.equal(afterFailedRetry.activeBatch.suppressNotifications, true);
   let stored = state.snapshot.parts.brainNotify.sessions['session-a'];
   assert.equal(stored.lastSentAt, null);
-  assert.equal(stored.hourCount, 0);
-  assert.equal(stored.dayCount, 0);
+  assert.equal(stored.backoffStep, 0);
+  assert.equal(stored.lastUrgentSentAt, null);
+  assert.equal(stored.urgentBackoffStep, 0);
   assert.deepEqual(stored.levels, { hunger: 0, fullness: 0, urinary: 0, thirst: 0 });
 
   await app.tick();
@@ -360,8 +361,9 @@ test('a failed catch-up batch retries online without delivering its historical n
   assert.equal(state.notifications[0].mode, 'context');
   stored = state.snapshot.parts.brainNotify.sessions['session-a'];
   assert.equal(stored.lastSentAt, 120);
-  assert.equal(stored.hourCount, 1);
-  assert.equal(stored.dayCount, 1);
+  assert.equal(stored.backoffStep, 1);
+  assert.equal(stored.lastUrgentSentAt, null);
+  assert.equal(stored.urgentBackoffStep, 0);
   assert.deepEqual(stored.levels, { hunger: 2, fullness: 0, urinary: 0, thirst: 0 });
 
   await app.tick();

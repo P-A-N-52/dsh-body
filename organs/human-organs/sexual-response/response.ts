@@ -1,61 +1,16 @@
 /*
- * 部位 `sexualResponse`：性别中立的性反应周期与性活动强度代理。本部位唯一写者；
- * 无 transfer、无性别差异、不发通知，也不写其他部位；每轮只读轮初自身状态与本轮原始动作。
+ * 部位 `sexualResponse`：支持两性差异、睾酮/卵巢周期调制与性后余韵的性反应周期模块。
+ * 本部位唯一写者；导出共享纯函数 `evaluateSexualRelease` 与 `resolveEffectiveRefractoryMin`
+ * 供 `brain/autonomic.ts`、`brain/reward.ts` 与 `uterus/uterus.ts` 在同轮基于轮初快照同步判别高潮。
  *
- * 动作：
- * - `sex { durationMin, intensity }`：校验与 `skeletal-muscle/activity.ts` 的 `exercise`
- *   相同——intensity 有限且落在 (0, 1]，durationMin 有限且 > 0；非法动作忽略、不改变状态，
- *   同一轮多条合法动作只取最后一条，用其 durationMin/intensity 替换剩余分钟与强度，不累加。
- * - `orgasm`：无载荷。只在轮初 `arousalMm >= orgasmAllowedMm` 时释放；低于该值被忽略，
- *   不改变状态。高潮不再由唤醒跨阈值自动记录。
- *
- * 消费者与上游（均为轮初读取）
- * - `physicalActivity`：把 `sex` 与 `exercise` 一样按强度 × 时长计入剩余体力活动。
- * - `interoception`：软读 `arousalMm`，输出体感读数 `sexualArousalMm`（只进 body_state，
- *   不进 discomfort、不发通知）。
- * - 上游 `testes`（可选）：轮初软读 `testosteroneRelative`，按 `0.5 + 0.5 × 相对值` 缩放
- *   唤醒目标；`testes` 未加载、字段缺失或非有限时按 1（因子 1，行为与无睾酮增益一致）。
- *   它只影响目标幅度，不改变相位、阈值或排空判定；相对值 1（工程基线）时目标不变。
- *
- * 公式（dtMin = io.dt / 60，simMin = io.simulatedSeconds / 60）：
- *   remainingSexMin = max(0, prev.remainingSexMin − dtMin)，合法 sex 动作整体替换
- *   sexIntensity 只由 sex 动作替换，活动结束后保留最后一个值
- *   active = remainingSexMin > 0 && sexIntensity > 0
- *   sinceOrgasm = lastOrgasmAtSimMin === null ? Infinity : simMin − lastOrgasmAtSimMin
- *   refractory = sinceOrgasm < refractoryMin（释放判定用更新前的记录）
- *   testosteroneRelative = max(0, finiteOr(testes.testosteroneRelative, 1))
- *   factor = 0.5 + 0.5 × testosteroneRelative
- *   release（高潮，两条路径，都用轮初 arousalMm 且非不应期判定）：
- *     主动：!refractory && 本轮含 orgasm 动作 && prevArousal >= orgasmAllowedMm
- *     强制：!refractory && prevArousal >= orgasmForcedMm，无需动作
- *     任一成立 → released = true, lastOrgasmAtSimMin = simMin（每轮最多记一次）
- *     主动动作在 prevArousal < orgasmAllowedMm 或不应期内被忽略，不改变状态
- *   target = active && !refractory && !released
- *     ? clamp(100 × sexIntensity × factor, 0, 100)
- *     : 0
- *   riseHalfTime = testosteroneRelative > 1 ? arousalHalfTimeMin / factor : arousalHalfTimeMin
- *   halfTime = target > prevArousal ? riseHalfTime : resolutionHalfTimeMin
- *   arousalMm = clamp(target + (prevArousal − target) × 2^(−dtMin / halfTime), 0, 100)
- *
- *   phase 在记录释放之后求值（sinceOrgasm 用更新后的值）：
- *     sinceOrgasm < orgasmDurationMin → 'orgasm'
- *     sinceOrgasm < refractoryMin     → 'refractory'
- *     active                          → arousalMm < 60 ? 'excitement' : 'plateau'
- *     arousalMm >= 10                 → 'resolution'
- *     否则                            → 'rest'
- *
- * 证据：本切片无登记来源。兴奋/平台/高潮/消退/不应期只是通用反应周期的工程骨架；
- * 半时、阈值与时长都在同目录 `response.parameters.json`，全部 `status: design`、
- * `source: null`，不是人体测量、拟合或独立验证。`arousalMm` 是 0–100 代理，不是生理测量；
- * `sexIntensity` 是模型内相对强度，不是 MET、心率、耗氧量或能量消耗。
- *
- * 未建模（design）：催产素 / 催乳素 / 内啡肽等激素，心率 / 血压 / 通气量，受孕 / 妊娠 /
- * 生育力窗，性欲的行为与情绪成分（`interoception.libidoMm` 只是体感读数），伴侣，
- * 性传播感染，避孕，性活动类型、性别差异与个体差异，
- * 任何显性内容；也不反推历史。旧存档缺字段按 0 / null 补齐，重启保留剩余分钟与
- * `lastOrgasmAtSimMin`。
+ * 差异与余韵（design）：
+ * - 男性（`testes` 加载）与中性身体保留 `refractoryMin`（20 min）基础不应期，高 PRL（>14 ng/mL）
+ *   温和延长不应期（最多 +15 min），不再男女共用死板 20 min；
+ * - 女性（加载 `ovaries` 且无 `testes`）取消固定 20 min 绝对不应期，仅保留 2 min 防连跳短停顿
+ *   （`femalePostOrgasmPauseMin`），持续刺激可连续唤起与多次高潮，刺激停止后平滑进入
+ *   `resolution` 与温热余韵 `afterglowMm`（高潮跃升至 80 mm，半衰期 22 min）。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import { getNsfwSetting, loadParameters, requireParameter } from '../../../lib/parameters.js';
 
 export const id = 'sexualResponse';
 export const actionTypes = ['sex', 'orgasm'];
@@ -68,6 +23,7 @@ type SexualResponseState = {
   remainingSexMin: number;
   sexIntensity: number;
   lastOrgasmAtSimMin: number | null;
+  afterglowMm: number;
 };
 
 type SavedSexualResponseState = {
@@ -75,6 +31,7 @@ type SavedSexualResponseState = {
   readonly remainingSexMin?: unknown;
   readonly sexIntensity?: unknown;
   readonly lastOrgasmAtSimMin?: unknown;
+  readonly afterglowMm?: unknown;
 };
 
 type Action = {
@@ -83,13 +40,20 @@ type Action = {
   readonly intensity?: unknown;
 };
 
-type TestesReading = {
-  readonly testosteroneRelative?: unknown;
+type OvariesReading = {
+  readonly estradiolPmolL?: unknown;
+  readonly progesteroneNmolL?: unknown;
+};
+
+type PituitaryReading = {
+  readonly prolactinNgMl?: unknown;
 };
 
 type IO = {
   read(id: 'sexualResponse'): Readonly<SavedSexualResponseState> | undefined;
-  read(id: 'testes'): Readonly<TestesReading> | undefined;
+  read(id: 'testes'): Readonly<{ testosteroneRelative?: unknown }> | undefined;
+  read(id: 'ovaries'): Readonly<OvariesReading> | undefined;
+  read(id: 'pituitary'): Readonly<PituitaryReading> | undefined;
   readonly actions: readonly Action[];
   readonly dt: number;
   readonly simulatedSeconds: number;
@@ -108,6 +72,13 @@ const orgasmAllowedMm = requireParameter(parameters, 'sexualResponse.orgasmAllow
 const orgasmForcedMm = requireParameter(parameters, 'sexualResponse.orgasmForcedMm');
 const orgasmDurationMin = requireParameter(parameters, 'sexualResponse.orgasmDurationMin');
 const refractoryMin = requireParameter(parameters, 'sexualResponse.refractoryMin');
+const femalePostOrgasmPauseMin = requireParameter(
+  parameters,
+  'sexualResponse.femalePostOrgasmPauseMin',
+);
+const afterglowHalfTimeMin = requireParameter(parameters, 'sexualResponse.afterglowHalfTimeMin');
+
+const AFTERGLOW_PEAK_MM = 80;
 
 export const initialState: SexualResponseState = {
   arousalMm: 0,
@@ -115,6 +86,7 @@ export const initialState: SexualResponseState = {
   remainingSexMin: 0,
   sexIntensity: 0,
   lastOrgasmAtSimMin: null,
+  afterglowMm: 0,
 };
 
 export const fields = {
@@ -123,6 +95,7 @@ export const fields = {
   remainingSexMin: { unit: 'min', mode: 'absolute' },
   sexIntensity: { unit: '1', mode: 'absolute' },
   lastOrgasmAtSimMin: { unit: 'min', mode: 'absolute' },
+  afterglowMm: { unit: 'mm', mode: 'absolute' },
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -138,13 +111,13 @@ function savedOrgasmMinute(value: unknown): number | null {
 }
 
 function hasOrgasmAction(actions: readonly Action[]): boolean {
-  return actions.some((action) => action.type === 'orgasm');
+  return actions.some((action) => action?.type === 'orgasm');
 }
 
 function sexReplacement(
   action: Action,
 ): { remainingSexMin: number; sexIntensity: number } | undefined {
-  if (action.type !== 'sex') return undefined;
+  if (action?.type !== 'sex') return undefined;
 
   const { intensity, durationMin } = action;
   if (typeof intensity !== 'number'
@@ -158,6 +131,69 @@ function sexReplacement(
   }
 
   return { remainingSexMin: durationMin, sexIntensity: intensity };
+}
+
+export function resolveEffectiveRefractoryMin({
+  ovaries,
+  testes,
+  pituitary,
+}: {
+  ovaries?: unknown;
+  testes?: unknown;
+  pituitary?: Readonly<PituitaryReading> | undefined;
+}): number {
+  const isFemaleProfile = ovaries !== undefined && ovaries !== null && (testes === undefined || testes === null);
+  if (isFemaleProfile) {
+    return femalePostOrgasmPauseMin;
+  }
+  const prolactinNgMl = Math.max(0, finiteOr(pituitary?.prolactinNgMl, 8));
+  const prlProlongationMin = clamp((prolactinNgMl - 14) * 0.5, 0, 15);
+  return refractoryMin + prlProlongationMin;
+}
+
+export function evaluateSexualRelease({
+  prevSexual,
+  ovaries,
+  testes,
+  pituitary,
+  actions,
+  simulatedSeconds,
+}: {
+  prevSexual: Readonly<SavedSexualResponseState> | undefined;
+  ovaries?: unknown;
+  testes?: unknown;
+  pituitary?: Readonly<PituitaryReading> | undefined;
+  actions: readonly Action[];
+  simulatedSeconds: number;
+}): {
+  voluntaryRelease: boolean;
+  forcedRelease: boolean;
+  released: boolean;
+  refractory: boolean;
+  effectiveRefractoryMin: number;
+} {
+  const simMin = finiteOr(simulatedSeconds, 0) / 60;
+  const prevArousal = clamp(finiteOr(prevSexual?.arousalMm, 0), 0, 100);
+  const lastOrgasmAtSimMin = savedOrgasmMinute(prevSexual?.lastOrgasmAtSimMin);
+  const sincePreviousOrgasm = lastOrgasmAtSimMin === null
+    ? Number.POSITIVE_INFINITY
+    : simMin - lastOrgasmAtSimMin;
+  const effectiveRefractoryMin = resolveEffectiveRefractoryMin({ ovaries, testes, pituitary });
+  const refractory = sincePreviousOrgasm < effectiveRefractoryMin;
+  const nsfwEnabled = getNsfwSetting() !== false;
+
+  const voluntaryRelease = nsfwEnabled
+    && !refractory
+    && hasOrgasmAction(actions)
+    && prevArousal >= orgasmAllowedMm;
+  const forcedRelease = nsfwEnabled && !refractory && prevArousal >= orgasmForcedMm;
+  return {
+    voluntaryRelease,
+    forcedRelease,
+    released: voluntaryRelease || forcedRelease,
+    refractory,
+    effectiveRefractoryMin,
+  };
 }
 
 export function heartbeat(io: IO): void {
@@ -176,41 +212,61 @@ export function heartbeat(io: IO): void {
     }
   }
 
-  const prevArousal = prev.arousalMm as number;
+  const prevArousal = clamp(finiteOr(prev.arousalMm, 0), 0, 100);
+  const prevAfterglow = clamp(finiteOr(prev.afterglowMm, 0), 0, 100);
   let lastOrgasmAtSimMin = savedOrgasmMinute(prev.lastOrgasmAtSimMin);
 
-  const active = remainingSexMin > 0 && sexIntensity > 0;
-  const sincePreviousOrgasm = lastOrgasmAtSimMin === null
-    ? Number.POSITIVE_INFINITY
-    : simMin - lastOrgasmAtSimMin;
-  const refractory = sincePreviousOrgasm < refractoryMin;
+  const ovaries = io.read('ovaries');
+  const testes = io.read('testes');
+  const pituitary = io.read('pituitary');
+  const releaseInfo = evaluateSexualRelease({
+    prevSexual: prev,
+    ovaries,
+    testes,
+    pituitary,
+    actions: io.actions,
+    simulatedSeconds: io.simulatedSeconds,
+  });
 
-  const voluntaryRelease = !refractory
-    && hasOrgasmAction(io.actions)
-    && prevArousal >= orgasmAllowedMm;
-  const forcedRelease = !refractory && prevArousal >= orgasmForcedMm;
-  const released = voluntaryRelease || forcedRelease;
-  if (released) {
+  if (releaseInfo.released) {
     lastOrgasmAtSimMin = simMin;
   }
 
-  const testosteroneRelative = Math.max(0, finiteOr(io.read('testes')?.testosteroneRelative, 1));
-  const testosteroneFactor = 0.5 + 0.5 * testosteroneRelative;
-  const target = active && !refractory && !released
-    ? clamp(100 * sexIntensity * testosteroneFactor, 0, 100)
+  const active = remainingSexMin > 0 && sexIntensity > 0;
+  let hormoneFactor = 1;
+  let riseSpeedFactor = 1;
+  if (testes !== undefined && testes !== null) {
+    const testosteroneRelative = Math.max(0, finiteOr(testes.testosteroneRelative, 1));
+    hormoneFactor = 0.5 + 0.5 * testosteroneRelative;
+    riseSpeedFactor = testosteroneRelative > 1 ? hormoneFactor : 1;
+  } else if (ovaries !== undefined && ovaries !== null) {
+    const e2 = finiteOr(ovaries.estradiolPmolL, 140);
+    const p4 = finiteOr(ovaries.progesteroneNmolL, 1.3);
+    hormoneFactor = clamp(0.85 + 0.3 * ((e2 - 140) / 800) - 0.15 * (p4 / 42), 0.65, 1.25);
+    riseSpeedFactor = hormoneFactor > 1 ? hormoneFactor : 1;
+  }
+
+  const target = active && !releaseInfo.refractory && !releaseInfo.released
+    ? clamp(100 * sexIntensity * hormoneFactor, 0, 100)
     : 0;
-  const riseHalfTimeMin = testosteroneRelative > 1
-    ? arousalHalfTimeMin / testosteroneFactor
-    : arousalHalfTimeMin;
+  const riseHalfTimeMin = arousalHalfTimeMin / Math.max(0.5, riseSpeedFactor);
   const halfTimeMin = target > prevArousal ? riseHalfTimeMin : resolutionHalfTimeMin;
-  const arousalMm = target + (prevArousal - target) * 2 ** (-dtMin / halfTimeMin);
+  const arousalMm = clamp(
+    target + (prevArousal - target) * 2 ** (-dtMin / halfTimeMin),
+    0,
+    100,
+  );
+
+  const afterglowMm = releaseInfo.released
+    ? AFTERGLOW_PEAK_MM
+    : clamp(prevAfterglow * 2 ** (-dtMin / afterglowHalfTimeMin), 0, 100);
 
   const sinceOrgasm = lastOrgasmAtSimMin === null
     ? Number.POSITIVE_INFINITY
     : simMin - lastOrgasmAtSimMin;
   const phase: Phase = sinceOrgasm < orgasmDurationMin
     ? 'orgasm'
-    : sinceOrgasm < refractoryMin
+    : sinceOrgasm < releaseInfo.effectiveRefractoryMin
       ? 'refractory'
       : active
         ? (arousalMm < 60 ? 'excitement' : 'plateau')
@@ -222,5 +278,6 @@ export function heartbeat(io: IO): void {
     remainingSexMin,
     sexIntensity,
     lastOrgasmAtSimMin,
+    afterglowMm,
   });
 }

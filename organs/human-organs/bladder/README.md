@@ -4,7 +4,7 @@
 
 膀胱只有一个脚本：接收体液转来的尿、保存轮初体积，并在本轮出现 `urinate` 动作时主动排空；没有动作但轮初体积超过过度充盈阈值时，做一次非自主排空。它不产激素；尿意由 `brain/interoception.ts` 从膀胱体积读出。
 
-实现状态：脚本、参数与定向测试已在 `organs/human-organs/bladder/`，并已加入根清单（当前根清单 38 个部位、34 份唯一参数文件；3 份 DI 变体与 `parathyroid`/`calcium` 参数不随清单加载）；`body_act` 已接受 `urinate`。Task 10 真实 DSH 会话已核对 queued → applied、同 callId 重试返回原 applied ID、同 callId 异载荷 409，以及 250 mL 轮初存量排出后同轮 1 mL 新尿留下（30 轮 A/B；证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，仓库外未入库）。过度充盈非自主排空由定向单测与真实 Gateway 水账测试覆盖，并已由 M19 真实 DSH 会话补验（2026-11-22，33/33 verdicts：预置 650 mL、无动作 → sim 60 `involuntaryVoidedMl = 650`、`voluntaryVoidedMl = 0`、同轮新尿 1 mL 留下；sim 120 尿意/不适回落；`urinate` 优先、同 callId 重试不重复排空、异载荷 409；证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）。M19 只覆盖 3 轮非自主排空短会话；650 mL 预置与预置会话的稳态 1 mL 请求都是测试设定，不是模型输出；600 mL 仍是 `design` 工程阈值，不是临床容量或失禁模型。
+实现状态：脚本、参数与定向测试已在 `organs/human-organs/bladder/`，并已加入根清单（当前根清单 39 个部位、35 份唯一参数文件；3 份 DI 变体与 `parathyroid`/`calcium` 参数不随清单加载）；`body_act` 已接受 `urinate`。Task 10 真实 DSH 会话已核对 queued → applied、同 callId 重试返回原 applied ID、同 callId 异载荷 409，以及 250 mL 轮初存量排出后同轮 1 mL 新尿留下（30 轮 A/B；证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，仓库外未入库）。过度充盈非自主排空由定向单测与真实 Gateway 水账测试覆盖，并已由 M19 真实 DSH 会话补验（2026-11-22，33/33 verdicts：预置 650 mL、无动作 → sim 60 `involuntaryVoidedMl = 650`、`voluntaryVoidedMl = 0`、同轮新尿 1 mL 留下；sim 120 尿意/不适回落；`urinate` 优先、同 callId 重试不重复排空、异载荷 409；证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）。M19 只覆盖 3 轮非自主排空短会话；650 mL 预置与预置会话的稳态 1 mL 请求都是测试设定，不是模型输出；600 mL 仍是 `design` 工程阈值，不是临床容量或失禁模型。
 
 **清单依赖（transfer 配对校验）。** `volumeMl` 声明 `transferIn: ["bodyFluid.waterVolumeMl"]`，所以加载 `bladder` 时必须同时加载 `bodyFluid`；`bodyFluid` 又声明来自 `smallIntestine.waterVolumeMl` 的 `transferIn`，以及到 `bladder.volumeMl`、`lungs.respiratoryWaterLossMl` 与 `skin.sweatVolumeMl` 的三个 `transferOut`；`smallIntestine` 再声明来自 `stomach.waterVolumeMl` 的 `transferIn`，以及 `carbohydrateG` 的 `transferOut: ["glucose.glucoseMassG"]`，而 `glucose` 还声明到 `kidneyGlucose.excretedGlucoseG` 与 `muscleGlucose.uptakeG` 的 `transferOut`。完整硬 transfer 闭包是 `stomach/hydration.ts`、`smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGluconeogenesis`、`kidneyGlucose`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、`skin` 与 `lungs` 十五个部位：水路由胃经小肠入体液再到膀胱，`bodyFluid` 另向 `lungs` 与 `skin` 转水，也接收 `colon.reclaimedWaterMl`；`glucose` 向 `liver`、`kidneyGlucose` 与 `muscleGlucose` 结算，`muscleGlucose` 再向三个区域转出，`kidneyGluconeogenesis` 向 `glucose` 产糖。缺任一个都会在 `createFieldRegistry` 启动校验时报字段配对错误。旧入口 `stomach/motility.ts` 不声明 `waterVolumeMl` 或 `carbohydrateG` 的 transfer，不能替代 `hydration.ts`。启用后，只要 `bladder` 已加载，`GET /capabilities` 就显示 `urinate: ["bladder"]`；但字段声明仍要求闭包内全部十五个部位同在清单里，`kidney` 等软读取则不影响启动。
 
@@ -57,7 +57,7 @@ write.volumeMl = V − voidedMl
 
 - 本脚本是 `bladder` 的唯一写者，只读自己的轮初状态与本轮 `io.actions`。
 - 不读 `bodyFluid` 的原始水量，也不写 `bodyFluid`；水只经 `bodyFluid` 发起的 `transfer` 进入。
-- 不调用 `io.notify`；主动排尿由会话动作触发，非自主排空只由体积阈值触发，不产生通知或上下文注入。
+- 本部位自身不调用 `io.notify`；主动排尿由会话动作触发，非自主排空只由体积阈值触发。当 `bladder.involuntaryVoidedMl > 0` 由 `<= 0` 上升触发（上升沿）时，`brainNotify` 会发出一条紧急 `wake` 纯定性感受通知（并在 `body_state` 表现为漏尿紧急感受），原始数值由 `GET /state` / `gateway.getState()` 返回。
 - 旧存档中缺 `voluntaryVoidedMl` / `involuntaryVoidedMl` 的膀胱按 0 补齐，不重置已有 `volumeMl`；旧字段 `voidedMl` 每轮按新规则重算。
 - 尿意由 `interoception` 读取轮初 `bladder.volumeMl` 计算：`urinaryUrgency = clamp(100 mm × volumeMl / 410 mL, 0, 100)`。410 mL 是 `design` 归一化锚点，不是自然排尿阈值；排尿后的低尿意与当轮新尿都在下一轮读出。
 

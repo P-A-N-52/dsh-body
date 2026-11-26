@@ -20,6 +20,7 @@ const centralKidneyPath = './organs/human-organs/kidney/urine-production-di-cent
 const nephrogenicKidneyPath = './organs/human-organs/kidney/urine-production-di-nephrogenic.ts';
 const partIds = [
   'adrenal',
+  'autonomic',
   'bladder',
   'blood',
   'bloodOxygen',
@@ -48,9 +49,11 @@ const partIds = [
   'physicalActivity',
   'pineal',
   'pituitary',
+  'reward',
   'salivaryGlands',
   'sexualResponse',
   'skin',
+  'sleep',
   'smallIntestine',
   'stomach',
   'stomachGhrelin',
@@ -159,7 +162,7 @@ function snapshot(parts) {
 
 test('the root manifest keeps the normal water chain with no DI variant loaded', () => {
   const manifest = JSON.parse(readFileSync(rootManifestPath, 'utf8'));
-  assert.equal(manifest.scripts.length, 38);
+  assert.equal(manifest.scripts.length, 41);
   assert.ok(manifest.scripts.includes(normalAdhPath));
   assert.ok(manifest.scripts.includes(normalKidneyPath));
   assert.ok(manifest.scripts.includes(lungsPath));
@@ -225,7 +228,7 @@ test('the default root manifest still produces the same ten rounds point by poin
       glycogenConsumedG: 0,
     }, region);
   }
-  assert.deepEqual(finalParts.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
+  assert.deepEqual(finalParts.pancreasEndocrine, { insulinPmolL: 60, glucagonRelative: 1 });
   assert.deepEqual(finalParts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
 });
 
@@ -239,10 +242,13 @@ test('a central DI manifest zeroes ADH and produces four mL per minute of urine'
     eat: ['esophagus', 'stomach', 'stomachGhrelin', 'salivaryGlands'],
     defecate: ['colon'],
     urinate: ['bladder'],
+    sleep: ['sleep'],
+    wake_up: ['sleep'],
     exercise: ['physicalActivity'],
-    sex: ['physicalActivity', 'sexualResponse'],
-    orgasm: ['sexualResponse'],
+    stop_exercise: ['physicalActivity'],
   });
+  assert.equal(gateway.submitAction({ id: 'di-sex-403', type: 'sex', intensity: 1, durationMin: 5 }).statusCode, 403);
+  assert.equal(gateway.submitAction({ id: 'di-orgasm-403', type: 'orgasm' }).statusCode, 403);
 
   for (let round = 1; round <= 5; round++) {
     await gateway.tick();
@@ -357,13 +363,17 @@ test('body_act and body_state keep their shapes under a DI manifest', async (t) 
   const { gateway, tools } = await startBody(t, {
     swaps: { [normalAdhPath]: centralAdhPath, [normalKidneyPath]: centralKidneyPath },
   });
-  assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_state']);
+  assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_bind', 'body_state']);
   assert.deepEqual(
     tools.body_act.parameters.properties.type.enum,
-    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'sex', 'orgasm'],
+    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'stop_exercise', 'sleep', 'wake_up'],
   );
   assert.deepEqual(tools.body_act.output.schema.required, ['ok', 'statusCode', 'receipt']);
-  assert.deepEqual(tools.body_state.output.schema.required, ['simulatedSeconds', 'parts']);
+  assert.deepEqual(tools.body_state.output.schema.required, ['status', 'focus', 'feelings', 'summary']);
+  assert.equal(
+    (await tools.body_act.execute({ type: 'sex', intensity: 1, durationMin: 5 }, fakeExec({ callId: 'call-sex' }))).statusCode,
+    400,
+  );
 
   const result = await tools.body_act.execute(
     { type: 'drink', volumeMl: 240, energyKcal: 0 },
@@ -377,8 +387,13 @@ test('body_act and body_state keep their shapes under a DI manifest', async (t) 
   await gateway.tick();
 
   const state = await tools.body_state.execute({ part: 'kidney' });
-  assert.deepEqual(Object.keys(state).sort(), ['parts', 'simulatedSeconds']);
-  assert.equal(state.parts.kidney.urineProductionRequestMl, 4);
+  assert.deepEqual(Object.keys(state).sort(), ['feelings', 'focus', 'status', 'summary']);
+  assert.equal(state.status, 'active');
+  assert.equal(state.focus, 'kidney');
+  assert.ok(Array.isArray(state.feelings));
+  assert.equal(Object.hasOwn(state, 'parts'), false);
+  assert.equal(/[\d０-９]/.test(JSON.stringify(state)), false);
+  assert.equal(gateway.getState().parts.kidney.urineProductionRequestMl, 4);
   assert.equal(gateway.getState().parts.hypothalamusAdh.relativeConcentration, 0);
   assert.equal(gateway.getState().parts.bladder.volumeMl, 4);
 });

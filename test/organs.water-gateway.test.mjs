@@ -13,6 +13,7 @@ const rootManifestPath = join(root, 'body-modules.json');
 const initialBodyWaterMl = 30000;
 const partIds = [
   'adrenal',
+  'autonomic',
   'bladder',
   'blood',
   'bloodOxygen',
@@ -41,9 +42,11 @@ const partIds = [
   'physicalActivity',
   'pineal',
   'pituitary',
+  'reward',
   'salivaryGlands',
   'sexualResponse',
   'skin',
+  'sleep',
   'smallIntestine',
   'stomach',
   'stomachGhrelin',
@@ -212,7 +215,7 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
   assert.deepEqual(loaded.hypothalamusThirst, { thirst: 50 });
   assert.deepEqual(loaded.kidney, { urineProductionRequestMl: 0 });
   assert.deepEqual(loaded.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
-  assert.deepEqual(loaded.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
+  assert.deepEqual(loaded.pancreasEndocrine, { insulinPmolL: 60, glucagonRelative: 1 });
   assert.deepEqual(loaded.liver, {
     glycogenCapacityG: 100,
     glycogenG: 80,
@@ -245,6 +248,7 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
     remainingSexMin: 0,
     sexIntensity: 0,
     lastOrgasmAtSimMin: null,
+    afterglowMm: 0,
   });
   assert.deepEqual(loaded.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
   assert.deepEqual(loaded.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });
@@ -266,7 +270,7 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
     excessMassG: 0,
   });
   assert.deepEqual(after.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
-  assert.deepEqual(after.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
+  assert.deepEqual(after.pancreasEndocrine, { insulinPmolL: 60, glucagonRelative: 1 });
   assert.equal(after.stomach.mealQueue.length, 1);
   assert.equal(after.stomach.mealQueue[0].remainingRounds, 1);
 
@@ -474,15 +478,19 @@ test('urinate voids the round-start bladder once and same-round urine stays', as
   const voidExec = fakeExec({ sessionId: 'session-void', callId: 'void-1' });
   const readExec = (callId) => fakeExec({ sessionId: 'session-read', callId });
 
-  const before = await tools.body_state.execute({ part: 'bladder' }, readExec('read-before'));
-  assert.deepEqual(before.parts.bladder, {
+  const beforeFeeling = await tools.body_state.execute({ part: 'bladder' }, readExec('read-before'));
+  assert.equal(beforeFeeling.status, 'active');
+  assert.equal(beforeFeeling.focus, 'bladder');
+  assert.equal(Object.hasOwn(beforeFeeling, 'parts'), false);
+  assert.equal(/[\d０-９]/.test(JSON.stringify(beforeFeeling)), false);
+  const before = gateway.getState().parts;
+  assert.deepEqual(before.bladder, {
     volumeMl: 250,
     voidedMl: 0,
     voluntaryVoidedMl: 0,
     involuntaryVoidedMl: 0,
   });
-  const urgeBefore = await tools.body_state.execute({ part: 'interoception' }, readExec('read-urge-before'));
-  assert.equal(urgeBefore.parts.interoception.urinaryUrgency, 0);
+  assert.equal(before.interoception.urinaryUrgency, 0);
 
   const queued = await tools.body_act.execute({ type: 'urinate' }, voidExec);
   assert.equal(queued.ok, true);
@@ -492,22 +500,20 @@ test('urinate voids the round-start bladder once and same-round urine stays', as
   await gateway.tick();
   assert.equal(gateway.getReceipt(queued.receipt.id).status, 'applied');
 
-  const afterVoid = await tools.body_state.execute({ part: 'bladder' }, readExec('read-after-void'));
-  assert.deepEqual(afterVoid.parts.bladder, {
+  const afterVoid = gateway.getState().parts;
+  assert.deepEqual(afterVoid.bladder, {
     volumeMl: 40,
     voidedMl: 250,
     voluntaryVoidedMl: 250,
     involuntaryVoidedMl: 0,
   });
-  const urgeAfterVoid = await tools.body_state.execute({ part: 'interoception' }, readExec('read-urge-after-void'));
-  assert.ok(Math.abs(urgeAfterVoid.parts.interoception.urinaryUrgency - (100 * 250) / 410) < 1e-9);
+  assert.ok(Math.abs(afterVoid.interoception.urinaryUrgency - (100 * 250) / 410) < 1e-9);
 
   await gateway.tick();
-  const next = await tools.body_state.execute({ part: 'bladder' }, readExec('read-next'));
-  assert.equal(next.parts.bladder.voidedMl, 0);
-  assert.ok(next.parts.bladder.volumeMl > 40);
-  const urgeNext = await tools.body_state.execute({ part: 'interoception' }, readExec('read-urge-next'));
-  assert.ok(urgeNext.parts.interoception.urinaryUrgency < urgeAfterVoid.parts.interoception.urinaryUrgency);
+  const next = gateway.getState().parts;
+  assert.equal(next.bladder.voidedMl, 0);
+  assert.ok(next.bladder.volumeMl > 40);
+  assert.ok(next.interoception.urinaryUrgency < afterVoid.interoception.urinaryUrgency);
 
   const replay = await tools.body_act.execute({ type: 'urinate' }, voidExec);
   assert.equal(replay.statusCode, 200);
@@ -517,9 +523,9 @@ test('urinate voids the round-start bladder once and same-round urine stays', as
 
   const bodyWaterBeforeRetry = gateway.getState().parts.bodyFluid.waterVolumeMl;
   await gateway.tick();
-  const afterRetry = await tools.body_state.execute({ part: 'bladder' }, readExec('read-after-retry'));
-  assert.equal(afterRetry.parts.bladder.voidedMl, 0);
-  assert.ok(gateway.getState().parts.bodyFluid.waterVolumeMl < bodyWaterBeforeRetry);
+  const afterRetry = gateway.getState().parts;
+  assert.equal(afterRetry.bladder.voidedMl, 0);
+  assert.ok(afterRetry.bodyFluid.waterVolumeMl < bodyWaterBeforeRetry);
 });
 
 test('two different urinate actions in one round void only once', async (t) => {
@@ -730,9 +736,12 @@ test('an overflow bladder voids involuntarily and keeps the water ledger', async
   }
 
   assert.equal(cumulativeVoidedMl, overflowMl);
-  const bladder = await tools.body_state.execute({ part: 'bladder' }, readExec('read-overflow'));
-  assert.ok(bladder.parts.bladder.volumeMl > 0);
-  assert.equal(bladder.parts.bladder.involuntaryVoidedMl, 0);
+  const bladderFeeling = await tools.body_state.execute({ part: 'bladder' }, readExec('read-overflow'));
+  assert.equal(Object.hasOwn(bladderFeeling, 'parts'), false);
+  assert.equal(/[\d０-９]/.test(JSON.stringify(bladderFeeling)), false);
+  const bladder = gateway.getState().parts.bladder;
+  assert.ok(bladder.volumeMl > 0);
+  assert.equal(bladder.involuntaryVoidedMl, 0);
 });
 
 test('a 600 mL round-start bladder does not void until the next overflow round', async (t) => {
@@ -844,8 +853,10 @@ test('an old bladder checkpoint without subtotals loads with design zeros and ca
   const readExec = (callId) => fakeExec({ sessionId: 'session-legacy-bladder', callId });
   const voidExec = fakeExec({ sessionId: 'session-legacy-bladder', callId: 'void-1' });
 
-  const loaded = await tools.body_state.execute({ part: 'bladder' }, readExec('read-loaded'));
-  assert.deepEqual(loaded.parts.bladder, {
+  const loadedFeeling = await tools.body_state.execute({ part: 'bladder' }, readExec('read-loaded'));
+  assert.equal(Object.hasOwn(loadedFeeling, 'parts'), false);
+  assert.equal(/[\d０-９]/.test(JSON.stringify(loadedFeeling)), false);
+  assert.deepEqual(gateway.getState().parts.bladder, {
     volumeMl: 250,
     voidedMl: 7,
     voluntaryVoidedMl: 0,

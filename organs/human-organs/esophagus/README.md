@@ -4,7 +4,7 @@
 
 `esophagus` 目前只有一个部位写者 `esophagus.ts`。它把本轮合法的 `eat` / `drink` 体积记为在途食团，按固定转运时间递减，并把超过参考食团的部分映射成 0–100 mm 的呛咳风险代理；`interoception.discomfort` 以软读方式取该风险，超过不适起始值后并入第七路。
 
-实现状态：脚本、参数与定向测试已在 `organs/human-organs/esophagus/`，并已加入根清单 `body-modules.json`、女性清单与男性清单。当前根清单 38 部位、34 份唯一参数文件，女性清单 41 部位、37 份，男性清单 40 部位、36 份。旧存档缺 `esophagus` 时由 `initialState` 补 0。
+实现状态：脚本、参数与定向测试已在 `organs/human-organs/esophagus/`，并已加入根清单 `body-modules.json`、女性清单与男性清单。当前根清单 39 部位、35 份唯一参数文件，女性清单 42 部位、38 份，男性清单 41 部位、37 份。旧存档缺 `esophagus` 时由 `initialState` 补 0。
 
 **清单依赖。** 本脚本不声明 `transfer`，不是硬 transfer 闭包成员，也不要求其他部位同时加载。`interoception` 只是可选软读：未加载 `esophagus` 时该路按 0。胃的摄入时刻由胃脚本按既有动作队列结算，不依赖本部位；因此只加载胃、不加载食管的自定义清单仍可启动，只是没有食管读数。
 
@@ -52,6 +52,7 @@ chokingMm = clamp(chokeGain × max(0, bolusVolumeMl / referenceBolusMl − 1), 0
 
 - 本脚本是 `esophagus` 的唯一写者，只读自己的轮初状态与本轮原始动作。
 - 不调用 `io.transfer`、`io.add` 或 `io.notify`；不写胃、肠、体液或体感部位。
+- `chokingMm` 仍只进入 `interoception.discomfort` 第七路（`body_state` 仅在无更强感受且 ≥70 mm 时作纯定性泛化呈现），不进入 `brainNotify`，也不触发通知；原始数值由 `GET /state` / `gateway.getState()` 返回。
 - 胃在本轮动作结算时已收到摄入；`transitMin` 只是读数，不改变胃的摄入时刻。因此本切片没有为“延迟到胃”新增第二套动作队列。
 - `chokingMm` 只由本轮结束时仍在转运的食团体积计算，不由累计摄入、饮水速度或现实时间计算。输出钳到 `[0, 100]`，状态 JSON-safe。
 

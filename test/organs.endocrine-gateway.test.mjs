@@ -10,7 +10,8 @@ import { checkpoint } from '../test-support/harness.mjs';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rootManifestPath = join(root, 'body-modules.json');
 const tempBase = join(tmpdir(), 'dsh-body');
-const oneMinuteRetention = 2 ** (-1 / 60);
+const oneMinuteRetention = 2 ** (-1 / 1440);
+const pinealOneMinuteStep = 1 - 2 ** (-1 / 39.4);
 
 function silence(t) {
   for (const method of ['log', 'error', 'warn']) {
@@ -22,25 +23,35 @@ function silence(t) {
   }
 }
 
-function boot(statePath) {
+function boot(statePath, nowMs = 0) {
   return startGateway({
     manifestPath: rootManifestPath,
     statePath,
     port: 0,
     autoTick: false,
-    now: () => 0,
+    now: () => nowMs,
   });
 }
 
-async function startBody(t, { parts = {}, simulatedSeconds = 0 } = {}) {
+async function startBody(t, {
+  parts = {},
+  simulatedSeconds = 0,
+  wallTimeMs = 0,
+  profile,
+  parameters,
+} = {}) {
   mkdirSync(tempBase, { recursive: true });
   const dir = mkdtempSync(join(tempBase, 'endocrine-t6.'));
   const statePath = join(dir, 'body-state.json');
-  writeFileSync(statePath, JSON.stringify(checkpoint({
-    wallTimeMs: 0,
-    simulatedSeconds,
-    parts,
-  })));
+  writeFileSync(statePath, JSON.stringify({
+    ...checkpoint({
+      wallTimeMs,
+      simulatedSeconds,
+      parts,
+    }),
+    ...(profile ? { profile } : {}),
+    ...(parameters ? { parameters } : {}),
+  }));
   silence(t);
   const gateways = [];
   t.after(async () => {
@@ -51,7 +62,7 @@ async function startBody(t, { parts = {}, simulatedSeconds = 0 } = {}) {
     dir,
     statePath,
     async start() {
-      const gateway = boot(statePath);
+      const gateway = boot(statePath, wallTimeMs);
       gateways.push(gateway);
       await gateway.ready;
       return gateway;
@@ -75,7 +86,7 @@ function sleepinessAt(melatoninRelative) {
 
 test('seeded high TSH raises T4, raises basal oxygen demand and pulls TRH/TSH back', async (t) => {
   const body = await startBody(t, {
-    parts: { pituitary: { tshRelative: 3, acthRelative: 1 } },
+    parts: { pituitary: { tshRelative: 3, acthPgMl: 12, prolactinNgMl: 8, oxytocinPgMl: 2 } },
   });
   const gateway = await body.start();
   assert.equal(gateway.getState().parts.pituitary.tshRelative, 3);
@@ -115,7 +126,7 @@ test('seeded high ACTH raises cortisol, increases liver release and raises stres
   const body = await startBody(t, {
     simulatedSeconds: 0,
     parts: {
-      pituitary: { tshRelative: 1, acthRelative: 3 },
+      pituitary: { tshRelative: 1, acthPgMl: 36, prolactinNgMl: 8, oxytocinPgMl: 2 },
       glucose: {
         glucoseMassG: 11.28,
         concentrationMgDl: 80,
@@ -128,54 +139,89 @@ test('seeded high ACTH raises cortisol, increases liver release and raises stres
 
   await gateway.tick();
   const first = gateway.getState().parts;
-  assert.ok(first.adrenal.cortisolRelative > 1, 'high ACTH must raise cortisol');
+  assert.ok(first.adrenal.cortisolNmolL > 180, 'high ACTH must raise cortisol above 180 nmol/L');
   assert.ok(first.liver.outputG > 0, 'low glucose must start liver release');
   assert.equal(first.interoception.stressMm, 0, 'the readout still sees round-start cortisol');
 
   await gateway.tick();
   const second = gateway.getState().parts;
   assert.ok(
-    second.adrenal.cortisolRelative > first.adrenal.cortisolRelative,
+    second.adrenal.cortisolNmolL > first.adrenal.cortisolNmolL,
     'cortisol must keep rising toward the high ACTH signal',
   );
   assert.ok(
     second.liver.outputG > first.liver.outputG,
-    `release ${second.liver.outputG} must rise with cortisol above 1`,
+    `release ${second.liver.outputG} must rise with cortisol above 180 nmol/L`,
   );
   assert.ok(second.liver.glycogenG < 80, 'the release must spend liver glycogen');
   assert.ok(second.interoception.stressMm > 0, 'cortisol above baseline must raise stressMm');
 });
 
-test('sleepiness follows the simulated circadian melatonin curve', async (t) => {
-  for (const [hour, expectedSleepiness] of [[2, 100], [8, 50], [14, 0]]) {
-    const body = await startBody(t, { simulatedSeconds: hour * 3600 - 60 });
+test('sleepiness follows light-modulated local-clock circadian melatonin coupled with sleep pressure', async (t) => {
+  const observedSleepiness = [];
+  for (const hour of [2, 8, 14]) {
+    const wallTimeMs = (hour * 3600 - 60) * 1000;
+    const body = await startBody(t, {
+      simulatedSeconds: hour * 3600 - 60,
+      wallTimeMs,
+      profile: { timezoneOffsetMin: 0 },
+    });
     const gateway = await body.start();
 
     await gateway.tick();
     const afterFirst = gateway.getState().parts;
+    if (hour === 2) {
+      // Awake nocturnal light (~120 lx) suppresses target ~0.964; smooths from initial 1.0 toward target
+      assert.ok(afterFirst.pineal.melatoninRelative > 0.9 && afterFirst.pineal.melatoninRelative < 1.05);
+    } else if (hour === 14) {
+      const expectedAfterFirst = 1 + (0.2 - 1) * pinealOneMinuteStep;
+      assert.ok(Math.abs(afterFirst.pineal.melatoninRelative - expectedAfterFirst) < 1e-6);
+    }
     assert.ok(
-      Math.abs(afterFirst.pineal.melatoninRelative - melatoninAt(hour)) < 1e-12,
-      `hour ${hour}: melatonin ${afterFirst.pineal.melatoninRelative}`,
+      Math.abs(afterFirst.sleep.sleepPressureMm - 0.08) < 1e-12,
+      `hour ${hour}: sleepPressure ${afterFirst.sleep.sleepPressureMm}`,
     );
 
     await gateway.tick();
     const afterSecond = gateway.getState().parts;
-    assert.ok(
-      Math.abs(
-        afterSecond.interoception.sleepinessMm - sleepinessAt(melatoninAt(hour)),
-      ) < 1e-9,
-      `hour ${hour}: sleepiness ${afterSecond.interoception.sleepinessMm}`,
+    const expectedCoupled = Math.min(
+      100,
+      Math.max(
+        0,
+        0.4 * sleepinessAt(afterFirst.pineal.melatoninRelative) + 0.8 * afterFirst.sleep.sleepPressureMm,
+      ),
     );
     assert.ok(
-      Math.abs(afterSecond.interoception.sleepinessMm - expectedSleepiness) < 0.1,
-      `hour ${hour}: expected sleepiness near ${expectedSleepiness}`,
+      Math.abs(afterSecond.interoception.sleepinessMm - expectedCoupled) < 1e-6,
+      `hour ${hour}: sleepiness ${afterSecond.interoception.sleepinessMm} != ${expectedCoupled}`,
     );
+    observedSleepiness.push(afterSecond.interoception.sleepinessMm);
   }
+  assert.ok(observedSleepiness[0] > observedSleepiness[1]);
+  assert.ok(observedSleepiness[1] > observedSleepiness[2]);
+
+  // Asleep in darkness at hour 2 lifts photic suppression to target 1.8 (approached with 39.4 min half-time)
+  const sleepWallMs = (2 * 3600 - 60) * 1000;
+  const sleepingBody = await startBody(t, {
+    simulatedSeconds: 2 * 3600 - 60,
+    wallTimeMs: sleepWallMs,
+    profile: { timezoneOffsetMin: 0 },
+    parts: {
+      sleep: { sleeping: true, sleepPressureMm: 50, sleepDurationMin: 120, sleepStage: 'deep', sleepInertiaMm: 0, wakeEvent: 'none' },
+    },
+  });
+  const sleepingGateway = await sleepingBody.start();
+  await sleepingGateway.tick();
+  const expectedAsleepFirst = 1 + (1.8 - 1) * pinealOneMinuteStep;
+  assert.ok(
+    Math.abs(sleepingGateway.getState().parts.pineal.melatoninRelative - expectedAsleepFirst) < 1e-12,
+    'darkness sleep at 02:00 rises smoothly toward peak melatonin 1.8',
+  );
 });
 
 test('restarting on the same state path continues the HPT axis', async (t) => {
   const body = await startBody(t, {
-    parts: { pituitary: { tshRelative: 3, acthRelative: 1 } },
+    parts: { pituitary: { tshRelative: 3, acthPgMl: 12, prolactinNgMl: 8, oxytocinPgMl: 2 } },
   });
   let gateway = await body.start();
   for (let round = 1; round <= 3; round++) await gateway.tick();
@@ -201,17 +247,35 @@ test('restarting on the same state path continues the HPT axis', async (t) => {
   );
 });
 
-test('resting baseline keeps HPT/HPA at 1.0 while cold and hypoglycemia activate TRH and CRH', async (t) => {
-  const restingBody = await startBody(t);
+test('resting baseline keeps HPT steady, drives HPA morning/evening circadian rhythm, and cold/hypoglycemia activate TRH and CRH', async (t) => {
+  const restingBody = await startBody(t, {
+    parameters: { 'hypothalamusEndocrine.crhCircadianAmplitude': 0 },
+  });
   const resting = await restingBody.start();
   await resting.tick();
   const restingParts = resting.getState().parts;
   assert.equal(restingParts.hypothalamusEndocrine.trhRelative, 1);
   assert.equal(restingParts.hypothalamusEndocrine.crhRelative, 1);
   assert.equal(restingParts.pituitary.tshRelative, 1);
-  assert.equal(restingParts.pituitary.acthRelative, 1);
+  assert.equal(restingParts.pituitary.acthPgMl, 12);
   assert.equal(restingParts.thyroid.thyroxineRelative, 1);
-  assert.equal(restingParts.adrenal.cortisolRelative, 1);
+  assert.ok(Math.abs(restingParts.adrenal.cortisolNmolL - 180) < 1e-12);
+
+  const morningBody = await startBody(t, {
+    wallTimeMs: 7 * 3600 * 1000,
+    profile: { timezoneOffsetMin: 0 },
+  });
+  const morning = await morningBody.start();
+  await morning.tick();
+  assert.ok(morning.getState().parts.hypothalamusEndocrine.crhRelative > 1, '07:00 local clock raises CRH');
+
+  const eveningBody = await startBody(t, {
+    wallTimeMs: 19 * 3600 * 1000,
+    profile: { timezoneOffsetMin: 0 },
+  });
+  const evening = await eveningBody.start();
+  await evening.tick();
+  assert.ok(evening.getState().parts.hypothalamusEndocrine.crhRelative < 1, '19:00 local clock lowers CRH');
 
   const stressedBody = await startBody(t, {
     parts: {

@@ -4,7 +4,7 @@
 
 `thyroid/` 目前只有一个部位 `thyroid`，脚本为 `thyroid.ts`，没有动作、通知或 `transfer`，也不写其他部位。它把轮初 `pituitary.tshRelative` 一阶趋近成 `thyroxineRelative`（T4 相对量，0–3，1 为工程基线）：TSH 高于基线时 T4 上升，低于基线时下降。T4 的消费者是 `bloodOxygen`（基础氧耗缩放）以及 `hypothalamusEndocrine` / `pituitary` 的负反馈读取；T4 升高会反向压低 TRH 与 TSH。本切片只建相对信号与一阶时滞，不是甲状腺功能检查、T4 浓度、分泌率或临床甲状腺模型。
 
-实现状态：脚本、参数与模块契约测试已落地；当前根清单为 38 部位、34 份唯一参数文件，女性清单为 41 部位、37 份，男性清单为 40 部位、36 份；硬闭包为根与男性 15 个部位、女性 17 个部位，本切片不新增 `transfer`。`thyroid.thyroxineHalfTimeMin` 是 `design`、`source: null`，没有登记人体来源。本文只描述离线模型与契约，未做真实 DSH 会话、激素实测或临床验证。
+实现状态：脚本、参数与模块契约测试已落地；当前根清单为 41 部位、37 份唯一参数文件，女性清单为 44 部位、40 份，男性清单为 43 部位、39 份；硬闭包为根与男性 15 个部位、女性 17 个部位，本切片不新增 `transfer`。`thyroid.thyroxineHalfTimeMin = 1440 min`（24 h）引用 `SRC-NICOLOFF-1972` 游离 T3 清除半衰期作为表观代谢池时间尺度（标 `prior`），其余方程形式与钳位仍为 `design`。本文只描述离线模型与契约，未做真实 DSH 会话、激素实测或临床验证。
 
 ## 1. 脚本与读写关系
 
@@ -37,14 +37,14 @@ thyroxineRelative = clamp(
 ```
 
 - 一阶趋近的目标就是轮初 TSH；输出 `thyroxineRelative` 显式钳在 `[0, 3]`，防止极大上游信号越界。
-- `dtMin = thyroxineHalfTimeMin` 时距离减半；60 s 一轮时每轮保留 `2^(−1/60)` 的距离。
+- `dtMin = thyroxineHalfTimeMin` 时距离减半；60 s 一轮时每轮保留 `2^(−1/1440)` 的距离（替代旧版 60 min 瞬时响应占位）。
 - `TSH = 1` 且 `prev = 1` 时 T4 精确保持 1。TSH 高于 1 时 T4 单调上移，低于 1 时下移。
 
 同目录参数（`owner: thyroid`）：
 
 | 参数 ID | 默认值 | 单位 | 状态 | 来源与替换点 |
 | --- | ---: | --- | --- | --- |
-| `thyroid.thyroxineHalfTimeMin` | 60 | `min` | `design` | `source: null`；T4 相对信号向轮初 TSH 一阶趋近的半时。不是甲状腺激素生成、分泌、转运或清除的实测半时，也不是甲状腺功能检查指标；`range` 只是工程调参范围。未来由具备 T4/TSH 动力学的证据替换 |
+| `thyroid.thyroxineHalfTimeMin` | 1440 | `min` | `prior` | `SRC-NICOLOFF-1972`（[`nicoloff-1972.md`](references/notes/nicoloff-1972.md)）；Nicoloff 1972 报道正常组活性 T3 同位素示踪平均半衰期 `1.0 d = 1440 min`，用作单池表观调节尺度。未建模 T4 约 7 天超慢储库与外周脱碘转换 |
 
 ## 4. 消费者与负反馈
 
@@ -87,11 +87,13 @@ thyroxineRelative = clamp(
 - 甲状腺对体温、心率、胃肠动力、情绪与体重的直接效应；本切片只经 `bloodOxygen` 调基础氧耗。
 - 甲状旁腺与血钙：本切片不建 PTH、骨交换、肾钙排泄或饮食钙，故暂不建血钙轴。
 
-**未验证：** 没有 T4/TSH 动力学的直接人体来源、独立数据、临床验证或真实 DSH 会话验收。60 min 半时、一阶指数形式、`0–3` 范围与 `1` 基线全是 `design`、`source: null` 的工程假设，不能称拟合、实测或 `validated`。本切片未做 28 部位性能实测。
+**未验证：** 没有完整 HPT 轴人体动态闭合验证、独立临床数据或真实 DSH 会话验收。`thyroid.thyroxineHalfTimeMin = 1440 min` 仅标 `prior`（锚定 Nicoloff 1972 T3 代谢池清除均值，未建双池脱碘）；一阶指数形式、`0–3` 范围与 `1` 基线仍属 `design`，不能称拟合或 `validated`。
 
 ## 7. 证据入口
 
-- 设计：[`2026-11-24-endocrine-axes-design.md`](../../../docs/superpowers/specs/2026-11-24-endocrine-axes-design.md)
+- 文献笔记：[`references/notes/nicoloff-1972.md`](references/notes/nicoloff-1972.md)（`SRC-NICOLOFF-1972`）
+- 共享来源登记簿：[`../references/source-index.csv`](../references/source-index.csv)
+- 设计：[`2026-11-24-endocrine-axes-design.md`](../../../docs/superpowers/specs/2026-11-24-endocrine-axes-design.md) 与 [`2026-11-26-reproductive-lactation-reward-endocrine-design.md`](../../../docs/superpowers/specs/2026-11-26-reproductive-lactation-reward-endocrine-design.md)
 - 模块契约测试：[`test/organs.thyroid.test.mjs`](../../../test/organs.thyroid.test.mjs)
 - 真实 Gateway 轴测试：[`test/organs.endocrine-gateway.test.mjs`](../../../test/organs.endocrine-gateway.test.mjs)
 - 上游：[`pituitary`](../brain/README.md) 与 [`hypothalamusEndocrine`](../brain/README.md) 的脑 README

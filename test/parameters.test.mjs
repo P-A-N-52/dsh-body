@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   getBodyProfile,
+  getNsfwSetting,
   getNumericParameterOverride,
   getParameterOverride,
   hasParameterOverride,
@@ -21,7 +22,10 @@ const parametersFiles = [
   { label: 'organs/human-organs/stomach/ghrelin.parameters.json', url: new URL('../organs/human-organs/stomach/ghrelin.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/stomach/gastric-sensory.parameters.json', url: new URL('../organs/human-organs/stomach/gastric-sensory.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/brain/interoception.parameters.json', url: new URL('../organs/human-organs/brain/interoception.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/brain/sleep.parameters.json', url: new URL('../organs/human-organs/brain/sleep.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/brain/autonomic.parameters.json', url: new URL('../organs/human-organs/brain/autonomic.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/brain/thermoregulation.parameters.json', url: new URL('../organs/human-organs/brain/thermoregulation.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/brain/reward.parameters.json', url: new URL('../organs/human-organs/brain/reward.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/brain/notify.parameters.json', url: new URL('../organs/human-organs/brain/notify.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/small-intestine/water-absorption.parameters.json', url: new URL('../organs/human-organs/small-intestine/water-absorption.parameters.json', import.meta.url) },
   { label: 'organs/human-compartments/body-water/water.parameters.json', url: new URL('../organs/human-compartments/body-water/water.parameters.json', import.meta.url) },
@@ -196,8 +200,8 @@ test('glucose parameters keep the fixed design defaults', () => {
   assert.deepEqual(byId['glucose.residualDisposalHalfTimeMin'].range, [10, 300]);
 });
 
-test('the parameter inventory covers forty-four files including circulation, thermoregulation, blood oxygen, the endocrine axes, salivary glands, mammary glands, renal gluconeogenesis and the male organs', () => {
-  assert.equal(parametersFiles.length, 44);
+test('the parameter inventory covers forty-seven files including sleep, autonomic, reward, circulation, thermoregulation, blood oxygen, the endocrine axes, salivary glands, mammary glands, renal gluconeogenesis and the male organs', () => {
+  assert.equal(parametersFiles.length, 47);
   const labels = parametersFiles.map(({ label }) => label);
   assert.equal(
     labels.some((label) => label.includes('/skeletal-muscle/regions/')),
@@ -229,6 +233,7 @@ test('the parameter inventory covers forty-four files including circulation, the
   assert.ok(labels.includes('organs/human-organs/epididymis/storage.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/brain/hypothalamus-endocrine.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/brain/pituitary.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/brain/reward.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/thyroid/thyroid.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/adrenal/cortisol.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/pineal/melatonin.parameters.json'));
@@ -242,6 +247,13 @@ test('heart, blood and thermoregulation parameters are design defaults with no s
       'heart.restingStrokeVolumeMl': [70, 'mL'],
       'heart.activityGain': [1.5, '1'],
       'heart.catecholamineGain': [0.5, '1'],
+      'heart.sympatheticDriveGain': [0.012, '1/mm'],
+      'heart.startleFloorSympatheticMm': [85, 'mm'],
+      'heart.lightSleepDriveBase': [0.86, '1'],
+      'heart.deepSleepDriveBase': [0.78, '1'],
+      'heart.remSleepDriveBase': [0.94, '1'],
+      'heart.minSleepHeartRatePerMin': [42, '1/min'],
+      'heart.strokeVolumeGain': [0.2, '1'],
     },
     'organs/human-compartments/blood/blood.parameters.json': {
       'blood.referenceBloodVolumeMl': [5000, 'mL'],
@@ -249,6 +261,8 @@ test('heart, blood and thermoregulation parameters are design defaults with no s
       'blood.baselineDiastolicMmHg': [80, 'mmHg'],
       'blood.baselineGfrMlMin': [100, 'mL/min'],
       'blood.oxygenContentPerPercentMlPerL': [2, 'mL/L/%'],
+      'blood.sympatheticSystolicGain': [0.002, '1/mm'],
+      'blood.sympatheticDiastolicGain': [0.001, '1/mm'],
     },
     'organs/human-organs/brain/thermoregulation.parameters.json': {
       'thermoregulation.setpointC': [37, '°C'],
@@ -258,6 +272,9 @@ test('heart, blood and thermoregulation parameters are design defaults with no s
       'thermoregulation.shiveringGain': [2, 'kcal/(min·°C)'],
       'thermoregulation.lossGain': [0.104167, 'kcal/(min·°C)'],
       'thermoregulation.evaporationKcalPerMl': [0.58, 'kcal/mL'],
+      'thermoregulation.circadianAmplitudeC': [0.25, '°C'],
+      'thermoregulation.circadianPeakHour': [17, 'h'],
+      'thermoregulation.sleepSetpointOffsetC': [0.2, '°C'],
     },
   };
 
@@ -272,46 +289,140 @@ test('heart, blood and thermoregulation parameters are design defaults with no s
       assert.equal(parameter.value, value, `${parameterId}: value`);
       assert.equal(parameter.unit, unit, `${parameterId}: unit`);
       assert.equal(parameter.status, 'design', `${parameterId}: status`);
-      assert.equal(parameter.source, null, `${parameterId}: source`);
+      if (parameterId.startsWith('heart.')) {
+        assert.ok(parameter.source === null || parameter.source === 'SRC-SOMERS-1993', `${parameterId}: source`);
+      } else {
+        assert.equal(parameter.source, null, `${parameterId}: source`);
+      }
     }
   }
 });
 
-test('endocrine parameters keep their design-only defaults', () => {
+test('endocrine and reward parameters keep expected values, units, statuses and sources', () => {
   const expected = {
     'organs/human-organs/brain/hypothalamus-endocrine.parameters.json': {
       'hypothalamusEndocrine.trhFeedbackGain': 1,
       'hypothalamusEndocrine.crhFeedbackGain': 1,
+      'hypothalamusEndocrine.crhCircadianAmplitude': 0.35,
+      'hypothalamusEndocrine.crhPeakHour': 7,
+      'hypothalamusEndocrine.sympatheticCrhGain': 0.01,
+      'hypothalamusEndocrine.carAmplitude': 0.45,
+      'hypothalamusEndocrine.carLatentMin': 10,
+      'hypothalamusEndocrine.sleepCrhSuppression': 0.15,
+      'hypothalamusEndocrine.rewardBufferingGain': 0.25,
     },
     'organs/human-organs/brain/pituitary.parameters.json': {
       'pituitary.tshFeedbackGain': 1,
+      'pituitary.tshHalfTimeMin': 53.9,
+      'pituitary.acthBasalPgMl': 12,
       'pituitary.acthFeedbackGain': 1,
+      'pituitary.acthHalfTimeMin': 20,
+      'pituitary.prolactinBasalNgMl': 8,
+      'pituitary.prolactinCircadianAmplitudeNgMl': 2.1,
+      'pituitary.prolactinSleepBoostNgMl': 6,
+      'pituitary.prolactinSucklingGainNgMl': 82,
+      'pituitary.prolactinOrgasmBoostNgMl': 14,
+      'pituitary.prolactinHalfTimeMin': 34.6,
+      'pituitary.oxytocinBasalPgMl': 2,
+      'pituitary.oxytocinSucklingBoostPgMl': 14,
+      'pituitary.oxytocinArousalGainPgMl': 6,
+      'pituitary.oxytocinOrgasmBoostPgMl': 22,
+      'pituitary.oxytocinHalfTimeMin': 3.8,
+    },
+    'organs/human-organs/brain/reward.parameters.json': {
+      'reward.basalWantingMm': 25,
+      'reward.basalHedonicMm': 15,
+      'reward.sexWantingGain': 0.5,
+      'reward.ghrelinWantingGainMm': 18,
+      'reward.orgasmHedonicBoostMm': 68,
+      'reward.orgasmSatietyBoostMm': 78,
+      'reward.exerciseHedonicGainMm': 32,
+      'reward.mealHedonicGainMm': 18,
+      'reward.mealSatietyGainMm': 28,
+      'reward.oxytocinHedonicGainMmPerPgMl': 1.2,
+      'reward.stressSuppressionGain': 0.35,
+      'reward.wantingHalfTimeMin': 8,
+      'reward.hedonicHalfTimeMin': 25,
+      'reward.satietyHalfTimeMin': 40,
     },
     'organs/human-organs/thyroid/thyroid.parameters.json': {
-      'thyroid.thyroxineHalfTimeMin': 60,
+      'thyroid.thyroxineHalfTimeMin': 1440,
     },
     'organs/human-organs/adrenal/cortisol.parameters.json': {
-      'adrenal.responseHalfTimeMin': 15,
+      'adrenal.referenceCortisolNmolL': 180,
+      'adrenal.referenceActhPgMl': 12,
+      'adrenal.acthEc50PgMl': 26,
+      'adrenal.maxSecretionNmolLPerMin': 10,
+      'adrenal.hillExponent': 1.85,
+      'adrenal.eliminationHalfTimeMin': 49,
     },
     'organs/human-organs/pineal/melatonin.parameters.json': {
       'pineal.melatoninBaseRelative': 1,
       'pineal.melatoninAmplitudeRelative': 0.8,
       'pineal.melatoninPeakHour': 2,
       'pineal.melatoninPeriodHours': 24,
+      'pineal.phaseShiftHours': 0,
+      'pineal.photicHalfMaxLux': 100,
+      'pineal.awakeNightRoomLux': 120,
+      'pineal.daylightPeakLux': 1000,
+      'pineal.eyelidTransmittance': 0.05,
+      'pineal.responseHalfTimeMin': 39.4,
     },
   };
 
+  const priorParams = new Set([
+    'pituitary.tshHalfTimeMin',
+    'pituitary.acthHalfTimeMin',
+    'pituitary.prolactinCircadianAmplitudeNgMl',
+    'thyroid.thyroxineHalfTimeMin',
+    'adrenal.acthEc50PgMl',
+    'adrenal.maxSecretionNmolLPerMin',
+    'adrenal.eliminationHalfTimeMin',
+  ]);
+  const sourcedParams = new Set([
+    'hypothalamusEndocrine.carAmplitude',
+    'pituitary.tshHalfTimeMin',
+    'pituitary.acthBasalPgMl',
+    'pituitary.acthHalfTimeMin',
+    'pituitary.prolactinBasalNgMl',
+    'pituitary.prolactinCircadianAmplitudeNgMl',
+    'pituitary.prolactinOrgasmBoostNgMl',
+    'pituitary.oxytocinBasalPgMl',
+    'pituitary.oxytocinSucklingBoostPgMl',
+    'pituitary.oxytocinOrgasmBoostPgMl',
+    'pituitary.oxytocinHalfTimeMin',
+    'reward.sexWantingGain',
+    'reward.orgasmHedonicBoostMm',
+    'reward.orgasmSatietyBoostMm',
+    'reward.oxytocinHedonicGainMmPerPgMl',
+    'reward.satietyHalfTimeMin',
+    'thyroid.thyroxineHalfTimeMin',
+    'adrenal.referenceCortisolNmolL',
+    'adrenal.referenceActhPgMl',
+    'adrenal.acthEc50PgMl',
+    'adrenal.maxSecretionNmolLPerMin',
+    'adrenal.eliminationHalfTimeMin',
+    'pineal.photicHalfMaxLux',
+  ]);
   for (const [label, values] of Object.entries(expected)) {
     const data = readParameters(new URL(`../${label}`, import.meta.url));
     assert.deepEqual(loadParameters(new URL(`../${label}`, import.meta.url)), values, label);
     for (const parameter of data.parameters) {
-      assert.equal(parameter.status, 'design', `${parameter.id}: status`);
-      assert.equal(parameter.source, null, `${parameter.id}: source`);
+      assert.equal(
+        parameter.status,
+        priorParams.has(parameter.id) ? 'prior' : 'design',
+        `${parameter.id}: status`,
+      );
+      if (sourcedParams.has(parameter.id)) {
+        assert.ok(typeof parameter.source === 'string' && parameter.source.startsWith('SRC-'), `${parameter.id}: source`);
+      } else {
+        assert.equal(parameter.source, null, `${parameter.id}: source`);
+      }
     }
   }
 });
 
-test('sexualResponse keeps six design defaults for arousal and release timing', () => {
+test('sexualResponse keeps eight design defaults for arousal, pause, afterglow and release timing', () => {
   const data = readParameters(new URL(
     '../organs/human-organs/sexual-response/response.parameters.json',
     import.meta.url,
@@ -319,7 +430,9 @@ test('sexualResponse keeps six design defaults for arousal and release timing', 
   const byId = Object.fromEntries(data.parameters.map((parameter) => [parameter.id, parameter]));
 
   assert.deepEqual(Object.keys(byId).sort(), [
+    'sexualResponse.afterglowHalfTimeMin',
     'sexualResponse.arousalHalfTimeMin',
+    'sexualResponse.femalePostOrgasmPauseMin',
     'sexualResponse.orgasmAllowedMm',
     'sexualResponse.orgasmDurationMin',
     'sexualResponse.orgasmForcedMm',
@@ -334,6 +447,8 @@ test('sexualResponse keeps six design defaults for arousal and release timing', 
     'sexualResponse.orgasmForcedMm': 95,
     'sexualResponse.orgasmDurationMin': 1,
     'sexualResponse.refractoryMin': 20,
+    'sexualResponse.femalePostOrgasmPauseMin': 2,
+    'sexualResponse.afterglowHalfTimeMin': 22,
   };
   for (const [parameterId, value] of Object.entries(expected)) {
     assert.equal(byId[parameterId].value, value, `${parameterId}: value`);
@@ -341,11 +456,13 @@ test('sexualResponse keeps six design defaults for arousal and release timing', 
     assert.equal(byId[parameterId].source, null, `${parameterId}: source`);
   }
   assert.equal(byId['sexualResponse.arousalHalfTimeMin'].unit, 'min');
+  assert.equal(byId['sexualResponse.femalePostOrgasmPauseMin'].unit, 'min');
+  assert.equal(byId['sexualResponse.afterglowHalfTimeMin'].unit, 'min');
   assert.equal(byId['sexualResponse.orgasmAllowedMm'].unit, 'mm');
   assert.equal(byId['sexualResponse.orgasmForcedMm'].unit, 'mm');
 });
 
-test('ovaries carries the Bull cycle priors and uterus takes the Bull bleeding length', () => {
+test('ovaries carries the Bull cycle priors and hyperprolactinemia design entries, and uterus takes Bull/Hallberg/Bakos/Blaicher entries', () => {
   const ovaries = readParameters(new URL(
     '../organs/human-organs/ovaries/menstrual-cycle.parameters.json',
     import.meta.url,
@@ -365,15 +482,14 @@ test('ovaries carries the Bull cycle priors and uterus takes the Bull bleeding l
     assert.equal(parameter.status, 'prior', `${parameterId}: status`);
     assert.equal(parameter.source, 'SRC-BULL-2019', `${parameterId}: source`);
   }
-  for (const parameterId of [
-    'ovaries.startCycleDay',
-    'ovaries.estradiolNadirRelative',
-    'ovaries.estradiolLutealBumpRelative',
-    'ovaries.progesteroneBaselineRelative',
-  ]) {
-    assert.equal(ovariesById[parameterId].status, 'design', `${parameterId}: status`);
-    assert.equal(ovariesById[parameterId].source, null, `${parameterId}: source`);
-  }
+  assert.equal(ovariesById['ovaries.startCycleDay'].status, 'design');
+  assert.equal(ovariesById['ovaries.startCycleDay'].source, null);
+  assert.equal(ovariesById['ovaries.hyperprolactinemiaThresholdNgMl'].value, 35);
+  assert.equal(ovariesById['ovaries.hyperprolactinemiaThresholdNgMl'].status, 'design');
+  assert.equal(ovariesById['ovaries.hyperprolactinemiaThresholdNgMl'].source, 'SRC-HOSKOVA-2022');
+  assert.equal(ovariesById['ovaries.suppressionHalfTimeDays'].value, 5);
+  assert.equal(ovariesById['ovaries.suppressionHalfTimeDays'].status, 'design');
+  assert.equal(ovariesById['ovaries.suppressionHalfTimeDays'].source, 'SRC-PAGEWILSON-2007');
 
   const uterus = readParameters(new URL(
     '../organs/human-organs/uterus/uterus.parameters.json',
@@ -388,13 +504,21 @@ test('ovaries carries the Bull cycle priors and uterus takes the Bull bleeding l
   assert.equal(menses.status, 'prior');
   assert.equal(menses.source, 'SRC-BULL-2019');
   assert.match(menses.note, /Bull/);
+  assert.equal(uterusById['uterus.flowMlPerCycle'].value, 30);
+  assert.equal(uterusById['uterus.flowMlPerCycle'].status, 'design');
+  assert.equal(uterusById['uterus.flowMlPerCycle'].source, 'SRC-HALLBERG-1966');
+  assert.equal(uterusById['uterus.lutealEndometriumPlateau'].value, 0.9);
+  assert.equal(uterusById['uterus.lutealEndometriumPlateau'].status, 'design');
+  assert.equal(uterusById['uterus.lutealEndometriumPlateau'].source, 'SRC-BAKOS-1994');
+  assert.equal(uterusById['uterus.orgasmContractionPeakMm'].value, 68);
+  assert.equal(uterusById['uterus.orgasmContractionPeakMm'].status, 'design');
+  assert.equal(uterusById['uterus.orgasmContractionPeakMm'].source, 'SRC-BLAICHER-1999');
   for (const parameterId of [
-    'uterus.flowMlPerCycle',
     'uterus.crampPeakMm',
     'uterus.crampDurationDays',
     'uterus.endometriumHalfTimeDays',
-    'uterus.endometriumEstradiolWeight',
-    'uterus.endometriumProgesteroneWeight',
+    'uterus.contractionHalfTimeMin',
+    'uterus.congestionHalfTimeMin',
   ]) {
     assert.equal(uterusById[parameterId].status, 'design', `${parameterId}: status`);
     assert.equal(uterusById[parameterId].source, null, `${parameterId}: source`);
@@ -481,13 +605,17 @@ test('blood oxygen and lung ventilation parameters keep the design defaults', ()
   );
   assert.deepEqual(Object.keys(ventilationById).sort(), [
     'lungsVentilation.deadSpaceFactor',
+    'lungsVentilation.deepSleepFloorFactor',
     'lungsVentilation.inspiredO2Fraction',
+    'lungsVentilation.lightSleepFloorFactor',
     'lungsVentilation.maxRatePerMin',
     'lungsVentilation.maxVentilationMlMin',
     'lungsVentilation.pantingGain',
     'lungsVentilation.restingRatePerMin',
     'lungsVentilation.restingTidalVolumeMl',
     'lungsVentilation.restingVentilationMlMin',
+    'lungsVentilation.sleepSympatheticBypassThresholdMm',
+    'lungsVentilation.sympatheticVentilationGainMlPerMinPerMm',
   ]);
   for (const [parameterId, value, unit] of [
     ['lungsVentilation.restingTidalVolumeMl', 500, 'mL'],
@@ -498,6 +626,10 @@ test('blood oxygen and lung ventilation parameters keep the design defaults', ()
     ['lungsVentilation.inspiredO2Fraction', 0.058333, '1'],
     ['lungsVentilation.deadSpaceFactor', 1.4, '1'],
     ['lungsVentilation.pantingGain', 1500, 'mL/(min·°C)'],
+    ['lungsVentilation.deepSleepFloorFactor', 0.82, '1'],
+    ['lungsVentilation.lightSleepFloorFactor', 0.9, '1'],
+    ['lungsVentilation.sleepSympatheticBypassThresholdMm', 20, 'mm'],
+    ['lungsVentilation.sympatheticVentilationGainMlPerMinPerMm', 80, 'mL/(min·mm)'],
   ]) {
     const parameter = ventilationById[parameterId];
     assert.equal(parameter.value, value, `${parameterId}: value`);
@@ -524,12 +656,16 @@ test('pancreas parameters reuse the glucose baseline and keep engineering defaul
   );
 
   assert.deepEqual(Object.keys(byId).sort(), [
+    'pancreasEndocrine.glucagon.counterregGainPerMgDl',
     'pancreasEndocrine.glucagon.glucoseGainPerMgDl',
+    'pancreasEndocrine.glucagon.hypoglycemiaThresholdMgDl',
     'pancreasEndocrine.glucagon.maxRelative',
     'pancreasEndocrine.glucagon.responseHalfTimeMin',
-    'pancreasEndocrine.insulin.glucoseGainPerMgDl',
-    'pancreasEndocrine.insulin.maxRelative',
-    'pancreasEndocrine.insulin.responseHalfTimeMin',
+    'pancreasEndocrine.insulin.basalPmolL',
+    'pancreasEndocrine.insulin.clearanceKmPmolL',
+    'pancreasEndocrine.insulin.clearanceVmaxPmolLPerMin',
+    'pancreasEndocrine.insulin.glucoseGainPmolLPerMinPerMgDl',
+    'pancreasEndocrine.insulin.maxPmolL',
     'pancreasEndocrine.referenceGlucoseMgDl',
   ]);
 
@@ -539,26 +675,15 @@ test('pancreas parameters reuse the glucose baseline and keep engineering defaul
   assert.equal(reference.status, 'design');
   assert.equal(reference.source, null);
 
-  const gain = byId['pancreasEndocrine.insulin.glucoseGainPerMgDl'];
-  assert.equal(gain.value, 0.02);
-  assert.equal(gain.unit, '1/(mg/dL)');
-  assert.equal(gain.status, 'design');
-  assert.equal(gain.source, null);
-
-  const halfTime = byId['pancreasEndocrine.insulin.responseHalfTimeMin'];
-  assert.equal(halfTime.value, 10);
-  assert.equal(halfTime.unit, 'min');
-  assert.equal(halfTime.status, 'design');
-  assert.equal(halfTime.source, null);
-
-  const maximum = byId['pancreasEndocrine.insulin.maxRelative'];
-  assert.equal(maximum.value, 5);
-  assert.equal(maximum.unit, '1');
-  assert.equal(maximum.status, 'design');
-  assert.equal(maximum.source, null);
-
   for (const [parameterId, value, unit] of [
+    ['pancreasEndocrine.insulin.basalPmolL', 60, 'pmol/L'],
+    ['pancreasEndocrine.insulin.glucoseGainPmolLPerMinPerMgDl', 0.085, 'pmol/(L·min·mg/dL)'],
+    ['pancreasEndocrine.insulin.clearanceKmPmolL', 3890, 'pmol/L'],
+    ['pancreasEndocrine.insulin.clearanceVmaxPmolLPerMin', 274, 'pmol/(L·min)'],
+    ['pancreasEndocrine.insulin.maxPmolL', 900, 'pmol/L'],
+    ['pancreasEndocrine.glucagon.hypoglycemiaThresholdMgDl', 68, 'mg/dL'],
     ['pancreasEndocrine.glucagon.glucoseGainPerMgDl', 0.02, '1/(mg/dL)'],
+    ['pancreasEndocrine.glucagon.counterregGainPerMgDl', 0.06, '1/(mg/dL)'],
     ['pancreasEndocrine.glucagon.responseHalfTimeMin', 10, 'min'],
     ['pancreasEndocrine.glucagon.maxRelative', 5, '1'],
   ]) {
@@ -586,6 +711,7 @@ test('liver glycogen parameters stay design placeholders', () => {
     'liver.insulinSensitivity',
     'liver.maxOutputRateGPerMin',
     'liver.maxUptakeRateGPerMin',
+    'liver.sympatheticOutputGain',
   ]);
   for (const [parameterId, value, unit] of [
     ['liver.maxOutputRateGPerMin', 1, 'g/min'],
@@ -597,6 +723,7 @@ test('liver glycogen parameters stay design placeholders', () => {
     ['liver.maxUptakeRateGPerMin', 0.2, 'g/min'],
     ['liver.halfMaxExcessG', 15, 'g'],
     ['liver.insulinSensitivity', 0.5, '1'],
+    ['liver.sympatheticOutputGain', 0.005, '1/mm'],
   ]) {
     const parameter = byId[parameterId];
     assert.equal(parameter.value, value, `${parameterId}: value`);
@@ -637,11 +764,34 @@ test('muscleGlucose, kidneyGluconeogenesis, mammaryGlands, smallIntestine, colon
     import.meta.url,
   ));
   assert.deepEqual(mammary, {
-    'mammaryGlands.basalMilkRateMlPerMin': 0.5,
-    'mammaryGlands.lactoseGPerMl': 0.07,
-    'mammaryGlands.fullnessGainPerMl': 4,
-    'mammaryGlands.fullnessDecayHalfTimeMin': 30,
+    'mammaryGlands.basalMilkRateMlPerMin': 0.54,
+    'mammaryGlands.storageCapacityMl': 360,
+    'mammaryGlands.lactoseGPerMl': 0.074,
+    'mammaryGlands.galactorrheaRateMlPerMin': 0.012,
+    'mammaryGlands.inductionPrlThresholdNgMl': 45,
+    'mammaryGlands.galactorrheaThreshold': 0.25,
+    'mammaryGlands.hormonalInductionPerDay': 0.05,
+    'mammaryGlands.stimulatedInductionPerDay': 0.055,
+    'mammaryGlands.involutionHalfTimeDays': 7,
+    'mammaryGlands.breastfeedPamr': 0.673,
+    'mammaryGlands.expressPamr': 0.75,
+    'mammaryGlands.engorgementPamrPenaltyPer100Ml': 0.14,
+    'mammaryGlands.letdownOxytocinThresholdPgMl': 4,
+    'mammaryGlands.fullnessHalfTimeMin': 15,
   });
+  const mammaryRaw = readParameters(new URL(
+    '../organs/human-organs/mammary-glands/milk.parameters.json',
+    import.meta.url,
+  ));
+  const mammaryById = Object.fromEntries(mammaryRaw.parameters.map((p) => [p.id, p]));
+  assert.equal(mammaryById['mammaryGlands.basalMilkRateMlPerMin'].status, 'prior');
+  assert.equal(mammaryById['mammaryGlands.basalMilkRateMlPerMin'].source, 'SRC-KENT-2006');
+  assert.equal(mammaryById['mammaryGlands.storageCapacityMl'].status, 'prior');
+  assert.equal(mammaryById['mammaryGlands.storageCapacityMl'].source, 'SRC-KENT-2006');
+  assert.equal(mammaryById['mammaryGlands.breastfeedPamr'].status, 'prior');
+  assert.equal(mammaryById['mammaryGlands.breastfeedPamr'].source, 'SRC-KENT-2006');
+  assert.equal(mammaryById['mammaryGlands.expressPamr'].status, 'prior');
+  assert.equal(mammaryById['mammaryGlands.expressPamr'].source, 'SRC-PRIME-2012');
 
   const intestine = loadParameters(new URL(
     '../organs/human-organs/small-intestine/water-absorption.parameters.json',
@@ -800,4 +950,21 @@ test('loadParameters validates schemaVersion, owner, parameters array, ids, dupl
     })),
     /status unset and value null must match/,
   );
+});
+
+test('setWorkerParameterConfig validates and exposes nsfw setting cleanly', () => {
+  try {
+    setWorkerParameterConfig();
+    assert.equal(getNsfwSetting(), null);
+    setWorkerParameterConfig({ nsfw: false });
+    assert.equal(getNsfwSetting(), false);
+    setWorkerParameterConfig({ nsfw: true });
+    assert.equal(getNsfwSetting(), true);
+    assert.throws(
+      () => setWorkerParameterConfig({ nsfw: 'yes' }),
+      /nsfw setting must be a boolean/,
+    );
+  } finally {
+    setWorkerParameterConfig();
+  }
 });

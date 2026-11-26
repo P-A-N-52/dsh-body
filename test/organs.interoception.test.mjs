@@ -8,7 +8,7 @@ import {
   id,
   initialState,
 } from '../organs/human-organs/brain/interoception.ts';
-import { loadParameters } from '../lib/parameters.js';
+import { loadParameters, setWorkerParameterConfig } from '../lib/parameters.js';
 
 const BASELINE = {
   hunger: 50,
@@ -27,6 +27,11 @@ const BASELINE = {
   coldMm: 0,
   hypocalcemiaMm: 0,
   hypercalcemiaMm: 0,
+  hypoglycemiaMm: 0,
+  palpitationMm: 0,
+  sweatDampMm: 0,
+  muscleFatigueMm: 0,
+  uterineCrampMm: 0,
 };
 const parametersUrl = new URL('../organs/human-organs/brain/interoception.parameters.json', import.meta.url);
 const parameterValues = loadParameters(parametersUrl);
@@ -34,6 +39,7 @@ const parameterFile = JSON.parse(readFileSync(parametersUrl, 'utf8'));
 
 function round(inputs = {}) {
   const parts = {
+    interoception: inputs.interoception,
     stomachSensory: inputs.sensory,
     stomachGhrelin: inputs.ghrelin,
     duodenum: inputs.duodenum,
@@ -44,6 +50,7 @@ function round(inputs = {}) {
     bloodOxygen: inputs.bloodOxygen,
     adrenal: inputs.adrenal,
     pineal: inputs.pineal,
+    sleep: inputs.sleep,
     salivaryGlands: inputs.salivaryGlands,
     mammaryGlands: inputs.mammaryGlands,
     testes: inputs.testes,
@@ -51,13 +58,21 @@ function round(inputs = {}) {
     bloodCalcium: inputs.bloodCalcium,
     esophagus: inputs.esophagus,
     colon: inputs.colon,
+    glucose: inputs.glucose,
+    heart: inputs.heart,
+    blood: inputs.blood,
+    physicalActivity: inputs.physicalActivity,
+    skin: inputs.skin,
+    muscleHead: inputs.muscleHead,
+    muscleTrunk: inputs.muscleTrunk,
+    muscleLimbs: inputs.muscleLimbs,
   };
   let written;
   heartbeat({
     read: (partId) => parts[partId],
     actions: [],
-    dt: 60,
-    simulatedSeconds: 60,
+    dt: inputs.dt ?? 60,
+    simulatedSeconds: inputs.simulatedSeconds ?? 60,
     write: (next) => { written = next; },
   });
   return written;
@@ -90,6 +105,11 @@ test('interoception exports the organ module contract', () => {
     coldMm: { unit: 'mm', mode: 'absolute' },
     hypocalcemiaMm: { unit: 'mm', mode: 'absolute' },
     hypercalcemiaMm: { unit: 'mm', mode: 'absolute' },
+    hypoglycemiaMm: { unit: 'mm', mode: 'absolute' },
+    palpitationMm: { unit: 'mm', mode: 'absolute' },
+    sweatDampMm: { unit: 'mm', mode: 'absolute' },
+    muscleFatigueMm: { unit: 'mm', mode: 'absolute' },
+    uterineCrampMm: { unit: 'mm', mode: 'absolute' },
   });
   assert.deepEqual(initialState, BASELINE);
 });
@@ -127,28 +147,28 @@ test('the discomfort onset is a 70 mm design parameter with no source', () => {
 test('ghrelin at half the fasting baseline lowers hunger and raises fullness', () => {
   assert.deepEqual(
     round({ ghrelin: { relativeConcentration: 0.5 } }),
-    { hunger: 25, fullness: 25, thirst: 50, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
+    { ...BASELINE, hunger: 25, fullness: 25 },
   );
 });
 
 test('full mechanical input raises fullness and lowers hunger', () => {
   assert.deepEqual(
     round({ sensory: { mechanical: 1 } }),
-    { hunger: 30, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
+    { ...BASELINE, hunger: 30, fullness: 100, discomfort: 100 },
   );
 });
 
 test('nutrient exposure at 10 kcal/min saturates fullness and clamps hunger at zero', () => {
   assert.deepEqual(
     round({ duodenum: { nutrientExposure: 10 } }),
-    { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
+    { ...BASELINE, hunger: 0, fullness: 100, discomfort: 100 },
   );
 });
 
 test('thirst passes through from the hypothalamic drive and clamps to 0-100 mm', () => {
   assert.deepEqual(
     round({ thirst: { thirst: 20 } }),
-    { hunger: 50, fullness: 0, thirst: 20, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
+    { ...BASELINE, thirst: 20 },
   );
   assert.equal(round({ thirst: { thirst: -5 } }).thirst, 0);
   assert.equal(round({ thirst: { thirst: 250 } }).thirst, 100);
@@ -186,10 +206,10 @@ test('each feeling at 85 mm yields 50 discomfort', () => {
   assert.equal(round({ bladder: { volumeMl: 348.5 } }).discomfort, 50);
 });
 
-test('uterine cramps enter discomfort as the fifth channel', () => {
+test('uterine cramps enter discomfort as the fifth channel and expose uterineCrampMm', () => {
   assert.deepEqual(
     round({ uterus: { crampMm: 85 } }),
-    { hunger: 50, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 50, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
+    { ...BASELINE, discomfort: 50, uterineCrampMm: 85 },
   );
   assert.equal(round({ uterus: { crampMm: 70 } }).discomfort, 0);
   assert.equal(round({ uterus: { crampMm: 100 } }).discomfort, 100);
@@ -326,22 +346,11 @@ test('sexual arousal leaves the legacy five channels point-identical', () => {
     sexualResponse: { arousalMm: 100 },
   });
   assert.deepEqual(withoutSexual, {
-    hunger: 50,
-    fullness: 0,
+    ...BASELINE,
     thirst: 85,
     urinaryUrgency: 50,
     discomfort: 50,
-    sexualArousalMm: 0,
-    dyspneaMm: 0,
-    stressMm: 0,
-    sleepinessMm: 0,
-    dryMouthMm: 0,
-    libidoMm: 0,
-    bowelUrgencyMm: 0,
-    heatMm: 0,
-    coldMm: 0,
-    hypocalcemiaMm: 0,
-    hypercalcemiaMm: 0,
+    uterineCrampMm: 85,
   });
   assert.deepEqual(
     { ...withSexual, sexualArousalMm: withoutSexual.sexualArousalMm },
@@ -427,7 +436,7 @@ test('dyspnea is a readout: other readings and discomfort stay point-identical',
   });
   assert.equal(withDeficit.dyspneaMm, 100);
   assert.equal(withDeficit.discomfort, baseline.discomfort);
-  assert.deepEqual({ ...withDeficit, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 }, baseline);
+  assert.deepEqual({ ...withDeficit, dyspneaMm: 0 }, baseline);
 });
 
 test('discomfort takes the strongest feeling instead of summing them', () => {
@@ -440,7 +449,7 @@ test('discomfort takes the strongest feeling instead of summing them', () => {
   });
   assert.deepEqual(
     allAt85,
-    { hunger: 85, fullness: 85, thirst: 85, urinaryUrgency: 85, discomfort: 50, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
+    { ...BASELINE, hunger: 85, fullness: 85, thirst: 85, urinaryUrgency: 85, discomfort: 50 },
   );
 
   const oneAt100 = round({
@@ -452,14 +461,14 @@ test('discomfort takes the strongest feeling instead of summing them', () => {
   });
   assert.deepEqual(
     oneAt100,
-    { hunger: 85, fullness: 85, thirst: 100, urinaryUrgency: 85, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
+    { ...BASELINE, hunger: 85, fullness: 85, thirst: 100, urinaryUrgency: 85, discomfort: 100 },
   );
 });
 
 test('thirst and bladder readings leave hunger and fullness untouched', () => {
   assert.deepEqual(
     round({ thirst: { thirst: 0 }, bladder: { volumeMl: 410 } }),
-    { hunger: 50, fullness: 0, thirst: 0, urinaryUrgency: 100, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
+    { ...BASELINE, thirst: 0, urinaryUrgency: 100, discomfort: 100 },
   );
 });
 
@@ -525,16 +534,38 @@ test('heat and cold are readouts: discomfort and other readings stay point-ident
   assert.equal(cold.coldMm, 100);
   assert.equal(hot.discomfort, baseline.discomfort);
   assert.equal(cold.discomfort, baseline.discomfort);
-  assert.deepEqual({ ...hot, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 }, baseline);
-  assert.deepEqual({ ...cold, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 }, baseline);
+  assert.deepEqual({ ...hot, heatMm: 0, coldMm: 0 }, baseline);
+  assert.deepEqual({ ...cold, heatMm: 0, coldMm: 0 }, baseline);
 });
 
-test('does not read its own previous state', () => {
+test('memoryless readouts stay independent of previous interoception while sweatDampMm and muscleFatigueMm decay', () => {
   let written;
   heartbeat({
     read: (partId) => (
       partId === 'interoception'
-        ? { hunger: 100, fullness: 100, thirst: 100, urinaryUrgency: 100, discomfort: 100 }
+        ? {
+          hunger: 100,
+          fullness: 100,
+          thirst: 100,
+          urinaryUrgency: 100,
+          discomfort: 100,
+          sexualArousalMm: 100,
+          dyspneaMm: 100,
+          stressMm: 100,
+          sleepinessMm: 100,
+          dryMouthMm: 100,
+          libidoMm: 100,
+          bowelUrgencyMm: 100,
+          heatMm: 100,
+          coldMm: 100,
+          hypocalcemiaMm: 100,
+          hypercalcemiaMm: 100,
+          hypoglycemiaMm: 100,
+          palpitationMm: 100,
+          uterineCrampMm: 100,
+          sweatDampMm: 80,
+          muscleFatigueMm: 80,
+        }
         : undefined
     ),
     actions: [],
@@ -542,7 +573,14 @@ test('does not read its own previous state', () => {
     simulatedSeconds: 60,
     write: (next) => { written = next; },
   });
-  assert.deepEqual(written, BASELINE);
+  const expectedSweat = 80 * Math.pow(0.5, 1 / 20);
+  const expectedFatigue = 80 * Math.pow(0.5, 1 / 30);
+  assertClose(written.sweatDampMm, expectedSweat, 'sweatDampMm 20-min half-time decay');
+  assertClose(written.muscleFatigueMm, expectedFatigue, 'muscleFatigueMm 30-min half-time decay');
+  assert.deepEqual(
+    { ...written, sweatDampMm: 0, muscleFatigueMm: 0 },
+    BASELINE,
+  );
 });
 
 test('negative inputs clamp to zero before the gains', () => {
@@ -552,7 +590,7 @@ test('negative inputs clamp to zero before the gains', () => {
       ghrelin: { relativeConcentration: -2 },
       duodenum: { nutrientExposure: -3 },
     }),
-    { hunger: 0, fullness: 50, thirst: 50, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
+    { ...BASELINE, hunger: 0, fullness: 50 },
   );
 });
 
@@ -567,10 +605,10 @@ test('oversized inputs clamp outputs to the 0-100 band and stay finite', () => {
     round({ duodenum: { nutrientExposure: 1e9 } }),
   ];
   const overflow = round({ duodenum: { nutrientExposure: Number.MAX_VALUE } });
-  assert.deepEqual(cases[0], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 });
-  assert.deepEqual(cases[1], { hunger: 100, fullness: 0, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 });
-  assert.deepEqual(cases[2], { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 });
-  assert.deepEqual(overflow, { hunger: 0, fullness: 100, thirst: 50, urinaryUrgency: 0, discomfort: 100, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 });
+  assert.deepEqual(cases[0], { ...BASELINE, hunger: 0, fullness: 100, discomfort: 100 });
+  assert.deepEqual(cases[1], { ...BASELINE, hunger: 100, fullness: 0, discomfort: 100 });
+  assert.deepEqual(cases[2], { ...BASELINE, hunger: 0, fullness: 100, discomfort: 100 });
+  assert.deepEqual(overflow, { ...BASELINE, hunger: 0, fullness: 100, discomfort: 100 });
   for (const next of [...cases, overflow]) {
     assert.ok(Number.isFinite(next.hunger));
     assert.ok(Number.isFinite(next.fullness));
@@ -677,7 +715,7 @@ test('stress and sleepiness are readouts: other readings and discomfort stay poi
   assertClose(withAxes.sleepinessMm, 100, 'sleepiness at the melatonin peak');
   assert.equal(withAxes.discomfort, baseline.discomfort);
   assert.deepEqual(
-    { ...withAxes, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0 },
+    { ...withAxes, stressMm: 0, sleepinessMm: 0 },
     baseline,
   );
 });
@@ -877,4 +915,266 @@ test('interoception aggregates extensible organ discomfortMm and sensations with
       intensityMm: 30,
     },
   });
+});
+
+test('hypoglycemiaMm scales below 75 mg/dL and ignores invalid glucose readings', () => {
+  assert.deepEqual(fields.hypoglycemiaMm, { unit: 'mm', mode: 'absolute' });
+  assert.equal(initialState.hypoglycemiaMm, 0);
+  assert.equal(round({ glucose: { concentrationMgDl: 90 } }).hypoglycemiaMm, 0);
+  assert.equal(round({ glucose: { concentrationMgDl: 75 } }).hypoglycemiaMm, 0);
+  assert.equal(round({ glucose: { concentrationMgDl: 60 } }).hypoglycemiaMm, 60);
+  assert.equal(round({ glucose: { concentrationMgDl: 53.75 } }).hypoglycemiaMm, 85);
+  assert.equal(round({ glucose: { concentrationMgDl: 50 } }).hypoglycemiaMm, 100);
+  assert.equal(round({ glucose: { concentrationMgDl: 25 } }).hypoglycemiaMm, 100);
+  assert.equal(round({ glucose: { concentrationMgDl: 40 } }).discomfort, 0);
+
+  for (const glucose of [
+    undefined,
+    null,
+    {},
+    { concentrationMgDl: Number.NaN },
+    { concentrationMgDl: Number.POSITIVE_INFINITY },
+    { concentrationMgDl: '60' },
+  ]) {
+    assert.equal(round({ glucose }).hypoglycemiaMm, 0);
+  }
+});
+
+test('palpitationMm suppresses exercise tachycardia while preserving resting tachycardia and hypotension triggers', () => {
+  assert.deepEqual(fields.palpitationMm, { unit: 'mm', mode: 'absolute' });
+  assert.equal(initialState.palpitationMm, 0);
+
+  // Resting tachycardia above 115 bpm
+  assert.equal(round({ heart: { heartRatePerMin: 115 } }).palpitationMm, 0);
+  assert.equal(round({ heart: { heartRatePerMin: 135 } }).palpitationMm, 30);
+  assert.equal(round({ heart: { heartRatePerMin: 185 } }).palpitationMm, 100);
+
+  // Exercise tachycardia (intensity >= 0.2 and remainingExerciseMin > 0) suppresses HR component
+  assert.equal(
+    round({
+      heart: { heartRatePerMin: 165 },
+      blood: { systolicMmHg: 120 },
+      physicalActivity: { remainingExerciseMin: 15, intensity: 0.5 },
+    }).palpitationMm,
+    0,
+  );
+
+  // Low-intensity or expired exercise does not suppress resting tachycardia
+  assert.equal(
+    round({
+      heart: { heartRatePerMin: 135 },
+      physicalActivity: { remainingExerciseMin: 15, intensity: 0.19 },
+    }).palpitationMm,
+    30,
+  );
+  assert.equal(
+    round({
+      heart: { heartRatePerMin: 135 },
+      physicalActivity: { remainingExerciseMin: 0, intensity: 0.8 },
+    }).palpitationMm,
+    30,
+  );
+
+  // Hypotension (< 95 mmHg) triggers palpitationMm even during moderate/vigorous exercise
+  assert.equal(round({ blood: { systolicMmHg: 95 } }).palpitationMm, 0);
+  assert.equal(round({ blood: { systolicMmHg: 85 } }).palpitationMm, 50);
+  assert.equal(round({ blood: { systolicMmHg: 75 } }).palpitationMm, 100);
+  assert.equal(
+    round({
+      heart: { heartRatePerMin: 165 },
+      blood: { systolicMmHg: 83 },
+      physicalActivity: { remainingExerciseMin: 10, intensity: 0.6 },
+    }).palpitationMm,
+    60,
+  );
+
+  // Takes max(hrPart, bpPart)
+  assert.equal(
+    round({
+      heart: { heartRatePerMin: 135 },
+      blood: { systolicMmHg: 85 },
+    }).palpitationMm,
+    50,
+  );
+});
+
+test('sweatDampMm builds up from sweat volume and decays with a 20-minute half-time', () => {
+  assert.deepEqual(fields.sweatDampMm, { unit: 'mm', mode: 'absolute' });
+  assert.equal(initialState.sweatDampMm, 0);
+
+  // Buildup: rate * 4 * dtMin = 4 * sweatVolumeMl
+  assert.equal(round({ skin: { sweatVolumeMl: 5 }, dt: 60 }).sweatDampMm, 20);
+  assert.equal(round({ skin: { sweatVolumeMl: 5 }, dt: 300 }).sweatDampMm, 20);
+  assert.equal(round({ skin: { sweatVolumeMl: 40 }, dt: 60 }).sweatDampMm, 100);
+
+  // 20-minute half-time decay with zero new sweat
+  assertClose(
+    round({
+      interoception: { sweatDampMm: 80 },
+      skin: { sweatVolumeMl: 0 },
+      dt: 20 * 60,
+    }).sweatDampMm,
+    40,
+    '20-min half-time decay',
+  );
+
+  // Combined decay + new sweat
+  assertClose(
+    round({
+      interoception: { sweatDampMm: 40 },
+      skin: { sweatVolumeMl: 5 },
+      dt: 20 * 60,
+    }).sweatDampMm,
+    40,
+    '20 + 20 combined',
+  );
+});
+
+test('muscleFatigueMm builds up with exercise, decays with 30-min half-time, and tracks weight-scaled regional glycogen depletion', (t) => {
+  t.after(() => setWorkerParameterConfig());
+  assert.deepEqual(fields.muscleFatigueMm, { unit: 'mm', mode: 'absolute' });
+  assert.equal(initialState.muscleFatigueMm, 0);
+
+  // Buildup during exercise: 2.1 * intensity * dtMin
+  assertClose(
+    round({
+      physicalActivity: { remainingExerciseMin: 10, intensity: 0.8 },
+      dt: 600,
+    }).muscleFatigueMm,
+    16.8,
+    '10-min exercise fatigue buildup',
+  );
+
+  // 30-min half-time decay at rest
+  assertClose(
+    round({
+      interoception: { muscleFatigueMm: 80 },
+      physicalActivity: { remainingExerciseMin: 0, intensity: 0 },
+      dt: 30 * 60,
+    }).muscleFatigueMm,
+    40,
+    '30-min half-time recovery',
+  );
+
+  // Default 75 kg regional baselines (15 + 135 + 150 = 300 g): 50% depletion adds 25 mm
+  assert.equal(
+    round({
+      muscleHead: { glycogenG: 15 },
+      muscleTrunk: { glycogenG: 135 },
+      muscleLimbs: { glycogenG: 150 },
+    }).muscleFatigueMm,
+    0,
+  );
+  assert.equal(
+    round({
+      muscleHead: { glycogenG: 7.5 },
+      muscleTrunk: { glycogenG: 67.5 },
+      muscleLimbs: { glycogenG: 75 },
+    }).muscleFatigueMm,
+    25,
+  );
+
+  // Partial manifest without muscleLimbs: only loaded regions (15 + 135 = 150 g) count toward baseline
+  assert.equal(
+    round({
+      muscleHead: { glycogenG: 15 },
+      muscleTrunk: { glycogenG: 135 },
+    }).muscleFatigueMm,
+    0,
+  );
+  assert.equal(
+    round({
+      muscleHead: { glycogenG: 7.5 },
+      muscleTrunk: { glycogenG: 67.5 },
+    }).muscleFatigueMm,
+    25,
+  );
+
+  // scaleByBodyWeight at 50 kg (2/3 of 75 kg -> baselines 10, 90, 100 = 200 g total)
+  setWorkerParameterConfig({ profile: { weightKg: 50, heightCm: 165 } });
+  assert.equal(
+    round({
+      muscleHead: { glycogenG: 10 },
+      muscleTrunk: { glycogenG: 90 },
+      muscleLimbs: { glycogenG: 100 },
+    }).muscleFatigueMm,
+    0,
+  );
+  assert.equal(
+    round({
+      muscleHead: { glycogenG: 5 },
+      muscleTrunk: { glycogenG: 45 },
+      muscleLimbs: { glycogenG: 50 },
+    }).muscleFatigueMm,
+    25,
+  );
+});
+
+test('uterineCrampMm exposes clamped uterus.crampMm and handles missing or invalid values', () => {
+  assert.deepEqual(fields.uterineCrampMm, { unit: 'mm', mode: 'absolute' });
+  assert.equal(initialState.uterineCrampMm, 0);
+  assert.equal(round({ uterus: { crampMm: 45 } }).uterineCrampMm, 45);
+  assert.equal(round({ uterus: { crampMm: -10 } }).uterineCrampMm, 0);
+  assert.equal(round({ uterus: { crampMm: 140 } }).uterineCrampMm, 100);
+  assert.equal(round({ uterus: { crampMm: Number.NaN } }).uterineCrampMm, 0);
+});
+
+test('sleepinessMm uses pure pineal when sleep is absent and blends when sleep is present', () => {
+  // Without sleep: pure pineal (melatoninRelative 1.0 -> 50 mm)
+  assertClose(
+    round({ pineal: { melatoninRelative: 1 } }).sleepinessMm,
+    50,
+    'sleep absent uses pure pineal',
+  );
+
+  // With sleep and pineal: 0.4 * melatoninMm + 0.8 * sleepPressureMm
+  assertClose(
+    round({
+      pineal: { melatoninRelative: 1 },
+      sleep: { sleeping: false, sleepPressureMm: 50 },
+    }).sleepinessMm,
+    0.4 * 50 + 0.8 * 50,
+    'sleep + pineal blended',
+  );
+
+  // With sleep and no pineal: pure sleepPressureMm
+  assert.equal(
+    round({
+      sleep: { sleeping: false, sleepPressureMm: 72 },
+    }).sleepinessMm,
+    72,
+  );
+});
+
+test('getNsfwSetting hides sexualArousalMm, libidoMm, and mammary fullness from discomfort when false while preserving choking discomfort', (t) => {
+  t.after(() => setWorkerParameterConfig());
+
+  setWorkerParameterConfig({ nsfw: false });
+  const hidden = round({
+    sexualResponse: { arousalMm: 90 },
+    testes: { testosteroneRelative: 1.5 },
+    mammaryGlands: { fullnessMm: 95 },
+  });
+  assert.equal(hidden.sexualArousalMm, 0);
+  assert.equal(hidden.libidoMm, 0);
+  assert.equal(hidden.discomfort, 0);
+
+  // Choking still feeds discomfort even when nsfw is false
+  const choked = round({
+    sexualResponse: { arousalMm: 90 },
+    mammaryGlands: { fullnessMm: 95 },
+    esophagus: { chokingMm: 85 },
+  });
+  assert.equal(choked.sexualArousalMm, 0);
+  assert.equal(choked.discomfort, 50);
+
+  setWorkerParameterConfig({ nsfw: true });
+  const shown = round({
+    sexualResponse: { arousalMm: 90 },
+    testes: { testosteroneRelative: 1.5 },
+    mammaryGlands: { fullnessMm: 85 },
+  });
+  assert.equal(shown.sexualArousalMm, 90);
+  assert.equal(shown.libidoMm, 100);
+  assert.equal(shown.discomfort, 50);
 });

@@ -87,10 +87,10 @@ test('repeating urinate with the same session and callId submits the same payloa
 
 test('the tool schema lists urinate and keeps the other tool and payload shape', () => {
   const tools = createBodyTools(fakeGateway());
-  assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_state']);
+  assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_bind', 'body_state']);
   assert.deepEqual(
     tools.body_act.parameters.properties.type.enum,
-    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'sex', 'orgasm'],
+    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'stop_exercise', 'sleep', 'wake_up'],
   );
   assert.deepEqual(tools.body_act.parameters.required, ['type']);
   assert.equal(tools.body_act.parameters.additionalProperties, true);
@@ -98,6 +98,7 @@ test('the tool schema lists urinate and keeps the other tool and payload shape',
   assert.deepEqual(tools.body_act.output.schema.required, ['ok', 'statusCode', 'receipt']);
   assert.equal(tools.body_act.output.schema.additionalProperties, false);
   assert.equal(tools.body_state.name, 'body_state');
+  assert.equal(tools.body_bind.name, 'body_bind');
 });
 
 test('accepting urinate does not loosen the drink and eat validation', async () => {

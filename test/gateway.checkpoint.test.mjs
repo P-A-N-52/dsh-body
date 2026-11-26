@@ -146,18 +146,19 @@ test('catch-up notifications are suppressed', async (t) => {
   assert.equal(state.notifications.length, 0);
 });
 
-test('catch-up does not spend the online notification chance or quota', async (t) => {
+test('catch-up does not spend the online notification chance or backoff step', async (t) => {
   const interval = 25;
   const session = {
     lastSentAt: null,
+    backoffStep: 1,
+    lastUrgentSentAt: null,
+    urgentBackoffStep: 0,
+    lastInvoluntaryVoidedMl: 0,
     lastLevel: 0,
     lastKind: null,
-    hourStartedAt: 0,
-    hourCount: 1,
-    dayStartedAt: 0,
-    dayCount: 5,
     lastSeenAt: 0,
     levels: { hunger: 0, fullness: 0, urinary: 0, thirst: 0 },
+    sensations: {},
   };
   const seed = checkpoint({
     wallTimeMs: Date.now() - 3 * interval - 10,
@@ -180,8 +181,9 @@ test('catch-up does not spend the online notification chance or quota', async (t
   assert.deepEqual(state.notifications, []);
   let stored = state.snapshot.parts.brainNotify.sessions['session-a'];
   assert.equal(stored.lastSentAt, null);
-  assert.equal(stored.hourCount, 1);
-  assert.equal(stored.dayCount, 5);
+  assert.equal(stored.backoffStep, 1);
+  assert.equal(stored.lastUrgentSentAt, null);
+  assert.equal(stored.urgentBackoffStep, 0);
   assert.deepEqual(stored.levels, { hunger: 0, fullness: 0, urinary: 0, thirst: 0 });
 
   await app.tick();
@@ -191,8 +193,9 @@ test('catch-up does not spend the online notification chance or quota', async (t
   assert.equal(state.notifications[0].mode, 'context');
   stored = state.snapshot.parts.brainNotify.sessions['session-a'];
   assert.equal(stored.lastSentAt, 240);
-  assert.equal(stored.hourCount, 2);
-  assert.equal(stored.dayCount, 6);
+  assert.equal(stored.backoffStep, 2);
+  assert.equal(stored.lastUrgentSentAt, null);
+  assert.equal(stored.urgentBackoffStep, 0);
   assert.deepEqual(stored.levels, { hunger: 2, fullness: 0, urinary: 0, thirst: 0 });
 
   await app.tick();
@@ -248,4 +251,54 @@ test('checkpoint preserves valid profile and sparse parameters across restarts a
     }),
     /Invalid parameter override/,
   );
+});
+
+test('checkpoint preserves valid nsfw and boundSessionId across restarts and rejects invalid ones', async (t) => {
+  const seed = {
+    ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} }),
+    nsfw: true,
+    boundSessionId: 'session-bound-1',
+  };
+  const app = await launch(t, { seed });
+  await app.tick();
+  const saved = app.state();
+  assert.equal(saved.nsfw, true);
+  assert.equal(saved.boundSessionId, 'session-bound-1');
+
+  const restarted = await launch(t, { seed: saved });
+  assert.equal(restarted.state().nsfw, true);
+  assert.equal(restarted.state().boundSessionId, 'session-bound-1');
+
+  const nullableSeed = {
+    ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} }),
+    nsfw: false,
+    boundSessionId: null,
+  };
+  const nullableApp = await launch(t, { seed: nullableSeed });
+  assert.equal(nullableApp.state().nsfw, false);
+  assert.equal(nullableApp.state().boundSessionId, null);
+
+  for (const invalidNsfw of ['true', 1, {}]) {
+    await assert.rejects(
+      launch(t, {
+        seed: {
+          ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} }),
+          nsfw: invalidNsfw,
+        },
+      }),
+      /Invalid body nsfw flag/,
+    );
+  }
+
+  for (const invalidBinding of ['', '   ', 123, {}]) {
+    await assert.rejects(
+      launch(t, {
+        seed: {
+          ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} }),
+          boundSessionId: invalidBinding,
+        },
+      }),
+      /Invalid body boundSessionId/,
+    );
+  }
 });

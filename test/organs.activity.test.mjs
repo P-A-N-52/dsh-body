@@ -31,7 +31,7 @@ function sex(intensity, durationMin) {
 
 test('physicalActivity exports the activity module contract', () => {
   assert.equal(id, 'physicalActivity');
-  assert.deepEqual(actionTypes, ['exercise', 'sex']);
+  assert.deepEqual(actionTypes, ['exercise', 'sex', 'stop_exercise']);
   assert.deepEqual(fields, {
     remainingExerciseMin: { unit: 'min', mode: 'absolute' },
     intensity: { unit: '1', mode: 'absolute' },
@@ -199,7 +199,7 @@ test('an invalid activity does not override an earlier valid one in the same rou
   }
 });
 
-test('actions other than exercise and sex never change the activity', () => {
+test('actions other than exercise, sex, stop_exercise, and sleep never change the activity', () => {
   const state = { remainingExerciseMin: 12, intensity: 0.4 };
   const actions = [
     { type: 'drink', volumeMl: 240 },
@@ -212,6 +212,46 @@ test('actions other than exercise and sex never change the activity', () => {
   );
 });
 
+test('stop_exercise and sleep clear ongoing exercise cleanly and respect round action order', () => {
+  const state = { remainingExerciseMin: 12, intensity: 0.6 };
+  const cases = [
+    {
+      label: 'stop_exercise clears saved activity',
+      actions: [{ type: 'stop_exercise' }],
+      expected: { remainingExerciseMin: 0, intensity: 0 },
+    },
+    {
+      label: 'sleep clears saved activity',
+      actions: [{ type: 'sleep' }],
+      expected: { remainingExerciseMin: 0, intensity: 0 },
+    },
+    {
+      label: 'stop_exercise clears an earlier exercise in the same round',
+      actions: [exercise(0.9, 25), { type: 'stop_exercise' }],
+      expected: { remainingExerciseMin: 0, intensity: 0 },
+    },
+    {
+      label: 'sleep clears an earlier sex action in the same round',
+      actions: [sex(0.8, 15), { type: 'sleep' }],
+      expected: { remainingExerciseMin: 0, intensity: 0 },
+    },
+    {
+      label: 'exercise after stop_exercise in the same round starts the new exercise',
+      actions: [{ type: 'stop_exercise' }, exercise(0.5, 10)],
+      expected: { remainingExerciseMin: 10, intensity: 0.5 },
+    },
+  ];
+
+  for (const { label, actions, expected } of cases) {
+    assert.deepEqual(round({ state, actions }).written, expected, label);
+  }
+  assert.deepEqual(
+    round({ state: { remainingExerciseMin: 0, intensity: 0 }, actions: [{ type: 'stop_exercise' }] }).written,
+    { remainingExerciseMin: 0, intensity: 0 },
+    'stop_exercise at rest stays zero',
+  );
+});
+
 test('activity output is finite and JSON-safe', () => {
   const cases = [
     { label: 'missing state', options: {} },
@@ -219,6 +259,8 @@ test('activity output is finite and JSON-safe', () => {
     { label: 'finished state', options: { state: { remainingExerciseMin: 0, intensity: 0 } } },
     { label: 'valid action', options: { actions: [exercise(1, 30)] } },
     { label: 'valid sex action', options: { actions: [sex(0.8, 30)] } },
+    { label: 'stop_exercise action', options: { state: { remainingExerciseMin: 4, intensity: 0.5 }, actions: [{ type: 'stop_exercise' }] } },
+    { label: 'sleep action', options: { state: { remainingExerciseMin: 4, intensity: 0.5 }, actions: [{ type: 'sleep' }] } },
     { label: 'invalid action', options: { state: { remainingExerciseMin: 4, intensity: 0.5 }, actions: [exercise(0, 30)] } },
     { label: 'invalid sex action', options: { state: { remainingExerciseMin: 4, intensity: 0.5 }, actions: [sex(0, 30)] } },
   ];

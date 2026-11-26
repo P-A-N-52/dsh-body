@@ -24,13 +24,14 @@
 
 1. **个体档案与参数差异（只写差异、停机重启生效）**：
    - 个体差异不修改 `organs/**/*.parameters.json` 证据默认值，也不复制身体清单里的器官代码。
-   - 每具身体在自己的 `body-state.json` 顶层可选声明 `profile: { weightKg, heightCm }`（默认 `75 kg / 170 cm`）与稀疏 `parameters: { [parameterId]: number }` 差异表，停机修改、重启后经 `BodyWorker` 在模块加载时生效。
-2. **体格缩放接入**：
+   - 每具身体在自己的 `body-state.json` 顶层可选声明 `profile: { weightKg, heightCm }`（默认 `75 kg / 170 cm`）、稀疏 `parameters: { [parameterId]: number }` 差异表，以及可选 `nsfw: boolean`（默认 `false`）与 `boundSessionId: string | null`；`profile` / `parameters` / `nsfw` 在停机修改并重启后经 `BodyWorker` 在模块加载时生效。
+2. **体格缩放与 NSFW 门控接入**：
    - 新部位若存在随体型/体重比例缩放的容积、基线速率或储量常量，应通过 `lib/parameters.js` 的 `scaleByBodyWeight(value, parameterId)` 获取缩放值，保持 `75 kg` 默认逐点一致并允许 `parameters` 显式覆盖优先。
+   - 若涉及性反应或泌乳相关生理，模块应读取 `lib/parameters.js` 的 `getNsfwSetting()`（`false` 时关闭产出与暴露）。
 3. **新增非标器官（如翅膀、尾巴）即插即用**：
    - 模块遵循既有 ESM 命名导出：`id`、`heartbeat(io)`、`fields`（必选）与 `initialState`、`actionTypes`（可选），保持单一写者与 JSON-safe。
-   - **向大脑上报感受无需改写脑部脚本**：在轮末 `io.write(...)` 中可选写入 `discomfortMm`（`0–100 mm`，与 `discomfort.onsetMm = 70` 同口径）及 `sensations: { [key]: { intensityMm, discomfort?, contextText?, wakeText? } }`。
-   - **纯感觉、零数值硬规则**：`brainNotify` 对 `>= 65 mm` 投递不唤醒 `context`（`agent.inject`）、对 `>= 85 mm` 投递唤醒 `wake`（`agent.followup`），`contextText` / `wakeText` **严禁包含任何阿拉伯数字或数值单位**（含数字将被拦截并回退为通用无数字定性描述）。
-   - **自定义动作自动注册**：器官导出的 `actionTypes` 会进入 Gateway 能力表，`tools.js` (`body_act`) 会自动把已声明动作加入 `type` 枚举并透传 JSON-safe 载荷（未声明动作仍返回 `400`）。
+   - **向大脑上报感受无需改写脑部脚本**：在轮末 `io.write(...)` 中可选写入 `discomfortMm`（`0–100 mm`，与 `discomfort.onsetMm = 70` 同口径）及 `sensations: { [key]: { intensityMm, discomfort?, urgent?, nsfw?, contextText?, wakeText? } }`。
+   - **纯感觉、零数值与双轨门控硬规则**：`brainNotify` 对 `>= 65 mm` 默认投递不唤醒 `context`（`agent.inject`）、对 `>= 85 mm` 或 `urgent: true` 投递唤醒 `wake`（`agent.followup`），支持 `3 -> 2` 步降并在 `< 40 mm` 复位；普通与紧急通道各自按指数退避（20→240 min / 5→60 min），`nsfw: true` 随 `nsfw` 开关门控。`contextText` / `wakeText` **严禁包含任何阿拉伯数字或数值单位**（含数字将被拦截并回退为通用无数字定性描述）。
+   - **自定义动作自动注册**：器官导出的 `actionTypes` 会进入 Gateway 能力表，`tools.js` (`body_act`) 会自动把已声明动作加入 `type` 枚举并透传 JSON-safe 载荷（未声明动作仍返回 `400`；`sex` / `orgasm` 在 `nsfw: false` 时被门控拒绝）。
 
 - 提交前查看 `git status`，只提交本次相关文件。不上传本地身体存档、会话通知、凭据、日志、`node_modules/`、`.tower/`、`.superpowers/` 或本地 Pulse 源码检出。

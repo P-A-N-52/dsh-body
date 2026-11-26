@@ -5,38 +5,128 @@
     {
       "id": "mammaryGlands.basalMilkRateMlPerMin",
       "unit": "mL/min",
-      "value": 0.5,
-      "status": "design",
+      "value": 0.54,
+      "status": "prior",
       "range": [0, 5],
-      "source": null,
-      "note": "催乳素为 1 时的乳汁水生成速率工程假设，不是实测泌乳量、婴儿需求或乳头刺激剂量—反应；只表示 bodyFluid 下一轮的转出请求上限"
+      "source": "SRC-KENT-2006",
+      "note": "Kent 2006（n=71 健康纯母乳母亲 24 h 产奶均值 788 ± 169 g/24h；满空稳态参考合成为 ~778 mL/day ≈ 0.54 mL/min）"
+    },
+    {
+      "id": "mammaryGlands.storageCapacityMl",
+      "unit": "mL",
+      "value": 360,
+      "status": "prior",
+      "range": [50, 1000],
+      "source": "SRC-KENT-2006",
+      "note": "Kent 2006（n=71 双侧单次储奶容量高产侧 193 ± 60 g + 低产侧 164 ± 53 g ≈ 357 g 锚定双侧 360 mL，随体重缩放）"
     },
     {
       "id": "mammaryGlands.lactoseGPerMl",
       "unit": "g/mL",
-      "value": 0.07,
+      "value": 0.074,
       "status": "design",
       "range": [0, 0.5],
       "source": null,
-      "note": "每毫升乳汁对应的乳糖葡萄糖当量工程假设，用于向 glucose 发起 lactoseRequestG；不是实测乳糖浓度，也不拆分脂肪、蛋白或免疫成分"
+      "note": "每毫升人乳乳糖与碳水当量代理（对齐成熟乳约 7.4 g/100 mL 量级）；design"
     },
     {
-      "id": "mammaryGlands.fullnessGainPerMl",
-      "unit": "mm/mL",
+      "id": "mammaryGlands.galactorrheaRateMlPerMin",
+      "unit": "mL/min",
+      "value": 0.012,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": "SRC-PAGEWILSON-2007",
+      "note": "非产后纯高 PRL 诱发微量溢乳时的微弱分泌速率代理（远低于规整产奶）；design"
+    },
+    {
+      "id": "mammaryGlands.inductionPrlThresholdNgMl",
+      "unit": "ng/mL",
+      "value": 45,
+      "status": "design",
+      "range": [15, 200],
+      "source": "SRC-PAGEWILSON-2007",
+      "note": "非妊娠诱导进程推进所需的血清催乳素起坡参考浓度；design"
+    },
+    {
+      "id": "mammaryGlands.galactorrheaThreshold",
+      "unit": "1",
+      "value": 0.25,
+      "status": "design",
+      "range": [0.05, 0.9],
+      "source": "SRC-PAGEWILSON-2007",
+      "note": "纯高激素持续约 5 天跨越溢乳门槛（无机械吸吮刺激最高钳至 0.35，不能直接进入规整产奶）；design"
+    },
+    {
+      "id": "mammaryGlands.hormonalInductionPerDay",
+      "unit": "1/d",
+      "value": 0.05,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": "SRC-PAGEWILSON-2007",
+      "note": "高 PRL 环境下的每日诱导推进基率；design"
+    },
+    {
+      "id": "mammaryGlands.stimulatedInductionPerDay",
+      "unit": "1/d",
+      "value": 0.055,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": null,
+      "note": "机械吸吮/泵乳刺激叠加强化每日诱导进度（高 PRL + 规律排空刺激约 2–3 周达 1.0 启动规整泌乳）；design"
+    },
+    {
+      "id": "mammaryGlands.involutionHalfTimeDays",
+      "unit": "d",
+      "value": 7,
+      "status": "design",
+      "range": [1, 30],
+      "source": null,
+      "note": "停止吸吮刺激且恢复低 PRL 后的诱导进度退化半衰期；design"
+    },
+    {
+      "id": "mammaryGlands.breastfeedPamr",
+      "unit": "1",
+      "value": 0.673,
+      "status": "prior",
+      "range": [0.1, 0.95],
+      "source": "SRC-KENT-2006",
+      "note": "Kent 2006（n=71，775 次亲喂平均单次排空比例 PAMR 67.3 ± 7.8%）"
+    },
+    {
+      "id": "mammaryGlands.expressPamr",
+      "unit": "1",
+      "value": 0.75,
+      "status": "prior",
+      "range": [0.1, 0.95],
+      "source": "SRC-PRIME-2012",
+      "note": "Prime 2012（n=31，15 min 双侧同步电动泵乳 PAMR 75%，单侧顺序 66%）"
+    },
+    {
+      "id": "mammaryGlands.engorgementPamrPenaltyPer100Ml",
+      "unit": "1",
+      "value": 0.14,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": "SRC-PRIME-2012",
+      "note": "过度蓄奶（> 200 mL）每多 100 mL 时单次 PAMR 降低 14% 的负向耦合代理（方向源自 Prime 2012 Dynamics）；design"
+    },
+    {
+      "id": "mammaryGlands.letdownOxytocinThresholdPgMl",
+      "unit": "pg/mL",
       "value": 4,
       "status": "design",
-      "range": [0, 20],
-      "source": null,
-      "note": "每轮产奶请求超出上一轮实际泌乳量 1 mL 时胀奶代理的增量，0–100 mm 量程；不是乳腺压力、容量或胀痛测量"
+      "range": [1, 20],
+      "source": "SRC-UVNASMOBERG-2020",
+      "note": "RIA 口径血浆催产素跨越该阈值即触发喷乳反射排空乳汁（约 1–2 min 潜伏期）；design"
     },
     {
-      "id": "mammaryGlands.fullnessDecayHalfTimeMin",
+      "id": "mammaryGlands.fullnessHalfTimeMin",
       "unit": "min",
-      "value": 30,
+      "value": 15,
       "status": "design",
-      "range": [1, 240],
+      "range": [1, 120],
       "source": null,
-      "note": "胀奶代理的一阶回落半时工程假设，防止一轮结算滞后造成的永久棘轮累积，并在非泌乳状态平滑归零"
+      "note": "储奶充盈度向胀满体感趋近的一阶响应半衰期；design"
     }
   ]
 }

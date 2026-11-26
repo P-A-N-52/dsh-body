@@ -97,11 +97,11 @@ type GlucoseReading = {
 
 type PancreasReading = {
   glucagonRelative?: unknown;
-  insulinRelative?: unknown;
+  insulinPmolL?: unknown;
 };
 
 type AdrenalReading = {
-  cortisolRelative?: unknown;
+  cortisolNmolL?: unknown;
 };
 
 const parameters = loadParameters(new URL('./glycogen.parameters.json', import.meta.url));
@@ -113,12 +113,12 @@ const basalOutputRateGPerMin = scaleByBodyWeight(
   requireParameter(parameters, 'liver.basalOutputRateGPerMin'),
   'liver.basalOutputRateGPerMin',
 );
-const hypoglycemiaOutputGainGPerMinPerMgDl = requireParameter(
-  parameters,
+const hypoglycemiaOutputGainGPerMinPerMgDl = scaleByBodyWeight(
+  requireParameter(parameters, 'liver.hypoglycemiaOutputGainGPerMinPerMgDl'),
   'liver.hypoglycemiaOutputGainGPerMinPerMgDl',
 );
-const glucagonOutputGainGPerMin = requireParameter(
-  parameters,
+const glucagonOutputGainGPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'liver.glucagonOutputGainGPerMin'),
   'liver.glucagonOutputGainGPerMin',
 );
 const initialGlycogenG = scaleByBodyWeight(
@@ -133,8 +133,12 @@ const maxUptakeRateGPerMin = scaleByBodyWeight(
   requireParameter(parameters, 'liver.maxUptakeRateGPerMin'),
   'liver.maxUptakeRateGPerMin',
 );
-const halfMaxExcessG = requireParameter(parameters, 'liver.halfMaxExcessG');
+const halfMaxExcessG = scaleByBodyWeight(
+  requireParameter(parameters, 'liver.halfMaxExcessG'),
+  'liver.halfMaxExcessG',
+);
 const insulinSensitivity = requireParameter(parameters, 'liver.insulinSensitivity');
+const sympatheticOutputGain = requireParameter(parameters, 'liver.sympatheticOutputGain');
 
 const baselineMgDl = 90;
 const suppressionScaleMgDl = 30;
@@ -225,32 +229,35 @@ function glucagonRelativeOf(pancreas: Readonly<PancreasReading>): number {
   return glucagonRelative;
 }
 
+const BASAL_INSULIN_PMOL_L = 60;
+const REFERENCE_CORTISOL_NMOL_L = 180;
+
 function insulinRelativeOf(pancreas: Readonly<PancreasReading>): number {
-  const insulinRelative = pancreas.insulinRelative;
+  const insulinPmolL = pancreas.insulinPmolL;
   if (
-    typeof insulinRelative !== 'number'
-    || !Number.isFinite(insulinRelative)
-    || insulinRelative < 0
+    typeof insulinPmolL !== 'number'
+    || !Number.isFinite(insulinPmolL)
+    || insulinPmolL < 0
   ) {
     throw new Error(
-      'liver: pancreasEndocrine.insulinRelative must be a finite non-negative number',
+      'liver: pancreasEndocrine.insulinPmolL must be a finite non-negative number',
     );
   }
-  return insulinRelative;
+  return insulinPmolL / BASAL_INSULIN_PMOL_L;
 }
 
 function cortisolRelativeOf(adrenal: Readonly<AdrenalReading>): number {
-  const cortisolRelative = adrenal.cortisolRelative;
+  const cortisolNmolL = adrenal.cortisolNmolL;
   if (
-    typeof cortisolRelative !== 'number'
-    || !Number.isFinite(cortisolRelative)
-    || cortisolRelative < 0
+    typeof cortisolNmolL !== 'number'
+    || !Number.isFinite(cortisolNmolL)
+    || cortisolNmolL < 0
   ) {
     throw new Error(
-      'liver: adrenal.cortisolRelative must be a finite non-negative number',
+      'liver: adrenal.cortisolNmolL must be a finite non-negative number',
     );
   }
-  return cortisolRelative;
+  return cortisolNmolL / REFERENCE_CORTISOL_NMOL_L;
 }
 
 export function heartbeat(io: IO): void {
@@ -266,17 +273,27 @@ export function heartbeat(io: IO): void {
   const insulinRelative = pancreas === undefined ? 1 : insulinRelativeOf(pancreas);
   const adrenal = io.read('adrenal');
   const cortisolRelative = adrenal === undefined ? 1 : cortisolRelativeOf(adrenal);
+  const rawSympathetic = (io as { read(id: string): Readonly<{ sympatheticMm?: unknown }> | undefined }).read('autonomic')?.sympatheticMm;
+  const sympatheticMm = typeof rawSympathetic === 'number' && Number.isFinite(rawSympathetic)
+    ? Math.min(100, Math.max(0, rawSympathetic))
+    : 0;
+  const sympatheticMultiplier = 1 + sympatheticOutputGain * sympatheticMm;
 
   const dtMin = io.dt / 60;
 
   const deficitMgDl = Math.max(0, baselineMgDl - glucoseMgDl);
   const excessMgDl = Math.max(0, glucoseMgDl - baselineMgDl);
   const suppression = 1 / (1 + excessMgDl / suppressionScaleMgDl);
+  const activeStressOrDeficit = deficitMgDl > 0
+    || glucagonRelative > 1
+    || sympatheticMm > 0
+    || cortisolRelative > 1.4;
+  const effectiveCortisol = activeStressOrDeficit ? Math.max(0, cortisolRelative) : 1;
   const rawRate = (
     basalOutputRateGPerMin * suppression
     + hypoglycemiaOutputGainGPerMinPerMgDl * deficitMgDl
     + glucagonOutputGainGPerMin * Math.max(0, glucagonRelative - 1)
-  ) * Math.max(0, cortisolRelative);
+  ) * effectiveCortisol * sympatheticMultiplier;
   const rate = Math.min(maxOutputRateGPerMin, Math.max(0, rawRate));
   const releaseG = Math.min(rate * dtMin, availableG);
 

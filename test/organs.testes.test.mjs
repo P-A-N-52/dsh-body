@@ -89,15 +89,19 @@ test('the testes parameters are design defaults with no source', () => {
     'testes.baselineRelative': { value: 1, unit: '1' },
     'testes.circadianAmplitude': { value: 0.1, unit: '1' },
     'testes.responseHalfTimeMin': { value: 60, unit: 'min' },
+    'testes.phaseShiftHours': { value: 0, unit: 'h' },
+    'testes.sleepDebtSuppressionThresholdMm': { value: 60, unit: 'mm', source: 'SRC-LEPROULT-2011' },
+    'testes.sleepDebtMaxSuppressionFraction': { value: 0.15, unit: '1', source: 'SRC-LEPROULT-2011' },
+    'testes.stressCortisolSuppressionGain': { value: 0.1, unit: '1' },
   };
   assert.deepEqual(Object.keys(byId).sort(), Object.keys(expectedParameters).sort());
 
-  for (const [parameterId, { value, unit }] of Object.entries(expectedParameters)) {
+  for (const [parameterId, { value, unit, source = null }] of Object.entries(expectedParameters)) {
     const parameter = byId[parameterId];
     assert.equal(parameter.value, value, `${parameterId}: value`);
     assert.equal(parameter.unit, unit, `${parameterId}: unit`);
     assert.equal(parameter.status, 'design', `${parameterId}: status`);
-    assert.equal(parameter.source, null, `${parameterId}: source`);
+    assert.equal(parameter.source, source, `${parameterId}: source`);
     assert.ok(Array.isArray(parameter.range), `${parameterId}: range`);
   }
 

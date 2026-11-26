@@ -15,10 +15,31 @@ const parametersUrl = new URL(
   '../organs/human-organs/adrenal/cortisol.parameters.json',
   import.meta.url,
 );
-const halfTimeMin = 15;
+const referenceCortisolNmolL = 180;
+const referenceActhPgMl = 12;
+const acthEc50PgMl = 26;
+const maxSecretionNmolLPerMin = 10;
+const hillExponent = 1.85;
+const eliminationHalfTimeMin = 49;
+const kElim = Math.LN2 / eliminationHalfTimeMin;
 
-function pituitaryAt(acthRelative) {
-  return { tshRelative: 1, acthRelative };
+function hill(acthPgMl) {
+  if (acthPgMl <= 0) return 0;
+  const p = acthPgMl ** hillExponent;
+  return p / (acthEc50PgMl ** hillExponent + p);
+}
+
+const basalSecretion = (referenceCortisolNmolL * kElim - maxSecretionNmolLPerMin * hill(referenceActhPgMl))
+  / (1 - hill(referenceActhPgMl));
+
+function expectedCortisol(prevCortisol, acthPgMl, dtMin) {
+  const secretion = basalSecretion + (maxSecretionNmolLPerMin - basalSecretion) * hill(acthPgMl);
+  const target = secretion / kElim;
+  return Math.min(800, Math.max(0, target + (prevCortisol - target) * 2 ** (-dtMin / eliminationHalfTimeMin)));
+}
+
+function pituitaryAt(acthPgMl) {
+  return { tshRelative: 1, acthPgMl, prolactinNgMl: 8, oxytocinPgMl: 2 };
 }
 
 function round({ state, pituitary, dt = 60, actions = [] } = {}) {
@@ -44,37 +65,32 @@ function assertClose(actual, expected, label, tolerance = 1e-12) {
   );
 }
 
-function expectedCortisol(prevCortisol, acthRelative, dtMin) {
-  return acthRelative
-    + (prevCortisol - acthRelative) * 2 ** (-dtMin / halfTimeMin);
-}
-
 test('adrenal exports the cortisol signal contract without actions', () => {
   assert.equal(id, 'adrenal');
   assert.equal(typeof heartbeat, 'function');
   assert.deepEqual(actionTypes, []);
   assert.deepEqual(fields, {
-    cortisolRelative: { unit: '1', mode: 'absolute' },
+    cortisolNmolL: { unit: 'nmol/L', mode: 'absolute' },
   });
-  assert.deepEqual(initialState, { cortisolRelative: 1 });
+  assert.deepEqual(initialState, { cortisolNmolL: 180 });
 
   const withoutActions = round({
     state: initialState,
-    pituitary: pituitaryAt(2),
+    pituitary: pituitaryAt(24),
   });
   const withActions = round({
     state: initialState,
-    pituitary: pituitaryAt(2),
+    pituitary: pituitaryAt(24),
     actions: [
       { type: 'exercise', intensity: 1, durationMin: 10 },
       { type: 'eat', energyKcal: 100 },
     ],
   });
   assert.deepEqual(withActions.written, withoutActions.written);
-  assert.deepEqual(Object.keys(withActions.written), ['cortisolRelative']);
+  assert.deepEqual(Object.keys(withActions.written), ['cortisolNmolL']);
 });
 
-test('the adrenal parameters are design defaults with no source', () => {
+test('the adrenal parameters keep Keenan Hill kinetics priors and reference design constants', () => {
   const data = JSON.parse(readFileSync(parametersUrl, 'utf8'));
   assert.equal(data.schemaVersion, 1);
   assert.equal(data.owner, 'adrenal');
@@ -82,99 +98,116 @@ test('the adrenal parameters are design defaults with no source', () => {
   const byId = Object.fromEntries(
     data.parameters.map((parameter) => [parameter.id, parameter]),
   );
-  assert.deepEqual(Object.keys(byId).sort(), ['adrenal.responseHalfTimeMin']);
-
-  const halfTime = byId['adrenal.responseHalfTimeMin'];
-  assert.equal(halfTime.value, 15);
-  assert.equal(halfTime.unit, 'min');
-  assert.equal(halfTime.status, 'design');
-  assert.equal(halfTime.source, null);
+  assert.deepEqual(Object.keys(byId).sort(), [
+    'adrenal.acthEc50PgMl',
+    'adrenal.eliminationHalfTimeMin',
+    'adrenal.hillExponent',
+    'adrenal.maxSecretionNmolLPerMin',
+    'adrenal.referenceActhPgMl',
+    'adrenal.referenceCortisolNmolL',
+  ]);
+  assert.equal(byId['adrenal.acthEc50PgMl'].status, 'prior');
+  assert.equal(byId['adrenal.acthEc50PgMl'].source, 'SRC-KEENAN-2004');
+  assert.equal(byId['adrenal.eliminationHalfTimeMin'].status, 'prior');
+  assert.equal(byId['adrenal.eliminationHalfTimeMin'].source, 'SRC-KEENAN-2004');
+  assert.equal(byId['adrenal.maxSecretionNmolLPerMin'].status, 'prior');
+  assert.equal(byId['adrenal.maxSecretionNmolLPerMin'].source, 'SRC-KEENAN-2004');
+  assert.equal(byId['adrenal.hillExponent'].status, 'design');
+  assert.equal(byId['adrenal.hillExponent'].source, null);
 
   assert.deepEqual(loadParameters(parametersUrl), {
-    'adrenal.responseHalfTimeMin': 15,
+    'adrenal.referenceCortisolNmolL': 180,
+    'adrenal.referenceActhPgMl': 12,
+    'adrenal.acthEc50PgMl': 26,
+    'adrenal.maxSecretionNmolLPerMin': 10,
+    'adrenal.hillExponent': 1.85,
+    'adrenal.eliminationHalfTimeMin': 49,
   });
 });
 
-test('ACTH drives cortisol with a 15 min half-time', () => {
+test('ACTH drives cortisol nonlinearly with a 49 min elimination half-time', () => {
   const oneMinute = round({
-    state: { cortisolRelative: 1 },
-    pituitary: pituitaryAt(3),
+    state: { cortisolNmolL: 180 },
+    pituitary: pituitaryAt(36),
   });
   assertClose(
-    oneMinute.written.cortisolRelative,
-    expectedCortisol(1, 3, 1),
+    oneMinute.written.cortisolNmolL,
+    expectedCortisol(180, 36, 1),
     'one-minute response',
   );
   assert.equal(oneMinute.writes.length, 1);
 
-  const fifteenMinutes = round({
-    state: { cortisolRelative: 1 },
-    pituitary: pituitaryAt(3),
-    dt: 900,
+  const halfTime = round({
+    state: { cortisolNmolL: 180 },
+    pituitary: pituitaryAt(36),
+    dt: eliminationHalfTimeMin * 60,
   });
-  assertClose(fifteenMinutes.written.cortisolRelative, 2, '15 min half-time');
+  assertClose(halfTime.written.cortisolNmolL, expectedCortisol(180, 36, eliminationHalfTimeMin), '49 min half-time');
 
-  const thirtyMinutes = round({
-    state: { cortisolRelative: 1 },
-    pituitary: pituitaryAt(3),
-    dt: 1800,
+  const saturationCheck = round({
+    state: { cortisolNmolL: 180 },
+    pituitary: pituitaryAt(80),
+    dt: 600 * 60,
   });
-  assertClose(thirtyMinutes.written.cortisolRelative, 2.5, '30 min');
+  assertClose(saturationCheck.written.cortisolNmolL, expectedCortisol(180, 80, 600), 'high ACTH saturation');
 });
 
-test('ACTH below baseline pulls cortisol down toward the target', () => {
+test('ACTH below baseline pulls cortisol down and basal 12 pg/mL holds 180 nmol/L', () => {
   const { written } = round({
-    state: { cortisolRelative: 2 },
-    pituitary: pituitaryAt(0.5),
-    dt: 900,
+    state: { cortisolNmolL: 360 },
+    pituitary: pituitaryAt(4),
+    dt: eliminationHalfTimeMin * 60,
   });
-  assertClose(written.cortisolRelative, 1.25, 'half-time pull down');
+  assertClose(written.cortisolNmolL, expectedCortisol(360, 4, eliminationHalfTimeMin), 'half-time pull down');
 
   const baseline = round({
     state: initialState,
-    pituitary: pituitaryAt(1),
+    pituitary: pituitaryAt(referenceActhPgMl),
   });
-  assert.equal(baseline.written.cortisolRelative, 1);
+  assertClose(baseline.written.cortisolNmolL, 180, 'basal holds steady');
 });
 
 test('a zero-length round keeps the previous cortisol', () => {
   const { written } = round({
-    state: { cortisolRelative: 1.7 },
-    pituitary: pituitaryAt(3),
+    state: { cortisolNmolL: 306 },
+    pituitary: pituitaryAt(36),
     dt: 0,
   });
-  assertClose(written.cortisolRelative, 1.7, 'dt 0');
+  assertClose(written.cortisolNmolL, 306, 'dt 0');
 });
 
-test('a missing pituitary falls back to acthRelative 1', () => {
-  const { written } = round({ state: { cortisolRelative: 2 } });
+test('a missing pituitary falls back to basal acthPgMl 12', () => {
+  const { written } = round({ state: { cortisolNmolL: 360 } });
   assertClose(
-    written.cortisolRelative,
-    expectedCortisol(2, 1, 1),
+    written.cortisolNmolL,
+    expectedCortisol(360, referenceActhPgMl, 1),
     'missing pituitary',
   );
 
   const baseline = round({ state: initialState });
-  assert.equal(baseline.written.cortisolRelative, 1);
+  assertClose(baseline.written.cortisolNmolL, 180, 'baseline');
 });
 
-test('a missing adrenal state starts from the baseline 1', () => {
-  const { written } = round({ pituitary: pituitaryAt(3) });
+test('a missing adrenal state starts from basal 180 nmol/L and migrates legacy cortisolRelative', () => {
+  const { written } = round({ pituitary: pituitaryAt(36) });
   assertClose(
-    written.cortisolRelative,
-    expectedCortisol(1, 3, 1),
+    written.cortisolNmolL,
+    expectedCortisol(180, 36, 1),
     'initial state',
   );
+
+  const migrated = round({ state: { cortisolRelative: 2 }, dt: 0 });
+  assert.equal(migrated.written.cortisolNmolL, 360, 'legacy cortisolRelative migrates as ratio * 180');
 });
 
 test('a loaded pituitary with an invalid ACTH fails the round without writes', () => {
   const invalid = [
-    ['missing acthRelative', {}],
+    ['missing acthPgMl', {}],
     ['NaN', pituitaryAt(Number.NaN)],
     ['positive infinity', pituitaryAt(Number.POSITIVE_INFINITY)],
     ['negative infinity', pituitaryAt(Number.NEGATIVE_INFINITY)],
     ['negative', pituitaryAt(-0.1)],
-    ['non-number', pituitaryAt('1')],
+    ['non-number', pituitaryAt('12')],
   ];
 
   for (const [label, pituitary] of invalid) {
@@ -196,28 +229,28 @@ test('adrenal output is finite and JSON-safe', () => {
     },
     {
       label: 'driven one minute',
-      options: { state: { cortisolRelative: 1 }, pituitary: pituitaryAt(3) },
+      options: { state: { cortisolNmolL: 180 }, pituitary: pituitaryAt(36) },
     },
     {
       label: 'fractional dt',
       options: {
-        state: { cortisolRelative: 1.2 },
-        pituitary: pituitaryAt(0.7),
+        state: { cortisolNmolL: 220 },
+        pituitary: pituitaryAt(8),
         dt: 90,
       },
     },
     {
       label: 'long round',
       options: {
-        state: { cortisolRelative: 0.2 },
-        pituitary: pituitaryAt(2.5),
+        state: { cortisolNmolL: 40 },
+        pituitary: pituitaryAt(40),
         dt: 3600,
       },
     },
     {
       label: 'zero dt',
       options: {
-        state: { cortisolRelative: 1.4 },
+        state: { cortisolNmolL: 250 },
         pituitary: pituitaryAt(0),
         dt: 0,
       },
@@ -235,11 +268,11 @@ test('adrenal output is finite and JSON-safe', () => {
   }
 });
 
-test('adrenal clamps unbounded ACTH target to [0, 3]', () => {
+test('adrenal clamps extreme ACTH secretion to [0, 800] nmol/L', () => {
   const clampedHigh = round({
     state: initialState,
-    pituitary: pituitaryAt(10),
-    dt: 900,
+    pituitary: pituitaryAt(1000),
+    dt: 60000,
   }).written;
-  assert.equal(clampedHigh.cortisolRelative, 3);
+  assert.ok(clampedHigh.cortisolNmolL > 650 && clampedHigh.cortisolNmolL <= 800);
 });

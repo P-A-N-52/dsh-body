@@ -16,7 +16,7 @@ const parametersUrl = new URL(
   import.meta.url,
 );
 
-const HALF_TIME_MIN = 60;
+const HALF_TIME_MIN = 1440;
 
 function round({ state, pituitary, dt = 60, actions = [] } = {}) {
   const writes = [];
@@ -87,7 +87,7 @@ test('thyroid exports the endocrine organ contract without actions or transfers'
   assert.deepEqual(Object.keys(withActions.written), ['thyroxineRelative']);
 });
 
-test('thyroid parameter defaults are a design half-time with no source', () => {
+test('thyroid parameter defaults are a prior half-time with Nicoloff source', () => {
   const data = JSON.parse(readFileSync(parametersUrl, 'utf8'));
   assert.equal(data.schemaVersion, 1);
   assert.equal(data.owner, 'thyroid');
@@ -97,37 +97,37 @@ test('thyroid parameter defaults are a design half-time with no source', () => {
   );
   assert.deepEqual(Object.keys(byId).sort(), ['thyroid.thyroxineHalfTimeMin']);
   for (const parameter of data.parameters) {
-    assert.equal(parameter.status, 'design', `${parameter.id}: status`);
-    assert.equal(parameter.source, null, `${parameter.id}: source`);
+    assert.equal(parameter.status, 'prior', `${parameter.id}: status`);
+    assert.equal(parameter.source, 'SRC-NICOLOFF-1972', `${parameter.id}: source`);
   }
   assert.equal(byId['thyroid.thyroxineHalfTimeMin'].unit, 'min');
   assert.equal(byId['thyroid.thyroxineHalfTimeMin'].value, HALF_TIME_MIN);
-  assert.deepEqual(byId['thyroid.thyroxineHalfTimeMin'].range, [1, 240]);
+  assert.deepEqual(byId['thyroid.thyroxineHalfTimeMin'].range, [60, 14400]);
 
   assert.deepEqual(loadParameters(parametersUrl), {
     'thyroid.thyroxineHalfTimeMin': HALF_TIME_MIN,
   });
 });
 
-test('TSH drives T4 with a 60-minute half-time', () => {
+test('TSH drives T4 with a 1440-minute half-time', () => {
   const rising = round({
     state: { thyroxineRelative: 1 },
     pituitary: { tshRelative: 3 },
-    dt: 3600,
+    dt: 1440 * 60,
   });
   assertClose(rising.written.thyroxineRelative, 2, 'rising halfway from 1 toward 3');
 
   const falling = round({
     state: { thyroxineRelative: 3 },
     pituitary: { tshRelative: 0 },
-    dt: 3600,
+    dt: 1440 * 60,
   });
   assertClose(falling.written.thyroxineRelative, 1.5, 'falling halfway from 3 toward 0');
 
   const mild = round({
     state: { thyroxineRelative: 1 },
     pituitary: { tshRelative: 0.5 },
-    dt: 3600,
+    dt: 1440 * 60,
   });
   assertClose(mild.written.thyroxineRelative, 0.75, 'falling halfway from 1 toward 0.5');
 
@@ -138,47 +138,47 @@ test('TSH drives T4 with a 60-minute half-time', () => {
   });
   assertClose(
     oneMinute.written.thyroxineRelative,
-    3 + (1 - 3) * 2 ** (-1 / 60),
-    'one 60-second round is one minute of a 60-minute half-time',
+    3 + (1 - 3) * 2 ** (-1 / 1440),
+    'one 60-second round is one minute of a 1440-minute half-time',
   );
 });
 
-test('T4 approaches TSH with 2^(−dtMin / 60)', () => {
-  const twoHours = round({
+test('T4 approaches TSH with 2^(−dtMin / 1440)', () => {
+  const twoHalfTimes = round({
     state: { thyroxineRelative: 1 },
     pituitary: { tshRelative: 3 },
-    dt: 7200,
+    dt: 2880 * 60,
   });
-  assertClose(twoHours.written.thyroxineRelative, 2.5, 'two half-times leave a quarter');
+  assertClose(twoHalfTimes.written.thyroxineRelative, 2.5, 'two half-times leave a quarter');
 
-  const halfHour = round({
+  const halfHalfTime = round({
     state: { thyroxineRelative: 1 },
     pituitary: { tshRelative: 3 },
-    dt: 1800,
+    dt: 720 * 60,
   });
   assertClose(
-    halfHour.written.thyroxineRelative,
+    halfHalfTime.written.thyroxineRelative,
     3 + (1 - 3) * 2 ** (-0.5),
     'half a half-time',
   );
 
-  const ninetyMinutes = round({
+  const oneAndHalfHalfTimes = round({
     state: { thyroxineRelative: 2.5 },
     pituitary: { tshRelative: 0 },
-    dt: 5400,
+    dt: 2160 * 60,
   });
   assertClose(
-    ninetyMinutes.written.thyroxineRelative,
+    oneAndHalfHalfTimes.written.thyroxineRelative,
     2.5 * 2 ** -1.5,
     'a fractional number of half-times',
   );
 });
 
 test('a missing pituitary keeps TSH at the neutral baseline of 1', () => {
-  const fromHigh = round({ state: { thyroxineRelative: 2 }, dt: 3600 });
+  const fromHigh = round({ state: { thyroxineRelative: 2 }, dt: 1440 * 60 });
   assertClose(fromHigh.written.thyroxineRelative, 1.5, 'T4 decays halfway toward 1');
 
-  const fromBaseline = round({ state: { thyroxineRelative: 1 }, dt: 3600 });
+  const fromBaseline = round({ state: { thyroxineRelative: 1 }, dt: 1440 * 60 });
   assertClose(fromBaseline.written.thyroxineRelative, 1, 'baseline is a fixed point');
 
   const newBody = round();

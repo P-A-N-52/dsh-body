@@ -9,8 +9,9 @@
  *   thyroxineRelative = tshRelative
  *     + (prevT4 − tshRelative) × 2^(−dtMin / thyroxineHalfTimeMin)
  * `prevT4` 是本部位轮初读数（旧档缺字段按 1），`tshRelative` 是轮初
- * `pituitary.tshRelative`（未加载按 1）。半时默认 60 min，来自同目录
- * `thyroid.parameters.json` 的 `thyroid.thyroxineHalfTimeMin`。
+ * `pituitary.tshRelative`（未加载按 1）。表观代谢/脱碘调节池半时默认 `1440 min`（24 h，
+ * `SRC-NICOLOFF-1972` / `nicoloff-1972.md` 报道游离 T3 清除均值 ~24.0 h，标 `prior`；替代旧 `60 min`
+ * 瞬时占位），来自同目录 `thyroid.parameters.json` 的 `thyroid.thyroxineHalfTimeMin`。
  *
  * `thyroxineRelative` 是 0–3 的无量纲相对量，`1` 表示基线；它不是 T4/T3 浓度、游离
  * 激素、分泌率或代谢率，不能与 µIU/mL、pmol/L 等实测值换算。初值 1 只是未受刺激的
@@ -19,12 +20,11 @@
  *
  * 边界：`pituitary` 未加载时按 TSH = 1 回退；已加载但 `tshRelative` 缺失、非有限或为负
  * 时抛错使本轮失败且不写状态，不用健康常量掩盖异常。只读轮初快照；同轮新到动作和上游
- * 写入下一轮才反映。缺失 T3、甲状腺结合球蛋白、碘摄入、甲状腺疾病、昼夜差异与个体差异
+ * 写入下一轮才反映。缺失 T3/T4 精细分室、甲状腺结合球蛋白、碘摄入、甲状腺疾病、昼夜差异与个体差异
  * 均未建模。
  *
- * 证据：本切片没有 T4/TSH 动力学的直接人体来源；60 min 半时、一阶指数形式与 0–3 范围
- * 全部是 `status: design`、`source: null` 的工程假设，不是实测、拟合或临床验证，不能称
- * validated。
+ * 证据：仅 `thyroxineHalfTimeMin = 1440 min` 引用 `SRC-NICOLOFF-1972`（T3 全身清除 24.0 h 量级，
+ * 标 `prior`）；一阶指数形式与 0–3 范围仍为 `status: design`，不能称实测、拟合或 `validated`。
  */
 import { loadParameters, requireParameter } from '../../../lib/parameters.js';
 

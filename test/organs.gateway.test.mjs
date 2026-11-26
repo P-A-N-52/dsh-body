@@ -9,10 +9,13 @@ import { checkpoint } from '../test-support/harness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the root manifest loads all thirty-eight body parts', async (t) => {
+test('the root manifest loads all forty body parts', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-'));
   const statePath = join(dir, 'body-state.json');
-  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
+  writeFileSync(statePath, JSON.stringify({
+    ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} }),
+    profile: { timezoneOffsetMin: 0 },
+  }));
   t.mock.method(console, 'log', () => {});
   t.mock.method(console, 'error', () => {});
   const gateway = startGateway({
@@ -34,12 +37,24 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
   assert.deepEqual(capabilities.urinate, ['bladder']);
   assert.deepEqual(capabilities.defecate, ['colon']);
   assert.deepEqual(capabilities.exercise, ['physicalActivity']);
-  assert.deepEqual(capabilities.sex, ['physicalActivity', 'sexualResponse']);
-  assert.deepEqual(capabilities.orgasm, ['sexualResponse']);
+  assert.deepEqual(capabilities.stop_exercise, ['physicalActivity']);
+  assert.deepEqual(capabilities.sleep, ['sleep']);
+  assert.deepEqual(capabilities.wake_up, ['sleep']);
+  assert.equal(Object.hasOwn(capabilities, 'sex'), false);
+  assert.equal(Object.hasOwn(capabilities, 'orgasm'), false);
   assert.deepEqual(
     Object.keys(capabilities).sort(),
-    ['defecate', 'drink', 'eat', 'exercise', 'orgasm', 'sex', 'urinate'],
+    ['defecate', 'drink', 'eat', 'exercise', 'sleep', 'stop_exercise', 'urinate', 'wake_up'],
   );
+
+  for (const type of ['sex', 'orgasm']) {
+    const blocked = await fetch(`http://127.0.0.1:${info.port}/actions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: `blocked-${type}`, type, intensity: 0.5, durationMin: 5 }),
+    });
+    assert.equal(blocked.status, 403, `${type} must be blocked when nsfw is false`);
+  }
 
   const response = await fetch(`http://127.0.0.1:${info.port}/actions`, {
     method: 'POST',
@@ -52,6 +67,7 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
   const first = await (await fetch(`http://127.0.0.1:${info.port}/state`)).json();
   assert.deepEqual(Object.keys(first.parts).sort(), [
     'adrenal',
+    'autonomic',
     'bladder',
     'blood',
     'bloodOxygen',
@@ -80,9 +96,11 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
     'physicalActivity',
     'pineal',
     'pituitary',
+    'reward',
     'salivaryGlands',
     'sexualResponse',
     'skin',
+    'sleep',
     'smallIntestine',
     'stomach',
     'stomachGhrelin',
@@ -124,7 +142,7 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
     systolicMmHg: 120,
     diastolicMmHg: 80,
     oxygenDeliveryMlMin: 4900 * (97 * 2) / 1000,
-    maxOxygenDeliveryMlPerMin: 3666.6,
+    maxOxygenDeliveryMlPerMin: 3177.72,
     gfrMlMin: 100,
   });
   assert.ok(
@@ -158,19 +176,34 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
       glycogenConsumedG: 0,
     }, region);
   }
-  assert.deepEqual(first.parts.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
-  assert.deepEqual(first.parts.hypothalamusEndocrine, { trhRelative: 1, crhRelative: 1 });
-  assert.deepEqual(first.parts.pituitary, { tshRelative: 1, acthRelative: 1, prolactinRelative: 1 });
+  assert.deepEqual(first.parts.pancreasEndocrine, { insulinPmolL: 60, glucagonRelative: 1 });
+  assert.equal(first.parts.hypothalamusEndocrine.trhRelative, 1);
+  assert.ok(Number.isFinite(first.parts.hypothalamusEndocrine.crhRelative));
+  assert.equal(first.parts.pituitary.tshRelative, 1);
+  assert.ok(first.parts.pituitary.acthPgMl > 0 && Number.isFinite(first.parts.pituitary.acthPgMl));
+  assert.ok(first.parts.pituitary.prolactinNgMl > 0 && Number.isFinite(first.parts.pituitary.prolactinNgMl));
+  assert.ok(first.parts.pituitary.oxytocinPgMl > 0 && Number.isFinite(first.parts.pituitary.oxytocinPgMl));
   assert.deepEqual(first.parts.thyroid, { thyroxineRelative: 1 });
-  assert.deepEqual(first.parts.adrenal, { cortisolRelative: 1 });
+  assert.ok(first.parts.adrenal.cortisolNmolL > 170 && first.parts.adrenal.cortisolNmolL < 190);
+  assert.ok(Number.isFinite(first.parts.reward.wantingMm));
+  assert.ok(Number.isFinite(first.parts.reward.hedonicMm));
+  assert.ok(Number.isFinite(first.parts.reward.satietyMm));
+  const midnightCurve = 1 + 0.8 * Math.cos((2 * Math.PI * (1 / 60 - 2)) / 24);
+  const expectedAwakeSuppressed = 0.2 + (midnightCurve - 0.2) * (1 - 120 / (120 + 100));
+  const expectedMelatonin = 1 + (expectedAwakeSuppressed - 1) * (1 - 2 ** (-1 / 39.4));
   assert.ok(
-    Math.abs(
-      first.parts.pineal.melatoninRelative
-        - (1 + 0.8 * Math.cos((2 * Math.PI * (1 / 60 - 2)) / 24)),
-    ) < 1e-12,
+    Math.abs(first.parts.pineal.melatoninRelative - expectedMelatonin) < 1e-12,
   );
   assert.equal(first.parts.interoception.stressMm, 0);
-  assert.equal(first.parts.interoception.sleepinessMm, 50);
+  assert.ok(first.parts.interoception.sleepinessMm >= 0 && first.parts.interoception.sleepinessMm <= 25);
+  assert.deepEqual(first.parts.sleep, {
+    sleeping: false,
+    sleepPressureMm: 0.08,
+    sleepDurationMin: 0,
+    sleepStage: 'awake',
+    sleepInertiaMm: 0,
+    wakeEvent: 'none',
+  });
   assert.deepEqual(first.parts.liver, {
     glycogenCapacityG: 100,
     glycogenG: 80 - 0.096,
@@ -192,6 +225,7 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
     remainingSexMin: 0,
     sexIntensity: 0,
     lastOrgasmAtSimMin: null,
+    afterglowMm: 0,
   });
   assert.equal(first.parts.interoception.sexualArousalMm, 0);
   assert.equal(first.parts.interoception.libidoMm, 0, 'root manifest has no testes, so libido falls back to 0');
@@ -239,7 +273,10 @@ test('the root manifest loads all thirty-eight body parts', async (t) => {
 test('the root manifest fails to start when the skin transfer target is missing', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-no-skin-'));
   const statePath = join(dir, 'body-state.json');
-  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
+  writeFileSync(statePath, JSON.stringify({
+    ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} }),
+    profile: { timezoneOffsetMin: 0 },
+  }));
   const rootManifest = JSON.parse(readFileSync(join(root, 'body-modules.json'), 'utf8'));
   const manifestPath = join(dir, 'body-modules.json');
   writeFileSync(manifestPath, JSON.stringify({
@@ -273,7 +310,10 @@ test('the root manifest fails to start when the skin transfer target is missing'
 test('the root manifest fails to start when the lungs transfer target is missing', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-no-lungs-'));
   const statePath = join(dir, 'body-state.json');
-  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
+  writeFileSync(statePath, JSON.stringify({
+    ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} }),
+    profile: { timezoneOffsetMin: 0 },
+  }));
   const rootManifest = JSON.parse(readFileSync(join(root, 'body-modules.json'), 'utf8'));
   const manifestPath = join(dir, 'body-modules.json');
   writeFileSync(manifestPath, JSON.stringify({
@@ -307,7 +347,10 @@ test('the root manifest fails to start when the lungs transfer target is missing
 test('the root manifest fails to start when the muscle glucose transfer target is missing', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-no-muscle-glucose-'));
   const statePath = join(dir, 'body-state.json');
-  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} })));
+  writeFileSync(statePath, JSON.stringify({
+    ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} }),
+    profile: { timezoneOffsetMin: 0 },
+  }));
   const rootManifest = JSON.parse(readFileSync(join(root, 'body-modules.json'), 'utf8'));
   const manifestPath = join(dir, 'body-modules.json');
   writeFileSync(manifestPath, JSON.stringify({

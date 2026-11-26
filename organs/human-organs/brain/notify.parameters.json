@@ -75,40 +75,67 @@
       "note": "提醒策略：口渴达到强档位的 0–100 mm 代理阈值；policy，不是人体口渴阈值或渗透压标定"
     },
     {
+      "id": "brainNotify.default.marked",
+      "unit": "mm",
+      "value": 65,
+      "status": "policy",
+      "range": [0, 100],
+      "source": null,
+      "note": "提醒策略：其余体感觉察达到明显档位的 0–100 mm 通用代理阈值；policy，不是人体测量"
+    },
+    {
+      "id": "brainNotify.default.strong",
+      "unit": "mm",
+      "value": 85,
+      "status": "policy",
+      "range": [0, 100],
+      "source": null,
+      "note": "提醒策略：其余体感觉察达到强档位的 0–100 mm 通用代理阈值；policy，不是人体测量"
+    },
+    {
       "id": "brainNotify.resetBelow",
       "unit": "mm",
       "value": 40,
       "status": "policy",
       "range": [0, 100],
       "source": null,
-      "note": "提醒策略：信号低于该阈值才将门控 levels 清零；40–64 mm 中间档保持既有水位不重arm，升更高档可直接；policy，不是人体测量"
+      "note": "提醒策略：信号低于该阈值才将门控水位清零并重置退避；40–64 mm 中间档保持既有水位不重arm，升更高档可直接触发；policy，不是人体测量"
     },
     {
-      "id": "brainNotify.minIntervalMin",
+      "id": "brainNotify.baseIntervalMin",
       "unit": "min",
-      "value": 45,
+      "value": 20,
       "status": "policy",
-      "range": [0, 1440],
+      "range": [1, 240],
       "source": null,
-      "note": "提醒策略：同一会话两次提醒的最短间隔；policy，不是生理不应期"
+      "note": "提醒策略：同一会话普通提醒的初始退避间隔；policy，不是生理不应期"
     },
     {
-      "id": "brainNotify.maxPerHour",
-      "unit": "1",
-      "value": 2,
+      "id": "brainNotify.maxIntervalMin",
+      "unit": "min",
+      "value": 240,
       "status": "policy",
-      "range": [0, 60],
+      "range": [10, 1440],
       "source": null,
-      "note": "提醒策略：同一会话每小时提醒上限；policy，不是人体测量"
+      "note": "提醒策略：同一会话普通提醒指数退避的封顶间隔；policy，不是生理不应期"
     },
     {
-      "id": "brainNotify.maxPerDay",
-      "unit": "1",
-      "value": 6,
+      "id": "brainNotify.urgentBaseIntervalMin",
+      "unit": "min",
+      "value": 5,
       "status": "policy",
-      "range": [0, 240],
+      "range": [1, 60],
       "source": null,
-      "note": "提醒策略：同一会话每天提醒上限；policy，不是人体测量"
+      "note": "提醒策略：同一会话高危或强唤醒提醒的初始退避间隔；policy，不是生理不应期"
+    },
+    {
+      "id": "brainNotify.urgentMaxIntervalMin",
+      "unit": "min",
+      "value": 60,
+      "status": "policy",
+      "range": [5, 240],
+      "source": null,
+      "note": "提醒策略：同一会话高危或强唤醒提醒指数退避的封顶间隔；policy，不是生理不应期"
     },
     {
       "id": "brainNotify.wakeAtLevel",
@@ -118,6 +145,24 @@
       "range": [2, 4],
       "source": null,
       "note": "提醒策略：达到该档位才用 wake，4 表示从不唤醒；policy"
+    },
+    {
+      "id": "brainNotify.sleepImportantThresholdMm",
+      "unit": "mm",
+      "value": 92,
+      "status": "policy",
+      "range": [85, 100],
+      "source": null,
+      "note": "提醒策略：浅睡或 REM 睡眠期间重要信号触发常规唤醒的抬高阈值；policy，不是人体测量"
+    },
+    {
+      "id": "brainNotify.deepSleepImportantThresholdMm",
+      "unit": "mm",
+      "value": 95,
+      "status": "policy",
+      "range": [85, 100],
+      "source": null,
+      "note": "提醒策略：深睡期间重要信号触发常规唤醒的进一步抬高阈值；policy，不是人体测量"
     },
     {
       "id": "brainNotify.maxTrackedSessions",

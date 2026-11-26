@@ -4,23 +4,23 @@
 
 骨骼肌目录是一组独立部位：`physicalActivity`（`activity.ts`）保存一次 `exercise` 或 `sex` 动作留下的活动剩余分钟和相对强度，供皮肤出汗、肺运动相关呼吸失水、区域糖原消耗与血氧需氧按轮初快照读取；`sex` 按体力活动计入，走同一字段、同一校验与同一替换策略，不另建性活动状态。`muscleGlucose`（`glucose-uptake.ts`）是摄糖聚合器：按轮初 `glucose.excessMassG` 与 `pancreasEndocrine.insulinRelative` 计算摄糖请求，写 `uptakeRequestG`；下一轮 `glucose` 按请求结算，实际支付经 transfer 进入 `uptakeG`；再下一轮聚合器按区域份额转给已加载的区域。`muscleHead` / `muscleTrunk` / `muscleLimbs`（`regions/head.ts`、`trunk.ts`、`limbs.ts`，共享 `regions/region-core.ts`）各自持有区域糖原并按轮初活动消耗。这些脚本都不模拟肌肉收缩、运动类型、代谢产热、疲劳或能量代谢，也不消耗能量、产热、调节体温或自动运动；血氧隔室只把活动强度按 `design` 系数折算成需氧，不由肌糖原或能量代谢推导。从未 `exercise` / `sex` 时活动为 0、糖原消耗为 0，进行中的活动在没有新动作时仍按 `io.dt` 递减并保留强度，既有水账与口渴轨迹不变。
 
-实现状态：`activity.ts`、`glucose-uptake.ts`（正常聚合器入口）、`glucose-uptake.no-limbs.ts`（缺四肢变体）与 `regions/{head,trunk,limbs}.ts` 均在 `organs/human-organs/skeletal-muscle/`；活动脚本无参数文件，模块定向测试见 [`test/organs.activity.test.mjs`](../../../test/organs.activity.test.mjs)；摄糖与区域脚本使用 `glucose-uptake.parameters.json`，测试见 [`test/organs.muscle-glucose.test.mjs`](../../../test/organs.muscle-glucose.test.mjs)、[`test/organs.muscle-regions.test.mjs`](../../../test/organs.muscle-regions.test.mjs) 与 [`test/organs.muscle-regions-gateway.test.mjs`](../../../test/organs.muscle-regions-gateway.test.mjs)。`exercise` / `sex` 工具入口、皮肤/肺请求链、血氧需氧、根清单、体液出口、`glucose → muscleGlucose` 的实际支付 transfer 与 `muscleGlucose → 区域` 的分配 transfer 均已接入；当前根清单为 38 个部位、34 份唯一参数文件（女性清单 41 部位、37 份；男性清单 40 部位、36 份）。区域份额与消耗速率仍是 `design`，本文不把历史计数当作当前结果。完整契约见本文、[`regions/README.md`](regions/README.md)、[`skin`](../skin/README.md)、[`lungs`](../lungs/README.md) 与 [`sexual-response`](../sexual-response/README.md)。尚未做真实 DSH 会话、独立运动生理数据或临床验证。
+实现状态：`activity.ts`、`glucose-uptake.ts`（正常聚合器入口）、`glucose-uptake.no-limbs.ts`（缺四肢变体）与 `regions/{head,trunk,limbs}.ts` 均在 `organs/human-organs/skeletal-muscle/`；活动脚本无参数文件，模块定向测试见 [`test/organs.activity.test.mjs`](../../../test/organs.activity.test.mjs)；摄糖与区域脚本使用 `glucose-uptake.parameters.json`，测试见 [`test/organs.muscle-glucose.test.mjs`](../../../test/organs.muscle-glucose.test.mjs)、[`test/organs.muscle-regions.test.mjs`](../../../test/organs.muscle-regions.test.mjs) 与 [`test/organs.muscle-regions-gateway.test.mjs`](../../../test/organs.muscle-regions-gateway.test.mjs)。`exercise` / `sex` / `stop_exercise` 工具入口、皮肤/肺请求链、血氧需氧、根清单、体液出口、`glucose → muscleGlucose` 的实际支付 transfer 与 `muscleGlucose → 区域` 的分配 transfer 均已接入；当前根清单为 39 个部位、35 份唯一参数文件（女性清单 42 部位、38 份；男性清单 41 部位、37 份）。区域份额与消耗速率仍是 `design`，本文不把历史计数当作当前结果。完整契约见本文、[`regions/README.md`](regions/README.md)、[`skin`](../skin/README.md)、[`lungs`](../lungs/README.md) 与 [`sexual-response`](../sexual-response/README.md)。尚未做真实 DSH 会话、独立运动生理数据或临床验证。
 
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `activity.ts` | `physicalActivity` | `remainingExerciseMin`、`intensity` | 自己的轮初状态；`io.actions` 中的 `exercise` / `sex`；`io.dt` | 无 |
+| `activity.ts` | `physicalActivity` | `remainingExerciseMin`、`intensity` | 自己的轮初状态；`io.actions` 中的 `exercise` / `sex` / `stop_exercise` / `sleep`；`io.dt` | 无 |
 | `glucose-uptake.ts` / `glucose-uptake.no-limbs.ts` | `muscleGlucose` | `uptakeRequestG`、`uptakeG` | 自己的轮初状态；轮初 `glucose.excessMassG` / `concentrationMgDl`（未加载 glucose 时按 0）、`pancreasEndocrine.insulinRelative`（未加载胰腺时按 1）、`physicalActivity.remainingExerciseMin` / `intensity`（可选）；各区域是否存在；`io.dt` | `glucose-uptake.parameters.json` |
 | `regions/head.ts` | `muscleHead` | `uptakeG`、`glycogenG`、`glycogenConsumedG` | 自己的轮初状态；`muscleGlucose.glycogenG`（仅旧档迁移）、`physicalActivity`；`io.dt` | `glucose-uptake.parameters.json` |
 | `regions/trunk.ts` | `muscleTrunk` | 同上 | 同上 | 同上 |
 | `regions/limbs.ts` | `muscleLimbs` | 同上 | 同上 | 同上 |
 
-- `activity.ts` 导出 `actionTypes = ['exercise', 'sex']`；聚合器与区域脚本的 `actionTypes = []`，区域没有动作、通知或主动 transfer。
-- 消费者是 `skin`、`lungs`、三个区域与 `bloodOxygen` 的轮初读取；它们与 `physicalActivity` 之间都是普通 `io.read`，不构成 transfer 配对，也不要求同轮提交。
+- `activity.ts` 导出 `actionTypes = ['exercise', 'sex', 'stop_exercise']`；聚合器与区域脚本的 `actionTypes = []`，区域没有动作、通知或主动 transfer。
+- 消费者是 `skin`、`lungs`、三个区域、`bloodOxygen` 与 `interoception`（结合三区糖原亏空输出 `muscleFatigueMm`，并在 `palpitationMm` 中区分运动心率与静止心动过速）的轮初读取；它们与 `physicalActivity` 之间都是普通 `io.read`，不构成 transfer 配对，也不要求同轮提交。
 - `muscleGlucose` 每轮写出 `uptakeRequestG`，供 `glucose` 下一轮结算；实际到账只通过 `uptakeG.transferIn: ['glucose.glucoseMassG']`，并在同一轮按份额 `transferOut` 到已加载区域的 `uptakeG`。正常入口声明三个区域；缺区域变体只声明存在的区域，份额按剩余区域归一。`glucose` 的 `transferOut` 必须声明 `muscleGlucose.uptakeG`，区域必须声明 `muscleGlucose.uptakeG` 为来源，缺任一端在完整清单启动时因配对校验失败。请求字段不是 transfer，不搬质量。
 - 区域可被清单单独启停，但不是子字段：每个区域有自己的状态、字段声明和入口文件。缺区域变体只按现有区域归一，不推断缺失肢体的质量；用法见 [`regions/README.md`](regions/README.md) §5。
-- 本目录脚本都不自动产生 `exercise` / `sex`，也不根据时间、活动量或环境自行开始/停止活动；动作只来自 `body_act`。
+- 本目录脚本都不自动产生 `exercise` / `sex`，也不根据时间、活动量或环境自行开始/停止活动；动作只来自 `body_act`（或通过 `stop_exercise` / `sleep` 中止进行中的活动）。
 
 ## 2. 字段与单位
 
@@ -59,7 +59,10 @@ remainingExerciseMin = max(0, prev.remainingExerciseMin − dtMin)
 intensity = remainingExerciseMin > 0 ? prev.intensity : 0
 
 for action in 本轮 io.actions（按到达顺序）:
-  若 action 是合法 exercise 或 sex:
+  若 action.type === 'stop_exercise' 或 action.type === 'sleep':
+    remainingExerciseMin = 0
+    intensity = 0
+  否则若 action 是合法 exercise 或 sex:
     remainingExerciseMin = action.durationMin
     intensity = action.intensity
 write({ remainingExerciseMin, intensity })
@@ -71,7 +74,7 @@ write({ remainingExerciseMin, intensity })
 - `intensity` 是有限数且 `0 < intensity <= 1`；
 - `durationMin` 是有限数且 `> 0`。
 
-同一轮只有**最后一个合法** `exercise` / `sex` 生效；它用新的 `durationMin`/`intensity` 整体替换剩余活动，不与旧剩余时间相加。两类动作共用这两个字段，也可以互相替换：同轮先 `exercise` 后 `sex` 时按 `sex` 的时长与强度，反向亦然。后面的非法 `exercise` / `sex` 被跳过，不会把此前合法动作替换掉；`drink`、`eat`、`urinate` 等其他动作对活动无影响。非法动作不改变活动状态，也不产生错误写入。
+此外，`stop_exercise` 与 `sleep`（均无载荷）会在动作处理顺序中立即把 `remainingExerciseMin` 与 `intensity` 归零，用于提前中止当前运动或入睡停动；若同轮其后又出现新的合法 `exercise` / `sex`，则按到达顺序继续被后续合法动作替换。同一轮只有**最后一个合法** `exercise` / `sex`（且未被随后的 `stop_exercise` / `sleep` 清零）生效；它用新的 `durationMin`/`intensity` 整体替换剩余活动，不与旧剩余时间相加。两类动作共用这两个字段，也可以互相替换：同轮先 `exercise` 后 `sex` 时按 `sex` 的时长与强度，反向亦然。后面的非法 `exercise` / `sex` 被跳过，不会把此前合法动作替换掉；`drink`、`eat`、`urinate` 等其他动作对活动无影响。非法动作不改变活动状态，也不产生错误写入。
 
 “先按 `io.dt` 递减，再处理本轮动作”是轮初快照策略：本轮新动作从自己的完整 `durationMin` 开始，不从被本轮 `dt` 扣过的余量开始。这是动作策略（`design`/`policy`），不是运动生理规律。
 

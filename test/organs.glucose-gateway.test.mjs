@@ -176,7 +176,7 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
   assert.ok(Math.abs(initialWithCarb.glucose.concentrationMgDl - baselineConcentrationMgDl) <= 1e-9);
   assert.equal(initialWithoutCarb.glucose.disposedGlucoseG, 0);
   assert.equal(initialWithCarb.glucose.excessMassG, 0);
-  assert.deepEqual(initialWithCarb.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
+  assert.deepEqual(initialWithCarb.pancreasEndocrine, { insulinPmolL: 60, glucagonRelative: 1 });
   assert.deepEqual(initialWithCarb.muscleGlucose, {
     uptakeG: 0,
     uptakeRequestG: 0,
@@ -267,8 +267,8 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
       `B round ${round}: concentration ${withoutCarbParts.glucose.concentrationMgDl}`,
     );
     assert.ok(
-      Math.abs(withoutCarbParts.pancreasEndocrine.insulinRelative - 1) <= 1e-12,
-      `B round ${round}: insulin ${withoutCarbParts.pancreasEndocrine.insulinRelative}`,
+      Math.abs(withoutCarbParts.pancreasEndocrine.insulinPmolL - 60) <= 1e-12,
+      `B round ${round}: insulin ${withoutCarbParts.pancreasEndocrine.insulinPmolL}`,
     );
     assert.equal(
       withoutCarbParts.kidneyGlucose.excretionRequestG,
@@ -358,7 +358,7 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
   assert.ok(round4A.glucose.glucoseMassG > round4B.glucose.glucoseMassG);
   assert.ok(Math.abs(round4B.glucose.concentrationMgDl - 90) <= 1e-9);
   assert.ok(
-    Math.abs(round4A.pancreasEndocrine.insulinRelative - 1) <= 1e-12,
+    Math.abs(round4A.pancreasEndocrine.insulinPmolL - 60) <= 1e-12,
     'round 4: the pancreas still reads the old baseline concentration',
   );
   const expectedDisposed4G = expectedDisposedG(round3A.glucose.glucoseMassG);
@@ -371,8 +371,8 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
 
   const { withCarbParts: round5A, withoutCarbParts: round5B } = await advance(5);
   assert.ok(
-    round5A.pancreasEndocrine.insulinRelative > 1,
-    `round 5: insulin ${round5A.pancreasEndocrine.insulinRelative} should rise`,
+    round5A.pancreasEndocrine.insulinPmolL > 60,
+    `round 5: insulin ${round5A.pancreasEndocrine.insulinPmolL} should rise`,
   );
   const expectedDisposed5G = expectedDisposedG(round4A.glucose.glucoseMassG);
   assert.ok(
@@ -430,7 +430,7 @@ test('a 60 g drink and an equal no-carb drink diverge through glucose and duoden
     'fasting liver glycogen depletes at 0.096 g/min while holding 90 mg/dL steady',
   );
   assert.deepEqual(finalWithoutCarb.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
-  assert.ok(Math.abs(finalWithoutCarb.pancreasEndocrine.insulinRelative - 1) <= 1e-12);
+  assert.ok(Math.abs(finalWithoutCarb.pancreasEndocrine.insulinPmolL - 60) <= 1e-12);
 });
 
 test('a preset high concentration writes requests, then settles them one round later without double counting', async (t) => {
@@ -438,7 +438,8 @@ test('a preset high concentration writes requests, then settles them one round l
   const highMassG = 50.76;
   const highConcentrationMgDl = 360;
   const startExcessG = highMassG - baselineMassG;
-  const startInsulinRelative = 1;
+  const startInsulinPmolL = 60;
+  const startInsulinRelative = startInsulinPmolL / 60;
   const expectedRequestG = expectedExcretionRequestG(highConcentrationMgDl);
   const expectedMuscleRequestG = 0.5
     * startExcessG / (startExcessG + 20)
@@ -457,7 +458,7 @@ test('a preset high concentration writes requests, then settles them one round l
         excessMassG: startExcessG,
       },
       kidneyGlucose: { excretionRequestG: 0, excretedGlucoseG: 0 },
-      pancreasEndocrine: { insulinRelative: startInsulinRelative, glucagonRelative: 1 },
+      pancreasEndocrine: { insulinPmolL: startInsulinPmolL, glucagonRelative: 1 },
     },
   });
   const expectedDisposed1G = expectedDisposedG(highMassG);
@@ -485,7 +486,7 @@ test('a preset high concentration writes requests, then settles them one round l
     Math.abs(first.glucose.glucoseMassG - (highMassG - expectedDisposed1G + first.liver.outputG + kidney1G)) <= 1e-12,
     'round 1 writes disposal and receives suppressed EGP, no request settlement',
   );
-  assert.ok(first.pancreasEndocrine.insulinRelative > startInsulinRelative);
+  assert.ok(first.pancreasEndocrine.insulinPmolL > startInsulinPmolL);
   assert.ok(first.pancreasEndocrine.glucagonRelative < 1);
 
   const kidney2G = renalOutputG(first);
@@ -551,7 +552,7 @@ test('a full liver requests only its basal-output gap while muscle still takes u
       disposedGlucoseG: 0,
       excessMassG: startExcessG,
     },
-    pancreasEndocrine: { insulinRelative: 1, glucagonRelative: 1 },
+    pancreasEndocrine: { insulinPmolL: 60, glucagonRelative: 1 },
   };
   const { gateway } = await startBody(t, {
     parts: {
@@ -661,7 +662,7 @@ test('an old checkpoint without the new fields settles after the request lag and
       glycogenConsumedG: 0,
     }, region);
   }
-  assert.deepEqual(loaded.pancreasEndocrine, { insulinRelative: 1, glucagonRelative: 1 });
+  assert.deepEqual(loaded.pancreasEndocrine, { insulinPmolL: 60, glucagonRelative: 1 });
   assert.deepEqual(loaded.liver, {
     glycogenCapacityG: initialLiverCapacityG,
     glycogenG: initialLiverGlycogenG,
@@ -760,7 +761,7 @@ test('a preseeded low glucose save with liver glycogen refills toward baseline a
         storageG: 0,
         outputG: 0,
       },
-      pancreasEndocrine: { insulinRelative: 1, glucagonRelative: 1 },
+      pancreasEndocrine: { insulinPmolL: 60, glucagonRelative: 1 },
     },
   });
   const cumulative = { disposedG: 0, excretedG: 0, muscleConsumedG: 0, kidneyOutputG: 0 };
@@ -783,7 +784,7 @@ test('a preseeded low glucose save with liver glycogen refills toward baseline a
         'round 1: the release must be deducted from glycogen',
       );
       assert.ok(parts.pancreasEndocrine.glucagonRelative > 1, 'round 1: glucagon must rise');
-      assert.ok(parts.pancreasEndocrine.insulinRelative < 1, 'round 1: insulin must fall');
+      assert.ok(parts.pancreasEndocrine.insulinPmolL < 60, 'round 1: insulin must fall');
     }
     cumulative.disposedG += parts.glucose.disposedGlucoseG;
     cumulative.excretedG += parts.kidneyGlucose.excretedGlucoseG;
@@ -833,7 +834,7 @@ test('a low glucose save without liver glycogen is refilled by kidney gluconeoge
         storageG: 0,
         outputG: 0,
       },
-      pancreasEndocrine: { insulinRelative: 1, glucagonRelative: 1 },
+      pancreasEndocrine: { insulinPmolL: 60, glucagonRelative: 1 },
     },
   });
   const cumulative = { disposedG: 0, excretedG: 0, muscleConsumedG: 0, kidneyOutputG: 0 };
@@ -1077,7 +1078,7 @@ test('a restart on the same checkpoint keeps the solid mass and pending queue co
       'the committed disposal flux must be non-zero before restart',
     );
     assert.ok(
-      beforeRestart.parts.pancreasEndocrine.insulinRelative > 1,
+      beforeRestart.parts.pancreasEndocrine.insulinPmolL > 60,
       'the committed insulin signal must be above baseline before restart',
     );
     assert.deepEqual(
@@ -1119,8 +1120,8 @@ test('a restart on the same checkpoint keeps the solid mass and pending queue co
     );
     assert.ok(
       Math.abs(
-        restored.parts.pancreasEndocrine.insulinRelative
-          - beforeRestart.parts.pancreasEndocrine.insulinRelative,
+        restored.parts.pancreasEndocrine.insulinPmolL
+          - beforeRestart.parts.pancreasEndocrine.insulinPmolL,
       ) <= 1e-12,
       'restart must keep the committed insulin signal',
     );

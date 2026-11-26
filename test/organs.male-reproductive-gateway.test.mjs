@@ -31,17 +31,18 @@ function arousalState(arousalMm) {
   };
 }
 
-function boot(statePath) {
+function boot(statePath, { defaultNsfw = true } = {}) {
   return startGateway({
     manifestPath: maleManifestPath,
     statePath,
     port: 0,
     autoTick: false,
     now: () => 0,
+    defaultNsfw,
   });
 }
 
-async function startBody(t, { parts = {} } = {}) {
+async function startBody(t, { parts = {}, defaultNsfw = true } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-male-'));
   const statePath = join(dir, 'body-state.json');
   writeFileSync(statePath, JSON.stringify(checkpoint({
@@ -50,7 +51,7 @@ async function startBody(t, { parts = {} } = {}) {
     parts,
   })));
   silence(t);
-  const gateway = boot(statePath);
+  const gateway = boot(statePath, { defaultNsfw });
   t.after(async () => {
     await gateway.stop();
     rmSync(dir, { recursive: true, force: true });
@@ -66,11 +67,17 @@ function assertClose(actual, expected, label, tolerance = 1e-12) {
   );
 }
 
-test('the male manifest boots forty parts with testes and epididymis', async (t) => {
+test('the male manifest boots forty-two parts with testes and epididymis', async (t) => {
+  const { gateway: safeGateway } = await startBody(t, { defaultNsfw: false });
+  assert.equal(Object.hasOwn(safeGateway.getCapabilities(), 'sex'), false);
+  assert.equal(Object.hasOwn(safeGateway.getCapabilities(), 'orgasm'), false);
+  assert.equal(safeGateway.submitAction({ id: 'male-sex-403', type: 'sex', intensity: 1, durationMin: 10 }).statusCode, 403);
+  assert.equal(safeGateway.submitAction({ id: 'male-orgasm-403', type: 'orgasm' }).statusCode, 403);
+
   const { gateway } = await startBody(t);
   const parts = gateway.getState().parts;
 
-  assert.equal(Object.keys(parts).length, 40);
+  assert.equal(Object.keys(parts).length, 42);
   assert.deepEqual(parts.testes, { testosteroneRelative: 1 });
   assert.deepEqual(parts.epididymis, { spermStorageMl: 0, ejaculatedMl: 0 });
   assert.ok(parts.sexualResponse, 'sexualResponse must be loaded');

@@ -8,6 +8,7 @@ import { createFieldRegistry } from './operations.js';
 setWorkerParameterConfig({
   profile: workerData.profile,
   parameters: workerData.parameters,
+  nsfw: Boolean(workerData.nsfw),
 });
 
 const modules = new Map();
@@ -113,7 +114,15 @@ function readStatePath(parts, path) {
   return value;
 }
 
-async function heartbeat({ snapshot, actions, dt, simulatedSeconds, wallTimeMs, suppressNotifications = false }) {
+async function heartbeat({
+  snapshot,
+  actions,
+  dt,
+  simulatedSeconds,
+  wallTimeMs,
+  suppressNotifications = false,
+  boundSessionId = null,
+}) {
   await describeModules();
   freezeJson(snapshot);
   freezeJson(actions);
@@ -124,7 +133,15 @@ async function heartbeat({ snapshot, actions, dt, simulatedSeconds, wallTimeMs, 
   }
 
   const contexts = new Map();
-  const common = { read, actions, dt, simulatedSeconds, wallTimeMs, suppressNotifications };
+  const common = {
+    read,
+    actions,
+    dt,
+    simulatedSeconds,
+    wallTimeMs,
+    suppressNotifications,
+    boundSessionId,
+  };
   const legacyContext = Object.freeze({
     ...common,
     call(id, name, ...args) {

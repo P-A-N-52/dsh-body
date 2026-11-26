@@ -82,6 +82,15 @@
       "range": [0, 1],
       "source": null,
       "note": "glucagonRelative 高于基线 1 时每单位超额胰高血糖素信号对应的肝糖输出增量工程占位。不是实测胰高血糖素剂量反应，无登记来源。range 是工程调参范围"
+    },
+    {
+      "id": "liver.sympatheticOutputGain",
+      "unit": "1/mm",
+      "value": 0.005,
+      "status": "design",
+      "range": [0, 0.05],
+      "source": null,
+      "note": "autonomic.sympatheticMm 每单位对应的肝糖原释放倍增斜率；design"
     }
   ]
 }

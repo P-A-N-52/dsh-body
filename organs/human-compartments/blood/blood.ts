@@ -81,6 +81,10 @@ type BodyFluidReading = {
   waterVolumeMl?: unknown;
 };
 
+type AutonomicReading = {
+  sympatheticMm?: unknown;
+};
+
 const parameters = loadParameters(new URL('./blood.parameters.json', import.meta.url));
 const referenceBloodVolumeMl = scaleByBodyWeight(
   requireParameter(parameters, 'blood.referenceBloodVolumeMl'),
@@ -96,14 +100,14 @@ const oxygenContentPerPercentMlPerL = requireParameter(
   parameters,
   'blood.oxygenContentPerPercentMlPerL',
 );
+const sympatheticSystolicGain = requireParameter(parameters, 'blood.sympatheticSystolicGain');
+const sympatheticDiastolicGain = requireParameter(parameters, 'blood.sympatheticDiastolicGain');
 
 const referenceCardiacOutputMlMin = scaleByBodyWeight(4900);
 const referenceBodyWaterMl = getNumericParameterOverride('bodyFluid.referenceVolumeMl')
   ?? scaleByBodyWeight(30000);
 const bloodVolumeRange = { min: scaleByBodyWeight(2500), max: scaleByBodyWeight(6000) };
 const fallbackSpo2Percent = 97;
-const strokeVolumeGain = 0.2;
-const maxCortisolRelative = 3;
 const systolicRange = { min: 80, max: 200 };
 const diastolicRange = { min: 40, max: 120 };
 const gfrVolumeRatioRange = { min: 0.5, max: 1.2 };
@@ -117,9 +121,10 @@ const restingStrokeVolumeMl = scaleByBodyWeight(
   'heart.restingStrokeVolumeMl',
 );
 const activityGain = requireParameter(heartParameters, 'heart.activityGain');
-const catecholamineGain = requireParameter(heartParameters, 'heart.catecholamineGain');
+const sympatheticDriveGain = requireParameter(heartParameters, 'heart.sympatheticDriveGain');
+const strokeVolumeGain = requireParameter(heartParameters, 'heart.strokeVolumeGain');
 
-const maxDrive = 1 + activityGain + catecholamineGain * (maxCortisolRelative - 1);
+const maxDrive = 1 + Math.max(activityGain, sympatheticDriveGain * 100);
 const maxStrokeVolumeMl = restingStrokeVolumeMl * (1 + strokeVolumeGain * (maxDrive - 1));
 
 function maxOxygenDeliveryAt(spo2Percent: number): number {
@@ -153,6 +158,7 @@ type IO = {
   read(id: 'heart'): Readonly<HeartReading> | undefined;
   read(id: 'bloodOxygen'): Readonly<BloodOxygenReading> | undefined;
   read(id: 'bodyFluid'): Readonly<BodyFluidReading> | undefined;
+  read(id: 'autonomic'): Readonly<AutonomicReading> | undefined;
   write(next: BloodState): void;
 };
 
@@ -220,15 +226,20 @@ export function heartbeat(io: IO): void {
   const bloodVolumeMl = readBloodVolume(io.read(id) ?? initialState, io.read('bodyFluid'));
   const cardiacOutputMlMin = readCardiacOutput(io.read('heart'));
   const spo2Percent = readSpo2Percent(io.read('bloodOxygen'));
+  const rawSympathetic = io.read('autonomic')?.sympatheticMm;
+  const sympatheticMm = typeof rawSympathetic === 'number' && Number.isFinite(rawSympathetic)
+    ? clamp(rawSympathetic, 0, 100)
+    : 0;
+  const sympatheticToneFactor = 1 + sympatheticSystolicGain * sympatheticMm;
 
   const cardiacOutputRatio = cardiacOutputMlMin / referenceCardiacOutputMlMin;
   const systolicMmHg = clamp(
-    baselineSystolicMmHg * cardiacOutputRatio ** 0.5,
+    baselineSystolicMmHg * (cardiacOutputRatio ** 0.5) * sympatheticToneFactor,
     systolicRange.min,
     systolicRange.max,
   );
   const diastolicMmHg = clamp(
-    baselineDiastolicMmHg * cardiacOutputRatio ** 0.3,
+    baselineDiastolicMmHg * (cardiacOutputRatio ** 0.3) * (1 + sympatheticDiastolicGain * sympatheticMm),
     diastolicRange.min,
     diastolicRange.max,
   );

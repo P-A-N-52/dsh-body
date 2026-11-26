@@ -46,6 +46,24 @@
       "range": [1, 3],
       "source": null,
       "note": "每 1% SpO2 对应的动脉血氧含量代理，乘 SpO2 得到 mL O2/L 血；不建血红蛋白浓度、结合曲线或溶解氧，不是血气实测或氧含量公式。range 只是工程调参范围"
+    },
+    {
+      "id": "blood.sympatheticSystolicGain",
+      "unit": "1/mm",
+      "value": 0.002,
+      "status": "design",
+      "range": [0, 0.01],
+      "source": null,
+      "note": "autonomic.sympatheticMm 每单位对应的收缩压外周阻力缩血管乘数增益；design"
+    },
+    {
+      "id": "blood.sympatheticDiastolicGain",
+      "unit": "1/mm",
+      "value": 0.001,
+      "status": "design",
+      "range": [0, 0.01],
+      "source": null,
+      "note": "autonomic.sympatheticMm 每单位对应的舒张压外周阻力缩血管乘数增益；design"
     }
   ]
 }

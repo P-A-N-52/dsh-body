@@ -32,7 +32,11 @@ export function startGateway({
   actionRetentionMs = defaultActionRetentionMs,
   maxNotifications = defaultMaxNotifications,
   maxCheckpointBytes = defaultMaxCheckpointBytes,
+  requireBinding = false,
+  defaultNsfw = false,
 } = {}) {
+  if (typeof requireBinding !== 'boolean') throw new TypeError('requireBinding must be a boolean');
+  if (typeof defaultNsfw !== 'boolean') throw new TypeError('defaultNsfw must be a boolean');
   if (typeof statePath !== 'string' || !statePath) {
     throw new TypeError('statePath is required');
   }
@@ -66,7 +70,14 @@ export function startGateway({
     actionRetentionMs,
     now,
   });
-  const actions = createActionQueue({ store, now, heartbeatIntervalMs });
+  const activeNsfw = (checkpoint) => Boolean(checkpoint?.nsfw ?? defaultNsfw);
+  const actions = createActionQueue({
+    store,
+    now,
+    heartbeatIntervalMs,
+    requireBinding,
+    isNsfwEnabled: activeNsfw,
+  });
   const runner = createBodyRunner(manifest);
   let stopping = false;
   let shutdown;
@@ -80,13 +91,41 @@ export function startGateway({
     catchUpMinutes: manifest.catchUpMinutes,
     maxNotifications,
     isStopping: () => stopping,
+    requireBinding,
+    getNsfw: activeNsfw,
   });
+  async function bindSession(sessionId) {
+    requireReady();
+    if (stopping) throw new Error('Body Gateway is stopping');
+    const updated = await simulation.bind(sessionId);
+    return {
+      ok: true,
+      active: updated.active,
+      dormant: simulation.isDormant(updated),
+      boundSessionId: updated.boundSessionId ?? null,
+      nsfw: activeNsfw(updated),
+    };
+  }
+  async function unbindSession() {
+    requireReady();
+    if (stopping) throw new Error('Body Gateway is stopping');
+    const updated = await simulation.unbind();
+    return {
+      ok: true,
+      active: updated.active,
+      dormant: simulation.isDormant(updated),
+      boundSessionId: updated.boundSessionId ?? null,
+      nsfw: activeNsfw(updated),
+    };
+  }
   const http = createBodyHttpServer({
     store,
     getHealth: simulation.health,
     getCapabilities: actions.capabilities,
     enqueue,
     ackNotification,
+    bindSession,
+    unbindSession,
   });
 
   function requireReady() {
@@ -113,6 +152,7 @@ export function startGateway({
         modules = await runner.describe({
           profile: saved?.profile ?? null,
           parameters: saved?.parameters ?? null,
+          nsfw: activeNsfw(saved),
         });
       } catch (error) {
         throw new Error(`Failed to load body modules: ${formatError(error)}`, { cause: error });
@@ -138,10 +178,12 @@ export function startGateway({
       active: initial.active,
     };
     console.log(`DSH Body Gateway listening at ${info.url}`);
-    if (initial.active) {
-      console.log(`Loaded ${modules.length} heartbeat script(s) and ${manifest.initializers.length} startup script(s) configured`);
-    } else {
+    if (!initial.active) {
       console.log('Body is paused (active=false); no body scripts were loaded');
+    } else if (simulation.isDormant(initial)) {
+      console.log(`Loaded ${modules.length} heartbeat script(s); body is dormant until bound to a session`);
+    } else {
+      console.log(`Loaded ${modules.length} heartbeat script(s) and ${manifest.initializers.length} startup script(s) configured`);
     }
     console.log(`Body startup ${JSON.stringify(initial.startup)}`);
     simulation.start();
@@ -184,6 +226,24 @@ export function startGateway({
       return structuredClone(requireReady().notifications);
     },
     ackNotification,
+    bindSession,
+    unbindSession,
+    getHealth() {
+      requireReady();
+      return simulation.health(http.port);
+    },
+    isDormant() {
+      return simulation.isDormant(requireReady());
+    },
+    getNsfw() {
+      return activeNsfw(store.current);
+    },
+    getBoundSessionId() {
+      return store.current?.boundSessionId ?? null;
+    },
+    getStatePath() {
+      return destination;
+    },
     get port() { return http.port; },
   };
 }

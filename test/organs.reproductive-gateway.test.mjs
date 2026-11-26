@@ -21,21 +21,22 @@ function silence(t) {
   }
 }
 
-function boot(statePath) {
+function boot(statePath, { defaultNsfw = false } = {}) {
   return startGateway({
     manifestPath: femaleManifestPath,
     statePath,
     port: 0,
     autoTick: false,
     now: () => 0,
+    defaultNsfw,
   });
 }
 
-async function startBody(t, { parts = {} } = {}) {
+async function startBody(t, { parts = {}, defaultNsfw = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-reproductive-'));
   const statePath = join(dir, 'body-state.json');
   writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts })));
-  const gateway = boot(statePath);
+  const gateway = boot(statePath, { defaultNsfw });
   t.after(async () => {
     await gateway.stop();
     rmSync(dir, { recursive: true, force: true });
@@ -73,11 +74,11 @@ function emptyAccumulator() {
   return { voidedMl: 0, sweatMl: 0, lungsMl: 0, bleedingMl: 0, milkMl: 0 };
 }
 
-test('the female manifest boots 41 parts and pays menses and milk into the water ledger', async (t) => {
+test('the female manifest boots 43 parts and pays menses and milk into the water ledger', async (t) => {
   silence(t);
   const { gateway } = await startBody(t, { parts: { ovaries: { cycleDay: 0 } } });
   const booted = gateway.getState().parts;
-  assert.equal(Object.keys(booted).length, 41);
+  assert.equal(Object.keys(booted).length, 43);
   assert.ok(booted.ovaries, 'ovaries must be loaded');
   assert.ok(booted.uterus, 'uterus must be loaded');
   assert.ok(booted.liver, 'liver must be loaded');
@@ -162,7 +163,22 @@ test('the female manifest boots 41 parts and pays menses and milk into the water
 
 test('a lactating female pays milk and lactose and raises prolactin while conserving water', async (t) => {
   silence(t);
+  const { gateway: safeGateway } = await startBody(t, {
+    parts: {
+      ovaries: { cycleDay: 10 },
+      mammaryGlands: { lactating: true },
+    },
+  });
+  await safeGateway.tick();
+  const safeParts = safeGateway.getState().parts;
+  assert.equal(safeParts.mammaryGlands.lactating, false, 'nsfw false forces non-lactating');
+  assert.equal(safeParts.mammaryGlands.milkRequestMl, 0);
+  assert.equal(safeParts.mammaryGlands.milkMl, 0);
+  assert.equal(safeParts.mammaryGlands.lactoseRequestG, 0);
+  assert.equal(safeParts.mammaryGlands.lactoseG, 0);
+
   const { gateway } = await startBody(t, {
+    defaultNsfw: true,
     parts: {
       ovaries: { cycleDay: 10 },
       mammaryGlands: { lactating: true },

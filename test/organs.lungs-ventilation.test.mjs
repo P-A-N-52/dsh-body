@@ -102,6 +102,10 @@ test('the ventilation parameters are design defaults with no source', () => {
     'lungsVentilation.inspiredO2Fraction': { value: 0.058333, unit: '1' },
     'lungsVentilation.deadSpaceFactor': { value: 1.4, unit: '1' },
     'lungsVentilation.pantingGain': { value: 1500, unit: 'mL/(min·°C)' },
+    'lungsVentilation.deepSleepFloorFactor': { value: 0.82, unit: '1' },
+    'lungsVentilation.lightSleepFloorFactor': { value: 0.9, unit: '1' },
+    'lungsVentilation.sleepSympatheticBypassThresholdMm': { value: 20, unit: 'mm' },
+    'lungsVentilation.sympatheticVentilationGainMlPerMinPerMm': { value: 80, unit: 'mL/(min·mm)' },
   };
   assert.deepEqual(
     data.parameters.map((parameter) => parameter.id),

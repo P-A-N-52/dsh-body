@@ -121,7 +121,7 @@ function highGlucoseParts({ insulinRelative = 1, liver } = {}) {
       excessMassG: massG - baselineMassG,
     },
     kidneyGlucose: { excretionRequestG: 0, excretedGlucoseG: 0 },
-    pancreasEndocrine: { insulinRelative, glucagonRelative: 1 },
+    pancreasEndocrine: { insulinPmolL: 60 * insulinRelative, glucagonRelative: 1 },
     ...(liver === undefined ? {} : { liver }),
   };
 }
@@ -267,7 +267,7 @@ test('low glucose releases from the liver and kidney and never from muscle', asy
         storageG: 0,
         outputG: 0,
       },
-      pancreasEndocrine: { insulinRelative: 1, glucagonRelative: 1 },
+      pancreasEndocrine: { insulinPmolL: 60, glucagonRelative: 1 },
     },
   });
 

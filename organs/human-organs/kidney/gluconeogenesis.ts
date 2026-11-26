@@ -67,12 +67,12 @@ const basalOutputRateGPerMin = scaleByBodyWeight(
   requireParameter(parameters, 'kidneyGluconeogenesis.basalOutputRateGPerMin'),
   'kidneyGluconeogenesis.basalOutputRateGPerMin',
 );
-const hypoglycemiaOutputGainGPerMinPerMgDl = requireParameter(
-  parameters,
+const hypoglycemiaOutputGainGPerMinPerMgDl = scaleByBodyWeight(
+  requireParameter(parameters, 'kidneyGluconeogenesis.hypoglycemiaOutputGainGPerMinPerMgDl'),
   'kidneyGluconeogenesis.hypoglycemiaOutputGainGPerMinPerMgDl',
 );
-const glucagonOutputGainGPerMin = requireParameter(
-  parameters,
+const glucagonOutputGainGPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'kidneyGluconeogenesis.glucagonOutputGainGPerMin'),
   'kidneyGluconeogenesis.glucagonOutputGainGPerMin',
 );
 

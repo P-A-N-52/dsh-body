@@ -84,7 +84,7 @@ test('blood exports the compartment contract without actions', () => {
     systolicMmHg: 120,
     diastolicMmHg: 80,
     oxygenDeliveryMlMin: 4900 * (97 * 2) / 1000,
-    maxOxygenDeliveryMlPerMin: 3666.6,
+    maxOxygenDeliveryMlPerMin: 3177.72,
     gfrMlMin: 100,
   });
 
@@ -104,6 +104,8 @@ test('the blood parameters are design defaults with no source', () => {
     'blood.baselineDiastolicMmHg': { value: 80, unit: 'mmHg' },
     'blood.baselineGfrMlMin': { value: 100, unit: 'mL/min' },
     'blood.oxygenContentPerPercentMlPerL': { value: 2, unit: 'mL/L/%' },
+    'blood.sympatheticSystolicGain': { value: 0.002, unit: '1/mm' },
+    'blood.sympatheticDiastolicGain': { value: 0.001, unit: '1/mm' },
   };
   assert.deepEqual(
     data.parameters.map((parameter) => parameter.id),
@@ -147,7 +149,7 @@ test('a missing bloodOxygen falls back to 97% saturation', () => {
   });
 
   assert.equal(written.oxygenDeliveryMlMin, 10000 * (97 * 2) / 1000);
-  assert.equal(written.maxOxygenDeliveryMlPerMin, 3666.6);
+  assertClose(written.maxOxygenDeliveryMlPerMin, 3177.72, 'fallback maxO2');
 });
 
 test('the compartment reads round-start heart output', () => {
@@ -186,9 +188,9 @@ test('oxygen delivery is cardiac output multiplied by arterial content', () => {
 });
 
 test('maximum oxygen delivery is the cardiac capacity at maximum drive', () => {
-  const maxDrive = 1 + 1.5 + 0.5 * (3 - 1);
+  const maxDrive = 1 + Math.max(1.5, 0.012 * 100);
   const expectedBaseline = 180 * 70 * (1 + 0.2 * (maxDrive - 1)) * (97 * 2) / 1000;
-  assertClose(expectedBaseline, 3666.6, 'design value');
+  assertClose(expectedBaseline, 3177.72, 'design value');
 
   for (const cardiacOutputMlMin of [0, 4900, 18900]) {
     const { written } = round({
@@ -210,7 +212,7 @@ test('maximum oxygen delivery is the cardiac capacity at maximum drive', () => {
   }).written;
   assertClose(
     desaturated.maxOxygenDeliveryMlPerMin,
-    180 * 70 * 1.5 * (50 * 2) / 1000,
+    180 * 70 * 1.3 * (50 * 2) / 1000,
     'scales with round-start saturation',
   );
 

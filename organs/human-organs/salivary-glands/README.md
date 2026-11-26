@@ -4,7 +4,7 @@
 
 `organs/human-organs/salivary-glands/` 目前只有一个部位 `salivaryGlands`，脚本为 `saliva.ts`。它按基础分泌、进食刺激和脱水状态计算本轮唾液产率 `salivaRateMlPerMin`，并换算出 0–100 mm 的口腔湿润度代理 `mouthMoistureMm`。当前有两个消费者：`duodenum` 读取产率，对含碳水餐的营养暴露给淀粉酶增益；`interoception` 读取湿润度，写出口干读数 `dryMouthMm`。本脚本不写其他部位、不调用 `transfer` 或 `notify`，也不建唾液水账。
 
-实现状态：脚本、参数、模块契约测试与真实 Gateway 测试已落地；当前根清单为 38 部位、34 份唯一参数文件，女性清单为 41 部位、37 份，男性清单为 40 部位、36 份；本切片不新增 `transfer`，硬闭包为根与男性 15 个部位、女性 17 个。四个 `salivaryGlands.*` 参数与消费者参数 `duodenum.salivaryAmylaseGain` 全部是 `design`、`source: null`。本文只描述离线模型与契约，未做真实 DSH 会话、唾液流率实测或临床验证。
+实现状态：脚本、参数、模块契约测试与真实 Gateway 测试已落地；当前根清单为 39 部位、35 份唯一参数文件，女性清单为 42 部位、38 份，男性清单为 41 部位、37 份；本切片不新增 `transfer`，硬闭包为根与男性 15 个部位、女性 17 个。四个 `salivaryGlands.*` 参数与消费者参数 `duodenum.salivaryAmylaseGain` 全部是 `design`、`source: null`。本文只描述离线模型与契约，未做真实 DSH 会话、唾液流率实测或临床验证。
 
 ## 1. 脚本与部位
 
@@ -60,10 +60,10 @@ mouthMoistureMm    = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100
 | 消费者 | 读什么 | 用途 |
 | --- | --- | --- |
 | `duodenum` | 轮初 `salivaryGlands.salivaRateMlPerMin` | 对含碳水餐的营养暴露乘 `1 + salivaryAmylaseGain × salivaRateMlPerMin / basalRateMlPerMin`；不含碳水时不变 |
-| `interoception` | 轮初 `salivaryGlands.mouthMoistureMm` | `dryMouthMm = clamp(100 − mouthMoistureMm, 0, 100)`；只作独立口干读数，不进入 `discomfort`，也不触发通知 |
+| `interoception` | 轮初 `salivaryGlands.mouthMoistureMm` | `dryMouthMm = clamp(100 − mouthMoistureMm, 0, 100)`；不进入 `discomfort`，现已接入 `brainNotify` 与纯定性 `body_state` |
 
 - **duodenum。** 只有轮初 `stomach.emptiedCarbohydrateG` 为有限正数时才应用增益；缺失、0、非数或非有限按不含碳水处理，输出与旧行为逐点一致。`salivaryGlands` 未加载时增益按 0；已加载但产率缺失、非数、非有限或为负时抛错，本轮不写。增益乘在到达速率上，不乘在滤波状态上，避免逐轮复利。
-- **interoception。** `salivaryGlands` 是可选部位：未加载、字段缺失、非数或非有限时 `dryMouthMm = 0`（不按最大口干）；湿润度超出 0–100 时钳位。水合静息时 `mouthMoistureMm = 100 mm`，对应 `dryMouthMm = 0 mm`；最大脱水时 `mouthMoistureMm = 50 mm`，对应 `dryMouthMm = 50 mm`。口干读数不参与不适的多路最大值，也不进入 `brainNotify`。
+- **interoception。** `salivaryGlands` 是可选部位：未加载、字段缺失、非数或非有限时 `dryMouthMm = 0`（不按最大口干）；湿润度超出 0–100 时钳位。水合静息时 `mouthMoistureMm = 100 mm`，对应 `dryMouthMm = 0 mm`；最大脱水时 `mouthMoistureMm = 50 mm`，对应 `dryMouthMm = 50 mm`。口干读数不参与不适的多路最大值，但现已接入 `brainNotify` 与纯定性 `body_state`（无数字），原始数值由 `GET /state` / `gateway.getState()` 返回。
 - **一轮偏移。** 两个消费者都只读轮初快照。第 N 轮摄入后，本脚本当轮写出刺激状态；第 N+1 轮 `interoception` 才读到新的湿润度。`duodenum` 还要等胃把该餐排入下一轮快照，最早第 N+2 轮才把淀粉酶增益计入暴露。
 - **旧档与重启。** 旧档缺 `salivaryGlands` 时由 `initialState` 补基础产率、`mealStimulusMin = 0` 与基础湿润度，不反推历史进食；重启保留已提交的刺激窗口与产率，下一轮继续按 `io.dt` 递减。本部位没有 `resetOnStart` 字段。
 
@@ -74,7 +74,7 @@ mouthMoistureMm    = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100
 - **吞咽与食管：** 不建吞咽动作、食管蠕动、胃食管反流或误吸；唾液不进入胃或小肠。
 - **口腔疾病与腺体病理：** 不建唾液腺结石、炎症、干燥综合征、放疗损伤、药物性口干或口腔感染。
 - **味觉与食欲：** 不建味觉、嗅觉、食物口感、咀嚼或餐前唾液条件反射；`eat` / `drink` 只看动作类型与体积。
-- **口咽解渴：** 不建吸收前口咽刺激对 thirst 的短暂抑制；`interoception.dryMouthMm` 只是读数，不改变口渴、饮水或 `brainNotify`。
+- **口咽解渴：** 不建吸收前口咽刺激对 thirst 的短暂抑制；`interoception.dryMouthMm` 不改变口渴或自动饮水，现已作为独立通道接入 `brainNotify` 与纯定性 `body_state`。
 - **个体差异与节律：** 年龄、性别、体重、腺体体积、昼夜节律、睡眠、运动、环境湿度和温度都不进入方程；四个参数是证据默认值，不是个体标定。
 - **其他唾液功能：** 不建免疫（IgA）、缓冲、牙釉质保护、消化脂肪的舌脂酶或口腔微生物组。
 

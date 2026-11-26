@@ -4,7 +4,7 @@
 
 `glucose` 接收小肠吸收的可消化葡萄糖当量碳水，维护一个“血浆 + 快速平衡组织”的可及池质量，并把轮初质量换算为血浆葡萄糖浓度代理。它只做三件事：持有血池、计算自身残余清除、按入口给出的顺序结算各部位上一轮写出的摄糖请求。正常入口 `glucose.ts` 固定“肾 → 肝 → 肌”三汇；女性变体 `glucose.female.ts` 在末位追加 `mammaryGlands.lactoseG`（乳汁乳糖），只用于 `body-modules.female.json`。超基线部分 `excessMassG = max(0, glucoseMassG − baselineMassG)` 由本隔室每轮写出，供骨骼肌与肝各自按自己的参数（最大速率、半饱和量、胰岛素敏感度；肝另有容量）计算请求；实际到账量分别写入 `muscleGlucose.uptakeG` 与 `liver.storageG`。总清除量是各部位响应的涌现结果，不由单一清除半时决定。低于基线时，`liver` 可把肝糖原经 transfer 转回 `glucoseMassG`，由真实存量补回而非保持原质量；`kidneyGluconeogenesis` 也可按自身速率上限转入产糖，两者并行、各自独立受各自阈值驱动。它位于 `organs/human-compartments/glucose/`，不是独立解剖器官，也不是完整糖代谢、胰岛素浓度或胰高血糖素模型。
 
-实现状态：`glucose-core.ts`、正常入口 `glucose.ts`、女性变体 `glucose.female.ts`、参数、证据笔记、单元测试和真实 Gateway 测试已落地。根清单当前为 38 个部位、34 份唯一参数文件，女性清单为 41 个部位、37 份参数文件，男性清单为 40 个部位、36 份参数文件。胰腺相对的胰岛素/胰高血糖素信号、肾糖请求、肌摄糖、肝糖原储存/释放、肾糖异生产糖与女性乳糖汇已接入；`muscleGlucose` 的自主摄糖请求、按区域份额分配与三个区域的糖原入账/运动消耗见[骨骼肌 README](../../human-organs/skeletal-muscle/README.md)与[区域 README](../../human-organs/skeletal-muscle/regions/README.md)，肝的自主储存请求、糖原存量与释放见[肝 README](../../human-organs/liver/README.md)，乳腺请求见[乳腺 README](../../human-organs/mammary-glands/README.md)。尚未做真实 DSH 会话验收或独立生理数据验证。
+实现状态：`glucose-core.ts`、正常入口 `glucose.ts`、女性变体 `glucose.female.ts`、参数、证据笔记、单元测试和真实 Gateway 测试已落地。根清单当前为 39 个部位、35 份唯一参数文件，女性清单为 42 个部位、38 份参数文件，男性清单为 41 个部位、37 份参数文件。胰腺相对的胰岛素/胰高血糖素信号、肾糖请求、肌摄糖、肝糖原储存/释放、肾糖异生产糖与女性乳糖汇已接入；`muscleGlucose` 的自主摄糖请求、按区域份额分配与三个区域的糖原入账/运动消耗见[骨骼肌 README](../../human-organs/skeletal-muscle/README.md)与[区域 README](../../human-organs/skeletal-muscle/regions/README.md)，肝的自主储存请求、糖原存量与释放见[肝 README](../../human-organs/liver/README.md)，乳腺请求见[乳腺 README](../../human-organs/mammary-glands/README.md)。尚未做真实 DSH 会话验收或独立生理数据验证。
 
 ## 1. 脚本与读写关系
 
@@ -33,7 +33,7 @@
 
 `kidneyGlucose.excretedGlucoseG` 由 transfer 单独记录实际肾糖排泄，不并入 `disposedGlucoseG`。`muscleGlucose` 的四个字段不属于本隔室：`uptakeRequestG` 是本轮请求（不是实际通量），`uptakeG` 是 `glucoseMassG` 的 transfer 目标、接收实际支付的 `U_paid` 并在下一轮入账，`glycogenG` 是肌糖原存量，`glycogenConsumedG` 是每轮运动消耗通量。`liver` 的五个字段也不属于本隔室：`storageRequestG` 是本轮储存请求（不是实际通量），`storageG` 是 `glucoseMassG` 的 transfer 目标、接收实际支付的 `L_paid` 并在下一轮并入存量，`glycogenG` 是肝糖原存量，也是 `glucoseMassG.transferIn` 的来源，`glycogenCapacityG` 是容量字段（由 `liver` 自己用于钳制请求），`outputG` 是肝本轮实际释放记录、不进质量账。`kidneyGluconeogenesis.glucoseOutputG` 是 `glucoseMassG` 的另一 transfer 来源，记录本轮肾糖异生产糖并在结算时全部转入血糖；它是通量，不是请求或累计量。`mammaryGlands.lactoseG` 是女性变体的 `glucoseMassG` transfer 目标，接收实际支付的 `G_paid`；`lactoseRequestG` 是请求字段，不进入质量账。请求字段不进入质量账；只有实际到账的 `uptakeG`、`storageG`、`excretedGlucoseG` 与（女性变体）`mammaryGlands.lactoseG` 才代表质量转移。
 
-当前消费者：`pancreasEndocrine`、`kidneyGlucose`、`liver` 与 `kidneyGluconeogenesis` 读取 `concentrationMgDl`；`liver` 与 `muscleGlucose` 读取 `excessMassG`；正常入口读取三个请求字段与肾糖请求，女性变体另读 `mammaryGlands.lactoseRequestG`。本隔室不写其他部位的字段。体感或其他调节模块尚未读取血糖，不能声称这些反馈已经生效。
+当前消费者：`pancreasEndocrine`、`kidneyGlucose`、`liver`、`kidneyGluconeogenesis` 与 `interoception`（软读计算低血糖不适 `hypoglycemiaMm`）读取 `concentrationMgDl`；`liver` 与 `muscleGlucose` 读取 `excessMassG`；正常入口读取三个请求字段与肾糖请求，女性变体另读 `mammaryGlands.lactoseRequestG`。本隔室不写其他部位的字段。`hypoglycemiaMm` 现已接入纯定性 `body_state` 与 `brainNotify`（≥ 85 mm 触发高危紧急 `wake`），但不会自动触发进食或补糖动作；原始数值由 `GET /state` / `gateway.getState()` 返回。
 
 ## 3. 边界、参数与结算方程
 

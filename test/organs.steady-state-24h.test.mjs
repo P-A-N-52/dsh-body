@@ -12,15 +12,30 @@ const MANIFESTS = [
   { name: 'female', file: 'body-modules.female.json' },
 ];
 
-async function bootManifest(t, manifestFile, { simulatedSeconds = 0, parts = {} } = {}) {
-  return launch(t, {
-    seed: checkpoint({ wallTimeMs: 0, simulatedSeconds, parts }),
+async function bootManifest(t, manifestFile, { simulatedSeconds = 0, parts = {}, defaultNsfw = false } = {}) {
+  let currentWallMs = simulatedSeconds * 1000;
+  const app = await launch(t, {
+    seed: {
+      ...checkpoint({
+        wallTimeMs: currentWallMs,
+        simulatedSeconds,
+        parts,
+      }),
+      profile: { timezoneOffsetMin: 0 },
+    },
     autoTick: false,
     gatewayOptions: {
       manifestPath: join(root, manifestFile),
-      now: () => 0,
+      now: () => currentWallMs,
+      defaultNsfw,
     },
   });
+  const baseTick = app.tick.bind(app);
+  app.tick = async () => {
+    currentWallMs += 60 * 1000;
+    return baseTick();
+  };
+  return app;
 }
 
 function assertAllNumbersFinite(value, path = 'parts') {
@@ -96,9 +111,13 @@ for (const manifest of MANIFESTS) {
 
       if (manifest.name === 'female') {
         assert.equal(parts.mammaryGlands.lactating, false, `round ${round}: lactating`);
+        assert.equal(parts.mammaryGlands.galactorrhea, false, `round ${round}: galactorrhea`);
         assert.equal(parts.mammaryGlands.milkMl, 0, `round ${round}: milkMl`);
         assert.equal(parts.mammaryGlands.lactoseG, 0, `round ${round}: lactoseG`);
-        assert.equal(parts.pituitary.prolactinRelative, 1, `round ${round}: prolactinRelative`);
+        assert.ok(
+          parts.pituitary.prolactinNgMl >= 5 && parts.pituitary.prolactinNgMl <= 11,
+          `round ${round}: prolactinNgMl ${parts.pituitary.prolactinNgMl} out of [5, 11]`,
+        );
       }
     }
 
@@ -236,8 +255,20 @@ test('30-minute hard exercise + 60-minute recovery (neutral)', async (t) => {
 });
 
 test('male continuous sex (intensity: 1, durationMin: 30) at 08:00 (male)', async (t) => {
+  const safeApp = await bootManifest(t, 'body-modules.male.json', {
+    simulatedSeconds: 8 * 3600,
+  });
+  const blocked = await safeApp.post('/actions', {
+    id: 'sex-blocked',
+    type: 'sex',
+    intensity: 1,
+    durationMin: 30,
+  });
+  assert.equal(blocked.status, 403, 'default nsfw: false must block sex');
+
   const app = await bootManifest(t, 'body-modules.male.json', {
     simulatedSeconds: 8 * 3600,
+    defaultNsfw: true,
   });
   const res = await app.post('/actions', {
     id: 'sex-30',

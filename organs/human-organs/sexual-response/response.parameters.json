@@ -9,7 +9,7 @@
       "status": "design",
       "range": [1, 30],
       "source": null,
-      "note": "唤醒目标高于当前值时向目标趋近的半时；工程时间常数，不是性唤醒测量或拟合，也不含个体差异。range 是工程调参范围，不是人体测量范围"
+      "note": "唤醒目标高于当前值时向目标趋近的半时；design"
     },
     {
       "id": "sexualResponse.resolutionHalfTimeMin",
@@ -18,7 +18,7 @@
       "status": "design",
       "range": [1, 60],
       "source": null,
-      "note": "目标为 0（活动结束或不应期）时唤醒下降的半时；工程时间常数，不是消退期测量。range 是工程调参范围，不是人体测量范围"
+      "note": "目标为 0（活动结束或不应期）时唤醒下降的半时；design"
     },
     {
       "id": "sexualResponse.orgasmAllowedMm",
@@ -27,7 +27,7 @@
       "status": "design",
       "range": [0, 100],
       "source": null,
-      "note": "主动 orgasm 动作生效所需的轮初唤醒下限；工程阈值，不是生理测量、临床标准或诊断依据。低于该值时动作被忽略。range 是工程调参范围"
+      "note": "主动 orgasm 动作生效所需的轮初唤醒下限；design"
     },
     {
       "id": "sexualResponse.orgasmForcedMm",
@@ -36,7 +36,7 @@
       "status": "design",
       "range": [0, 100],
       "source": null,
-      "note": "无需动作的强制释放阈值（轮初唤醒 >= 该值）；工程阈值，不是生理测量或临床标准。range 是工程调参范围"
+      "note": "无需动作的强制释放阈值（轮初唤醒 >= 该值）；design"
     },
     {
       "id": "sexualResponse.orgasmDurationMin",
@@ -45,7 +45,7 @@
       "status": "design",
       "range": [0, 10],
       "source": null,
-      "note": "记录高潮后 phase 保持 orgasm 的时长；工程取值，不是高潮生理时长测量。range 是工程调参范围"
+      "note": "记录高潮后 phase 保持 orgasm 的时长；design"
     },
     {
       "id": "sexualResponse.refractoryMin",
@@ -54,7 +54,25 @@
       "status": "design",
       "range": [0, 120],
       "source": null,
-      "note": "记录高潮后把唤醒目标强制为 0 的不应期；工程取值，不是不应期测量，也不区分个体或性别差异。range 是工程调参范围"
+      "note": "男性（及中性基础）高潮后基础不应期；真实人群随年龄与高催乳素拉长；design"
+    },
+    {
+      "id": "sexualResponse.femalePostOrgasmPauseMin",
+      "unit": "min",
+      "value": 2,
+      "status": "design",
+      "range": [0, 30],
+      "source": null,
+      "note": "女性高潮后仅保留短暂 2 min 脉冲防连跳停顿，无男性固定长不应期，继续刺激可连续唤起与多次高潮；design"
+    },
+    {
+      "id": "sexualResponse.afterglowHalfTimeMin",
+      "unit": "min",
+      "value": 22,
+      "status": "design",
+      "range": [1, 120],
+      "source": null,
+      "note": "高潮后余韵 `afterglowMm` 的一阶平缓消退半衰期；design"
     }
   ]
 }

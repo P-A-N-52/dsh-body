@@ -64,6 +64,33 @@
       "range": [0.1, 1],
       "source": null,
       "note": "每 mL 汗液蒸发的潜热工程近似；只作用于轮初 skin.sweatVolumeMl，不是实测汗液蒸发效率或环境蒸发模型"
+    },
+    {
+      "id": "thermoregulation.circadianAmplitudeC",
+      "unit": "°C",
+      "value": 0.25,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "核心体温调定点的昼夜余弦振幅（傍晚峰值、凌晨低谷）；工程假设，design，不是人体测量"
+    },
+    {
+      "id": "thermoregulation.circadianPeakHour",
+      "unit": "h",
+      "value": 17,
+      "status": "design",
+      "range": [0, 24],
+      "source": null,
+      "note": "核心体温昼夜调定点峰值所在的本地时刻（小时）；工程假设，design"
+    },
+    {
+      "id": "thermoregulation.sleepSetpointOffsetC",
+      "unit": "°C",
+      "value": 0.2,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "睡眠状态期间核心体温调定点下调幅度；工程假设，design，不是人体测量"
     }
   ]
 }

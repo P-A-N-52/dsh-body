@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "owner": "autonomic",
+  "parameters": [
+    {
+      "id": "autonomic.basalParasympatheticMm",
+      "unit": "mm",
+      "value": 20,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "工程假设：清醒静息基线副交感张力代理，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.sleepParasympatheticMm",
+      "unit": "mm",
+      "value": 75,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "工程假设：深睡期副交感张力基准代理，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.startleBurstMm",
+      "unit": "mm",
+      "value": 85,
+      "status": "design",
+      "range": [30, 100],
+      "source": null,
+      "note": "工程假设：睡眠中被紧急危机惊醒时瞬时拉高的交感张力代理，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.riseHalfTimeMin",
+      "unit": "min",
+      "value": 2,
+      "status": "design",
+      "range": [0.1, 30],
+      "source": null,
+      "note": "工程假设：一般生理应激时交感张力上升半衰期，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.decayHalfTimeMin",
+      "unit": "min",
+      "value": 12,
+      "status": "design",
+      "range": [1, 120],
+      "source": null,
+      "note": "工程假设：刺激撤除后交感张力回落半衰期，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.startleClearThresholdMm",
+      "unit": "mm",
+      "value": 10,
+      "status": "design",
+      "range": [0, 50],
+      "source": null,
+      "note": "工程假设：交感张力低于该阈值时清除 startleActive 惊醒余波标记，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.exerciseSympatheticGain",
+      "unit": "mm",
+      "value": 65,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "工程假设：满强度运动对应的交感张力驱动上限，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.hypoglycemiaThresholdMgDl",
+      "unit": "mg/dL",
+      "value": 65,
+      "status": "design",
+      "range": [40, 100],
+      "source": null,
+      "note": "工程假设：血糖低于该阈值（低于正常过夜空腹肾糖异生稳态 ~74 mg/dL）才触发低血糖交感反射，design，不是临床界值"
+    },
+    {
+      "id": "autonomic.hypoglycemiaGainPerMgDl",
+      "unit": "mm/(mg/dL)",
+      "value": 2.5,
+      "status": "design",
+      "range": [0, 10],
+      "source": null,
+      "note": "工程假设：血糖每低于阈值 1 mg/dL 增加的交感张力，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.hypoxiaGain",
+      "unit": "mm",
+      "value": 80,
+      "status": "design",
+      "range": [0, 200],
+      "source": null,
+      "note": "工程假设：血氧供需缺口驱动交感张力的比例系数，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.hypotensionThresholdMmHg",
+      "unit": "mmHg",
+      "value": 90,
+      "status": "design",
+      "range": [60, 120],
+      "source": null,
+      "note": "工程假设：收缩压低于该阈值触发低血压交感反射（避开深睡生理血压自然下降区），design，不是临床界值"
+    },
+    {
+      "id": "autonomic.hypotensionGainPerMmHg",
+      "unit": "mm/mmHg",
+      "value": 2.5,
+      "status": "design",
+      "range": [0, 10],
+      "source": null,
+      "note": "工程假设：收缩压每低于阈值 1 mmHg 增加的交感张力，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.coldThresholdC",
+      "unit": "°C",
+      "value": 36.5,
+      "status": "design",
+      "range": [30, 37],
+      "source": null,
+      "note": "工程假设：清醒状态下核心体温低于该阈值触发冷应激交感反射，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.coldGainPerC",
+      "unit": "mm/°C",
+      "value": 25,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "工程假设：核心体温每低于阈值 1 °C 增加的交感张力，design，不是人体测量"
+    },
+    {
+      "id": "autonomic.sleepColdThresholdOffsetC",
+      "unit": "°C",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "睡眠期冷应激阈值相对体温设定点的允许裕度（防正常夜间调定点降至 36.55°C 误触发交感）；design"
+    },
+    {
+      "id": "autonomic.nremSympatheticFactor",
+      "unit": "1",
+      "value": 0.4,
+      "status": "design",
+      "range": [0, 1],
+      "source": "SRC-SOMERS-1993",
+      "note": "NREM 睡眠对非危机轻中度代谢/冷应激交感驱动的抑制系数（参考 Somers 1993 Stage 4 交感降至清醒 ~41% 方向，具体系数为 design）"
+    },
+    {
+      "id": "autonomic.remSympatheticToneMm",
+      "unit": "mm",
+      "value": 10,
+      "status": "design",
+      "range": [0, 30],
+      "source": "SRC-SOMERS-1993",
+      "note": "REM 睡眠期的生理性自主波动交感基础张力（参考 Somers 1993 REM 交感明显高于 NREM 方向；保持低于心悸报警门槛，design）"
+    },
+    {
+      "id": "autonomic.sleepParaRemMultiplier",
+      "unit": "1",
+      "value": 0.72,
+      "status": "design",
+      "range": [0.2, 1],
+      "source": null,
+      "note": "REM 期相对于深睡基准副交感张力的比例系数；design"
+    },
+    {
+      "id": "autonomic.painDiscomfortThresholdMm",
+      "unit": "mm",
+      "value": 70,
+      "status": "design",
+      "range": [30, 100],
+      "source": null,
+      "note": "清醒状态下强烈不适或痛经达到该阈值后驱动交感升高；design"
+    },
+    {
+      "id": "autonomic.painSympatheticGain",
+      "unit": "1",
+      "value": 0.8,
+      "status": "design",
+      "range": [0, 3],
+      "source": null,
+      "note": "超过痛感阈值后的交感增益斜率；design"
+    },
+    {
+      "id": "autonomic.orgasmSympatheticBurstMm",
+      "unit": "mm",
+      "value": 70,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "清醒性高潮触发的一过性自主交感峰值目标（不触发惊醒余波 startleActive）；design"
+    },
+    {
+      "id": "autonomic.sleepEntryDecayHalfTimeMin",
+      "unit": "min",
+      "value": 4,
+      "status": "design",
+      "range": [0.5, 30],
+      "source": null,
+      "note": "入睡过程中残余交感张力加速平复的半衰期；design"
+    }
+  ]
+}

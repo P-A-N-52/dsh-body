@@ -3,13 +3,58 @@
   "owner": "adrenal",
   "parameters": [
     {
-      "id": "adrenal.responseHalfTimeMin",
-      "unit": "min",
-      "value": 15,
+      "id": "adrenal.referenceCortisolNmolL",
+      "unit": "nmol/L",
+      "value": 180,
       "status": "design",
-      "range": [1, 60],
+      "range": [80, 400],
+      "source": "SRC-KEENAN-2004",
+      "note": "静息参考总皮质醇浓度（约 6% 游离对应 ~10.8–11.5 nmol/L，对齐 Keenan 2004 24 h 游离均值 11.5 nmol/L 量级）；design"
+    },
+    {
+      "id": "adrenal.referenceActhPgMl",
+      "unit": "pg/mL",
+      "value": 12,
+      "status": "design",
+      "range": [2, 40],
+      "source": "SRC-HORROCKS-1990",
+      "note": "与 pituitary.acthBasalPgMl 对齐的 ACTH 参考浓度；design"
+    },
+    {
+      "id": "adrenal.acthEc50PgMl",
+      "unit": "pg/mL",
+      "value": 26,
+      "status": "prior",
+      "range": [5, 100],
+      "source": "SRC-KEENAN-2004",
+      "note": "Keenan 2004（n=32 健康成人去卷积 ACTH→皮质醇 EC50 = 26 ± 2.4 ng/L [= pg/mL] SE）"
+    },
+    {
+      "id": "adrenal.maxSecretionNmolLPerMin",
+      "unit": "nmol/(L·min)",
+      "value": 10,
+      "status": "prior",
+      "range": [1, 30],
+      "source": "SRC-KEENAN-2004",
+      "note": "Keenan 2004（n=32 健康成人 ACTH→皮质醇最大分泌效能 10 ± 1.8 nmol/(L·min) SE）"
+    },
+    {
+      "id": "adrenal.hillExponent",
+      "unit": "1",
+      "value": 1.85,
+      "status": "design",
+      "range": [0.5, 4],
       "source": null,
-      "note": "皮质醇相对信号向轮初 pituitary.acthRelative 一阶趋近的半时工程占位；每轮按 2^(−dtMin / 15) 计算保留比例，不是实测 HPA 轴响应时间、皮质醇半衰期或 ACTH 剂量反应。range 是工程调参范围，不是人体测量范围。无登记来源"
+      "note": "ACTH–皮质醇 Sigmoid Hill 陡度代理（Keenan 2004 报告 slope units 未直接作 Hill n 移植）；design"
+    },
+    {
+      "id": "adrenal.eliminationHalfTimeMin",
+      "unit": "min",
+      "value": 49,
+      "status": "prior",
+      "range": [10, 180],
+      "source": "SRC-KEENAN-2004",
+      "note": "Keenan 2004（n=32 健康成人 24 h 拟合总皮质醇消除半衰期 49 ± 2.4 min SE；未单分 1.8/4.1 min 游离池）"
     }
   ]
 }

@@ -1,96 +1,132 @@
 /*
- * 部位 `pituitary`：垂体前叶脚本，把下丘脑 TRH/CRH 驱动转成相对 TSH/ACTH 信号，并把
- * 乳腺上一轮的实际泌乳量（`mammaryGlands.milkMl > 0`，本切片作吸吮/排空代理）转成相对
- * 催乳素信号 `prolactinRelative`。`tshRelative` 的消费者是 `thyroid`（驱动 T4），
- * `acthRelative` 的消费者是 `adrenal`（驱动皮质醇），`prolactinRelative` 的消费者是
- * `mammaryGlands`（驱动产奶）。三者都是无量纲相对信号，1 表示基线；不是血浆激素浓度、
- * 分泌率或临床单位。
+ * 部位 `pituitary`：垂体前叶与后叶（催产素）分泌–清除脚本。
  *
- * 负反馈（design，不是人体测量、拟合或独立验证）：
- *   tshTarget  = clamp(trhRelative × (1 + tshFeedbackGain  × (1 − T4)), 0, 3)
- *   acthTarget = clamp(crhRelative × (1 + acthFeedbackGain × (1 − 皮质醇)), 0, 3)
- *   prolactinTarget = milkMl > 0 ? LETDOWN_TARGET : 1
- *   next = target + (prev − target) × 2^(−dtMin / 30)，dtMin = io.dt / 60
- * 外周激素 T4/皮质醇高于 1 时压低目标、低于 1 时抬高目标，使 HPT/HPA 形成闭环；
- * TRH 缺失按 1 时 TSH 仍受 T4 抑制，CRH 缺失按 1 时 ACTH 仍受皮质醇抑制，不是单向放大。
- * 催乳素没有负反馈：有泌乳时目标为 `LETDOWN_TARGET_RELATIVE = 2`，无泌乳时回落到基线 1；
- * 2 与 30 min 半时都是本脚本常量（`design`，`source: null`），`LETDOWN_TARGET_RELATIVE`
- * 不是实测催乳素倍数，也不是吸吮剂量—反应。`pituitary.parameters.json` 只保留两个负反馈
- * 增益；不建模 T3、转运蛋白、脉冲分泌、昼夜节律、疾病或个体差异，也不产出动作、通知或转移。
- *
- * 只读轮初快照：`hypothalamusEndocrine.trhRelative` / `crhRelative`、`thyroid.thyroxineRelative`、
- * `adrenal.cortisolRelative`、`mammaryGlands.milkMl`。部位未加载时：下丘脑/甲状腺/肾上腺
- * 按参考值 1，乳腺按无泌乳（目标 1）；部位已加载但字段缺失、非数字、非有限或为负则抛错，
- * 校验在 io.write 之前完成，本轮不写状态。下丘脑与乳腺部位由其他脚本实现，本脚本只按字段名
- * 读取，不导入其代码，保持分片可替换。输出只含三个有限相对量，JSON-safe；旧档缺字段由
- * `initialState` 补 1。
+ * 物理浓度与实证半衰期：
+ * - `tshRelative` (`1`): TRH × (1 + gain × (1 - T4)) 驱动，t½ = 53.9 min（SRC-ODELL-1967，prior）。
+ * - `acthPgMl` (`pg/mL`): 基线 12 pg/mL（参考 SRC-HORROCKS-1990 mesor 9.2–18.6 ng/L），
+ *   受 CRH 与皮质醇比值负反馈驱动，t½ = 20 min（SRC-KEENAN-2004，prior）。
+ * - `prolactinNgMl` (`ng/mL`): 昼夜谐波 2.1 ng/mL（SRC-VELDHUIS-1988，prior）+ 睡眠抬升 +
+ *   乳头机械吸吮/泵乳刺激时长驱动（与排乳体积解耦，SRC-UVNASMOBERG-2020）+ 性高潮急性脉冲
+ *   （SRC-KRUGER-2003），慢相清除 t½ = 34.6 min。移除旧版用 `milkMl > 0` 充当吸吮代理的自激环。
+ * - `oxytocinPgMl` (`pg/mL`): 提取 RIA 口径基线 2 pg/mL（SRC-UVNASMOBERG-2020），响应
+ *   吸吮/泵乳、性唤起与高潮突增（SRC-BLAICHER-1999），清除 t½ = 3.8 min（参考 SRC-FABIAN-1969）。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import { resolveCircadianHour } from '../../../lib/circadian.js';
+import {
+  getNsfwSetting,
+  getProfileLactating,
+  loadParameters,
+  requireParameter,
+} from '../../../lib/parameters.js';
 
 export const id = 'pituitary';
 export const actionTypes: string[] = [];
 
 type PituitaryState = {
   tshRelative: number;
-  acthRelative: number;
-  prolactinRelative: number;
+  acthPgMl: number;
+  prolactinNgMl: number;
+  oxytocinPgMl: number;
 };
 
-type HypothalamusEndocrineReading = {
-  trhRelative: unknown;
-  crhRelative: unknown;
-};
-
-type ThyroidReading = {
-  thyroxineRelative: unknown;
-};
-
-type AdrenalReading = {
-  cortisolRelative: unknown;
+type SavedPituitaryState = Partial<PituitaryState> & {
+  acthRelative?: unknown;
+  prolactinRelative?: unknown;
 };
 
 type MammaryGlandsReading = {
-  milkMl?: unknown;
+  lactating?: unknown;
+  stimulationMin?: unknown;
+};
+
+type SexualResponseReading = {
+  arousalMm?: unknown;
+  phase?: unknown;
+  lastOrgasmAtSimMin?: unknown;
 };
 
 type IO = {
-  read(id: 'pituitary'): Readonly<PituitaryState> | undefined;
-  read(id: 'hypothalamusEndocrine'): Readonly<HypothalamusEndocrineReading> | undefined;
-  read(id: 'thyroid'): Readonly<ThyroidReading> | undefined;
-  read(id: 'adrenal'): Readonly<AdrenalReading> | undefined;
+  read(id: 'pituitary'): Readonly<SavedPituitaryState> | undefined;
+  read(id: 'hypothalamusEndocrine'): Readonly<{ trhRelative?: unknown; crhRelative?: unknown }> | undefined;
+  read(id: 'thyroid'): Readonly<{ thyroxineRelative?: unknown }> | undefined;
+  read(id: 'adrenal'): Readonly<{ cortisolNmolL?: unknown }> | undefined;
   read(id: 'mammaryGlands'): Readonly<MammaryGlandsReading> | undefined;
+  read(id: 'sleep'): Readonly<{ sleeping?: unknown }> | undefined;
+  read(id: 'sexualResponse'): Readonly<SexualResponseReading> | undefined;
+  readonly actions?: readonly Readonly<{ type?: unknown }>[];
   readonly dt: number;
+  readonly simulatedSeconds?: number;
+  readonly wallTimeMs?: number;
   write(next: PituitaryState): void;
 };
 
 const parameters = loadParameters(new URL('./pituitary.parameters.json', import.meta.url));
 const tshFeedbackGain = requireParameter(parameters, 'pituitary.tshFeedbackGain');
+const tshHalfTimeMin = requireParameter(parameters, 'pituitary.tshHalfTimeMin');
+const acthBasalPgMl = requireParameter(parameters, 'pituitary.acthBasalPgMl');
 const acthFeedbackGain = requireParameter(parameters, 'pituitary.acthFeedbackGain');
+const acthHalfTimeMin = requireParameter(parameters, 'pituitary.acthHalfTimeMin');
+const prolactinBasalNgMl = requireParameter(parameters, 'pituitary.prolactinBasalNgMl');
+const prolactinCircadianAmplitudeNgMl = requireParameter(
+  parameters,
+  'pituitary.prolactinCircadianAmplitudeNgMl',
+);
+const prolactinSleepBoostNgMl = requireParameter(parameters, 'pituitary.prolactinSleepBoostNgMl');
+const prolactinSucklingGainNgMl = requireParameter(parameters, 'pituitary.prolactinSucklingGainNgMl');
+const prolactinOrgasmBoostNgMl = requireParameter(parameters, 'pituitary.prolactinOrgasmBoostNgMl');
+const prolactinHalfTimeMin = requireParameter(parameters, 'pituitary.prolactinHalfTimeMin');
+const oxytocinBasalPgMl = requireParameter(parameters, 'pituitary.oxytocinBasalPgMl');
+const oxytocinSucklingBoostPgMl = requireParameter(parameters, 'pituitary.oxytocinSucklingBoostPgMl');
+const oxytocinArousalGainPgMl = requireParameter(parameters, 'pituitary.oxytocinArousalGainPgMl');
+const oxytocinOrgasmBoostPgMl = requireParameter(parameters, 'pituitary.oxytocinOrgasmBoostPgMl');
+const oxytocinHalfTimeMin = requireParameter(parameters, 'pituitary.oxytocinHalfTimeMin');
 
-const RESPONSE_HALF_TIME_MIN = 30;
-const MIN_RELATIVE = 0;
-const MAX_RELATIVE = 3;
-const PROLACTIN_BASELINE_RELATIVE = 1;
-const LETDOWN_TARGET_RELATIVE = 2;
+const REFERENCE_CORTISOL_NMOL_L = 180;
+const LACTATION_BASAL_PRL_NG_ML = 35;
+const PRESET_LACTATION_PRL_NG_ML = 60;
+const MIN_TSH = 0;
+const MAX_TSH = 3;
+const MIN_ACTH_PG_ML = 0;
+const MAX_ACTH_PG_ML = 120;
+const MIN_PRL_NG_ML = 0;
+const MAX_PRL_NG_ML = 300;
+const MIN_OT_PG_ML = 0;
+const MAX_OT_PG_ML = 100;
+
+const presetLactating = getNsfwSetting() !== false && getProfileLactating();
 
 export const initialState: PituitaryState = {
   tshRelative: 1,
-  acthRelative: 1,
-  prolactinRelative: PROLACTIN_BASELINE_RELATIVE,
+  acthPgMl: acthBasalPgMl,
+  prolactinNgMl: presetLactating ? PRESET_LACTATION_PRL_NG_ML : prolactinBasalNgMl,
+  oxytocinPgMl: oxytocinBasalPgMl,
 };
 
 export const fields = {
   tshRelative: { unit: '1', mode: 'absolute' },
-  acthRelative: { unit: '1', mode: 'absolute' },
-  prolactinRelative: { unit: '1', mode: 'absolute' },
+  acthPgMl: { unit: 'pg/mL', mode: 'absolute' },
+  prolactinNgMl: { unit: 'ng/mL', mode: 'absolute' },
+  oxytocinPgMl: { unit: 'pg/mL', mode: 'absolute' },
 };
 
-function relativeOrOne(
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function finiteOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function requireNonNegativeField(
   part: Readonly<{ [field: string]: unknown }> | undefined,
   partId: string,
   field: string,
+  fallback: number,
 ): number {
-  if (part === undefined) return 1;
+  if (part === undefined) return fallback;
+  if (part === null || typeof part !== 'object') {
+    throw new Error(`pituitary: invalid ${partId}`);
+  }
   const value = part[field];
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     throw new Error(`pituitary: invalid ${partId}.${field}: ${String(value)}`);
@@ -98,53 +134,140 @@ function relativeOrOne(
   return value;
 }
 
-function milkMlOrZero(part: Readonly<MammaryGlandsReading> | undefined): number {
-  if (part === undefined) return 0;
-  const value = part.milkMl;
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    throw new Error(`pituitary: invalid mammaryGlands.milkMl: ${String(value)}`);
+function readMammaryStimulation(part: Readonly<MammaryGlandsReading> | undefined): {
+  present: boolean;
+  lactating: boolean;
+  stimulationMin: number;
+} {
+  if (part === undefined) return { present: false, lactating: false, stimulationMin: 0 };
+  if (part === null || typeof part !== 'object') {
+    throw new Error('pituitary: invalid mammaryGlands');
   }
-  return value;
+  if (part.lactating !== undefined && typeof part.lactating !== 'boolean') {
+    throw new Error(`pituitary: invalid mammaryGlands.lactating: ${String(part.lactating)}`);
+  }
+  const stim = part.stimulationMin;
+  if (typeof stim !== 'number' || !Number.isFinite(stim) || stim < 0) {
+    throw new Error(`pituitary: invalid mammaryGlands.stimulationMin: ${String(stim)}`);
+  }
+  return {
+    present: true,
+    lactating: part.lactating === true,
+    stimulationMin: stim,
+  };
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
+function resolvePrevState(saved: Readonly<SavedPituitaryState> | undefined): PituitaryState {
+  if (!saved) return initialState;
+  const tshRelative = finiteOr(saved.tshRelative, initialState.tshRelative);
+  const acthPgMl = typeof saved.acthPgMl === 'number' && Number.isFinite(saved.acthPgMl)
+    ? saved.acthPgMl
+    : acthBasalPgMl * finiteOr(saved.acthRelative, 1);
+  const prolactinNgMl = typeof saved.prolactinNgMl === 'number' && Number.isFinite(saved.prolactinNgMl)
+    ? saved.prolactinNgMl
+    : prolactinBasalNgMl * finiteOr(saved.prolactinRelative, 1);
+  const oxytocinPgMl = finiteOr(saved.oxytocinPgMl, initialState.oxytocinPgMl);
+  return { tshRelative, acthPgMl, prolactinNgMl, oxytocinPgMl };
+}
+
+function approach(current: number, target: number, dtMin: number, halfTimeMin: number): number {
+  if (dtMin <= 0 || halfTimeMin <= 0) return dtMin <= 0 ? current : target;
+  return target + (current - target) * 2 ** (-dtMin / halfTimeMin);
 }
 
 export function heartbeat(io: IO): void {
-  const trh = relativeOrOne(
-    io.read('hypothalamusEndocrine'),
-    'hypothalamusEndocrine',
-    'trhRelative',
+  const hypothalamus = io.read('hypothalamusEndocrine');
+  const trh = requireNonNegativeField(hypothalamus, 'hypothalamusEndocrine', 'trhRelative', 1);
+  const crh = requireNonNegativeField(hypothalamus, 'hypothalamusEndocrine', 'crhRelative', 1);
+  const thyroxine = requireNonNegativeField(io.read('thyroid'), 'thyroid', 'thyroxineRelative', 1);
+  const cortisolNmolL = requireNonNegativeField(
+    io.read('adrenal'),
+    'adrenal',
+    'cortisolNmolL',
+    REFERENCE_CORTISOL_NMOL_L,
   );
-  const crh = relativeOrOne(
-    io.read('hypothalamusEndocrine'),
-    'hypothalamusEndocrine',
-    'crhRelative',
-  );
-  const thyroxine = relativeOrOne(io.read('thyroid'), 'thyroid', 'thyroxineRelative');
-  const cortisol = relativeOrOne(io.read('adrenal'), 'adrenal', 'cortisolRelative');
-  const milkMl = milkMlOrZero(io.read('mammaryGlands'));
+  const cortisolRatio = cortisolNmolL / REFERENCE_CORTISOL_NMOL_L;
+  const mammary = readMammaryStimulation(io.read('mammaryGlands'));
+
+  const nsfwEnabled = getNsfwSetting() !== false;
+  const actions = io.actions ?? [];
+  const lactationActionThisRound = nsfwEnabled && mammary.present
+    && actions.some((a) => a?.type === 'express_milk' || a?.type === 'breastfeed');
+  const effectiveStimulationMin = nsfwEnabled
+    ? Math.max(mammary.stimulationMin, lactationActionThisRound ? 8 : 0)
+    : 0;
+
+  const sleep = io.read('sleep');
+  const sleeping = sleep?.sleeping === true;
+  const hour = typeof io.wallTimeMs === 'number' && Number.isFinite(io.wallTimeMs)
+    ? resolveCircadianHour(io.wallTimeMs)
+    : resolveCircadianHour(finiteOr(io.simulatedSeconds, 0) * 1000, { timezoneOffsetMin: 0 });
+  const circadianPrlDrive = sleep !== undefined
+    ? prolactinCircadianAmplitudeNgMl * Math.cos((2 * Math.PI * (hour - 4)) / 24)
+      + (sleeping ? prolactinSleepBoostNgMl : 0)
+    : 0;
+
+  const sexual = io.read('sexualResponse');
+  const simMin = finiteOr(io.simulatedSeconds, 0) / 60;
+  const lastOrgasmMin = typeof sexual?.lastOrgasmAtSimMin === 'number'
+    && Number.isFinite(sexual.lastOrgasmAtSimMin)
+    ? sexual.lastOrgasmAtSimMin
+    : null;
+  const sinceOrgasmMin = lastOrgasmMin === null ? Number.POSITIVE_INFINITY : simMin - lastOrgasmMin;
+  const arousalMm = nsfwEnabled ? clamp(finiteOr(sexual?.arousalMm, 0), 0, 100) : 0;
+  const inOrgasmPrlWindow = nsfwEnabled
+    && (sexual?.phase === 'orgasm' || (sinceOrgasmMin >= 0 && sinceOrgasmMin < 8));
+  const inOrgasmOtWindow = nsfwEnabled
+    && (sexual?.phase === 'orgasm' || (sinceOrgasmMin >= 0 && sinceOrgasmMin < 3));
 
   const tshTarget = clamp(
     trh * (1 + tshFeedbackGain * (1 - thyroxine)),
-    MIN_RELATIVE,
-    MAX_RELATIVE,
+    MIN_TSH,
+    MAX_TSH,
   );
   const acthTarget = clamp(
-    crh * (1 + acthFeedbackGain * (1 - cortisol)),
-    MIN_RELATIVE,
-    MAX_RELATIVE,
+    acthBasalPgMl * crh * (1 + acthFeedbackGain * (1 - cortisolRatio)),
+    MIN_ACTH_PG_ML,
+    MAX_ACTH_PG_ML,
   );
-  const prolactinTarget = milkMl > 0
-    ? LETDOWN_TARGET_RELATIVE
-    : PROLACTIN_BASELINE_RELATIVE;
 
-  const prev = io.read(id) ?? initialState;
-  const retention = 2 ** (-(io.dt / 60) / RESPONSE_HALF_TIME_MIN);
+  const prlFloor = nsfwEnabled && mammary.lactating
+    ? Math.max(prolactinBasalNgMl, LACTATION_BASAL_PRL_NG_ML)
+    : prolactinBasalNgMl;
+  const sucklingPrlDrive = effectiveStimulationMin > 0
+    ? prolactinSucklingGainNgMl * clamp(effectiveStimulationMin / 8, 0.35, 1)
+    : 0;
+  const orgasmPrlDrive = inOrgasmPrlWindow ? prolactinOrgasmBoostNgMl : 0;
+  const prolactinTarget = clamp(
+    prlFloor + circadianPrlDrive + sucklingPrlDrive + orgasmPrlDrive,
+    MIN_PRL_NG_ML,
+    MAX_PRL_NG_ML,
+  );
+
+  const oxytocinTarget = clamp(
+    oxytocinBasalPgMl
+      + (effectiveStimulationMin > 0 ? oxytocinSucklingBoostPgMl : 0)
+      + oxytocinArousalGainPgMl * (arousalMm / 100)
+      + (inOrgasmOtWindow ? oxytocinOrgasmBoostPgMl : 0),
+    MIN_OT_PG_ML,
+    MAX_OT_PG_ML,
+  );
+
+  const prev = resolvePrevState(io.read(id));
+  const dtMin = Math.max(0, finiteOr(io.dt, 0) / 60);
+
   io.write({
-    tshRelative: tshTarget + (prev.tshRelative - tshTarget) * retention,
-    acthRelative: acthTarget + (prev.acthRelative - acthTarget) * retention,
-    prolactinRelative: prolactinTarget + (prev.prolactinRelative - prolactinTarget) * retention,
+    tshRelative: clamp(approach(prev.tshRelative, tshTarget, dtMin, tshHalfTimeMin), MIN_TSH, MAX_TSH),
+    acthPgMl: clamp(approach(prev.acthPgMl, acthTarget, dtMin, acthHalfTimeMin), MIN_ACTH_PG_ML, MAX_ACTH_PG_ML),
+    prolactinNgMl: clamp(
+      approach(prev.prolactinNgMl, prolactinTarget, dtMin, prolactinHalfTimeMin),
+      MIN_PRL_NG_ML,
+      MAX_PRL_NG_ML,
+    ),
+    oxytocinPgMl: clamp(
+      approach(prev.oxytocinPgMl, oxytocinTarget, dtMin, oxytocinHalfTimeMin),
+      MIN_OT_PG_ML,
+      MAX_OT_PG_ML,
+    ),
   });
 }

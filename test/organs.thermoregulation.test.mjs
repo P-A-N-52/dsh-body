@@ -19,17 +19,19 @@ const parametersUrl = new URL(
 );
 const parameterFile = JSON.parse(readFileSync(parametersUrl, 'utf8'));
 
-function round({ state, bloodOxygen, skin, dt = 60, writes = [] } = {}) {
+function round({ state, bloodOxygen, skin, sleep, wallTimeMs, dt = 60, writes = [] } = {}) {
   heartbeat({
     read: (partId) => {
       if (partId === 'thermoregulation') return state;
       if (partId === 'bloodOxygen') return bloodOxygen;
       if (partId === 'skin') return skin;
+      if (partId === 'sleep') return sleep;
       throw new Error(`unexpected read: ${partId}`);
     },
     actions: [],
     dt,
     simulatedSeconds: 60,
+    ...(wallTimeMs !== undefined ? { wallTimeMs } : {}),
     write: (next) => { writes.push(next); },
     notify: () => { throw new Error('thermoregulation must not notify'); },
     transfer: () => { throw new Error('thermoregulation must not transfer'); },
@@ -57,8 +59,9 @@ test('thermoregulation exports the core temperature contract without actions', (
   assert.deepEqual(actionTypes, []);
   assert.deepEqual(fields, {
     coreTemperatureC: { unit: '°C', mode: 'absolute' },
+    setpointC: { unit: '°C', mode: 'absolute' },
   });
-  assert.deepEqual(initialState, { coreTemperatureC: 37 });
+  assert.deepEqual(initialState, { coreTemperatureC: 37, setpointC: 37 });
 });
 
 test('thermoregulation parameters are design defaults with no source', () => {
@@ -73,6 +76,9 @@ test('thermoregulation parameters are design defaults with no source', () => {
     'thermoregulation.shiveringGain': { value: 2, unit: 'kcal/(min·°C)' },
     'thermoregulation.lossGain': { value: 0.104167, unit: 'kcal/(min·°C)' },
     'thermoregulation.evaporationKcalPerMl': { value: 0.58, unit: 'kcal/mL' },
+    'thermoregulation.circadianAmplitudeC': { value: 0.25, unit: '°C' },
+    'thermoregulation.circadianPeakHour': { value: 17, unit: 'h' },
+    'thermoregulation.sleepSetpointOffsetC': { value: 0.2, unit: '°C' },
   };
   assert.deepEqual(
     parameterFile.parameters.map((parameter) => parameter.id),

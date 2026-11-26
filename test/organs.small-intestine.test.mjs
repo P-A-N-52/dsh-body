@@ -445,31 +445,31 @@ test('hyperglycemia lowers carbohydrate absorption via negative gradient feedbac
   const start = { ...initialState, carbohydrateG: 60 };
   const baseline = absorbedCarbohydrateFrom(60);
   const both = round(start, 60, {
-    pancreasEndocrine: { insulinRelative: 2 },
+    pancreasEndocrine: { insulinPmolL: 120 },
     glucose: { concentrationMgDl: 180 },
   }).written;
   assert.ok(Math.abs(both.absorbedCarbohydrateG - baseline * 0.8) < 1e-12);
 
   const insulinOnly = round(start, 60, {
-    pancreasEndocrine: { insulinRelative: 2 },
+    pancreasEndocrine: { insulinPmolL: 120 },
     glucose: { concentrationMgDl: 90 },
   }).written;
   assert.ok(Math.abs(insulinOnly.absorbedCarbohydrateG - baseline) < 1e-12);
 
   const highGlucoseOnly = round(start, 60, {
-    pancreasEndocrine: { insulinRelative: 1 },
+    pancreasEndocrine: { insulinPmolL: 60 },
     glucose: { concentrationMgDl: 180 },
   }).written;
   assert.ok(Math.abs(highGlucoseOnly.absorbedCarbohydrateG - baseline * 0.8) < 1e-12);
 
   const lowGlucose = round(start, 60, {
-    pancreasEndocrine: { insulinRelative: 1 },
+    pancreasEndocrine: { insulinPmolL: 60 },
     glucose: { concentrationMgDl: 45 },
   }).written;
   assert.ok(Math.abs(lowGlucose.absorbedCarbohydrateG - baseline * 1.1) < 1e-12);
 
   const baselineRound = round(start, 60, {
-    pancreasEndocrine: { insulinRelative: 1 },
+    pancreasEndocrine: { insulinPmolL: 60 },
     glucose: { concentrationMgDl: 90 },
   }).written;
   assert.ok(Math.abs(baselineRound.absorbedCarbohydrateG - baseline) < 1e-12);

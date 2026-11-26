@@ -7,36 +7,46 @@ import {
   id,
   initialState,
 } from '../organs/human-organs/brain/notify.ts';
+import { setWorkerParameterConfig } from '../lib/parameters.js';
 
 const MINUTE = 60;
 const HOUR = 3600;
 const DAY = 86400;
 
+function levels(overrides = {}) {
+  return { hunger: 0, fullness: 0, urinary: 0, thirst: 0, ...overrides };
+}
+
 function session(overrides = {}) {
   return {
     lastSentAt: null,
+    backoffStep: 0,
+    lastUrgentSentAt: null,
+    urgentBackoffStep: 0,
+    lastInvoluntaryVoidedMl: 0,
     lastLevel: 0,
     lastKind: null,
-    hourStartedAt: 0,
-    hourCount: 0,
-    dayStartedAt: 0,
-    dayCount: 0,
     lastSeenAt: 0,
+    levels: levels(),
+    sensations: {},
     ...overrides,
   };
-}
-
-function levels(overrides = {}) {
-  return { hunger: 0, fullness: 0, urinary: 0, thirst: 0, ...overrides };
 }
 
 function round({
   state,
   interoception = { hunger: 50, fullness: 0 },
   bladder,
+  colon,
+  sleep,
+  blood,
+  uterus,
+  mammaryGlands,
+  sexualResponse,
   actions = [],
   simulatedSeconds = 60,
   suppressNotifications = false,
+  boundSessionId = null,
 } = {}) {
   const notifications = [];
   let written;
@@ -45,12 +55,19 @@ function round({
       if (partId === 'brainNotify') return state;
       if (partId === 'interoception') return interoception;
       if (partId === 'bladder') return bladder;
+      if (partId === 'colon') return colon;
+      if (partId === 'sleep') return sleep;
+      if (partId === 'blood') return blood;
+      if (partId === 'uterus') return uterus;
+      if (partId === 'mammaryGlands') return mammaryGlands;
+      if (partId === 'sexualResponse') return sexualResponse;
       return undefined;
     },
     actions,
     dt: 60,
     simulatedSeconds,
     suppressNotifications,
+    boundSessionId,
     notify: (notification) => { notifications.push(notification); },
     write: (next) => { written = next; },
   });
@@ -68,6 +85,12 @@ function assertJsonSafe(value) {
   for (const [key, child] of Object.entries(value)) {
     assert.notEqual(child, undefined, `undefined at ${key}`);
     assertJsonSafe(child);
+  }
+}
+
+function assertNoDigits(notifications) {
+  for (const notification of notifications) {
+    assert.equal(/\d|\p{Nd}/u.test(notification.text), false, `digit found in: ${notification.text}`);
   }
 }
 
@@ -93,10 +116,33 @@ test('no session id means no notification', () => {
   assert.deepEqual(written, { lastSessionId: null, sessions: {} });
 });
 
-test('marked hunger sends one context notification', () => {
+test('io.boundSessionId acts as fallback target and action sessionId overrides it', () => {
+  const viaBound = round({
+    interoception: { hunger: 70, fullness: 0 },
+    actions: [],
+    boundSessionId: 'bound-session',
+    simulatedSeconds: 60,
+  });
+  assert.equal(viaBound.notifications.length, 1);
+  assert.equal(viaBound.notifications[0].sessionId, 'bound-session');
+  assert.equal(viaBound.written.lastSessionId, 'bound-session');
+
+  const overridden = round({
+    state: viaBound.written,
+    interoception: { hunger: 70, fullness: 0, thirst: 70 },
+    actions: [{ sessionId: 'action-session' }],
+    boundSessionId: 'bound-session',
+    simulatedSeconds: 120,
+  });
+  assert.equal(overridden.notifications.length, 1);
+  assert.equal(overridden.notifications[0].sessionId, 'action-session');
+  assert.equal(overridden.written.lastSessionId, 'action-session');
+});
+
+test('marked hunger sends one context notification with dual-track backoff schema', () => {
   const { written, notifications } = round({
     interoception: { hunger: 65, fullness: 0 },
-    actions: [{ id: 'meal-1', type: 'eat', sessionId: 'session-a' }],
+    actions: [{ id: 'meal-1', sessionId: 'session-a' }],
     simulatedSeconds: 60,
   });
 
@@ -105,18 +151,42 @@ test('marked hunger sends one context notification', () => {
     sessionId: 'session-a',
     text: '身体感受：胃里有些空，饥饿感开始明显。',
   }]);
+  assertNoDigits(notifications);
   assert.equal(written.lastSessionId, 'session-a');
   assert.deepEqual(written.sessions['session-a'], {
     lastSentAt: 60,
+    backoffStep: 1,
+    lastUrgentSentAt: null,
+    urgentBackoffStep: 0,
+    lastInvoluntaryVoidedMl: 0,
     lastLevel: 2,
     lastKind: 'hunger',
-    hourStartedAt: 60,
-    hourCount: 1,
-    dayStartedAt: 60,
-    dayCount: 1,
     lastSeenAt: 60,
     levels: levels({ hunger: 2 }),
+    sensations: {},
   });
+});
+
+test('legacy 8 single-signal Core-4 texts are preserved when a single Core-4 signal triggers', () => {
+  const cases = [
+    ['hunger-2', { hunger: 65, fullness: 0, thirst: 0, urinaryUrgency: 0 }, 'context', '身体感受：胃里有些空，饥饿感开始明显。'],
+    ['hunger-3', { hunger: 85, fullness: 0, thirst: 0, urinaryUrgency: 0 }, 'wake', '身体感受：胃里很空，饥饿感很明显。'],
+    ['fullness-2', { hunger: 0, fullness: 65, thirst: 0, urinaryUrgency: 0 }, 'context', '身体感受：胃里有些满，饱足感开始明显。'],
+    ['fullness-3', { hunger: 0, fullness: 85, thirst: 0, urinaryUrgency: 0 }, 'wake', '身体感受：胃里很满，饱足感很明显，可能不太想再吃。'],
+    ['urinary-2', { hunger: 0, fullness: 0, thirst: 0, urinaryUrgency: 65 }, 'context', '身体感受：膀胱有些满，尿意开始明显。'],
+    ['urinary-3', { hunger: 0, fullness: 0, thirst: 0, urinaryUrgency: 85 }, 'wake', '身体感受：膀胱很满，尿意很明显。'],
+    ['thirst-2', { hunger: 0, fullness: 0, thirst: 65, urinaryUrgency: 0 }, 'context', '身体感受：有些口渴。'],
+    ['thirst-3', { hunger: 0, fullness: 0, thirst: 85, urinaryUrgency: 0 }, 'wake', '身体感受：很口渴。'],
+  ];
+  for (const [label, interoception, mode, text] of cases) {
+    const { notifications } = round({
+      interoception,
+      actions: [{ sessionId: `session-${label}` }],
+      simulatedSeconds: 60,
+    });
+    assert.deepEqual(notifications, [{ mode, sessionId: `session-${label}`, text }], label);
+    assertNoDigits(notifications);
+  }
 });
 
 test('the last action carrying a session id wins', () => {
@@ -146,23 +216,19 @@ test('same level does not repeat', () => {
     state: first.written,
     interoception: { hunger: 72, fullness: 0 },
     actions: [],
-    simulatedSeconds: 60 + 45 * MINUTE,
+    simulatedSeconds: 60 + 25 * MINUTE,
   });
   assert.deepEqual(later.notifications, []);
   assert.equal(later.written.sessions['session-a'].lastSentAt, 60);
+  assert.equal(later.written.sessions['session-a'].backoffStep, 1);
   assert.equal(later.written.sessions['session-a'].lastLevel, 2);
-  assert.equal(later.written.sessions['session-a'].hourCount, 1);
-  assert.equal(later.written.sessions['session-a'].dayCount, 1);
 });
 
-test('a suppressed round spends no level watermark, cooldown or quota', () => {
+test('a suppressed round spends no level watermark or backoff step', () => {
   const seeded = {
     lastSessionId: 'session-a',
     sessions: {
-      'session-a': session({
-        hourCount: 1,
-        dayCount: 5,
-      }),
+      'session-a': session({ backoffStep: 1 }),
     },
   };
   const catchUp = round({
@@ -174,8 +240,7 @@ test('a suppressed round spends no level watermark, cooldown or quota', () => {
   });
   assert.deepEqual(catchUp.notifications, []);
   assert.equal(catchUp.written.sessions['session-a'].lastSentAt, null);
-  assert.equal(catchUp.written.sessions['session-a'].hourCount, 1);
-  assert.equal(catchUp.written.sessions['session-a'].dayCount, 5);
+  assert.equal(catchUp.written.sessions['session-a'].backoffStep, 1);
   assert.deepEqual(catchUp.written.sessions['session-a'].levels, levels());
 
   const online = round({
@@ -187,8 +252,7 @@ test('a suppressed round spends no level watermark, cooldown or quota', () => {
   assert.equal(online.notifications.length, 1);
   assert.equal(online.notifications[0].sessionId, 'session-a');
   assert.equal(online.written.sessions['session-a'].lastSentAt, 120);
-  assert.equal(online.written.sessions['session-a'].hourCount, 2);
-  assert.equal(online.written.sessions['session-a'].dayCount, 6);
+  assert.equal(online.written.sessions['session-a'].backoffStep, 2);
   assert.deepEqual(online.written.sessions['session-a'].levels, levels({ hunger: 2 }));
 
   const repeated = round({
@@ -200,13 +264,14 @@ test('a suppressed round spends no level watermark, cooldown or quota', () => {
   assert.deepEqual(repeated.notifications, []);
 });
 
-test('a drop below reset allows a later rise after cooldown', () => {
+test('a drop below resetBelow resets backoff and allows immediate re-arm', () => {
   const first = round({
     interoception: { hunger: 70, fullness: 0 },
     actions: [{ sessionId: 'session-a' }],
     simulatedSeconds: 60,
   });
   assert.equal(first.notifications.length, 1);
+  assert.equal(first.written.sessions['session-a'].backoffStep, 1);
 
   const dropped = round({
     state: first.written,
@@ -216,122 +281,423 @@ test('a drop below reset allows a later rise after cooldown', () => {
   });
   assert.deepEqual(dropped.notifications, []);
   assert.equal(dropped.written.sessions['session-a'].lastLevel, 0);
+  assert.equal(dropped.written.sessions['session-a'].backoffStep, 0);
+  assert.equal(dropped.written.sessions['session-a'].lastSentAt, null);
 
-  const blocked = round({
+  const reArmed = round({
     state: dropped.written,
     interoception: { hunger: 70, fullness: 0, thirst: 0 },
     actions: [{ sessionId: 'session-a' }],
     simulatedSeconds: 180,
   });
-  assert.deepEqual(blocked.notifications, []);
-  assert.equal(blocked.written.sessions['session-a'].lastLevel, 0);
-  assert.equal(blocked.written.sessions['session-a'].lastSentAt, 60);
-
-  const repeated = round({
-    state: blocked.written,
-    interoception: { hunger: 70, fullness: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.equal(repeated.notifications.length, 1);
-  assert.equal(repeated.notifications[0].mode, 'context');
-  assert.equal(repeated.written.sessions['session-a'].lastSentAt, 60 + 45 * MINUTE);
+  assert.equal(reArmed.notifications.length, 1);
+  assert.equal(reArmed.notifications[0].mode, 'context');
+  assert.equal(reArmed.written.sessions['session-a'].lastSentAt, 180);
+  assert.equal(reArmed.written.sessions['session-a'].backoffStep, 1);
 });
 
-test('strong fullness uses wake when wakeAtLevel is 3', () => {
-  const { notifications } = round({
-    interoception: { hunger: 0, fullness: 85 },
+test('normal lane enforces 20 -> 40 -> 80 -> 160 -> 240 min escalating backoff capped at 240 min', () => {
+  const signals = [
+    { hunger: 65, fullness: 0, thirst: 0, urinaryUrgency: 0 },
+    { hunger: 65, fullness: 0, thirst: 0, urinaryUrgency: 0, dryMouthMm: 65 },
+    { hunger: 65, fullness: 0, thirst: 0, urinaryUrgency: 0, dryMouthMm: 65, sweatDampMm: 65 },
+    { hunger: 65, fullness: 0, thirst: 0, urinaryUrgency: 0, dryMouthMm: 65, sweatDampMm: 65, muscleFatigueMm: 65 },
+    { hunger: 65, fullness: 0, thirst: 0, urinaryUrgency: 0, dryMouthMm: 65, sweatDampMm: 65, muscleFatigueMm: 65, bowelUrgencyMm: 65 },
+    { hunger: 65, fullness: 0, thirst: 0, urinaryUrgency: 0, dryMouthMm: 65, sweatDampMm: 65, muscleFatigueMm: 65, bowelUrgencyMm: 65, stressMm: 65 },
+  ];
+  // Start with lastSentAt=60, backoffStep=0 (e.g. after an urgent wake updated lastSentAt)
+  // so every step 0..4 plus the 240-min cap is exercised directly.
+  const expectedWaitsMin = [20, 40, 80, 160, 240, 240];
+
+  let now = 60;
+  let state = {
+    lastSessionId: 'session-backoff',
+    sessions: {
+      'session-backoff': session({ lastSentAt: 60, backoffStep: 0, lastSeenAt: 60 }),
+    },
+  };
+  for (let i = 0; i < signals.length; i += 1) {
+    const waitMin = expectedWaitsMin[i];
+    const blocked = round({
+      state,
+      interoception: signals[i],
+      actions: [{ sessionId: 'session-backoff' }],
+      simulatedSeconds: now + (waitMin - 1) * MINUTE,
+    });
+    assert.deepEqual(blocked.notifications, [], `step ${i} blocked before ${waitMin} min`);
+    state = blocked.written;
+
+    now += waitMin * MINUTE;
+    const sent = round({
+      state,
+      interoception: signals[i],
+      actions: [{ sessionId: 'session-backoff' }],
+      simulatedSeconds: now,
+    });
+    assert.equal(sent.notifications.length, 1, `step ${i} fires at ${waitMin} min`);
+    assert.equal(sent.notifications[0].mode, 'context');
+    assertNoDigits(sent.notifications);
+    assert.equal(sent.written.sessions['session-backoff'].lastSentAt, now);
+    assert.equal(sent.written.sessions['session-backoff'].backoffStep, Math.min(4, i + 1));
+    state = sent.written;
+  }
+});
+
+test('urgent lane enforces 5 -> 10 -> 20 -> 40 -> 60 min escalating backoff capped at 60 min', () => {
+  const signals = [
+    { hunger: 85, fullness: 0, thirst: 0, urinaryUrgency: 0 },
+    { hunger: 85, fullness: 0, thirst: 85, urinaryUrgency: 0 },
+    { hunger: 85, fullness: 0, thirst: 85, urinaryUrgency: 0, dyspneaMm: 90 },
+    { hunger: 85, fullness: 0, thirst: 85, urinaryUrgency: 0, dyspneaMm: 90, heatMm: 85 },
+    { hunger: 85, fullness: 0, thirst: 85, urinaryUrgency: 0, dyspneaMm: 90, heatMm: 85, coldMm: 85 },
+    { hunger: 85, fullness: 0, thirst: 85, urinaryUrgency: 0, dyspneaMm: 90, heatMm: 85, coldMm: 85, hypoglycemiaMm: 85 },
+  ];
+  const expectedWaitsMin = [5, 10, 20, 40, 60, 60];
+
+  let now = 60;
+  let state = {
+    lastSessionId: 'session-urgent',
+    sessions: {
+      'session-urgent': session({ lastUrgentSentAt: 60, urgentBackoffStep: 0, lastSeenAt: 60 }),
+    },
+  };
+  for (let i = 0; i < signals.length; i += 1) {
+    const waitMin = expectedWaitsMin[i];
+    const blocked = round({
+      state,
+      interoception: signals[i],
+      actions: [{ sessionId: 'session-urgent' }],
+      simulatedSeconds: now + (waitMin - 1) * MINUTE,
+    });
+    assert.deepEqual(blocked.notifications, [], `urgent step ${i} blocked before ${waitMin} min`);
+    state = blocked.written;
+
+    now += waitMin * MINUTE;
+    const sent = round({
+      state,
+      interoception: signals[i],
+      actions: [{ sessionId: 'session-urgent' }],
+      simulatedSeconds: now,
+    });
+    assert.equal(sent.notifications.length, 1, `urgent step ${i} fires at ${waitMin} min`);
+    assert.equal(sent.notifications[0].mode, 'wake');
+    assertNoDigits(sent.notifications);
+    assert.equal(sent.written.sessions['session-urgent'].lastUrgentSentAt, now);
+    assert.equal(sent.written.sessions['session-urgent'].urgentBackoffStep, Math.min(4, i + 1));
+    assert.equal(sent.written.sessions['session-urgent'].lastSentAt, now);
+    state = sent.written;
+  }
+});
+
+test('urgent lane penetrates normal cooldown without incrementing normal backoffStep', () => {
+  const first = round({
+    interoception: { hunger: 65, fullness: 0 },
     actions: [{ sessionId: 'session-a' }],
     simulatedSeconds: 60,
   });
-  assert.deepEqual(notifications, [{
+  assert.equal(first.notifications[0].mode, 'context');
+  assert.equal(first.written.sessions['session-a'].backoffStep, 1);
+  assert.equal(first.written.sessions['session-a'].urgentBackoffStep, 0);
+
+  // Only 1 minute later (well inside 40-min normal cooldown), strong hunger penetrates as wake
+  const urgent = round({
+    state: first.written,
+    interoception: { hunger: 85, fullness: 0 },
+    actions: [{ sessionId: 'session-a' }],
+    simulatedSeconds: 120,
+  });
+  assert.deepEqual(urgent.notifications, [{
     mode: 'wake',
     sessionId: 'session-a',
-    text: '身体感受：胃里很满，饱足感很明显，可能不太想再吃。',
+    text: '身体感受：胃里很空，饥饿感很明显。',
   }]);
+  assert.equal(urgent.written.sessions['session-a'].lastSentAt, 120);
+  assert.equal(urgent.written.sessions['session-a'].backoffStep, 1);
+  assert.equal(urgent.written.sessions['session-a'].lastUrgentSentAt, 120);
+  assert.equal(urgent.written.sessions['session-a'].urgentBackoffStep, 1);
+
+  // Next urgent signal at urgentBackoffStep=1 waits 10 min (blocked at 9 min, fires at 10 min)
+  const blocked = round({
+    state: urgent.written,
+    interoception: { hunger: 85, fullness: 0, thirst: 85 },
+    actions: [{ sessionId: 'session-a' }],
+    simulatedSeconds: 120 + 9 * MINUTE,
+  });
+  assert.deepEqual(blocked.notifications, []);
+
+  const ready = round({
+    state: blocked.written,
+    interoception: { hunger: 85, fullness: 0, thirst: 85 },
+    actions: [{ sessionId: 'session-a' }],
+    simulatedSeconds: 120 + 10 * MINUTE,
+  });
+  assert.equal(ready.notifications.length, 1);
+  assert.equal(ready.notifications[0].mode, 'wake');
+  assert.equal(ready.written.sessions['session-a'].urgentBackoffStep, 2);
 });
 
-test('equal hunger and fullness levels prefer fullness', () => {
-  const { notifications } = round({
-    interoception: { hunger: 65, fullness: 65 },
+test('unlimited daily reminders fire without hour/day quota caps while backoff remains per session', () => {
+  const channels = [
+    'dyspneaMm',
+    'palpitationMm',
+    'hypoglycemiaMm',
+    'heatMm',
+    'coldMm',
+    'bowelUrgencyMm',
+    'dryMouthMm',
+    'uterineCrampMm',
+    'muscleFatigueMm',
+    'sweatDampMm',
+  ];
+
+  let state;
+  let now = 60;
+  let count = 0;
+  let lastInteroception = { hunger: 0, fullness: 0, thirst: 0, urinaryUrgency: 0 };
+  for (let i = 0; i < channels.length; i += 1) {
+    const interoception = { ...lastInteroception, [channels[i]]: 90 };
+    lastInteroception = interoception;
+    const res = round({
+      state,
+      interoception,
+      actions: [{ sessionId: 'session-a' }],
+      simulatedSeconds: now,
+    });
+    assert.equal(res.notifications.length, 1, `reminder ${i + 1} within 1 day must not be capped`);
+    assert.equal(res.notifications[0].mode, 'wake');
+    assertNoDigits(res.notifications);
+    count += 1;
+    state = res.written;
+    now += 60 * MINUTE;
+  }
+  assert.equal(count, 10);
+  assert.ok(now - 60 < DAY);
+
+  // Backoff on session-a (while keeping existing signals >= 40) does not block session-b
+  const blockedA = round({
+    state,
+    interoception: { ...lastInteroception, hunger: 85 },
     actions: [{ sessionId: 'session-a' }],
+    simulatedSeconds: now - 59 * MINUTE,
+  });
+  assert.deepEqual(blockedA.notifications, []);
+
+  const freshB = round({
+    state: blockedA.written,
+    interoception: { hunger: 85, fullness: 0 },
+    actions: [{ sessionId: 'session-b' }],
+    simulatedSeconds: now - 59 * MINUTE,
+  });
+  assert.equal(freshB.notifications.length, 1);
+  assert.equal(freshB.notifications[0].sessionId, 'session-b');
+});
+
+test('all relief actions and physiological clearance reset backoff tracks', () => {
+  // 1. eat resets normal & urgent backoff when hunger/hypoglycemia were active
+  const afterEat = round({
+    state: {
+      lastSessionId: 's1',
+      sessions: {
+        s1: session({
+          lastSentAt: 60,
+          backoffStep: 3,
+          lastUrgentSentAt: 60,
+          urgentBackoffStep: 2,
+          levels: levels({ hunger: 3 }),
+        }),
+      },
+    },
+    interoception: { hunger: 85, fullness: 0 },
+    actions: [{ type: 'eat', sessionId: 's1' }],
+    simulatedSeconds: 120,
+  });
+  assert.equal(afterEat.written.sessions.s1.backoffStep, 0);
+  assert.equal(afterEat.written.sessions.s1.lastSentAt, null);
+  assert.equal(afterEat.written.sessions.s1.urgentBackoffStep, 0);
+  assert.equal(afterEat.written.sessions.s1.lastUrgentSentAt, null);
+
+  // 2. drink resets normal & urgent backoff when thirst/dryMouth were active
+  const afterDrink = round({
+    state: {
+      lastSessionId: 's2',
+      sessions: {
+        s2: session({
+          lastSentAt: 60,
+          backoffStep: 3,
+          lastUrgentSentAt: 60,
+          urgentBackoffStep: 2,
+          sensations: { dryMouth: 3 },
+        }),
+      },
+    },
+    interoception: { hunger: 0, fullness: 0, dryMouthMm: 85 },
+    actions: [{ type: 'drink', sessionId: 's2' }],
+    simulatedSeconds: 120,
+  });
+  assert.equal(afterDrink.written.sessions.s2.backoffStep, 0);
+  assert.equal(afterDrink.written.sessions.s2.urgentBackoffStep, 0);
+
+  // 3. urinate resets urinary watermark + backoff
+  const afterUrinate = round({
+    state: {
+      lastSessionId: 's3',
+      sessions: {
+        s3: session({
+          lastSentAt: 60,
+          backoffStep: 2,
+          lastUrgentSentAt: 60,
+          urgentBackoffStep: 2,
+          levels: levels({ urinary: 3 }),
+        }),
+      },
+    },
+    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 90 },
+    actions: [{ type: 'urinate', sessionId: 's3' }],
+    simulatedSeconds: 120,
+  });
+  assert.deepEqual(afterUrinate.notifications, []);
+  assert.equal(afterUrinate.written.sessions.s3.levels.urinary, 0);
+  assert.equal(afterUrinate.written.sessions.s3.backoffStep, 0);
+  assert.equal(afterUrinate.written.sessions.s3.urgentBackoffStep, 0);
+
+  // 4. defecate resets bowelUrgency watermark + backoff
+  const afterDefecate = round({
+    state: {
+      lastSessionId: 's4',
+      sessions: {
+        s4: session({
+          lastSentAt: 60,
+          backoffStep: 2,
+          lastUrgentSentAt: 60,
+          urgentBackoffStep: 1,
+          sensations: { bowelUrgency: 3 },
+        }),
+      },
+    },
+    interoception: { hunger: 0, fullness: 0, bowelUrgencyMm: 85 },
+    actions: [{ type: 'defecate', sessionId: 's4' }],
+    simulatedSeconds: 120,
+  });
+  assert.deepEqual(afterDefecate.notifications, []);
+  assert.equal(afterDefecate.written.sessions.s4.sensations.bowelUrgency, undefined);
+  assert.equal(afterDefecate.written.sessions.s4.backoffStep, 0);
+  assert.equal(afterDefecate.written.sessions.s4.urgentBackoffStep, 0);
+
+  // 5. sleep resets sleepiness watermark + backoff
+  const afterSleep = round({
+    state: {
+      lastSessionId: 's5',
+      sessions: {
+        s5: session({
+          lastSentAt: 60,
+          backoffStep: 2,
+          lastUrgentSentAt: 60,
+          urgentBackoffStep: 1,
+          sensations: { sleepiness: 3 },
+        }),
+      },
+    },
+    interoception: { hunger: 0, fullness: 0, sleepinessMm: 85 },
+    actions: [{ type: 'sleep', sessionId: 's5' }],
+    simulatedSeconds: 120,
+  });
+  assert.deepEqual(afterSleep.notifications, []);
+  assert.equal(afterSleep.written.sessions.s5.sensations.sleepiness, undefined);
+  assert.equal(afterSleep.written.sessions.s5.backoffStep, 0);
+  assert.equal(afterSleep.written.sessions.s5.urgentBackoffStep, 0);
+
+  // 6. wake_up resets sleepiness & normal backoff (and urgent backoff if sleepiness was >= 3)
+  const afterWake = round({
+    state: {
+      lastSessionId: 's6',
+      sessions: {
+        s6: session({
+          lastSentAt: 60,
+          backoffStep: 2,
+          lastUrgentSentAt: 60,
+          urgentBackoffStep: 2,
+          sensations: { sleepiness: 3 },
+        }),
+      },
+    },
+    interoception: { hunger: 0, fullness: 0, sleepinessMm: 50 },
+    sleep: { sleeping: true },
+    actions: [{ type: 'wake_up', sessionId: 's6' }],
+    simulatedSeconds: 120,
+  });
+  assert.equal(afterWake.written.sessions.s6.sensations.sleepiness, undefined);
+  assert.equal(afterWake.written.sessions.s6.backoffStep, 0);
+  assert.equal(afterWake.written.sessions.s6.urgentBackoffStep, 0);
+
+  // 7. stop_exercise resets backoff when exercise channels (muscleFatigue/sweatDamp/dyspnea/palpitation) were active
+  const afterStopExercise = round({
+    state: {
+      lastSessionId: 's7',
+      sessions: {
+        s7: session({
+          lastSentAt: 60,
+          backoffStep: 3,
+          lastUrgentSentAt: 60,
+          urgentBackoffStep: 2,
+          sensations: { muscleFatigue: 3, sweatDamp: 2 },
+        }),
+      },
+    },
+    interoception: { hunger: 0, fullness: 0, muscleFatigueMm: 85, sweatDampMm: 70 },
+    actions: [{ type: 'stop_exercise', sessionId: 's7' }],
+    simulatedSeconds: 120,
+  });
+  assert.equal(afterStopExercise.written.sessions.s7.backoffStep, 0);
+  assert.equal(afterStopExercise.written.sessions.s7.lastSentAt, null);
+  assert.equal(afterStopExercise.written.sessions.s7.urgentBackoffStep, 0);
+  assert.equal(afterStopExercise.written.sessions.s7.lastUrgentSentAt, null);
+});
+
+test('emergency overrides normal and important candidates so only emergency is shown, while non-emergency multi-sensation still aggregates', () => {
+  const emergencyOnly = round({
+    interoception: {
+      hunger: 85,
+      fullness: 65,
+      thirst: 65,
+      urinaryUrgency: 65,
+      hypoglycemiaMm: 85,
+    },
+    actions: [{ sessionId: 'session-multi' }],
     simulatedSeconds: 60,
   });
-  assert.equal(notifications.length, 1);
-  assert.equal(notifications[0].mode, 'context');
-  assert.equal(notifications[0].text, '身体感受：胃里有些满，饱足感开始明显。');
-});
 
-test('hour and day quotas are per session', () => {
-  const exhaustedHour = round({
-    state: {
-      lastSessionId: 'session-a',
-      sessions: {
-        'session-a': session({
-          hourStartedAt: 60,
-          hourCount: 2,
-          dayStartedAt: 60,
-          dayCount: 2,
-          lastSeenAt: 60,
-        }),
-      },
+  assert.equal(emergencyOnly.notifications.length, 1);
+  assert.equal(emergencyOnly.notifications[0].mode, 'wake');
+  assertNoDigits(emergencyOnly.notifications);
+  assert.equal(
+    emergencyOnly.notifications[0].text,
+    '身体感受：脑子发昏、手脚发软发慌，整个人很虚脱。',
+  );
+  // Normal and important levels were NOT marked sent when suppressed by emergency
+  assert.deepEqual(emergencyOnly.written.sessions['session-multi'].levels, levels());
+  assert.deepEqual(emergencyOnly.written.sessions['session-multi'].sensations, { hypoglycemia: 3 });
+
+  const importantMulti = round({
+    interoception: {
+      hunger: 85,
+      fullness: 65,
+      thirst: 65,
+      urinaryUrgency: 65,
     },
-    interoception: { hunger: 70, fullness: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 120,
+    actions: [{ sessionId: 'session-multi-important' }],
+    simulatedSeconds: 60,
   });
-  assert.deepEqual(exhaustedHour.notifications, []);
-
-  const freshSession = round({
-    state: exhaustedHour.written,
-    interoception: { hunger: 70, fullness: 0 },
-    actions: [{ sessionId: 'session-b' }],
-    simulatedSeconds: 120,
-  });
-  assert.equal(freshSession.notifications.length, 1);
-  assert.equal(freshSession.notifications[0].sessionId, 'session-b');
-
-  const exhaustedDay = round({
-    state: {
-      lastSessionId: 'session-c',
-      sessions: {
-        'session-c': session({
-          hourStartedAt: 60,
-          hourCount: 0,
-          dayStartedAt: 60,
-          dayCount: 6,
-          lastSeenAt: 60,
-        }),
-      },
-    },
-    interoception: { hunger: 70, fullness: 0 },
-    actions: [{ sessionId: 'session-c' }],
-    simulatedSeconds: 120,
-  });
-  assert.deepEqual(exhaustedDay.notifications, []);
-});
-
-test('hour and day counters reset at their boundaries', () => {
-  const refreshed = round({
-    state: {
-      lastSessionId: 'session-a',
-      sessions: {
-        'session-a': session({
-          hourStartedAt: HOUR,
-          hourCount: 2,
-          dayStartedAt: DAY,
-          dayCount: 6,
-          lastSeenAt: HOUR,
-        }),
-      },
-    },
-    interoception: { hunger: 70, fullness: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 2 * DAY,
-  });
-  assert.equal(refreshed.notifications.length, 1);
-  assert.equal(refreshed.written.sessions['session-a'].hourCount, 1);
-  assert.equal(refreshed.written.sessions['session-a'].dayCount, 1);
+  assert.equal(importantMulti.notifications.length, 1);
+  assert.equal(importantMulti.notifications[0].mode, 'wake');
+  assertNoDigits(importantMulti.notifications);
+  assert.equal(
+    importantMulti.notifications[0].text,
+    '身体感受：胃里空得难受，饥饿感很强烈；隐约有尿意了；有些口渴了；胃里有些满，饱足感比较明显。',
+  );
+  assert.deepEqual(
+    importantMulti.written.sessions['session-multi-important'].levels,
+    levels({ hunger: 3, fullness: 2, thirst: 2, urinary: 2 }),
+  );
 });
 
 test('missing interoception falls back to baseline without NaN', () => {
@@ -340,12 +706,9 @@ test('missing interoception falls back to baseline without NaN', () => {
     sessions: {
       'session-a': session({
         lastSentAt: 60,
+        backoffStep: 1,
         lastLevel: 2,
         lastKind: 'hunger',
-        hourStartedAt: 60,
-        hourCount: 1,
-        dayStartedAt: 60,
-        dayCount: 1,
         lastSeenAt: 60,
       }),
     },
@@ -432,51 +795,6 @@ test('session ids longer than 256 characters are not notified', () => {
   assert.deepEqual(notifications, []);
 });
 
-test('a strong hunger crossing after marked hunger waits for the cooldown', () => {
-  const seeded = {
-    lastSessionId: 'session-a',
-    sessions: {
-      'session-a': session({
-        lastSentAt: 60,
-        lastLevel: 2,
-        lastKind: 'hunger',
-        hourStartedAt: 60,
-        hourCount: 1,
-        dayStartedAt: 60,
-        dayCount: 1,
-        lastSeenAt: 60,
-      }),
-    },
-  };
-
-  const early = round({
-    state: seeded,
-    interoception: { hunger: 85, fullness: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 44 * MINUTE,
-  });
-  assert.deepEqual(early.notifications, []);
-  assert.equal(early.written.sessions['session-a'].lastLevel, 2);
-  assert.equal(early.written.sessions['session-a'].lastSentAt, 60);
-
-  const ready = round({
-    state: early.written,
-    interoception: { hunger: 85, fullness: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(ready.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-a',
-    text: '身体感受：胃里很空，饥饿感很明显。',
-  }]);
-  assert.equal(ready.written.sessions['session-a'].lastLevel, 3);
-  assert.equal(ready.written.sessions['session-a'].lastKind, 'hunger');
-  assert.equal(ready.written.sessions['session-a'].lastSentAt, 60 + 45 * MINUTE);
-  assert.equal(ready.written.sessions['session-a'].hourCount, 2);
-  assert.equal(ready.written.sessions['session-a'].dayCount, 2);
-});
-
 test('urinary urgency uses 65 mm context and 85 mm wake thresholds', () => {
   const marked = round({
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 65 },
@@ -515,289 +833,51 @@ test('urinary urgency uses 65 mm context and 85 mm wake thresholds', () => {
   assert.deepEqual(below.written.sessions['session-low'].levels, levels());
 });
 
-test('urinary hysteresis repeats only after a drop below reset', () => {
+test('bladder involuntaryVoidedMl triggers a rising-edge wake alert and re-arms after clearing', () => {
   const first = round({
-    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 70 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60,
-  });
-  assert.equal(first.notifications.length, 1);
-  assert.deepEqual(first.written.sessions['session-a'].levels, levels({ urinary: 2 }));
-
-  const sameLevel = round({
-    state: first.written,
-    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 72 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(sameLevel.notifications, []);
-  assert.equal(sameLevel.written.sessions['session-a'].lastSentAt, 60);
-  assert.deepEqual(sameLevel.written.sessions['session-a'].levels, levels({ urinary: 2 }));
-
-  const dropped = round({
-    state: sameLevel.written,
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 10 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 46 * MINUTE,
-  });
-  assert.deepEqual(dropped.notifications, []);
-  assert.deepEqual(dropped.written.sessions['session-a'].levels, levels());
-
-  const repeated = round({
-    state: dropped.written,
-    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 70 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 47 * MINUTE,
-  });
-  assert.equal(repeated.notifications.length, 1);
-  assert.equal(repeated.notifications[0].mode, 'context');
-  assert.equal(repeated.written.sessions['session-a'].lastSentAt, 60 + 47 * MINUTE);
-  assert.deepEqual(repeated.written.sessions['session-a'].levels, levels({ urinary: 2 }));
-});
-
-test('urinary and hunger share the 45 minute cooldown without consuming either level watermark', () => {
-  const first = round({
-    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 65 },
-    actions: [{ sessionId: 'session-a' }],
+    bladder: { volumeMl: 50, involuntaryVoidedMl: 550 },
+    actions: [{ sessionId: 'session-void' }],
     simulatedSeconds: 60,
   });
   assert.equal(first.notifications.length, 1);
-  assert.deepEqual(first.written.sessions['session-a'].levels, levels({ urinary: 2 }));
+  assert.equal(first.notifications[0].mode, 'wake');
+  assert.equal(first.notifications[0].text, '身体感受：身体一阵失控热流，刚才意外漏尿了。');
+  assertNoDigits(first.notifications);
+  assert.equal(first.written.sessions['session-void'].lastInvoluntaryVoidedMl, 550);
+  assert.equal(first.written.sessions['session-void'].urgentBackoffStep, 1);
 
-  const early = round({
+  // Sustained non-zero involuntaryVoidedMl on next round does not re-trigger
+  const sustained = round({
     state: first.written,
-    interoception: { hunger: 85, fullness: 0, urinaryUrgency: 10 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 44 * MINUTE,
+    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 10 },
+    bladder: { volumeMl: 50, involuntaryVoidedMl: 550 },
+    actions: [{ sessionId: 'session-void' }],
+    simulatedSeconds: 60 + 10 * MINUTE,
   });
-  assert.deepEqual(early.notifications, []);
-  assert.equal(early.written.sessions['session-a'].lastSentAt, 60);
-  assert.deepEqual(early.written.sessions['session-a'].levels, levels());
+  assert.deepEqual(sustained.notifications, []);
 
-  const ready = round({
-    state: early.written,
-    interoception: { hunger: 85, fullness: 0, urinaryUrgency: 10 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
+  // Clears when involuntaryVoidedMl drops to 0
+  const cleared = round({
+    state: sustained.written,
+    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 10 },
+    bladder: { volumeMl: 50, involuntaryVoidedMl: 0 },
+    actions: [{ sessionId: 'session-void' }],
+    simulatedSeconds: 60 + 11 * MINUTE,
   });
-  assert.deepEqual(ready.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-a',
-    text: '身体感受：胃里很空，饥饿感很明显。',
-  }]);
-  assert.deepEqual(ready.written.sessions['session-a'].levels, levels({ hunger: 3 }));
-});
+  assert.deepEqual(cleared.notifications, []);
+  assert.equal(cleared.written.sessions['session-void'].lastInvoluntaryVoidedMl, 0);
 
-test('a notified hunger does not suppress a later urinary notification and vice versa', () => {
-  const hungerFirst = round({
-    interoception: { hunger: 85, fullness: 0, urinaryUrgency: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60,
+  // New rising edge triggers again after urgent cooldown (5 min)
+  const secondEdge = round({
+    state: cleared.written,
+    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 10 },
+    bladder: { volumeMl: 50, involuntaryVoidedMl: 420 },
+    actions: [{ sessionId: 'session-void' }],
+    simulatedSeconds: 60 + 20 * MINUTE,
   });
-  assert.deepEqual(hungerFirst.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-a',
-    text: '身体感受：胃里很空，饥饿感很明显。',
-  }]);
-  assert.deepEqual(hungerFirst.written.sessions['session-a'].levels, levels({ hunger: 3 }));
-
-  const urinarySecond = round({
-    state: hungerFirst.written,
-    interoception: { hunger: 85, fullness: 0, urinaryUrgency: 85 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(urinarySecond.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-a',
-    text: '身体感受：膀胱很满，尿意很明显。',
-  }]);
-  assert.equal(urinarySecond.written.sessions['session-a'].lastKind, 'urinary');
-  assert.deepEqual(
-    urinarySecond.written.sessions['session-a'].levels,
-    levels({ hunger: 3, urinary: 3 }),
-  );
-  assert.equal(urinarySecond.written.sessions['session-a'].hourCount, 2);
-  assert.equal(urinarySecond.written.sessions['session-a'].dayCount, 2);
-
-  const urinaryFirst = round({
-    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 85 },
-    actions: [{ sessionId: 'session-b' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(urinaryFirst.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-b',
-    text: '身体感受：膀胱很满，尿意很明显。',
-  }]);
-  assert.deepEqual(urinaryFirst.written.sessions['session-b'].levels, levels({ urinary: 3 }));
-
-  const hungerSecond = round({
-    state: urinaryFirst.written,
-    interoception: { hunger: 85, fullness: 0, urinaryUrgency: 85 },
-    actions: [{ sessionId: 'session-b' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(hungerSecond.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-b',
-    text: '身体感受：胃里很空，饥饿感很明显。',
-  }]);
-  assert.equal(hungerSecond.written.sessions['session-b'].lastKind, 'hunger');
-  assert.deepEqual(
-    hungerSecond.written.sessions['session-b'].levels,
-    levels({ hunger: 3, urinary: 3 }),
-  );
-  assert.equal(hungerSecond.written.sessions['session-b'].hourCount, 2);
-  assert.equal(hungerSecond.written.sessions['session-b'].dayCount, 2);
-});
-
-test('the highest level wins and a lower candidate keeps its level watermark', () => {
-  const first = round({
-    interoception: { hunger: 85, fullness: 65, urinaryUrgency: 65 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(first.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-a',
-    text: '身体感受：胃里很空，饥饿感很明显。',
-  }]);
-  assert.deepEqual(first.written.sessions['session-a'].levels, levels({ hunger: 3 }));
-
-  const later = round({
-    state: first.written,
-    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 65 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(later.notifications, [{
-    mode: 'context',
-    sessionId: 'session-a',
-    text: '身体感受：膀胱有些满，尿意开始明显。',
-  }]);
-  assert.deepEqual(later.written.sessions['session-a'].levels, levels({ urinary: 2 }));
-});
-
-test('equal levels prefer urinary over fullness and hunger without consuming their watermarks', () => {
-  const first = round({
-    interoception: { hunger: 65, fullness: 65, urinaryUrgency: 65 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(first.notifications, [{
-    mode: 'context',
-    sessionId: 'session-a',
-    text: '身体感受：膀胱有些满，尿意开始明显。',
-  }]);
-  assert.deepEqual(first.written.sessions['session-a'].levels, levels({ urinary: 2 }));
-
-  const fullnessNext = round({
-    state: first.written,
-    interoception: { hunger: 65, fullness: 65, urinaryUrgency: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(fullnessNext.notifications, [{
-    mode: 'context',
-    sessionId: 'session-a',
-    text: '身体感受：胃里有些满，饱足感开始明显。',
-  }]);
-  assert.deepEqual(fullnessNext.written.sessions['session-a'].levels, levels({ fullness: 2 }));
-});
-
-test('legacy lastKind and lastLevel migrate into per-signal levels', () => {
-  const seeded = {
-    lastSessionId: 'session-a',
-    sessions: {
-      'session-a': session({
-        lastSentAt: 60,
-        lastLevel: 2,
-        lastKind: 'hunger',
-        hourStartedAt: 60,
-        hourCount: 1,
-        dayStartedAt: 60,
-        dayCount: 1,
-        lastSeenAt: 60,
-      }),
-    },
-  };
-
-  const sameSignal = round({
-    state: seeded,
-    interoception: { hunger: 70, fullness: 0, urinaryUrgency: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(sameSignal.notifications, []);
-  assert.deepEqual(sameSignal.written.sessions['session-a'].levels, levels({ hunger: 2 }));
-
-  const newSignal = round({
-    state: sameSignal.written,
-    interoception: { hunger: 70, fullness: 0, urinaryUrgency: 70 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 90 * MINUTE,
-  });
-  assert.deepEqual(newSignal.notifications, [{
-    mode: 'context',
-    sessionId: 'session-a',
-    text: '身体感受：膀胱有些满，尿意开始明显。',
-  }]);
-  assert.equal(newSignal.written.sessions['session-a'].lastKind, 'urinary');
-  assert.deepEqual(
-    newSignal.written.sessions['session-a'].levels,
-    levels({ hunger: 2, urinary: 2 }),
-  );
-});
-
-test('missing or non-finite urinary urgency falls back to zero', () => {
-  const missing = round({
-    interoception: { hunger: 65, fullness: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(missing.notifications, [{
-    mode: 'context',
-    sessionId: 'session-a',
-    text: '身体感受：胃里有些空，饥饿感开始明显。',
-  }]);
-  assert.deepEqual(missing.written.sessions['session-a'].levels, levels({ hunger: 2 }));
-  assertJsonSafe(missing.written);
-
-  const nonFinite = round({
-    interoception: { hunger: 0, fullness: 0, urinaryUrgency: Number.NaN },
-    actions: [{ sessionId: 'session-b' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(nonFinite.notifications, []);
-  assert.deepEqual(nonFinite.written.sessions['session-b'].levels, levels());
-  assertJsonSafe(nonFinite.written);
-
-  const infinite = round({
-    interoception: { hunger: 65, fullness: 0, urinaryUrgency: Number.POSITIVE_INFINITY },
-    actions: [{ sessionId: 'session-c' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(infinite.notifications, [{
-    mode: 'context',
-    sessionId: 'session-c',
-    text: '身体感受：胃里有些空，饥饿感开始明显。',
-  }]);
-  assert.deepEqual(infinite.written.sessions['session-c'].levels, levels({ hunger: 2 }));
-  assertJsonSafe(infinite.written);
-
-  const negativeInfinite = round({
-    interoception: { hunger: 65, fullness: 0, urinaryUrgency: Number.NEGATIVE_INFINITY },
-    actions: [{ sessionId: 'session-d' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(negativeInfinite.notifications, [{
-    mode: 'context',
-    sessionId: 'session-d',
-    text: '身体感受：胃里有些空，饥饿感开始明显。',
-  }]);
-  assert.deepEqual(negativeInfinite.written.sessions['session-d'].levels, levels({ hunger: 2 }));
-  assertJsonSafe(negativeInfinite.written);
+  assert.equal(secondEdge.notifications.length, 1);
+  assert.equal(secondEdge.notifications[0].mode, 'wake');
 });
 
 test('a submitted void drops the urinary level watermark and re-arms after it clears', () => {
@@ -806,12 +886,9 @@ test('a submitted void drops the urinary level watermark and re-arms after it cl
     sessions: {
       'session-a': session({
         lastSentAt: 60,
+        backoffStep: 1,
         lastLevel: 2,
         lastKind: 'urinary',
-        hourStartedAt: 60,
-        hourCount: 1,
-        dayStartedAt: 60,
-        dayCount: 1,
         lastSeenAt: 60,
         levels: levels({ urinary: 2 }),
       }),
@@ -823,10 +900,11 @@ test('a submitted void drops the urinary level watermark and re-arms after it cl
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 100 },
     bladder: { volumeMl: 1, voidedMl: 409 },
     actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
+    simulatedSeconds: 60 + 20 * MINUTE,
   });
   assert.deepEqual(voided.notifications, []);
-  assert.equal(voided.written.sessions['session-a'].lastSentAt, 60);
+  assert.equal(voided.written.sessions['session-a'].lastSentAt, null);
+  assert.equal(voided.written.sessions['session-a'].backoffStep, 0);
   assert.deepEqual(voided.written.sessions['session-a'].levels, levels());
   assertJsonSafe(voided.written);
 
@@ -835,7 +913,7 @@ test('a submitted void drops the urinary level watermark and re-arms after it cl
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 70 },
     bladder: { volumeMl: 40, voidedMl: 0 },
     actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 46 * MINUTE,
+    simulatedSeconds: 60 + 21 * MINUTE,
   });
   assert.deepEqual(afterVoid.notifications, [{
     mode: 'context',
@@ -844,44 +922,15 @@ test('a submitted void drops the urinary level watermark and re-arms after it cl
   }]);
   assert.deepEqual(afterVoid.written.sessions['session-a'].levels, levels({ urinary: 2 }));
 
-  const otherSignal = round({
-    state: {
-      lastSessionId: 'session-c',
-      sessions: {
-        'session-c': session({
-          lastSentAt: 60,
-          lastLevel: 3,
-          lastKind: 'hunger',
-          hourStartedAt: 60,
-          hourCount: 1,
-          dayStartedAt: 60,
-          dayCount: 1,
-          lastSeenAt: 60,
-          levels: levels({ hunger: 3, urinary: 2 }),
-        }),
-      },
-    },
-    interoception: { hunger: 85, fullness: 0, urinaryUrgency: 100 },
-    bladder: { volumeMl: 1, voidedMl: 409 },
-    actions: [{ sessionId: 'session-c' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(otherSignal.notifications, []);
-  assert.deepEqual(otherSignal.written.sessions['session-c'].levels, levels({ hunger: 3 }));
-  assert.equal(otherSignal.written.sessions['session-c'].lastSentAt, 60);
-
   const otherCandidate = round({
     state: {
       lastSessionId: 'session-d',
       sessions: {
         'session-d': session({
           lastSentAt: 60,
+          backoffStep: 1,
           lastLevel: 2,
           lastKind: 'hunger',
-          hourStartedAt: 60,
-          hourCount: 1,
-          dayStartedAt: 60,
-          dayCount: 1,
           lastSeenAt: 60,
           levels: levels({ hunger: 2 }),
         }),
@@ -890,7 +939,7 @@ test('a submitted void drops the urinary level watermark and re-arms after it cl
     interoception: { hunger: 85, fullness: 0, urinaryUrgency: 100 },
     bladder: { volumeMl: 1, voidedMl: 409 },
     actions: [{ sessionId: 'session-d' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
+    simulatedSeconds: 60 + 20 * MINUTE,
   });
   assert.deepEqual(otherCandidate.notifications, [{
     mode: 'wake',
@@ -907,12 +956,9 @@ test('a urinate action in the current round suppresses the urinary candidate', (
       sessions: {
         [sessionId]: session({
           lastSentAt: 60,
+          backoffStep: 1,
           lastLevel: 2,
           lastKind: 'urinary',
-          hourStartedAt: 60,
-          hourCount: 1,
-          dayStartedAt: 60,
-          dayCount: 1,
           lastSeenAt: 60,
           levels: levels({ urinary: 2, ...extraLevels }),
         }),
@@ -925,7 +971,7 @@ test('a urinate action in the current round suppresses the urinary candidate', (
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 100 },
     bladder: { volumeMl: 400, voidedMl: 0 },
     actions: [{ type: 'urinate', sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
+    simulatedSeconds: 60 + 20 * MINUTE,
   });
   assert.deepEqual(urinaryOnly.notifications, []);
   assert.deepEqual(urinaryOnly.written.sessions['session-a'].levels, levels());
@@ -935,7 +981,7 @@ test('a urinate action in the current round suppresses the urinary candidate', (
     interoception: { hunger: 85, fullness: 65, urinaryUrgency: 100 },
     bladder: { volumeMl: 400, voidedMl: 0 },
     actions: [{ type: 'urinate', sessionId: 'session-b' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
+    simulatedSeconds: 60 + 20 * MINUTE,
   });
   assert.deepEqual(hungerWins.notifications, [{
     mode: 'wake',
@@ -947,34 +993,6 @@ test('a urinate action in the current round suppresses the urinary candidate', (
     hungerWins.written.sessions['session-b'].levels,
     levels({ hunger: 3, fullness: 2 }),
   );
-
-  const fullnessWins = round({
-    state: armedSession('session-c'),
-    interoception: { hunger: 0, fullness: 85, urinaryUrgency: 100 },
-    bladder: { volumeMl: 400, voidedMl: 0 },
-    actions: [{ type: 'urinate', sessionId: 'session-c' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(fullnessWins.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-c',
-    text: '身体感受：胃里很满，饱足感很明显，可能不太想再吃。',
-  }]);
-  assert.equal(fullnessWins.written.sessions['session-c'].lastKind, 'fullness');
-  assert.deepEqual(fullnessWins.written.sessions['session-c'].levels, levels({ fullness: 3 }));
-
-  const nonUrinating = round({
-    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 100 },
-    bladder: { volumeMl: 400, voidedMl: 0 },
-    actions: [{ type: 'eat', sessionId: 'session-d' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(nonUrinating.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-d',
-    text: '身体感受：膀胱很满，尿意很明显。',
-  }]);
-  assert.deepEqual(nonUrinating.written.sessions['session-d'].levels, levels({ urinary: 3 }));
 });
 
 test('the urinary level watermark stays latched across 40-64 mm and clears below 40 mm', () => {
@@ -984,8 +1002,6 @@ test('the urinary level watermark stays latched across 40-64 mm and clears below
     simulatedSeconds: 60,
   });
   assert.equal(first.notifications.length, 1);
-  assert.equal(first.notifications[0].mode, 'context');
-  assert.deepEqual(first.written.sessions['session-a'].levels, levels({ urinary: 2 }));
 
   const fellToFifty = round({
     state: first.written,
@@ -1000,16 +1016,15 @@ test('the urinary level watermark stays latched across 40-64 mm and clears below
     state: fellToFifty.written,
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 70 },
     actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
+    simulatedSeconds: 60 + 40 * MINUTE,
   });
   assert.deepEqual(backToMarkedWithoutReset.notifications, []);
-  assert.deepEqual(backToMarkedWithoutReset.written.sessions['session-a'].levels, levels({ urinary: 2 }));
 
   const belowReset = round({
     state: backToMarkedWithoutReset.written,
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 39 },
     actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 46 * MINUTE,
+    simulatedSeconds: 60 + 41 * MINUTE,
   });
   assert.deepEqual(belowReset.notifications, []);
   assert.deepEqual(belowReset.written.sessions['session-a'].levels, levels());
@@ -1018,111 +1033,80 @@ test('the urinary level watermark stays latched across 40-64 mm and clears below
     state: belowReset.written,
     interoception: { hunger: 0, fullness: 0, urinaryUrgency: 70 },
     actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 47 * MINUTE,
+    simulatedSeconds: 60 + 42 * MINUTE,
   });
   assert.deepEqual(repeated.notifications, [{
     mode: 'context',
     sessionId: 'session-a',
     text: '身体感受：膀胱有些满，尿意开始明显。',
   }]);
-  assert.deepEqual(repeated.written.sessions['session-a'].levels, levels({ urinary: 2 }));
 });
 
-test('thirst stays quiet at 64 mm and uses context at 65 mm and wake at 85 mm', () => {
-  const below = round({
-    interoception: { hunger: 0, fullness: 0, thirst: 64 },
-    actions: [{ sessionId: 'session-low' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(below.notifications, []);
-  assert.deepEqual(below.written.sessions['session-low'].levels, levels());
-  assert.equal(below.written.sessions['session-low'].lastLevel, 0);
-
-  const marked = round({
-    interoception: { hunger: 0, fullness: 0, thirst: 65 },
-    actions: [{ sessionId: 'session-marked' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(marked.notifications, [{
-    mode: 'context',
-    sessionId: 'session-marked',
-    text: '身体感受：有些口渴。',
-  }]);
-  assert.equal(marked.written.sessions['session-marked'].lastKind, 'thirst');
-  assert.equal(marked.written.sessions['session-marked'].lastLevel, 2);
-  assert.deepEqual(marked.written.sessions['session-marked'].levels, levels({ thirst: 2 }));
-  assert.equal(marked.written.sessions['session-marked'].hourCount, 1);
-  assert.equal(marked.written.sessions['session-marked'].dayCount, 1);
-
-  const strong = round({
-    interoception: { hunger: 0, fullness: 0, thirst: 85 },
-    actions: [{ sessionId: 'session-strong' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(strong.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-strong',
-    text: '身体感受：很口渴。',
-  }]);
-  assert.equal(strong.written.sessions['session-strong'].lastKind, 'thirst');
-  assert.equal(strong.written.sessions['session-strong'].lastLevel, 3);
-  assert.deepEqual(strong.written.sessions['session-strong'].levels, levels({ thirst: 3 }));
-
-  const repeatedStrong = round({
-    state: strong.written,
-    interoception: { hunger: 0, fullness: 0, thirst: 90 },
-    actions: [{ sessionId: 'session-strong' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(repeatedStrong.notifications, []);
-  assert.equal(repeatedStrong.written.sessions['session-strong'].lastSentAt, 60);
-  assert.deepEqual(
-    repeatedStrong.written.sessions['session-strong'].levels,
-    levels({ thirst: 3 }),
-  );
-});
-
-test('thirst repeats only after dropping below 40 mm', () => {
+test('3 -> 2 step-down clears urgent watermark and allows re-triggering on climb back to 3', () => {
   const first = round({
+    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 85 },
+    actions: [{ sessionId: 'session-stepdown' }],
+    simulatedSeconds: 60,
+  });
+  assert.equal(first.notifications[0].mode, 'wake');
+  assert.equal(first.written.sessions['session-stepdown'].levels.urinary, 3);
+  assert.equal(first.written.sessions['session-stepdown'].urgentBackoffStep, 1);
+
+  const steppedDown = round({
+    state: first.written,
+    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 70 },
+    actions: [{ sessionId: 'session-stepdown' }],
+    simulatedSeconds: 120,
+  });
+  assert.deepEqual(steppedDown.notifications, []);
+  assert.equal(steppedDown.written.sessions['session-stepdown'].levels.urinary, 2);
+  assert.equal(steppedDown.written.sessions['session-stepdown'].urgentBackoffStep, 0);
+  assert.equal(steppedDown.written.sessions['session-stepdown'].lastUrgentSentAt, null);
+
+  const climbedBack = round({
+    state: steppedDown.written,
+    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 86 },
+    actions: [{ sessionId: 'session-stepdown' }],
+    simulatedSeconds: 180,
+  });
+  assert.equal(climbedBack.notifications.length, 1);
+  assert.equal(climbedBack.notifications[0].mode, 'wake');
+  assert.equal(climbedBack.written.sessions['session-stepdown'].levels.urinary, 3);
+});
+
+test('thirst shares normal and urgent backoff tracks with other signals', () => {
+  const thirstFirst = round({
     interoception: { hunger: 0, fullness: 0, thirst: 65 },
     actions: [{ sessionId: 'session-a' }],
     simulatedSeconds: 60,
   });
-  assert.equal(first.notifications.length, 1);
+  assert.equal(thirstFirst.notifications.length, 1);
+  assert.equal(thirstFirst.written.sessions['session-a'].backoffStep, 1);
 
-  const sameLevel = round({
-    state: first.written,
-    interoception: { hunger: 0, fullness: 0, thirst: 70 },
+  // Keep thirst at 50 (in [40, 65) band so it doesn't reset normal backoff) while fullness rises to 65.
+  // At backoffStep=1, normal cooldown is 40 min.
+  const blockedNormal = round({
+    state: thirstFirst.written,
+    interoception: { hunger: 0, fullness: 65, thirst: 50 },
     actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
+    simulatedSeconds: 60 + 39 * MINUTE,
   });
-  assert.deepEqual(sameLevel.notifications, []);
-  assert.equal(sameLevel.written.sessions['session-a'].lastSentAt, 60);
-  assert.deepEqual(sameLevel.written.sessions['session-a'].levels, levels({ thirst: 2 }));
+  assert.deepEqual(blockedNormal.notifications, []);
+  assert.equal(blockedNormal.written.sessions['session-a'].lastSentAt, 60);
 
-  const dropped = round({
-    state: sameLevel.written,
-    interoception: { hunger: 0, fullness: 0, thirst: 39 },
+  const readyNormal = round({
+    state: blockedNormal.written,
+    interoception: { hunger: 0, fullness: 65, thirst: 50 },
     actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 46 * MINUTE,
+    simulatedSeconds: 60 + 40 * MINUTE,
   });
-  assert.deepEqual(dropped.notifications, []);
-  assert.deepEqual(dropped.written.sessions['session-a'].levels, levels());
-  assert.equal(dropped.written.sessions['session-a'].lastLevel, 0);
-
-  const repeated = round({
-    state: dropped.written,
-    interoception: { hunger: 0, fullness: 0, thirst: 70 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 47 * MINUTE,
-  });
-  assert.deepEqual(repeated.notifications, [{
+  assert.deepEqual(readyNormal.notifications, [{
     mode: 'context',
     sessionId: 'session-a',
-    text: '身体感受：有些口渴。',
+    text: '身体感受：胃里有些满，饱足感开始明显。',
   }]);
-  assert.equal(repeated.written.sessions['session-a'].lastSentAt, 60 + 47 * MINUTE);
-  assert.deepEqual(repeated.written.sessions['session-a'].levels, levels({ thirst: 2 }));
+  assert.deepEqual(readyNormal.written.sessions['session-a'].levels, levels({ fullness: 2, thirst: 2 }));
+  assert.equal(readyNormal.written.sessions['session-a'].backoffStep, 2);
 });
 
 test('missing or non-finite thirst stays below the marked tier without notifying', () => {
@@ -1132,12 +1116,11 @@ test('missing or non-finite thirst stays below the marked tier without notifying
       sessions: {
         [sessionId]: session({
           lastSentAt: 60,
+          backoffStep: 1,
+          lastUrgentSentAt: 60,
+          urgentBackoffStep: 1,
           lastLevel: 3,
           lastKind: 'thirst',
-          hourStartedAt: 60,
-          hourCount: 1,
-          dayStartedAt: 60,
-          dayCount: 1,
           lastSeenAt: 60,
           levels: levels({ thirst: 3 }),
         }),
@@ -1158,17 +1141,16 @@ test('missing or non-finite thirst stays below the marked tier without notifying
       state: seeded(sessionId),
       interoception,
       actions: [{ sessionId }],
-      simulatedSeconds: 60 + 45 * MINUTE,
+      simulatedSeconds: 60 + 25 * MINUTE,
     });
     assert.deepEqual(notifications, [], `${label}: must not notify`);
-    assert.deepEqual(written.sessions[sessionId].levels, levels({ thirst: 3 }), `${label}: thirst level watermark stays latched at fallback 50 mm`);
-    assert.equal(written.sessions[sessionId].lastLevel, 1, `${label}: fallback stays below marked`);
-    assert.equal(written.sessions[sessionId].lastSentAt, 60, `${label}: must not send`);
+    assert.deepEqual(written.sessions[sessionId].levels, levels({ thirst: 3 }));
+    assert.equal(written.sessions[sessionId].lastLevel, 1);
     assertJsonSafe(written);
   }
 });
 
-test('discomfort alone does not notify or consume any signal level watermark', () => {
+test('esophagus choking and discomfort NEVER trigger notifications', () => {
   const { written, notifications } = round({
     interoception: {
       hunger: 0,
@@ -1176,344 +1158,193 @@ test('discomfort alone does not notify or consume any signal level watermark', (
       thirst: 0,
       urinaryUrgency: 0,
       discomfort: 100,
+      chokingMm: 100,
     },
     actions: [{ sessionId: 'session-discomfort' }],
     simulatedSeconds: 60,
   });
   assert.deepEqual(notifications, []);
   assert.deepEqual(written.sessions['session-discomfort'].levels, levels());
-  assert.equal(written.sessions['session-discomfort'].hourCount, 0);
-  assert.equal(written.sessions['session-discomfort'].dayCount, 0);
+  assert.equal(written.sessions['session-discomfort'].backoffStep, 0);
+  assert.equal(written.sessions['session-discomfort'].urgentBackoffStep, 0);
 });
 
-test('the highest level wins over signal order', () => {
-  const hungerWins = round({
-    interoception: { hunger: 85, fullness: 65, urinaryUrgency: 65, thirst: 65 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(hungerWins.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-a',
-    text: '身体感受：胃里很空，饥饿感很明显。',
-  }]);
-  assert.deepEqual(hungerWins.written.sessions['session-a'].levels, levels({ hunger: 3 }));
+test('legacy lastKind and lastLevel migrate into per-signal levels', () => {
+  const seeded = {
+    lastSessionId: 'session-a',
+    sessions: {
+      'session-a': {
+        lastSentAt: 60,
+        lastLevel: 2,
+        lastKind: 'hunger',
+        lastSeenAt: 60,
+      },
+    },
+  };
 
-  const thirstWins = round({
-    state: hungerWins.written,
-    interoception: { hunger: 85, fullness: 85, urinaryUrgency: 0, thirst: 85 },
+  const sameSignal = round({
+    state: seeded,
+    interoception: { hunger: 70, fullness: 0, urinaryUrgency: 0 },
     actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
+    simulatedSeconds: 60 + 20 * MINUTE,
   });
-  assert.deepEqual(thirstWins.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-a',
-    text: '身体感受：很口渴。',
-  }]);
-  assert.equal(thirstWins.written.sessions['session-a'].lastKind, 'thirst');
-  assert.equal(thirstWins.written.sessions['session-a'].lastLevel, 3);
-  assert.equal(thirstWins.written.sessions['session-a'].hourCount, 2);
-  assert.deepEqual(
-    thirstWins.written.sessions['session-a'].levels,
-    levels({ hunger: 3, thirst: 3 }),
-  );
-});
+  assert.deepEqual(sameSignal.notifications, []);
+  assert.deepEqual(sameSignal.written.sessions['session-a'].levels, levels({ hunger: 2 }));
 
-test('equal marked thirst outranks fullness and hunger without consuming their watermarks', () => {
-  const thirstFirst = round({
-    interoception: { hunger: 65, fullness: 65, thirst: 65 },
+  const newSignal = round({
+    state: sameSignal.written,
+    interoception: { hunger: 70, fullness: 0, urinaryUrgency: 70 },
     actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60,
+    simulatedSeconds: 60 + 21 * MINUTE,
   });
-  assert.deepEqual(thirstFirst.notifications, [{
-    mode: 'context',
-    sessionId: 'session-a',
-    text: '身体感受：有些口渴。',
-  }]);
-  assert.deepEqual(thirstFirst.written.sessions['session-a'].levels, levels({ thirst: 2 }));
-
-  const fullnessNext = round({
-    state: thirstFirst.written,
-    interoception: { hunger: 65, fullness: 65, thirst: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(fullnessNext.notifications, [{
-    mode: 'context',
-    sessionId: 'session-a',
-    text: '身体感受：胃里有些满，饱足感开始明显。',
-  }]);
-  assert.deepEqual(fullnessNext.written.sessions['session-a'].levels, levels({ fullness: 2 }));
-
-  const hungerNext = round({
-    state: fullnessNext.written,
-    interoception: { hunger: 70, fullness: 0, thirst: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 90 * MINUTE,
-  });
-  assert.deepEqual(hungerNext.notifications, [{
-    mode: 'context',
-    sessionId: 'session-a',
-    text: '身体感受：胃里有些空，饥饿感开始明显。',
-  }]);
-  assert.deepEqual(hungerNext.written.sessions['session-a'].levels, levels({ hunger: 2 }));
-});
-
-test('equal marked and strong urinary outrank thirst', () => {
-  const urinaryFirst = round({
-    interoception: { hunger: 65, fullness: 65, urinaryUrgency: 65, thirst: 65 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60,
-  });
-  assert.deepEqual(urinaryFirst.notifications, [{
+  assert.deepEqual(newSignal.notifications, [{
     mode: 'context',
     sessionId: 'session-a',
     text: '身体感受：膀胱有些满，尿意开始明显。',
   }]);
-  assert.deepEqual(urinaryFirst.written.sessions['session-a'].levels, levels({ urinary: 2 }));
-
-  const thirstNext = round({
-    state: urinaryFirst.written,
-    interoception: { hunger: 0, fullness: 0, urinaryUrgency: 0, thirst: 65 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(thirstNext.notifications, [{
-    mode: 'context',
-    sessionId: 'session-a',
-    text: '身体感受：有些口渴。',
-  }]);
-  assert.deepEqual(thirstNext.written.sessions['session-a'].levels, levels({ thirst: 2 }));
-
-  const urinaryStrong = round({
-    state: thirstNext.written,
-    interoception: { hunger: 85, fullness: 85, urinaryUrgency: 85, thirst: 85 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 90 * MINUTE,
-  });
-  assert.deepEqual(urinaryStrong.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-a',
-    text: '身体感受：膀胱很满，尿意很明显。',
-  }]);
   assert.deepEqual(
-    urinaryStrong.written.sessions['session-a'].levels,
-    levels({ urinary: 3, thirst: 2 }),
+    newSignal.written.sessions['session-a'].levels,
+    levels({ hunger: 2, urinary: 2 }),
   );
 });
 
-test('an existing levels object gains thirst=0 without changing other level watermarks', () => {
-  const seeded = {
-    lastSessionId: 'session-a',
-    sessions: {
-      'session-a': session({
-        lastSentAt: 60,
-        lastLevel: 2,
-        lastKind: 'fullness',
-        hourStartedAt: 60,
-        hourCount: 1,
-        dayStartedAt: 60,
-        dayCount: 1,
-        lastSeenAt: 60,
-        levels: { hunger: 0, fullness: 2, urinary: 0 },
-      }),
-    },
-  };
-
-  const blocked = round({
-    state: seeded,
-    interoception: { hunger: 0, fullness: 65, thirst: 65 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 10 * MINUTE,
-  });
-  assert.deepEqual(blocked.notifications, []);
-  assert.deepEqual(blocked.written.sessions['session-a'].levels, levels({ fullness: 2 }));
-  assert.equal(blocked.written.sessions['session-a'].lastSentAt, 60);
-
-  const notified = round({
-    state: blocked.written,
-    interoception: { hunger: 0, fullness: 65, thirst: 65 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(notified.notifications, [{
-    mode: 'context',
-    sessionId: 'session-a',
-    text: '身体感受：有些口渴。',
-  }]);
-  assert.deepEqual(
-    notified.written.sessions['session-a'].levels,
-    levels({ fullness: 2, thirst: 2 }),
-  );
-  assert.equal(notified.written.sessions['session-a'].hourCount, 2);
-  assert.equal(notified.written.sessions['session-a'].dayCount, 2);
-});
-
-test('thirst shares the cooldown and quotas with other signals', () => {
-  const thirstFirst = round({
-    interoception: { hunger: 0, fullness: 0, thirst: 65 },
-    actions: [{ sessionId: 'session-a' }],
+test('sleep raises important wake threshold, accumulates normal/resolved episodes into sleepBacklog, flushes on wake, and lets emergency startle override', () => {
+  // 1. While sleeping (light): 70 mm normal AND 86 mm non-emergency (< 92 mm) stay suppressed and enter sleepBacklog
+  const sleepingQuiet = round({
+    interoception: { hunger: 70, fullness: 0, thirst: 86, sweatDampMm: 70, sleepinessMm: 95 },
+    sleep: { sleeping: true, sleepStage: 'light' },
+    actions: [{ sessionId: 'session-sleep' }],
     simulatedSeconds: 60,
   });
-  assert.equal(thirstFirst.notifications.length, 1);
+  assert.deepEqual(sleepingQuiet.notifications, []);
+  assert.deepEqual(sleepingQuiet.written.sessions['session-sleep'].levels, levels());
+  assert.ok(sleepingQuiet.written.sessions['session-sleep'].sleepBacklog.hunger);
+  assert.ok(sleepingQuiet.written.sessions['session-sleep'].sleepBacklog.thirst);
+  assert.ok(sleepingQuiet.written.sessions['session-sleep'].sleepBacklog.sweatDamp);
 
-  const blocked = round({
-    state: thirstFirst.written,
-    interoception: { hunger: 85, fullness: 0, thirst: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 44 * MINUTE,
-  });
-  assert.deepEqual(blocked.notifications, []);
-  assert.deepEqual(blocked.written.sessions['session-a'].levels, levels());
-  assert.equal(blocked.written.sessions['session-a'].lastSentAt, 60);
-
-  const hungerReady = round({
-    state: blocked.written,
-    interoception: { hunger: 85, fullness: 0, thirst: 0 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(hungerReady.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-a',
-    text: '身体感受：胃里很空，饥饿感很明显。',
-  }]);
-  assert.deepEqual(hungerReady.written.sessions['session-a'].levels, levels({ hunger: 3 }));
-
-  const hourBlocked = round({
-    state: {
-      lastSessionId: 'session-hour',
-      sessions: {
-        'session-hour': session({
-          hourStartedAt: 60,
-          hourCount: 2,
-          dayStartedAt: 60,
-          dayCount: 2,
-          lastSeenAt: 60,
-        }),
-      },
-    },
-    interoception: { hunger: 0, fullness: 0, thirst: 85 },
-    actions: [{ sessionId: 'session-hour' }],
+  // 2. While still sleeping, sweatDamp resolves (< 65 mm) -> marked stillActive: false in sleepBacklog
+  const sleepingResolved = round({
+    state: sleepingQuiet.written,
+    interoception: { hunger: 70, fullness: 0, thirst: 86, sweatDampMm: 20, sleepinessMm: 95 },
+    sleep: { sleeping: true, sleepStage: 'light' },
+    actions: [{ sessionId: 'session-sleep' }],
     simulatedSeconds: 120,
   });
-  assert.deepEqual(hourBlocked.notifications, []);
-  assert.deepEqual(hourBlocked.written.sessions['session-hour'].levels, levels());
+  assert.deepEqual(sleepingResolved.notifications, []);
+  assert.equal(sleepingResolved.written.sessions['session-sleep'].sleepBacklog.sweatDamp.stillActive, false);
 
-  const dayBlocked = round({
-    state: {
-      lastSessionId: 'session-day',
-      sessions: {
-        'session-day': session({
-          hourStartedAt: 60,
-          hourCount: 0,
-          dayStartedAt: 60,
-          dayCount: 6,
-          lastSeenAt: 60,
-        }),
+  // 3. In deep sleep, 93 mm is STILL suppressed (< 95 mm deep sleep threshold)
+  const deepBlocked = round({
+    state: sleepingResolved.written,
+    interoception: { hunger: 70, fullness: 0, thirst: 86, urinaryUrgency: 93 },
+    sleep: { sleeping: true, sleepStage: 'deep' },
+    actions: [{ sessionId: 'session-sleep' }],
+    simulatedSeconds: 180,
+  });
+  assert.deepEqual(deepBlocked.notifications, []);
+
+  // 4. Crossing raised sleep threshold (96 mm >= 95 mm) triggers important wake + flushes sleepBacklog + resolved episode summary
+  const sleepingImportantWake = round({
+    state: deepBlocked.written,
+    interoception: { hunger: 70, fullness: 0, thirst: 86, urinaryUrgency: 96 },
+    sleep: { sleeping: true, sleepStage: 'deep' },
+    actions: [{ sessionId: 'session-sleep' }],
+    simulatedSeconds: 240,
+  });
+  assert.equal(sleepingImportantWake.notifications.length, 1);
+  assert.equal(sleepingImportantWake.notifications[0].mode, 'wake');
+  assertNoDigits(sleepingImportantWake.notifications);
+  assert.ok(sleepingImportantWake.notifications[0].text.includes('脱离了睡眠状态'));
+  assert.ok(sleepingImportantWake.notifications[0].text.includes('尿意'));
+  assert.ok(sleepingImportantWake.notifications[0].text.includes('口渴'));
+  assert.ok(sleepingImportantWake.notifications[0].text.includes('出过汗'));
+  assert.equal(sleepingImportantWake.written.sessions['session-sleep'].sleepBacklog, undefined);
+
+  // 5. Severe hypotension (< 78 mmHg) triggers emergency startle wake even during deep sleep, overriding normal signals
+  const sleepingHypotension = round({
+    state: sleepingQuiet.written,
+    interoception: { hunger: 70, fullness: 0, palpitationMm: 70 },
+    blood: { systolicMmHg: 74 },
+    sleep: { sleeping: true, sleepStage: 'deep' },
+    actions: [{ sessionId: 'session-sleep' }],
+    simulatedSeconds: 300,
+  });
+  assert.equal(sleepingHypotension.notifications.length, 1);
+  assert.equal(sleepingHypotension.notifications[0].mode, 'wake');
+  assert.ok(sleepingHypotension.notifications[0].text.includes('惊醒'));
+  assert.equal(sleepingHypotension.notifications[0].text.includes('饥饿'), false);
+
+  // 6. Natural wake after sleepingQuiet flushes accumulated sleepBacklog as wake!
+  const awakeAfterSleep = round({
+    state: sleepingQuiet.written,
+    interoception: { hunger: 70, fullness: 0, thirst: 0 },
+    sleep: { sleeping: false, wakeEvent: 'natural' },
+    actions: [{ sessionId: 'session-sleep' }],
+    simulatedSeconds: 360,
+  });
+  assert.equal(awakeAfterSleep.notifications.length, 1);
+  assert.equal(awakeAfterSleep.notifications[0].mode, 'wake');
+  assert.ok(awakeAfterSleep.notifications[0].text.includes('自然睡醒'));
+  assert.ok(awakeAfterSleep.notifications[0].text.includes('饿'));
+});
+
+test('nsfw setting gates sexualArousal, libido, mammaryFullness, orgasm text, and nsfw extensible sensations', (t) => {
+  t.after(() => setWorkerParameterConfig());
+
+  setWorkerParameterConfig({ nsfw: false });
+  const hidden = round({
+    interoception: {
+      hunger: 0,
+      fullness: 0,
+      sexualArousalMm: 90,
+      libidoMm: 90,
+      mammaryFullnessMm: 90,
+      sensations: {
+        'custom.arousal': {
+          intensityMm: 90,
+          nsfw: true,
+          wakeText: '敏感的潮热涌动起来。',
+        },
       },
     },
-    interoception: { hunger: 0, fullness: 0, thirst: 85 },
-    actions: [{ sessionId: 'session-day' }],
-    simulatedSeconds: 120,
+    mammaryGlands: { fullnessMm: 90 },
+    sexualResponse: { phase: 'orgasm' },
+    actions: [{ sessionId: 'session-nsfw' }],
+    simulatedSeconds: 60,
   });
-  assert.deepEqual(dayBlocked.notifications, []);
-  assert.deepEqual(dayBlocked.written.sessions['session-day'].levels, levels());
+  assert.deepEqual(hidden.notifications, []);
+
+  setWorkerParameterConfig({ nsfw: true });
+  const shown = round({
+    interoception: {
+      hunger: 0,
+      fullness: 0,
+      sexualArousalMm: 90,
+      libidoMm: 70,
+      sensations: {
+        'custom.arousal': {
+          intensityMm: 70,
+          nsfw: true,
+          contextText: '特殊部位传来一阵细微酥麻。',
+        },
+      },
+    },
+    mammaryGlands: { fullnessMm: 85 },
+    sexualResponse: { phase: 'orgasm' },
+    actions: [{ sessionId: 'session-nsfw' }],
+    simulatedSeconds: 60,
+  });
+  assert.equal(shown.notifications.length, 1);
+  assert.equal(shown.notifications[0].mode, 'wake');
+  assert.match(shown.notifications[0].text, /刚经历过一阵释放余韵/);
+  assert.match(shown.notifications[0].text, /胸部胀痛沉重得十分明显/);
+  assertNoDigits(shown.notifications);
 });
 
-test('legacy lastKind thirst and lastLevel migrate into the thirst level watermark', () => {
-  const seeded = {
-    lastSessionId: 'session-a',
-    sessions: {
-      'session-a': session({
-        lastSentAt: 60,
-        lastLevel: 3,
-        lastKind: 'thirst',
-        hourStartedAt: 60,
-        hourCount: 1,
-        dayStartedAt: 60,
-        dayCount: 1,
-        lastSeenAt: 60,
-      }),
-    },
-  };
+test('extensible sensations support 3 -> 2 step-down, urgent flag, nsfw gating, and zero digits', (t) => {
+  t.after(() => setWorkerParameterConfig());
+  setWorkerParameterConfig({ nsfw: true });
 
-  const sameLevel = round({
-    state: seeded,
-    interoception: { hunger: 0, fullness: 0, thirst: 85 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(sameLevel.notifications, []);
-  assert.deepEqual(sameLevel.written.sessions['session-a'].levels, levels({ thirst: 3 }));
-  assert.equal(sameLevel.written.sessions['session-a'].lastSentAt, 60);
-
-  const dropped = round({
-    state: sameLevel.written,
-    interoception: { hunger: 0, fullness: 0, thirst: 30 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 46 * MINUTE,
-  });
-  assert.deepEqual(dropped.notifications, []);
-  assert.deepEqual(dropped.written.sessions['session-a'].levels, levels());
-
-  const repeated = round({
-    state: dropped.written,
-    interoception: { hunger: 0, fullness: 0, thirst: 85 },
-    actions: [{ sessionId: 'session-a' }],
-    simulatedSeconds: 60 + 47 * MINUTE,
-  });
-  assert.deepEqual(repeated.notifications, [{
-    mode: 'wake',
-    sessionId: 'session-a',
-    text: '身体感受：很口渴。',
-  }]);
-  assert.deepEqual(repeated.written.sessions['session-a'].levels, levels({ thirst: 3 }));
-  assert.equal(repeated.written.sessions['session-a'].lastSentAt, 60 + 47 * MINUTE);
-});
-
-test('thirst notify state stays JSON-safe across rounds', () => {
-  let state;
-  const rounds = [
-    {
-      interoception: { hunger: 0, fullness: 0, thirst: 65 },
-      actions: [{ sessionId: 'session-a' }],
-      simulatedSeconds: 60,
-    },
-    {
-      interoception: { hunger: 0, fullness: 0, thirst: Number.NaN },
-      actions: [{ sessionId: 'session-a' }],
-      simulatedSeconds: 120,
-    },
-    {
-      interoception: { hunger: 0, fullness: 0, thirst: Number.POSITIVE_INFINITY },
-      actions: [{ sessionId: 'session-b' }],
-      simulatedSeconds: 180,
-    },
-    {
-      interoception: { hunger: 0, fullness: 0, thirst: Number.NEGATIVE_INFINITY },
-      actions: [],
-      simulatedSeconds: 240,
-    },
-    {
-      interoception: { hunger: 0, fullness: 0, thirst: 30 },
-      actions: [{ sessionId: 'session-a' }],
-      simulatedSeconds: 300,
-    },
-  ];
-
-  for (const input of rounds) {
-    const { written } = round({ ...input, state });
-    assertJsonSafe(written);
-    for (const stored of Object.values(written.sessions)) {
-      assert.equal(typeof stored.levels.thirst, 'number', 'thirst level watermark must be present');
-    }
-    assert.deepEqual(JSON.parse(JSON.stringify(written)), written);
-    state = written;
-  }
-});
-
-test('extensible sensations deliver feeling-only context and wake notifications with hysteresis and no numbers', () => {
   const r1 = round({
     interoception: {
       hunger: 0,
@@ -1536,33 +1367,13 @@ test('extensible sensations deliver feeling-only context and wake notifications 
     sessionId: 'session-ext',
     text: '翅膀有些发酸沉重。',
   }]);
-  assert.deepEqual(r1.written.sessions['session-ext'].levels, levels());
   assert.deepEqual(r1.written.sessions['session-ext'].sensationLevels, {
     'wings.wingStrain': 2,
   });
 
+  // Escalate to level 3
   const r2 = round({
     state: r1.written,
-    interoception: {
-      hunger: 0,
-      fullness: 0,
-      thirst: 0,
-      urinaryUrgency: 0,
-      sensations: {
-        'wings.wingStrain': {
-          intensityMm: 75,
-          contextText: '翅膀有些发酸沉重。',
-          wakeText: '翅膀传来强烈的牵拉不适。',
-        },
-      },
-    },
-    actions: [{ sessionId: 'session-ext' }],
-    simulatedSeconds: 60 + 45 * MINUTE,
-  });
-  assert.deepEqual(r2.notifications, []);
-
-  const r3 = round({
-    state: r2.written,
     interoception: {
       hunger: 0,
       fullness: 0,
@@ -1577,19 +1388,94 @@ test('extensible sensations deliver feeling-only context and wake notifications 
       },
     },
     actions: [{ sessionId: 'session-ext' }],
-    simulatedSeconds: 60 + 90 * MINUTE,
+    simulatedSeconds: 60 + 10 * MINUTE,
   });
-  assert.deepEqual(r3.notifications, [{
+  assert.deepEqual(r2.notifications, [{
     mode: 'wake',
     sessionId: 'session-ext',
     text: '翅膀传来强烈的牵拉不适。',
   }]);
-  assert.deepEqual(r3.written.sessions['session-ext'].sensationLevels, {
+  assert.deepEqual(r2.written.sessions['session-ext'].sensationLevels, {
     'wings.wingStrain': 3,
   });
 
-  const r4 = round({
-    state: r3.written,
+  // 3 -> 2 step-down resets urgent backoff and lowers watermark to 2
+  const steppedDown = round({
+    state: r2.written,
+    interoception: {
+      hunger: 0,
+      fullness: 0,
+      thirst: 0,
+      urinaryUrgency: 0,
+      sensations: {
+        'wings.wingStrain': {
+          intensityMm: 70,
+          contextText: '翅膀有些发酸沉重。',
+          wakeText: '翅膀传来强烈的牵拉不适。',
+        },
+      },
+    },
+    actions: [{ sessionId: 'session-ext' }],
+    simulatedSeconds: 60 + 11 * MINUTE,
+  });
+  assert.deepEqual(steppedDown.notifications, []);
+  assert.deepEqual(steppedDown.written.sessions['session-ext'].sensationLevels, {
+    'wings.wingStrain': 2,
+  });
+  assert.equal(steppedDown.written.sessions['session-ext'].urgentBackoffStep, 0);
+
+  // Climbing back to 3 re-triggers wake immediately
+  const reClimbed = round({
+    state: steppedDown.written,
+    interoception: {
+      hunger: 0,
+      fullness: 0,
+      thirst: 0,
+      urinaryUrgency: 0,
+      sensations: {
+        'wings.wingStrain': {
+          intensityMm: 90,
+          contextText: '翅膀有些发酸沉重。',
+          wakeText: '翅膀传来强烈的牵拉不适。',
+        },
+      },
+    },
+    actions: [{ sessionId: 'session-ext' }],
+    simulatedSeconds: 60 + 12 * MINUTE,
+  });
+  assert.deepEqual(reClimbed.notifications, [{
+    mode: 'wake',
+    sessionId: 'session-ext',
+    text: '翅膀传来强烈的牵拉不适。',
+  }]);
+
+  // urgent: true at level 2 triggers wake using wakeText
+  const urgentExt = round({
+    interoception: {
+      hunger: 0,
+      fullness: 0,
+      thirst: 0,
+      urinaryUrgency: 0,
+      sensations: {
+        'gills.dryness': {
+          intensityMm: 70,
+          urgent: true,
+          contextText: '鳃丝略微发干。',
+          wakeText: '鳃丝干涩发紧，急需湿润。',
+        },
+      },
+    },
+    actions: [{ sessionId: 'session-ext-urgent' }],
+    simulatedSeconds: 60,
+  });
+  assert.deepEqual(urgentExt.notifications, [{
+    mode: 'wake',
+    sessionId: 'session-ext-urgent',
+    text: '鳃丝干涩发紧，急需湿润。',
+  }]);
+
+  // Numeric extensible text is sanitized to qualitative fallback
+  const numericSanitized = round({
     interoception: {
       hunger: 0,
       fullness: 0,
@@ -1606,27 +1492,6 @@ test('extensible sensations deliver feeling-only context and wake notifications 
     actions: [{ sessionId: 'session-other' }],
     simulatedSeconds: 120,
   });
-  assert.equal(r4.notifications[0].mode, 'wake');
-  assert.equal(/\d/.test(r4.notifications[0].text), false, 'notification text must never contain numbers');
-
-  const r5 = round({
-    state: r3.written,
-    interoception: {
-      hunger: 0,
-      fullness: 0,
-      thirst: 0,
-      urinaryUrgency: 0,
-      sensations: {
-        'wings.wingStrain': {
-          intensityMm: 20,
-          contextText: '翅膀有些发酸沉重。',
-          wakeText: '翅膀传来强烈的牵拉不适。',
-        },
-      },
-    },
-    actions: [{ sessionId: 'session-ext' }],
-    simulatedSeconds: 60 + 135 * MINUTE,
-  });
-  assert.deepEqual(r5.notifications, []);
-  assert.equal(Object.hasOwn(r5.written.sessions['session-ext'], 'sensationLevels'), false);
+  assert.equal(numericSanitized.notifications[0].mode, 'wake');
+  assertNoDigits(numericSanitized.notifications);
 });

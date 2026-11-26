@@ -73,6 +73,42 @@
       "range": [0, 5000],
       "source": null,
       "note": "核心温度每高于设定点 37°C 1°C 时叠加到通气目标的喘息增益；工程假设，不是实测体温—通气斜率或喘息模型"
+    },
+    {
+      "id": "lungsVentilation.deepSleepFloorFactor",
+      "unit": "1",
+      "value": 0.82,
+      "status": "design",
+      "range": [0.5, 1],
+      "source": null,
+      "note": "深睡期且交感平静时静息通气下限缩放系数；design"
+    },
+    {
+      "id": "lungsVentilation.lightSleepFloorFactor",
+      "unit": "1",
+      "value": 0.9,
+      "status": "design",
+      "range": [0.5, 1],
+      "source": null,
+      "note": "浅睡或 REM 期且交感平静时静息通气下限缩放系数；design"
+    },
+    {
+      "id": "lungsVentilation.sleepSympatheticBypassThresholdMm",
+      "unit": "mm",
+      "value": 20,
+      "status": "design",
+      "range": [0, 80],
+      "source": null,
+      "note": "自主交感张力达到该阈值时退出睡期静息通气下限压低；design"
+    },
+    {
+      "id": "lungsVentilation.sympatheticVentilationGainMlPerMinPerMm",
+      "unit": "mL/(min·mm)",
+      "value": 80,
+      "status": "design",
+      "range": [0, 300],
+      "source": null,
+      "note": "非运动状态下自主交感张力每 1 mm 对应的通气增量（按体重缩放）；design"
     }
   ]
 }

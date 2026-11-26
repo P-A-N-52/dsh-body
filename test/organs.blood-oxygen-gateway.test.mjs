@@ -28,17 +28,18 @@ function silence(t) {
   }
 }
 
-function boot(manifestPath, statePath) {
+function boot(manifestPath, statePath, { defaultNsfw = false } = {}) {
   return startGateway({
     manifestPath,
     statePath,
     port: 0,
     autoTick: false,
     now: () => 0,
+    defaultNsfw,
   });
 }
 
-function createBody(t, { parts = {}, prepare } = {}) {
+function createBody(t, { parts = {}, prepare, defaultNsfw = false } = {}) {
   const base = join(tmpdir(), 'dsh-body');
   mkdirSync(base, { recursive: true });
   const dir = mkdtempSync(join(base, 'oxygen-task4.'));
@@ -55,7 +56,7 @@ function createBody(t, { parts = {}, prepare } = {}) {
     dir,
     statePath,
     async start() {
-      const gateway = boot(manifestPath, statePath);
+      const gateway = boot(manifestPath, statePath, { defaultNsfw });
       gateways.push(gateway);
       await gateway.ready;
       return gateway;
@@ -97,8 +98,15 @@ function prepareLowCapacityManifest(dir) {
 }
 
 test('exercise and sex raise demand and ventilation with SpO2 at baseline from the first activity round', async (t) => {
+  const defaultBody = await createBody(t).start();
+  assert.equal(
+    defaultBody.submitAction({ id: 'sex-blocked', type: 'sex', intensity: 1, durationMin: 10 }).statusCode,
+    403,
+    'sex must be blocked when nsfw defaults to false',
+  );
+
   for (const type of ['exercise', 'sex']) {
-    const body = createBody(t);
+    const body = createBody(t, { defaultNsfw: type === 'sex' });
     const gateway = await body.start();
     assert.equal(
       gateway.submitAction({ id: `${type}-1`, type, intensity: 1, durationMin: 10 }).statusCode,
@@ -248,9 +256,9 @@ test('the root body boots the endocrine parts at baseline and keeps resting dema
   const gateway = await body.start();
   const booted = gateway.getState().parts;
   assert.deepEqual(booted.hypothalamusEndocrine, { trhRelative: 1, crhRelative: 1 });
-  assert.deepEqual(booted.pituitary, { tshRelative: 1, acthRelative: 1, prolactinRelative: 1 });
+  assert.deepEqual(booted.pituitary, { tshRelative: 1, acthPgMl: 12, prolactinNgMl: 8, oxytocinPgMl: 2 });
   assert.deepEqual(booted.thyroid, { thyroxineRelative: 1 });
-  assert.deepEqual(booted.adrenal, { cortisolRelative: 1 });
+  assert.deepEqual(booted.adrenal, { cortisolNmolL: 180 });
   const initialRegionGlycogen = {
     muscleHead: 15,
     muscleTrunk: 135,

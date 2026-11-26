@@ -69,7 +69,15 @@ export function pruneActions(current, nowMs, maxActionRecords, actionRetentionMs
   return { ...current, actions };
 }
 
-export function createActionQueue({ store, now, heartbeatIntervalMs }) {
+const NSFW_ACTIONS = new Set(['sex', 'orgasm', 'express_milk', 'breastfeed']);
+
+export function createActionQueue({
+  store,
+  now,
+  heartbeatIntervalMs,
+  requireBinding = false,
+  isNsfwEnabled = () => false,
+}) {
   const actionHandlers = new Map();
 
   function register(modules) {
@@ -82,7 +90,12 @@ export function createActionQueue({ store, now, heartbeatIntervalMs }) {
   }
 
   function capabilities() {
-    return Object.fromEntries([...actionHandlers].map(([type, ids]) => [type, [...ids]]));
+    const allowNsfw = Boolean(isNsfwEnabled(store.current));
+    return Object.fromEntries(
+      [...actionHandlers]
+        .filter(([type]) => allowNsfw || !NSFW_ACTIONS.has(type))
+        .map(([type, ids]) => [type, [...ids]]),
+    );
   }
 
   function receiptView(record) {
@@ -156,6 +169,18 @@ export function createActionQueue({ store, now, heartbeatIntervalMs }) {
 
     if (!checkpoint.active) {
       return { statusCode: 409, body: { error: 'Body Gateway is paused', active: false } };
+    }
+    if (requireBinding && !checkpoint.boundSessionId) {
+      return {
+        statusCode: 409,
+        body: { error: 'Body Gateway is dormant until bound to a session', dormant: true, boundSessionId: null },
+      };
+    }
+    if (NSFW_ACTIONS.has(action.type) && !isNsfwEnabled(checkpoint)) {
+      return {
+        statusCode: 403,
+        body: { error: `Action ${action.type} is disabled when nsfw is false`, nsfw: false },
+      };
     }
     if (!actionHandlers.has(action.type)) {
       return {

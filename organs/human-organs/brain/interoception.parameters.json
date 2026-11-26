@@ -100,6 +100,249 @@
       "range": [0, 100],
       "source": null,
       "note": "四感受超过该值才产生不适代理；design 舒适区上界，不是疼痛阈值或人体测量"
+    },
+    {
+      "id": "interoception.thermoregulation.setpointC",
+      "unit": "°C",
+      "value": 37,
+      "status": "design",
+      "range": [34, 40],
+      "source": null,
+      "note": "未传入 thermoregulation.setpointC 时的默认体温读出设定点；design"
+    },
+    {
+      "id": "interoception.temperatureReadoutGainMmPerC",
+      "unit": "mm/°C",
+      "value": 50,
+      "status": "design",
+      "range": [1, 200],
+      "source": null,
+      "note": "偏离体温设定点每 1°C 对应的冷/热读出增益；design"
+    },
+    {
+      "id": "interoception.calcium.referenceMgDl",
+      "unit": "mg/dL",
+      "value": 9.5,
+      "status": "design",
+      "range": [7, 12],
+      "source": null,
+      "note": "血钙读出中性基线；design"
+    },
+    {
+      "id": "interoception.calcium.readoutGainMmPerMgDl",
+      "unit": "mm/(mg/dL)",
+      "value": 50,
+      "status": "design",
+      "range": [1, 200],
+      "source": null,
+      "note": "偏离血钙基线每 1 mg/dL 的体感增益；design"
+    },
+    {
+      "id": "interoception.bowelUrgency.referenceStoolG",
+      "unit": "g",
+      "value": 200,
+      "status": "design",
+      "range": [50, 1000],
+      "source": null,
+      "note": "未提供结肠自带便意读数时由粪便质量换算的参考值；design"
+    },
+    {
+      "id": "interoception.hypoglycemia.thresholdMgDl",
+      "unit": "mg/dL",
+      "value": 75,
+      "status": "design",
+      "range": [40, 100],
+      "source": null,
+      "note": "低血糖主观体感读出起点阈值；design"
+    },
+    {
+      "id": "interoception.hypoglycemia.gainMmPerMgDl",
+      "unit": "mm/(mg/dL)",
+      "value": 4,
+      "status": "design",
+      "range": [0, 20],
+      "source": null,
+      "note": "低于低血糖阈值每 1 mg/dL 的体感斜率；design"
+    },
+    {
+      "id": "interoception.palpitation.restHrThresholdPerMin",
+      "unit": "1/min",
+      "value": 115,
+      "status": "design",
+      "range": [80, 180],
+      "source": null,
+      "note": "非中高强度运动状态下静息心率产生心悸感的起点阈值；design"
+    },
+    {
+      "id": "interoception.palpitation.hrGainMmPerBpm",
+      "unit": "mm/(1/min)",
+      "value": 1.5,
+      "status": "design",
+      "range": [0, 10],
+      "source": null,
+      "note": "超过心率起点阈值后每 bpm 的心悸增益；design"
+    },
+    {
+      "id": "interoception.palpitation.minExerciseIntensity",
+      "unit": "1",
+      "value": 0.2,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "豁免生理性运动心动过速（不算异常心悸）的最小运动强度；design"
+    },
+    {
+      "id": "interoception.palpitation.sbpThresholdMmHg",
+      "unit": "mmHg",
+      "value": 95,
+      "status": "design",
+      "range": [60, 120],
+      "source": null,
+      "note": "低血压心慌读出阈值；design"
+    },
+    {
+      "id": "interoception.palpitation.sbpGainMmPerMmHg",
+      "unit": "mm/mmHg",
+      "value": 5,
+      "status": "design",
+      "range": [0, 20],
+      "source": null,
+      "note": "低于低血压阈值每 mmHg 的心慌斜率；design"
+    },
+    {
+      "id": "interoception.palpitation.sympatheticThresholdMm",
+      "unit": "mm",
+      "value": 25,
+      "status": "design",
+      "range": [0, 80],
+      "source": null,
+      "note": "自主交感兴奋诱发静息心悸的门槛（高于 REM 基础波动）；design"
+    },
+    {
+      "id": "interoception.palpitation.sympatheticGain",
+      "unit": "1",
+      "value": 1.2,
+      "status": "design",
+      "range": [0, 5],
+      "source": null,
+      "note": "交感高于门槛时的心悸斜率；design"
+    },
+    {
+      "id": "interoception.stress.sympatheticWeight",
+      "unit": "1",
+      "value": 0.9,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "自主交感张力投射到 stressMm 应激体感的权重；design"
+    },
+    {
+      "id": "interoception.sweatDamp.halfTimeMin",
+      "unit": "min",
+      "value": 20,
+      "status": "design",
+      "range": [1, 120],
+      "source": null,
+      "note": "出汗停下后体表黏腻感回落半衰期；design"
+    },
+    {
+      "id": "interoception.sweatDamp.rateGainMmPerMl",
+      "unit": "mm/(mL/min)",
+      "value": 4,
+      "status": "design",
+      "range": [0, 20],
+      "source": null,
+      "note": "每 mL/min 出汗速率对应的黏腻目标涨幅；design"
+    },
+    {
+      "id": "interoception.muscleFatigue.halfTimeMin",
+      "unit": "min",
+      "value": 30,
+      "status": "design",
+      "range": [1, 240],
+      "source": null,
+      "note": "活动期后肌肉疲劳半衰期；design"
+    },
+    {
+      "id": "interoception.muscleFatigue.exerciseGainMmPerMin",
+      "unit": "mm/min",
+      "value": 2.1,
+      "status": "design",
+      "range": [0, 10],
+      "source": null,
+      "note": "满强度活动每分钟累积疲劳斜率；design"
+    },
+    {
+      "id": "interoception.muscleFatigue.depletionWeight",
+      "unit": "1",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "肌糖原耗竭占比对疲劳基线的托底权重；design"
+    },
+    {
+      "id": "interoception.sleepiness.melatoninWeight",
+      "unit": "1",
+      "value": 0.4,
+      "status": "design",
+      "range": [0, 2],
+      "source": "SRC-BORBELY-2016",
+      "note": "Process C 褪黑素读出在联合困意中的权重（方向参考 Borbély 2016）；design"
+    },
+    {
+      "id": "interoception.sleepiness.pressureWeight",
+      "unit": "1",
+      "value": 0.8,
+      "status": "design",
+      "range": [0, 2],
+      "source": "SRC-BORBELY-2016",
+      "note": "Process S 睡眠压力在联合困意中的权重（方向参考 Borbély 2016）；design"
+    },
+    {
+      "id": "interoception.sleepiness.inertiaWeight",
+      "unit": "1",
+      "value": 0.6,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "醒后残留睡眠惯性叠加到主观困意上的权重；design"
+    },
+    {
+      "id": "interoception.sleepiness.sympatheticSuppressionWeight",
+      "unit": "1",
+      "value": 0.55,
+      "status": "design",
+      "range": [0, 2],
+      "source": "SRC-PHILLIPS-2007",
+      "note": "交感/上行唤醒张力对主观困意的拮抗扣减权重（方向参考 Phillips & Robinson 2007 双稳态开关）；design"
+    },
+    {
+      "id": "interoception.sleepiness.exerciseSuppressionGain",
+      "unit": "mm",
+      "value": 25,
+      "status": "design",
+      "range": [0, 100],
+      "source": "SRC-PHILLIPS-2007",
+      "note": "进行中运动强度对主观困意的额外唤醒扣减；design"
+    },
+    {
+      "id": "interoception.sleepiness.arousalSuppressionWeight",
+      "unit": "1",
+      "value": 0.25,
+      "status": "design",
+      "range": [0, 2],
+      "source": null,
+      "note": "性唤起对当前主观困意的抑制权重；design"
+    },
+    {
+      "id": "interoception.sleepiness.cortisolSuppressionGain",
+      "unit": "mm",
+      "value": 15,
+      "status": "design",
+      "range": [0, 100],
+      "source": null,
+      "note": "明显高于基线的皮质醇觉醒/应激对困意的抑制斜率；design"
     }
   ]
 }

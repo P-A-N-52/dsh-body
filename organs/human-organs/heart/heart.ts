@@ -1,36 +1,31 @@
 /*
- * 心脏泵血薄切片（heart）：按轮初活动与肾上腺皮质醇相对信号合成驱动，写心率、搏出量与
- * 心输出；部位 `heart` 的唯一写者。消费者是 `blood`：下一轮读轮初 `cardiacOutputMlMin`
- * 算氧输送与血压代理。
+ * 心脏泵血薄切片（heart）：按轮初活动、自主神经交感张力（`autonomic.sympatheticMm`）与
+ * 睡眠副交感下调合成驱动，写心率、搏出量与心输出；部位 `heart` 的唯一写者。消费者是 `blood`：
+ * 下一轮读轮初 `cardiacOutputMlMin` 算氧输送与血压代理。
  *
  * 公式（design）：
- *   drive = 1
+ *   sleepBase = sleep.sleeping === true && !startleThisRound
+ *     ? (sleepStage === 'deep' ? 0.78 : 0.86)
+ *     : 1
+ *   effectiveSympatheticMm = startleThisRound
+ *     ? Math.max(autonomic.sympatheticMm, 85)
+ *     : autonomic.sympatheticMm
+ *   drive = sleepBase
  *         + activityGain × intensity（轮初 remainingExerciseMin > 0 时；否则 0）
- *         + catecholamineGain × (adrenal.cortisolRelative − 1)
- *   heartRatePerMin = clamp(restingHeartRatePerMin × drive,
- *                           restingHeartRatePerMin, maxHeartRatePerMin)
+ *         + sympatheticDriveGain × effectiveSympatheticMm
+ *   minHeartRate = (sleep.sleeping === true && !startleThisRound) ? 42 : restingHeartRatePerMin
+ *   heartRatePerMin = clamp(restingHeartRatePerMin × drive, minHeartRate, maxHeartRatePerMin)
  *   preloadFactor = blood 存在时 clamp(blood.bloodVolumeMl / 5000, 0.5, 1.15)；否则 1
  *   strokeVolumeMl = clamp(restingStrokeVolumeMl × (1 + 0.2 × (drive − 1)) × preloadFactor,
  *                          30, 140)
  *   cardiacOutputMlMin = heartRatePerMin × strokeVolumeMl
  *
- * 读轮初 `physicalActivity.remainingExerciseMin` / `intensity`、`adrenal.cortisolRelative`
- * 与 `blood.bloodVolumeMl`。`physicalActivity` 未加载时按无活动（intensity 0）回退；
- * `adrenal` 未加载时按 cortisolRelative = 1 回退；`blood` 未加载时按 preloadFactor = 1 回退。
- * 已加载但字段缺失、非有限、为负或 intensity 超出 [0, 1] 时抛错使本轮失败，不写状态。
- * 皮质醇合法 0 是有效相对信号。本脚本不读 `io.dt`：驱动是轮初快照的瞬时映射，不建心率趋近或恢复动力学。
+ * 清醒静息且无应激时 `sleepBase = 1`、`effectiveSympatheticMm = 0`，保持 70 bpm / 70 mL 静息基线；
+ * 睡眠期间心率生理性下调至 ~55–60 bpm；遭遇紧急惊醒时同轮感知危机并拉高心率与心输出。
+ * 不再借用 `adrenal.cortisolRelative` 充当交感代理。
  *
- * 0.2 的搏出量随 drive 的增益、30–140 mL 搏出量安全钳位及 `preloadFactor`（0.5–1.15）
- * 是本脚本的 design 常量，未列入参数文件；它们只表示模型内相对变化，不是每搏量—交感张力
- * 斜率、Frank-Starling 实测曲线、超声或血流动力学测量。心率钳位只到
- * restingHeartRatePerMin 下限与 maxHeartRatePerMin 上限；drive < 1 时心率停在静息值，
- * 而搏出量仍按公式低于静息值并受 30–140 mL 钳位。不建模心电、瓣膜、心律、后负荷、
- * 运动性高血压或心衰。
- *
- * 证据与未验证：无直接人体来源。静息 70 次/min、最大 180 次/min、搏出 70 mL、1.5 与 0.5
- * 两个增益及 0.2 都是 `design`、`source: null` 的工程占位（参数见同目录
- * `heart.parameters.json`），不是实测心率、每搏量、心输出、MET 或剂量反应；不能称拟合、
- * 实测或 `validated`。输出只含三个有限数字段，JSON-safe；无 transfer、动作或通知。
+ * 证据与未验证：无直接人体来源。全部参数与增益均标 `design`、`source: null`；不建模心电、
+ * 瓣膜、心律、后负荷、运动性高血压或心衰。输出只含三个有限数字段，JSON-safe；无 transfer、动作或通知。
  */
 import {
   getNumericParameterOverride,
@@ -39,8 +34,56 @@ import {
   scaleByBodyWeight,
 } from '../../../lib/parameters.js';
 
+const ACTIVE_WAKING_ACTIONS = new Set([
+  'eat',
+  'drink',
+  'urinate',
+  'defecate',
+  'exercise',
+  'sex',
+  'orgasm',
+  'express_milk',
+  'breastfeed',
+]);
+
+function readPos(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function readNum(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function hasEmergencyCrisis(io: IO): boolean {
+  const bladder = io.read('bladder');
+  if (readPos(bladder?.involuntaryVoidedMl) > 0) return true;
+  const blood = io.read('blood');
+  if (typeof blood?.systolicMmHg === 'number' && Number.isFinite(blood.systolicMmHg) && blood.systolicMmHg < 78) {
+    return true;
+  }
+  const intero = io.read('interoception');
+  if (!intero) return false;
+  if (readNum(intero.dyspneaMm, 0) >= 90) return true;
+  if (readNum(intero.hypoglycemiaMm, 0) >= 85) return true;
+  if (readNum(intero.heatMm, 0) >= 85) return true;
+  if (readNum(intero.coldMm, 0) >= 85) return true;
+  const rawSensations = intero.sensations;
+  if (rawSensations && typeof rawSensations === 'object' && !Array.isArray(rawSensations)) {
+    for (const entry of Object.values(rawSensations as Record<string, unknown>)) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+      const rec = entry as { urgent?: unknown; intensityMm?: unknown };
+      if (rec.urgent === true && typeof rec.intensityMm === 'number' && rec.intensityMm >= 65) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export const id = 'heart';
 export const actionTypes: string[] = [];
+
+type SleepStage = 'awake' | 'light' | 'deep' | 'rem';
 
 type HeartState = {
   heartRatePerMin: number;
@@ -53,8 +96,13 @@ type ActivityReading = {
   intensity?: unknown;
 };
 
-type AdrenalReading = {
-  cortisolRelative?: unknown;
+type AutonomicReading = {
+  sympatheticMm?: unknown;
+};
+
+type SleepReading = {
+  sleeping?: unknown;
+  sleepStage?: unknown;
 };
 
 type BloodReading = {
@@ -72,9 +120,15 @@ const restingStrokeVolumeMl = scaleByBodyWeight(
   'heart.restingStrokeVolumeMl',
 );
 const activityGain = requireParameter(parameters, 'heart.activityGain');
-const catecholamineGain = requireParameter(parameters, 'heart.catecholamineGain');
+void requireParameter(parameters, 'heart.catecholamineGain');
 
-const strokeVolumeGain = 0.2;
+const sympatheticDriveGain = requireParameter(parameters, 'heart.sympatheticDriveGain');
+const startleFloorSympatheticMm = requireParameter(parameters, 'heart.startleFloorSympatheticMm');
+const lightSleepDriveBase = requireParameter(parameters, 'heart.lightSleepDriveBase');
+const deepSleepDriveBase = requireParameter(parameters, 'heart.deepSleepDriveBase');
+const remSleepDriveBase = requireParameter(parameters, 'heart.remSleepDriveBase');
+const minSleepHeartRatePerMin = requireParameter(parameters, 'heart.minSleepHeartRatePerMin');
+const strokeVolumeGain = requireParameter(parameters, 'heart.strokeVolumeGain');
 const referenceBloodVolumeMl = getNumericParameterOverride('blood.referenceBloodVolumeMl')
   ?? scaleByBodyWeight(5000);
 const strokeVolumeRange = { min: scaleByBodyWeight(30), max: scaleByBodyWeight(140) };
@@ -95,8 +149,17 @@ export const fields = {
 type IO = {
   read(id: 'heart'): Readonly<HeartState> | undefined;
   read(id: 'physicalActivity'): Readonly<ActivityReading> | undefined;
-  read(id: 'adrenal'): Readonly<AdrenalReading> | undefined;
-  read(id: 'blood'): Readonly<BloodReading> | undefined;
+  read(id: 'autonomic'): Readonly<AutonomicReading> | undefined;
+  read(id: 'sleep'): Readonly<SleepReading & { sleepPressureMm?: unknown; sleepDurationMin?: unknown }> | undefined;
+  read(id: 'blood'): Readonly<BloodReading & { systolicMmHg?: unknown }> | undefined;
+  read(id: 'pineal'): Readonly<{ melatoninRelative?: unknown }> | undefined;
+  read(id: 'interoception'): Readonly<Record<string, unknown>> | undefined;
+  read(id: 'bladder'): Readonly<Record<string, unknown>> | undefined;
+  read(id: 'colon'): Readonly<Record<string, unknown>> | undefined;
+  read(id: 'uterus'): Readonly<Record<string, unknown>> | undefined;
+  read(id: 'mammaryGlands'): Readonly<Record<string, unknown>> | undefined;
+  readonly dt?: number;
+  readonly actions?: readonly Readonly<{ type?: unknown; reason?: unknown; startle?: unknown }>[];
   write(next: HeartState): void;
 };
 
@@ -127,16 +190,16 @@ function readIntensity(activity: Readonly<ActivityReading> | undefined): number 
   return remainingExerciseMin > 0 ? intensity : 0;
 }
 
-function readCortisolRelative(adrenal: Readonly<AdrenalReading> | undefined): number {
-  if (adrenal === undefined) return 1;
-  const cortisolRelative = requireFinite(
-    adrenal.cortisolRelative,
-    'adrenal.cortisolRelative',
+function readSympatheticMm(autonomic: Readonly<AutonomicReading> | undefined): number {
+  if (autonomic === undefined) return 0;
+  const sympatheticMm = requireFinite(
+    autonomic.sympatheticMm,
+    'autonomic.sympatheticMm',
   );
-  if (cortisolRelative < 0) {
-    throw new Error('heart: adrenal.cortisolRelative must not be negative');
+  if (sympatheticMm < 0) {
+    throw new Error('heart: autonomic.sympatheticMm must not be negative');
   }
-  return cortisolRelative;
+  return clamp(sympatheticMm, 0, 100);
 }
 
 function readPreloadFactor(blood: Readonly<BloodReading> | undefined): number {
@@ -152,17 +215,67 @@ function readPreloadFactor(blood: Readonly<BloodReading> | undefined): number {
   );
 }
 
+function readSleepStage(sleep: Readonly<SleepReading> | undefined): SleepStage {
+  if (sleep?.sleeping !== true) return 'awake';
+  if (sleep.sleepStage === 'light' || sleep.sleepStage === 'deep' || sleep.sleepStage === 'rem') {
+    return sleep.sleepStage;
+  }
+  return 'light';
+}
+
 export function heartbeat(io: IO): void {
   const intensity = readIntensity(io.read('physicalActivity'));
-  const cortisolRelative = readCortisolRelative(io.read('adrenal'));
+  const sympatheticMm = readSympatheticMm(io.read('autonomic'));
   const preloadFactor = readPreloadFactor(io.read('blood'));
+  const sleep = io.read('sleep');
+  const sleeping = sleep?.sleeping === true;
+  const sleepStage = readSleepStage(sleep);
 
-  const drive = 1
-    + activityGain * intensity
-    + catecholamineGain * (cortisolRelative - 1);
+  const actions = io.actions ?? [];
+  let finalIntent: 'sleep' | 'wake' | null = null;
+  let explicitStartleRequested = false;
+  for (const action of actions) {
+    const type = action?.type;
+    if (type === 'sleep') {
+      finalIntent = 'sleep';
+    } else if (type === 'wake_up') {
+      finalIntent = 'wake';
+      if (action?.startle === true) explicitStartleRequested = true;
+    } else if (typeof type === 'string' && ACTIVE_WAKING_ACTIONS.has(type)) {
+      finalIntent = 'wake';
+    }
+  }
+  const startleThisRound = sleeping && (explicitStartleRequested || hasEmergencyCrisis(io));
+  const wakingThisRound = startleThisRound || (sleeping && finalIntent === 'wake');
+
+  const effectiveSleep = sleeping
+    ? !wakingThisRound
+    : finalIntent === 'sleep';
+  const effectiveSleepStage = effectiveSleep
+    ? (sleeping ? sleepStage : 'light')
+    : 'awake';
+  const sleepBase = !effectiveSleep
+    ? 1
+    : effectiveSleepStage === 'deep'
+      ? deepSleepDriveBase
+      : effectiveSleepStage === 'rem'
+        ? remSleepDriveBase
+        : lightSleepDriveBase;
+  const effectiveSympatheticMm = startleThisRound
+    ? Math.max(sympatheticMm, startleFloorSympatheticMm)
+    : sympatheticMm;
+
+  const extraDrive = Math.max(
+    activityGain * intensity,
+    sympatheticDriveGain * effectiveSympatheticMm,
+  );
+  const drive = sleepBase + extraDrive;
+  const minHr = effectiveSleep
+    ? Math.min(restingHeartRatePerMin, minSleepHeartRatePerMin)
+    : restingHeartRatePerMin;
   const heartRatePerMin = clamp(
     restingHeartRatePerMin * drive,
-    restingHeartRatePerMin,
+    minHr,
     maxHeartRatePerMin,
   );
   const strokeVolumeMl = clamp(

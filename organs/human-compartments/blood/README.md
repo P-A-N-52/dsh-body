@@ -2,9 +2,9 @@
 
 **功能标签：** 循环（血液隔室薄切片，不是解剖器官）。
 
-`blood/` 目前只有一个部位 `blood`，脚本为 [`blood.ts`](blood.ts)，没有动作、通知或 `transfer`，也不写其他部位。它从轮初 `heart.cardiacOutputMlMin` 与 `bloodOxygen.spo2Percent` 写出心输出读数、氧输送读数、循环最大氧输送能力、血压代理与肾滤过代理；`bloodVolumeMl` 在 `bodyFluid` 存在时按 `clamp(referenceBloodVolumeMl × bodyFluid.waterVolumeMl / 30000, 2500, 6000)` 耦合，未加载 `bodyFluid` 时原样带出轮初自身状态。消费者是 `bloodOxygen`（能力上限）、`heart`（读 `bloodVolumeMl` 算前负荷因子 `preloadFactor`）、`kidney`（GFR 缩放尿量）与 `hypothalamusAdh`（血容量驱动）以及 `body_state` / `GET /state` 的七个读数。本切片不建血管分区、微循环、血细胞/血红蛋白、CO2/酸碱、出血/输血动力学或血压分级诊断。
+`blood/` 目前只有一个部位 `blood`，脚本为 [`blood.ts`](blood.ts)，没有动作、通知或 `transfer`，也不写其他部位。它从轮初 `heart.cardiacOutputMlMin` 与 `bloodOxygen.spo2Percent` 写出心输出读数、氧输送读数、循环最大氧输送能力、血压代理与肾滤过代理；`bloodVolumeMl` 在 `bodyFluid` 存在时按 `clamp(referenceBloodVolumeMl × bodyFluid.waterVolumeMl / 30000, 2500, 6000)` 耦合，未加载 `bodyFluid` 时原样带出轮初自身状态。消费者是 `bloodOxygen`（能力上限）、`heart`（读 `bloodVolumeMl` 算前负荷因子 `preloadFactor`）、`kidney`（GFR 缩放尿量）与 `hypothalamusAdh`（血容量驱动）、`interoception`（软读 `systolicMmHg` 协同心率合成 `palpitationMm`，进入纯定性 `body_state` 与 `brainNotify`；`systolicMmHg < 78` 时触发高危紧急 `wake`），以及 `GET /state` / `gateway.getState()` 的七个数值读数。本切片不建血管分区、微循环、血细胞/血红蛋白、CO2/酸碱、出血/输血动力学或血压分级诊断。
 
-实现状态：脚本、参数 [`blood.parameters.json`](blood.parameters.json) 与模块测试 [`test/organs.blood.test.mjs`](../../../test/organs.blood.test.mjs) 已落地；当前根清单为 38 部位、34 份唯一参数文件，女性清单 41 部位、37 份，男性清单 40 部位、36 份。硬闭包为根与男性 15 部位、女性 17 部位，本切片不新增 `transfer`。真实 Gateway 集成测试见 [`test/organs.circulation-gateway.test.mjs`](../../../test/organs.circulation-gateway.test.mjs)。全部参数是 `design`、`source: null`，未做实测血容量/血压/心输出/氧输送/GFR、独立人体数据、真实 DSH 会话或临床验证。
+实现状态：脚本、参数 [`blood.parameters.json`](blood.parameters.json) 与模块测试 [`test/organs.blood.test.mjs`](../../../test/organs.blood.test.mjs) 已落地；当前根清单为 39 部位、35 份唯一参数文件，女性清单 42 部位、38 份，男性清单 41 部位、37 份。硬闭包为根与男性 15 部位、女性 17 部位，本切片不新增 `transfer`。真实 Gateway 集成测试见 [`test/organs.circulation-gateway.test.mjs`](../../../test/organs.circulation-gateway.test.mjs)。全部参数是 `design`、`source: null`，未做实测血容量/血压/心输出/氧输送/GFR、独立人体数据、真实 DSH 会话或临床验证。
 
 ## 1. 脚本与读写关系
 
@@ -82,7 +82,8 @@ bloodOxygen.spo2Percent ──┘    │
                                ├─► heart.bloodVolumeMl（前负荷因子 preloadFactor）
                                ├─► kidney.gfrMlMin（产尿请求 × gfr/100）
                                ├─► hypothalamusAdh.bloodVolumeMl（目标 + volumeGain × (1 − V/5000)）
-                               └─► body_state / GET /state 的七个读数
+                               ├─► interoception.palpitationMm（结合心率合成心悸/低血压体感，进 body_state 与 brainNotify）
+                               └─► GET /state / gateway.getState() 的七个数值读数
 ```
 
 - `bloodOxygen` 的组织供氧上限取 `min(肺泡通气能力, blood.maxOxygenDeliveryMlPerMin)`；两者都未加载时按需氧全额供给。

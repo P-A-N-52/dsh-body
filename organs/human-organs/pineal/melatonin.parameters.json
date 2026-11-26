@@ -37,6 +37,60 @@
       "range": [1, 48],
       "source": null,
       "note": "曲线周期；固定 24 h 是 design 假设，未建自由运行周期或时差"
+    },
+    {
+      "id": "pineal.phaseShiftHours",
+      "unit": "h",
+      "value": 0,
+      "status": "design",
+      "range": [-12, 12],
+      "source": null,
+      "note": "昼夜时钟相对本地钟点的相位偏移（小时）；0 表示对齐本地时钟，design，不是实测时型分布"
+    },
+    {
+      "id": "pineal.photicHalfMaxLux",
+      "unit": "lx",
+      "value": 100,
+      "status": "design",
+      "range": [10, 2000],
+      "source": "SRC-ZEITZER-2000",
+      "note": "产生半数夜间褪黑素抑制的照度锚点；参考 Zeitzer 2000 摘要中昏暗室内光 ~100 lx 可触发约半数最大响应（相比 ~9000 lx 强光），具体 logistic 代理形态为 design"
+    },
+    {
+      "id": "pineal.awakeNightRoomLux",
+      "unit": "lx",
+      "value": 120,
+      "status": "design",
+      "range": [0, 1000],
+      "source": null,
+      "note": "生物夜清醒活跃时的默认室内人工照度代理；闭眼入睡时撤除，design，不是实测环境光"
+    },
+    {
+      "id": "pineal.daylightPeakLux",
+      "unit": "lx",
+      "value": 1000,
+      "status": "design",
+      "range": [100, 10000],
+      "source": null,
+      "note": "当地正午日光环境照度代理峰值；design，不是室外直射太阳实测照度"
+    },
+    {
+      "id": "pineal.eyelidTransmittance",
+      "unit": "1",
+      "value": 0.05,
+      "status": "design",
+      "range": [0, 1],
+      "source": null,
+      "note": "闭眼睡眠时眼睑与遮光环境下的等效透光比例；夜间环境本身无日光故为 0 lx，design"
+    },
+    {
+      "id": "pineal.responseHalfTimeMin",
+      "unit": "min",
+      "value": 39.4,
+      "status": "design",
+      "range": [0.1, 180],
+      "source": null,
+      "note": "环境光或睡眠开关切换后褪黑素相对水平一阶响应半衰期（量级参考成人静脉褪黑素清除 39.4 min，仍标 design）；不是内源全血浆实测拟合"
     }
   ]
 }

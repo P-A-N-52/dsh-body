@@ -11,16 +11,42 @@ import {
 } from '../organs/human-organs/pancreas/insulin.ts';
 
 const referenceGlucoseMgDl = 90;
-const halfTimeMin = 10;
-const maxRelative = 5;
-const oneMinuteRetention = 2 ** (-1 / halfTimeMin);
+const basalPmolL = 60;
+const glucoseGain = 0.085;
+const clearanceKmPmolL = 3890;
+const clearanceVmaxPmolLPerMin = 274;
+const maxInsulinPmolL = 900;
+const basalSecretion = (clearanceVmaxPmolLPerMin * basalPmolL) / (clearanceKmPmolL + basalPmolL);
+const glucagonHypoThresholdMgDl = 68;
 const glucagonHalfTimeMin = 10;
 const glucagonMaxRelative = 5;
 const glucagonGainPerMgDl = 0.02;
+const glucagonCounterregGainPerMgDl = 0.06;
+const oneMinuteRetention = 2 ** (-1 / glucagonHalfTimeMin);
 
 function glucagonTargetAt(concentrationMgDl) {
-  const raw = 1 + glucagonGainPerMgDl * (referenceGlucoseMgDl - concentrationMgDl);
+  const deepDrop = Math.max(0, glucagonHypoThresholdMgDl - concentrationMgDl);
+  const raw = 1
+    + glucagonGainPerMgDl * (referenceGlucoseMgDl - concentrationMgDl)
+    + glucagonCounterregGainPerMgDl * deepDrop;
   return Math.min(glucagonMaxRelative, Math.max(0, raw));
+}
+
+function integrateExpectedInsulin(startPmolL, glucoseMgDl, dtMin) {
+  if (dtMin <= 0) return Math.min(maxInsulinPmolL, Math.max(0, startPmolL));
+  const secretion = glucoseMgDl >= referenceGlucoseMgDl
+    ? basalSecretion + glucoseGain * (glucoseMgDl - referenceGlucoseMgDl)
+    : Math.max(0, basalSecretion * Math.max(0, (glucoseMgDl - 45) / (referenceGlucoseMgDl - 45)));
+  const steps = Math.max(1, Math.min(480, Math.ceil(dtMin / 0.5)));
+  const h = dtMin / steps;
+  let c = Math.min(maxInsulinPmolL, Math.max(0, startPmolL));
+  const dCdt = (val) => secretion - (clearanceVmaxPmolLPerMin * val) / (clearanceKmPmolL + val);
+  for (let i = 0; i < steps; i++) {
+    const k1 = dCdt(c);
+    const mid = Math.min(maxInsulinPmolL, Math.max(0, c + h * k1));
+    c = Math.min(maxInsulinPmolL, Math.max(0, c + 0.5 * h * (k1 + dCdt(mid))));
+  }
+  return c;
 }
 
 function glucoseAt(concentrationMgDl) {
@@ -32,7 +58,7 @@ function glucoseAt(concentrationMgDl) {
 }
 
 function round(state, { glucose, dt = 60, actions = [], writes = [], transfers = [] } = {}) {
-  const pancreas = { insulinRelative: 1, glucagonRelative: 1, ...state };
+  const pancreas = { insulinPmolL: basalPmolL, glucagonRelative: 1, ...state };
   heartbeat({
     read: (partId) => {
       if (partId === 'pancreasEndocrine') return pancreas;
@@ -60,21 +86,21 @@ test('pancreas exports the endocrine contract without actions or transfers', () 
   assert.equal(typeof heartbeat, 'function');
   assert.deepEqual(actionTypes, []);
   assert.deepEqual(fields, {
-    insulinRelative: { unit: '1', mode: 'absolute' },
+    insulinPmolL: { unit: 'pmol/L', mode: 'absolute' },
     glucagonRelative: { unit: '1', mode: 'absolute' },
   });
-  assert.deepEqual(initialState, { insulinRelative: 1, glucagonRelative: 1 });
+  assert.deepEqual(initialState, { insulinPmolL: 60, glucagonRelative: 1 });
 
   const transfers = [];
-  const withActions = round({ insulinRelative: 1 }, {
+  const withActions = round({ insulinPmolL: 60 }, {
     glucose: glucoseAt(140),
     actions: [{ type: 'eat', energyKcal: 100 }, { type: 'drink', volumeMl: 240 }],
     transfers,
   });
-  const withoutActions = round({ insulinRelative: 1 }, { glucose: glucoseAt(140) });
+  const withoutActions = round({ insulinPmolL: 60 }, { glucose: glucoseAt(140) });
   assert.deepEqual(withActions, withoutActions);
   assert.deepEqual(transfers, []);
-  assert.deepEqual(Object.keys(withActions), ['insulinRelative', 'glucagonRelative']);
+  assert.deepEqual(Object.keys(withActions), ['insulinPmolL', 'glucagonRelative']);
 });
 
 test('pancreas parameter defaults match the design', () => {
@@ -83,76 +109,60 @@ test('pancreas parameter defaults match the design', () => {
   );
   assert.deepEqual(values, {
     'pancreasEndocrine.referenceGlucoseMgDl': 90,
-    'pancreasEndocrine.insulin.glucoseGainPerMgDl': 0.02,
-    'pancreasEndocrine.insulin.responseHalfTimeMin': 10,
-    'pancreasEndocrine.insulin.maxRelative': 5,
+    'pancreasEndocrine.insulin.basalPmolL': 60,
+    'pancreasEndocrine.insulin.glucoseGainPmolLPerMinPerMgDl': 0.085,
+    'pancreasEndocrine.insulin.clearanceKmPmolL': 3890,
+    'pancreasEndocrine.insulin.clearanceVmaxPmolLPerMin': 274,
+    'pancreasEndocrine.insulin.maxPmolL': 900,
+    'pancreasEndocrine.glucagon.hypoglycemiaThresholdMgDl': 68,
     'pancreasEndocrine.glucagon.glucoseGainPerMgDl': 0.02,
+    'pancreasEndocrine.glucagon.counterregGainPerMgDl': 0.06,
     'pancreasEndocrine.glucagon.responseHalfTimeMin': 10,
     'pancreasEndocrine.glucagon.maxRelative': 5,
   });
 });
 
-test('the 90 mg/dL baseline with insulinRelative 1 stays exactly 1', () => {
-  const next = round({ insulinRelative: 1 }, { glucose: glucoseAt(referenceGlucoseMgDl) });
-  assert.deepEqual(next, { insulinRelative: 1, glucagonRelative: 1 });
+test('the 90 mg/dL baseline with insulinPmolL 60 stays at baseline', () => {
+  const next = round({ insulinPmolL: 60 }, { glucose: glucoseAt(referenceGlucoseMgDl) });
+  assertClose(next.insulinPmolL, 60, 'baseline fixed point');
+  assert.equal(next.glucagonRelative, 1);
 });
 
-test('one 60 s round moves insulinRelative toward the glucose target', () => {
+test('one 60 s round moves insulinPmolL smoothly under saturable clearance', () => {
   const cases = [
-    { label: 'G=140 target 2', glucoseMgDl: 140, expected: 2 - oneMinuteRetention },
-    { label: 'G=70 target 0.6', glucoseMgDl: 70, expected: 0.6 + 0.4 * oneMinuteRetention },
-    { label: 'G=0 target 0', glucoseMgDl: 0, expected: oneMinuteRetention },
-    {
-      label: 'G=400 clamps target at 5',
-      glucoseMgDl: 400,
-      expected: maxRelative - (maxRelative - 1) * oneMinuteRetention,
-    },
+    { label: 'G=140 raises insulin', glucoseMgDl: 140 },
+    { label: 'G=70 suppresses insulin secretion', glucoseMgDl: 70 },
+    { label: 'G=0 drops toward zero secretion clearance', glucoseMgDl: 0 },
+    { label: 'G=400 stays bounded <= maxInsulinPmolL', glucoseMgDl: 400 },
   ];
 
-  for (const { label, glucoseMgDl, expected } of cases) {
-    const next = round({ insulinRelative: 1 }, { glucose: glucoseAt(glucoseMgDl) });
-    assertClose(next.insulinRelative, expected, label);
+  for (const { label, glucoseMgDl } of cases) {
+    const next = round({ insulinPmolL: 60 }, { glucose: glucoseAt(glucoseMgDl) });
+    assertClose(next.insulinPmolL, integrateExpectedInsulin(60, glucoseMgDl, 1), label);
   }
+  assert.ok(round({ insulinPmolL: 60 }, { glucose: glucoseAt(140) }).insulinPmolL > 60);
+  assert.ok(round({ insulinPmolL: 60 }, { glucose: glucoseAt(40) }).insulinPmolL < 60);
 });
 
-test('insulin approaches 2, 0.6, 0 and the 5 ceiling for the same readings', () => {
-  const cases = [
-    { glucoseMgDl: 140, target: 2 },
-    { glucoseMgDl: 70, target: 0.6 },
-    { glucoseMgDl: 0, target: 0 },
-    { glucoseMgDl: 400, target: maxRelative },
-  ];
-
-  for (const { glucoseMgDl, target } of cases) {
-    let state = { insulinRelative: 1 };
-    for (let index = 0; index < 400; index++) {
-      state = round(state, { glucose: glucoseAt(glucoseMgDl) });
-    }
-    assertClose(state.insulinRelative, target, `G=${glucoseMgDl} target`, 1e-9);
+test('insulin responds dose-dependently across hyperglycemia, hypoglycemia, and clamps at 900 pmol/L', () => {
+  let mild = { insulinPmolL: 60 };
+  let extreme = { insulinPmolL: 60 };
+  let hypo = { insulinPmolL: 60 };
+  for (let index = 0; index < 240; index++) {
+    mild = round(mild, { glucose: glucoseAt(140) });
+    extreme = round(extreme, { glucose: glucoseAt(800) });
+    hypo = round(hypo, { glucose: glucoseAt(40) });
   }
+  assert.ok(mild.insulinPmolL > 100 && mild.insulinPmolL < 400);
+  assert.equal(extreme.insulinPmolL, maxInsulinPmolL);
+  assert.ok(hypo.insulinPmolL < 5);
+
+  const legacyState = round({ insulinRelative: 2 }, { glucose: glucoseAt(90), dt: 0 });
+  assert.equal(legacyState.insulinPmolL, 120, 'legacy relative checkpoints scale by basal 60 pmol/L');
 });
 
-test('insulin closes half the gap to its target every 10 minutes', () => {
-  let state = { insulinRelative: 0 };
-  for (let index = 0; index < 10; index++) {
-    state = round(state, { glucose: glucoseAt(referenceGlucoseMgDl) });
-  }
-  assertClose(state.insulinRelative, 0.5, '0 -> 1 after 10 minutes');
-
-  let high = { insulinRelative: 0 };
-  for (let index = 0; index < 10; index++) {
-    high = round(high, { glucose: glucoseAt(140) });
-  }
-  assertClose(high.insulinRelative, 1, '0 -> 2 after 10 minutes');
-});
-
-test('the response uses io.dt instead of a fixed 60 s round', () => {
-  const next = round({ insulinRelative: 0 }, { glucose: glucoseAt(referenceGlucoseMgDl), dt: 120 });
-  assertClose(next.insulinRelative, 1 - 2 ** (-2 / halfTimeMin), 'two minute round');
-});
-
-test('glucagonRelative rises above 1 as glucose falls below 90 mg/dL', () => {
-  const at70 = round({ insulinRelative: 1 }, { glucose: glucoseAt(70) });
+test('glucagonRelative rises above 1 below 90 mg/dL and adds counterregulation below 68 mg/dL', () => {
+  const at70 = round({ insulinPmolL: 60 }, { glucose: glucoseAt(70) });
   assert.ok(at70.glucagonRelative > 1, 'G=70 must raise glucagon above 1');
   assertClose(
     at70.glucagonRelative,
@@ -160,24 +170,24 @@ test('glucagonRelative rises above 1 as glucose falls below 90 mg/dL', () => {
     'G=70 first round',
   );
 
-  const at60 = round({ insulinRelative: 1 }, { glucose: glucoseAt(60) });
+  const at60 = round({ insulinPmolL: 60 }, { glucose: glucoseAt(60) });
   assert.ok(
     at60.glucagonRelative > at70.glucagonRelative,
-    'deeper hypoglycemia must raise glucagon further',
+    'hypoglycemia below 68 triggers steeper glucagon counterregulation',
   );
 
-  let steady70 = { insulinRelative: 1 };
-  let steady60 = { insulinRelative: 1 };
+  let steady70 = { insulinPmolL: 60 };
+  let steady60 = { insulinPmolL: 60 };
   for (let index = 0; index < 400; index++) {
     steady70 = round(steady70, { glucose: glucoseAt(70) });
     steady60 = round(steady60, { glucose: glucoseAt(60) });
   }
   assertClose(steady70.glucagonRelative, 1.4, 'G=70 steady state', 1e-9);
-  assertClose(steady60.glucagonRelative, 1.6, 'G=60 steady state', 1e-9);
+  assertClose(steady60.glucagonRelative, 2.08, 'G=60 steady state with counterregulation', 1e-9);
 });
 
 test('glucagonRelative falls below 1 at G = 110 and stays exactly 1 at G = 90', () => {
-  const suppressed = round({ insulinRelative: 1 }, { glucose: glucoseAt(110) });
+  const suppressed = round({ insulinPmolL: 60 }, { glucose: glucoseAt(110) });
   assert.ok(suppressed.glucagonRelative < 1, 'G=110 must suppress glucagon below 1');
   assertClose(
     suppressed.glucagonRelative,
@@ -185,15 +195,13 @@ test('glucagonRelative falls below 1 at G = 110 and stays exactly 1 at G = 90', 
     'G=110 first round',
   );
 
-  const baseline = round({ insulinRelative: 1 }, { glucose: glucoseAt(referenceGlucoseMgDl) });
+  const baseline = round({ insulinPmolL: 60 }, { glucose: glucoseAt(referenceGlucoseMgDl) });
   assert.equal(baseline.glucagonRelative, 1);
 });
 
 test('glucagonRelative stays within its 0..5 clamp', () => {
-  // 非负 G 下目标最高来自 G=0 的 2.8，5 倍上限无法由合法读数触发；
-  // 这里验证下限逐位到 0、可达上限与声明边界一致。
-  let high = { insulinRelative: 1 };
-  let severe = { insulinRelative: 1 };
+  let high = { insulinPmolL: 60 };
+  let severe = { insulinPmolL: 60 };
   for (let index = 0; index < 400; index++) {
     high = round(high, { glucose: glucoseAt(140) });
     severe = round(severe, { glucose: glucoseAt(400) });
@@ -201,47 +209,40 @@ test('glucagonRelative stays within its 0..5 clamp', () => {
   assertClose(high.glucagonRelative, 0, 'G=140 floors the target at 0', 1e-9);
   assertClose(severe.glucagonRelative, 0, 'G=400 floors the target at 0', 1e-9);
 
-  let low = { insulinRelative: 1 };
+  let low = { insulinPmolL: 60 };
   for (let index = 0; index < 400; index++) {
     low = round(low, { glucose: glucoseAt(0) });
   }
-  assertClose(low.glucagonRelative, 2.8, 'G=0 reaches the highest target available', 1e-9);
-  assert.ok(low.glucagonRelative <= glucagonMaxRelative);
+  assertClose(low.glucagonRelative, glucagonMaxRelative, 'G=0 clamps counterregulatory glucagon at 5', 1e-9);
 });
 
-test('glucagon closes half the gap to its target every 10 minutes', () => {
-  let low = { insulinRelative: 1 };
+test('glucagon closes half the gap to its target every 10 minutes and scales insulin by dt', () => {
+  let low = { insulinPmolL: 60 };
   for (let index = 0; index < 10; index++) {
     low = round(low, { glucose: glucoseAt(70) });
   }
   assertClose(low.glucagonRelative, 1.2, '1 -> 1.4 halfway after 10 minutes');
 
-  let baseline = { insulinRelative: 1, glucagonRelative: 0 };
+  let baseline = { insulinPmolL: 60, glucagonRelative: 0 };
   for (let index = 0; index < 10; index++) {
     baseline = round(baseline, { glucose: glucoseAt(referenceGlucoseMgDl) });
   }
   assertClose(baseline.glucagonRelative, 0.5, '0 -> 1 halfway after 10 minutes');
 
   const twoMinutes = round(
-    { insulinRelative: 1, glucagonRelative: 0 },
+    { insulinPmolL: 120, glucagonRelative: 0 },
     { glucose: glucoseAt(referenceGlucoseMgDl), dt: 120 },
   );
-  assertClose(
-    twoMinutes.glucagonRelative,
-    1 - 2 ** (-2 / glucagonHalfTimeMin),
-    'two minute round',
-  );
+  assertClose(twoMinutes.glucagonRelative, 1 - 2 ** (-2 / glucagonHalfTimeMin), 'two minute round');
+  assertClose(twoMinutes.insulinPmolL, integrateExpectedInsulin(120, 90, 2), 'insulin clearance scales with dt');
 });
 
 test('a missing glucose part falls back to the 90 mg/dL reference', () => {
-  assert.deepEqual(round({ insulinRelative: 1 }), { insulinRelative: 1, glucagonRelative: 1 });
+  assertClose(round({ insulinPmolL: 60 }).insulinPmolL, 60, 'baseline stays at 60');
+  assert.equal(round({ insulinPmolL: 60 }).glucagonRelative, 1);
+  assert.ok(round({ insulinPmolL: 30 }).insulinPmolL > 30, 'low insulin recovers toward 60');
   assertClose(
-    round({ insulinRelative: 0.5 }).insulinRelative,
-    1 - 0.5 * oneMinuteRetention,
-    'missing glucose must still move toward the reference target',
-  );
-  assertClose(
-    round({ insulinRelative: 1, glucagonRelative: 0.5 }).glucagonRelative,
+    round({ insulinPmolL: 60, glucagonRelative: 0.5 }).glucagonRelative,
     1 - 0.5 * oneMinuteRetention,
     'missing glucose must move glucagon toward the reference target',
   );
@@ -250,7 +251,7 @@ test('a missing glucose part falls back to the 90 mg/dL reference', () => {
 test('a loaded glucose part missing concentrationMgDl fails the round', () => {
   const writes = [];
   assert.throws(
-    () => round({ insulinRelative: 1 }, {
+    () => round({ insulinPmolL: 60 }, {
       glucose: { glucoseMassG: 12.69, disposedGlucoseG: 0 },
       writes,
     }),
@@ -272,7 +273,7 @@ test('a loaded glucose part with an invalid reading fails the round', () => {
   for (const { label, glucose } of invalid) {
     const writes = [];
     assert.throws(
-      () => round({ insulinRelative: 1 }, { glucose, writes }),
+      () => round({ insulinPmolL: 60 }, { glucose, writes }),
       Error,
       label,
     );
@@ -290,7 +291,7 @@ test('pancreas output is finite and JSON-safe', () => {
   ];
 
   for (const { glucose } of cases) {
-    const written = round({ insulinRelative: 1 }, { glucose });
+    const written = round({ insulinPmolL: 60 }, { glucose });
     for (const [field, value] of Object.entries(written)) {
       assert.ok(Number.isFinite(value), `${field} must be finite`);
     }

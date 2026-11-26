@@ -291,7 +291,7 @@ test('a lagged low delivery readout does not desaturate at activity start', () =
     activity: { remainingExerciseMin: 10, intensity: 1 },
     blood: {
       oxygenDeliveryMlMin: 970,
-      maxOxygenDeliveryMlPerMin: 3666.6,
+      maxOxygenDeliveryMlPerMin: 3177.72,
     },
   }).written;
   assert.deepEqual(active, {
@@ -306,7 +306,7 @@ test('a lagged low delivery readout does not desaturate at activity start', () =
     lungsVentilation: { alveolarO2CapacityMlMin: 9000 },
     blood: {
       oxygenDeliveryMlMin: 970,
-      maxOxygenDeliveryMlPerMin: 3666.6,
+      maxOxygenDeliveryMlPerMin: 3177.72,
     },
   }).written;
   assert.deepEqual(withVentilation, active);
