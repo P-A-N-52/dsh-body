@@ -18,7 +18,7 @@
 
 - `activity.ts` 导出 `actionTypes = ['exercise', 'sex', 'stop_exercise']`；聚合器与区域脚本的 `actionTypes = []`，区域没有动作、通知或主动 transfer。
 - 消费者是 `skin`、`lungs`、三个区域、`bloodOxygen` 与 `interoception`（结合三区糖原亏空输出 `muscleFatigueMm`，并在 `palpitationMm` 中区分运动心率与静止心动过速）的轮初读取；它们与 `physicalActivity` 之间都是普通 `io.read`，不构成 transfer 配对，也不要求同轮提交。
-- `muscleGlucose` 每轮写出 `uptakeRequestG`，供 `glucose` 下一轮结算；实际到账只通过 `uptakeG.transferIn: ['glucose.glucoseMassG']`，并在同一轮按份额 `transferOut` 到已加载区域的 `uptakeG`。正常入口声明三个区域；缺区域变体只声明存在的区域，份额按剩余区域归一。`glucose` 的 `transferOut` 必须声明 `muscleGlucose.uptakeG`，区域必须声明 `muscleGlucose.uptakeG` 为来源，缺任一端在完整清单启动时因配对校验失败。请求字段不是 transfer，不搬质量。
+- `muscleGlucose` 每轮写出 `uptakeRequestG`，供 `glucose` 下一轮结算；实际到账只通过 `uptakeG.transferIn: ['glucose.glucoseMassG']`，在随后一轮按份额 `transferOut` 到已加载区域的 `uptakeG`。正常入口声明三个区域；缺区域变体只声明存在的区域，份额按剩余区域归一。`glucose` 的 `transferOut` 必须声明 `muscleGlucose.uptakeG`，区域必须声明 `muscleGlucose.uptakeG` 为来源，缺任一端在完整清单启动时因配对校验失败。请求字段不是 transfer，不搬质量。
 - 区域可被清单单独启停，但不是子字段：每个区域有自己的状态、字段声明和入口文件。缺区域变体只按现有区域归一，不推断缺失肢体的质量；用法见 [`regions/README.md`](regions/README.md) §5。
 - 本目录脚本都不自动产生 `exercise` / `sex`，也不根据时间、活动量或环境自行开始/停止活动；动作只来自 `body_act`（或通过 `stop_exercise` / `sleep` 中止进行中的活动）。
 
@@ -38,7 +38,7 @@
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
 | `uptakeRequestG` | `g` | 本轮按轮初 `excessMassG` 与 `insulinPmolL` 计算的摄糖请求；不是实际通量，不进入质量账，下一轮由 `glucose` 结算 |
-| `uptakeG` | `g` | 上一轮请求结算后实际到账的肌摄糖（在途），每轮 write 先归 0，只由 `transferIn: ['glucose.glucoseMassG']` 增加；本轮按区域份额转出 |
+| `uptakeG` | `g` | 等待分配的在途肌摄糖；write 保留轮初余额，由 Gateway 按 transfer 扣减，新增质量只由 `transferIn: ['glucose.glucoseMassG']` 入账 |
 
 每个区域另有三个 `absolute` 字段，其中 `uptakeG` 与 `glycogenConsumedG` 初值为 `0`，`glycogenG` 初值按 `300 g × regionShare` 分配（头颈 `15 g`、躯干 `135 g`、四肢 `150 g`）：
 
@@ -117,7 +117,7 @@ activityDemandMlMin = remainingExerciseMin > 0 ? activityGainMlMin × intensity 
 
 ## 6. 肌摄糖聚合器与区域糖原
 
-`muscleGlucose` 是 `glucose-uptake.ts` 维护的摄糖聚合器，位于同一骨骼肌目录；它不再持有肌糖原。聚合器按轮初 `glucose.excessMassG` 与 `pancreasEndocrine.insulinPmolL`、用本部位自己的参数计算摄糖请求，写 `uptakeRequestG`；下一轮由 `glucose` 按请求结算，实际支付经 transfer 进入 `uptakeG`；同一轮再按区域份额经 transfer 转给已加载的区域。区域（`muscleHead` / `muscleTrunk` / `muscleLimbs`）各自持有糖原、按轮初活动消耗；旧档总量由区域在第一轮按份额迁移：默认种子状态用迁移份额取代 300 g 初值，已有真实状态则并入。聚合器和区域都不向血液释放葡萄糖（肌肉无 G6Pase）；释放只由肝发起。
+`muscleGlucose` 是 `glucose-uptake.ts` 维护的摄糖聚合器，位于同一骨骼肌目录；它不再持有肌糖原。聚合器按轮初 `glucose.excessMassG` 与 `pancreasEndocrine.insulinPmolL`、用本部位自己的参数计算摄糖请求，写 `uptakeRequestG`；下一轮由 `glucose` 按请求结算，实际支付经 transfer 进入 `uptakeG`；聚合器随后一轮才按份额将这笔到账量转给已加载的区域。区域（`muscleHead` / `muscleTrunk` / `muscleLimbs`）各自持有糖原、按轮初活动消耗；旧档总量由区域在第一轮按份额迁移：默认种子状态用迁移份额取代 300 g 初值，已有真实状态则并入。聚合器和区域都不向血液释放葡萄糖（肌肉无 G6Pase）；释放只由肝发起。
 
 ### 6.1 脚本、字段与参数
 
@@ -158,10 +158,12 @@ exerciseUptakeG = physicalActivity.remainingExerciseMin > 0
                 : 0
 request = insulinUptakeG + exerciseUptakeG
 uptake = prev.uptakeG
-for region in 已加载区域:
-  amount(region) = uptake × weight(region) / Σ(已加载区域 weight)
-write.uptakeRequestG = request
-write.uptakeG = 0
+write { uptakeRequestG: request, uptakeG: uptake }
+remaining = uptake
+for region in 已加载区域（按 Gateway 完整 transfer 键排序）:
+  amount = 末个区域 ? remaining : min(remaining, uptake × weight(region) / Σ(已加载区域 weight))
+  remaining -= amount
+  if amount > 0: transfer amount 到该区域的 uptakeG
 ```
 
 区域侧（`regions/region-core.ts`）：
@@ -184,7 +186,7 @@ write { uptakeG: 0, glycogenG, glycogenConsumedG: consumed }
 - `I = 1` 时 `response = 1`；`I = 2` 时肌肉 `response = 2`、肝（敏感度 0.5）为 1.5；`I = 0` 时肌肉 `response = 0`。`I` 是低血糖/高血糖方向的相对信号，不是浓度。
 - 请求每轮重写，不是累计量；请求可以大于血池可用量，结算时由 `glucose` 按余额钳位，实际到账记在 `muscleGlucose.uptakeG`。聚合器第一次 write 后不再保留旧 `glycogenG` / `glycogenConsumedG`，也不把请求写进质量账。
 - 份额：正常入口为头 0.05 / 躯干 0.45 / 四肢 0.50；缺区域变体只声明存在的区域，按剩余份额归一（头和躯干为 0.1 / 0.9）。份额是 `design` / `source: null`，不随动作类型或肢体使用变化。
-- 最后一笔区域分配取剩余量，保证各笔之和恰为轮初 `uptakeG`；没有区域时保留 `uptakeG` 作为在途余额。
+- 预算与 [Gateway 结算](../../../gateway/operations.js#L211) 都按完整键 `源.字段->目标.字段` 用 JS `<` / `>` 排序，正常入口依次为头颈、四肢、躯干。末笔支付该顺序下的剩余量，不为浮点尾差放宽源余额校验。同轮新到账不进入本轮预算；零量不发转账，没有区域时保留 `uptakeG` 作为在途余额。
 - `active` 只要求活动部位存在且轮初剩余时间 > 0；`intensity = 0` 时消耗为 0，但剩余时间仍由 `activity.ts` 递减。
 - 不足一分钟的活动不按比例截断：轮初 `remainingExerciseMin = 0.5` 且 `dt = 60` 时仍按整 dt 消耗。
 - 钳位：区域 `consumed` 不超过 `base + uptake`，所以糖原不会为负；`glycogenConsumedG` 是实际消耗，不是请求。
