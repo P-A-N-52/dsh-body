@@ -657,15 +657,22 @@ export function heartbeat(io: IO): void {
     fullnessBaseline,
   );
   const slowThirstMm = clampMm(finiteOr(io.read('hypothalamusThirst')?.thirst, thirstFallbackMm));
+  const roundStartSeconds = io.read()?.simulatedSeconds;
   const stomach = io.read('stomach');
   // A snapshot may retain a removed provider's state. Only use the preceding round's intake.
   const deliveredWaterMl = isFiniteNumber(stomach?.lastIntakeAt)
-    && stomach.lastIntakeAt === io.read()?.simulatedSeconds
+    && stomach.lastIntakeAt === roundStartSeconds
     ? Math.max(0, finiteOr(stomach.deliveredWaterMl, 0))
     : 0;
-  const prevRelief = clamp(finiteOr(prevInteroception?.oralThirstReliefFraction, 0), 0, 1);
+  const projectedAt = prevInteroception?.thirstProjectionAtSimulatedSeconds;
+  const gapMin = isFiniteNumber(projectedAt) && projectedAt >= 0
+    && isFiniteNumber(roundStartSeconds) && projectedAt < roundStartSeconds
+    ? (roundStartSeconds - projectedAt) / 60
+    : 0;
+  const roundStartRelief = clamp(finiteOr(prevInteroception?.oralThirstReliefFraction, 0), 0, 1)
+    * Math.pow(0.5, gapMin / oralReliefHalfTimeMin);
   const doseFraction = -Math.expm1(-Math.LN2 * deliveredWaterMl / oralReliefHalfDoseMl);
-  const oralThirstReliefFraction = (prevRelief + (1 - prevRelief) * doseFraction)
+  const oralThirstReliefFraction = (roundStartRelief + (1 - roundStartRelief) * doseFraction)
     * Math.pow(0.5, dtMin / oralReliefHalfTimeMin);
   const thirst = slowThirstMm * (1 - oralThirstReliefFraction);
   const bladderVolume = Math.max(0, finiteOr(io.read('bladder')?.volumeMl, 0));

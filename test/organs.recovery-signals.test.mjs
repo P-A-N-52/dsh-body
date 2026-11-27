@@ -160,7 +160,7 @@ test('equal-dose instant and paced drinks use only each settled slice, including
   }
 });
 
-test('body_state prefers only the current committed thirst projection when the producer is removed', async (t) => {
+test('body_state rejects a frozen thirst projection and resumes without stale relief', async (t) => {
   const drinking = await launchThirst(t, { parts: {
     bodyFluid: { waterVolumeMl: 28_400, waterDeficit: 1 },
     hypothalamusThirst: { thirst: 30 },
@@ -178,7 +178,12 @@ test('body_state prefers only the current committed thirst projection when the p
   const frozen = await advance(drinking, 2);
   assert.equal(await thirstBand(drinking), 'mild');
   const projectedAt = drinking.gateway.getState().simulatedSeconds;
+  assert.equal(projectedAt, 180);
   await drinking.gateway.stop();
+  const continuous = await launch(t, {
+    seed: drinking.state(),
+    gatewayOptions: { manifestPath, now: () => 0 },
+  });
 
   // Keep the actual body and water chain, changing just the manifest that supplied the projection.
   const rootManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
@@ -203,6 +208,25 @@ test('body_state prefers only the current committed thirst projection when the p
     `${projectedAt}s projection (${frozen.interoception.thirst} mm) must not mask slow thirst (${later.hypothalamusThirst.thirst} mm) at ${projectedAt + 900}s`);
   assert.equal(legacyBand, 'mild', 'a save with numeric relief but no timestamp keeps the old fallback');
   assert.equal(frozen.interoception.thirstProjectionAtSimulatedSeconds, projectedAt);
+  assert.equal(later.stomach.deliveredWaterMl, 0);
+
+  await restarted.gateway.stop();
+  const reenabled = await launchThirst(t, { statePath: restarted.statePath });
+  const resumed = await advance(reenabled);
+  const reference = await advance(continuous, 16);
+  const { simulatedSeconds } = reenabled.gateway.getState();
+  assert.equal(simulatedSeconds, 1140);
+  assert.equal(continuous.gateway.getState().simulatedSeconds, simulatedSeconds);
+  assert.deepEqual(resumed.hypothalamusThirst, reference.hypothalamusThirst);
+  assert.equal(resumed.stomach.deliveredWaterMl, 0);
+  assert.equal(reference.stomach.deliveredWaterMl, 0);
+
+  const { oralThirstReliefFraction: r, thirst } = resumed.interoception;
+  const { oralThirstReliefFraction: controlR, thirst: controlThirst } = reference.interoception;
+  assert.ok(Math.abs(r - controlR) < 1e-12 && Math.abs(thirst - controlThirst) < 1e-9,
+    `${simulatedSeconds}s: R=${r.toFixed(6)} (continuous ${controlR.toFixed(6)}), T=${thirst.toFixed(6)} (continuous ${controlThirst.toFixed(6)})`);
+  assert.equal(resumed.interoception.thirstProjectionAtSimulatedSeconds, simulatedSeconds);
+  assert.equal(await thirstBand(reenabled), 'strong', 'the old sip must not reappear as relief');
 });
 
 test('nonpositive recovery denominators reject Gateway startup with the owning parameter ID', async (t) => {

@@ -29,7 +29,7 @@
 | `fullness` | `mm` | 饱满的 0–100 mm VAS 代理 |
 | `thirst` | `mm` | 主观口渴的 0–100 mm 代理；用快速缓解比例减弱轮初 `hypothalamusThirst.thirst` 的慢驱动 |
 | `oralThirstReliefFraction` | `1` | 持久化快缓解状态，范围 [0,1]；`null` 表示尚未初始化，不是缺水观测 |
-| `thirstProjectionAtSimulatedSeconds` | `s` | 与主观口渴同轮写入的轮末仿真秒（`io.simulatedSeconds`）；初值 `null`，只供 `body_state` 核对读数是否属于当前提交 |
+| `thirstProjectionAtSimulatedSeconds` | `s` | 与主观口渴同轮写入的轮末仿真秒（`io.simulatedSeconds`）；初值 `null`，用于补算已知快缓解状态的时间缺口，以及 `body_state` 核对读数是否属于当前提交 |
 | `urinaryUrgency` | `mm` | 尿意的 0–100 mm 代理；由轮初 `bladder.volumeMl` 归一化 |
 | `discomfort` | `mm` | 不适的 0–100 mm 代理；七个感受（饥饿、饱满、口渴、尿意、子宫痉挛、乳腺胀奶、食管呛咳）超过 70 mm 舒适区后的强度取最大值 |
 | `sexualArousalMm` | `mm` | 性反应周期的唤醒读数 0–100 mm；把 `sexualResponse.arousalMm` 原样钳位后读出，不是性欲、情绪或生殖器测量 |
@@ -59,7 +59,9 @@
 ```text
 S              = clamp(finiteOr(hypothalamusThirst.thirst, 0), 0, 100)  // 轮初慢驱动
 U              = 本轮初所见上一轮实际交付的 stomach.deliveredWaterMl（mL；无新鲜记录为 0）
-R              = 上一轮 oralThirstReliefFraction（未初始化为 0）
+R_saved        = 已提交的 oralThirstReliefFraction（未初始化为 0）
+gapMin         = (轮初仿真秒 − 合法且更早的提交戳) / 60；否则 0
+R              = R_saved × 2^(−gapMin / 2)                        // 衰减到轮初才接收 U
 R_next         = 2^(−dtMin / 2) × [1 − (1 − R) × 2^(−U / 20)]
 thirst         = (1 − R_next) × S
 urinaryUrgency = clamp(100 mm × bladder.volumeMl / 410 mL, 0, 100)
@@ -119,7 +121,7 @@ discomfort     = max(excess(hunger), excess(fullness), excess(thirst),
 - `nsfwEnabled = getNsfwSetting() !== false`：在 BodyWorker 中未配置或显式为 `false` 时，`sexualArousalMm`、`libidoMm`、`mammaryFullnessMm` 与 `discomfort` 内的 `mammaryFullness` 置 `0`；脱离 Worker 的独立单元测试中 `getNsfwSetting()` 为 `null`（`!== false`），保持可读。
 - `sweatDampMm` 的平衡半衰期 5 min 属 `design`；`referenceEvapRateMlMin = 4.5 mL/min` 按体重缩放，机制对标 `SRC-GAGGE-1967` / `SRC-CRAMER-2019` / `SRC-FUKAZAWA-2009`，替代旧版 117 倍累积过冲。
 - **疲劳恢复（`design`）：** 急性负担 `A` 与读数 `F`（`muscleFatigueMm`）分离。活动的前 `activeMin` 分钟一边加荷一边恢复，剩余时间只恢复。满强度、未亏糖的首个活动分钟约 2.076 mm（旧版 2.1 mm）；长轮不再把整轮负荷加在末尾。糖原亏空按有效肌区的总存量与总基线计算，基线 `muscleHead` 15 g、`muscleTrunk` 135 g、`muscleLimbs` 150 g 按体重缩放；无有效肌区时 `D=0`，运动仍可产生 `A`。固定 `D`、无活动时 `F` 趋向 `clamp(0.5 × D, 0, 100)`，不逐轮累加亏空。缺 `A` 的旧档首轮用 `max(0, clamp(F_old, 0, 100) − 0.5 × D)` 有界估计；若 `F_old=100`，不能反推出唯一急性负担，也无法剥离旧规则曾重复累加的亏空。新档 `F=0` 推得 `A=0`，首次提交后继续持久化 `A`，重启不再从 `F` 估计。例：旧 `F=45`、`D=10`，估 `A=40`，休息 20 min 得 `F≈30.1984`。
-- **快速解渴（`design`）：** 入胃水提交后下一轮才产生缓解。`U` 只取实际交付量，复用原胃 `lastIntakeAt` 核对轮初仿真秒；缺失或旧读数不补剂量。相同轮内水量先合计；跨轮分片之间会衰减，不能把同剂量瞬饮与分片当成同一时间曲线。20 mL 从 `R=0` 开始，首次可见 `R≈0.35355`（已含 1 min 衰减）；供水不足时 `R` 变小，口渴可以回来。保存/重启接续已提交的 `R` 与仍待读的一轮胃观察；新档或旧档没有 `R` 时按 0 开始。快信号只影响主观口渴及其既有消费者，不写慢驱动、体液、ADH、尿请求或口干；口干仍由轮初唾液湿润度计算。`body_state` 只在 `thirstProjectionAtSimulatedSeconds` 等于已提交快照的 `simulatedSeconds` 且 `R` 有效（包括 0）时优先用有限的 `interoception.thirst`；不看墙钟。无时间戳的旧档、尚未提交或时间戳过期时照旧优先慢驱动，慢驱动缺失时才回退内感受。换清单移除生产者后，原读数只在同一快照上有效；第一轮新提交后便不会再遮住慢驱动。动作、提醒政策与阈值不变，没有新增工具或自动饮水。
+- **快速解渴（`design`）：** 入胃水提交后下一轮才产生缓解。`U` 只取实际交付量，复用原胃 `lastIntakeAt` 核对轮初仿真秒；缺失或旧读数不补剂量。相同轮内水量先合计；跨轮分片之间会衰减，不能把同剂量瞬饮与分片当成同一时间曲线。20 mL 从 `R=0` 开始，首次可见 `R≈0.35355`（已含 1 min 衰减）；供水不足时 `R` 变小，口渴可以回来。保存/重启接续已提交的 `R` 与仍待读的一轮胃观察；新档或旧档没有 `R` 时按 0 开始。若脚本缺席时仿真仍推进，重新启用只按非负有限提交戳与轮初仿真秒之差衰减已知残余，不回放缺席期间的饮水；随后只接收仍新鲜的 `U`，按本轮 `dtMin` 衰减一次。同一快照重启、暂停或失败重试不计入额外时间；无戳、未来戳也不补算，不看墙钟。快信号只影响主观口渴及其既有消费者，不写慢驱动、体液、ADH、尿请求或口干；口干仍由轮初唾液湿润度计算。`body_state` 只在 `thirstProjectionAtSimulatedSeconds` 等于已提交快照的 `simulatedSeconds` 且 `R` 有效（包括 0）时优先用有限的 `interoception.thirst`；不看墙钟。无时间戳的旧档、尚未提交或时间戳过期时照旧优先慢驱动，慢驱动缺失时才回退内感受。换清单移除生产者后，原读数只在同一快照上有效；第一轮新提交后便不会再遮住慢驱动。动作、提醒政策与阈值不变，没有新增工具或自动饮水。
 - `sleepinessMm` 在未加载 `sleep` 时逐点保持原 `pineal` 公式；同时加载 `sleep` 时融合 `pineal`、`sleepPressureMm`、`sleepInertiaMm` 与清醒期交感/性唤起/高皮质醇拮抗及轻度 `0.12 × hedonicCalmMm` 放松助眠偏置（以上权重均为脚本内 `design` 常数）。
 - M19 真实 DSH 会话（2026-11-22，33/33 verdicts，证据 `/tmp/dsh-body/m19-real-dsh.syuWHR/`）早于本次更新，仅验证过当时 `thirst` / `urinaryUrgency` / `discomfort` 读数与 `interoception` 一轮偏移。
 

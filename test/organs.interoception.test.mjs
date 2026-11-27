@@ -213,6 +213,18 @@ test('a stale stomach readout cannot renew oral relief, and relief alone cannot 
   assert.equal(hydrated.thirst, 0);
 });
 
+test('elapsed relief decays before a fresh dose, and a future stamp cannot amplify it', () => {
+  for (const [stamp, expectedRelief] of [[60, 0.441941738242], [240, 0.530330085890]]) {
+    const next = round({
+      snapshotSeconds: 180,
+      simulatedSeconds: 240,
+      stomach: { deliveredWaterMl: 20, lastIntakeAt: 180 },
+      interoception: { oralThirstReliefFraction: 0.5, thirstProjectionAtSimulatedSeconds: stamp },
+    });
+    assertClose(next.oralThirstReliefFraction, expectedRelief, `relief saved at ${stamp}s`);
+  }
+});
+
 test('urinary urgency scales bladder volume against the 410 mL design anchor', () => {
   assert.equal(round({ bladder: { volumeMl: 0 } }).urinaryUrgency, 0);
   assert.equal(round({ bladder: { volumeMl: 205 } }).urinaryUrgency, 50);
