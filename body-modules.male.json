@@ -37,6 +37,8 @@
     "./organs/human-organs/brain/autonomic.ts",
     "./organs/human-organs/brain/reward.ts",
     "./organs/human-organs/brain/interoception.ts",
+    "./organs/body-inputs/climate.ts",
+    "./organs/body-inputs/clothing.ts",
     "./organs/human-organs/brain/thermoregulation.ts",
     "./organs/human-organs/brain/notify.ts",
     "./organs/human-organs/skeletal-muscle/activity.ts",

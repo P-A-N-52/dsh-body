@@ -92,6 +92,15 @@ test('skin exports the sweat request and actual volume contract without actions'
   assert.deepEqual(transfers, []);
 });
 
+test('fever adds to the selected nocturnal sweat threshold without switching to the daytime band', () => {
+  const input = {
+    remainingExerciseMin: 0, intensity: 0, dtMin: 1, ambientTemperatureC: 25,
+    coreTemperatureC: 38.04, setpointC: 36.7,
+  };
+  assertClose(sweatRequestMl(input), 4.45, 'old threshold remains 37.15 °C');
+  assert.equal(sweatRequestMl({ ...input, feverSetpointOffsetC: 1 }), 0); // threshold 38.15, not 37.95
+});
+
 test('skin sweat parameters are design defaults with no measurements', () => {
   const data = JSON.parse(readFileSync(parametersUrl, 'utf8'));
   assert.equal(data.owner, 'skin');
@@ -104,13 +113,11 @@ test('skin sweat parameters are design defaults with no measurements', () => {
     'skin.interthresholdOffsetC',
     'skin.nocturnalDeadbandOffsetC',
     'skin.sweat.ambientGainPerC',
-    'skin.sweat.ambientTemperatureC',
     'skin.sweat.maxRateMlPerMin',
     'skin.sweat.referenceRateMlPerMin',
   ]);
 
   const expected = [
-    ['skin.sweat.ambientTemperatureC', 25, '°C', null],
     ['skin.sweat.referenceRateMlPerMin', 0.6, 'mL/min', null],
     ['skin.sweat.ambientGainPerC', 0.04, '1/°C', null],
     ['skin.sweat.maxRateMlPerMin', 15, 'mL/min', null],
@@ -126,7 +133,6 @@ test('skin sweat parameters are design defaults with no measurements', () => {
   }
 
   assert.deepEqual(loadParameters(parametersUrl), {
-    'skin.sweat.ambientTemperatureC': 25,
     'skin.sweat.referenceRateMlPerMin': 0.6,
     'skin.sweat.ambientGainPerC': 0.04,
     'skin.sweat.maxRateMlPerMin': 15,

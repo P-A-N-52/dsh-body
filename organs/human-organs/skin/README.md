@@ -2,9 +2,9 @@
 
 **功能标签：** 皮肤（出汗请求与汗液通量薄切片）。
 
-`skin` 位于 `organs/human-organs/skin/sweat.ts`，只持有两个 mL 字段：按轮初 `physicalActivity` 和固定环境参数算出下一轮出汗请求，以及记录本轮由 `bodyFluid` 实际转入的汗液。它不持有体液水、不调用 `transfer`，也不模拟皮肤分区、皮肤温度、湿润度、蒸发残余或汗液电解质。汗液只以 mL 表示，不换算成 METs、热量、心率或代谢率。
+`skin` 位于 `organs/human-organs/skin/sweat.ts`，只持有两个 mL 字段：按轮初活动、`climate.airTemperatureC` 和核心温度算出下一轮出汗请求，以及记录本轮由 `bodyFluid` 实际转入的汗液。它不持有体液水、不调用 `transfer`，也不模拟皮肤分区、皮肤温度、湿润度、蒸发残余或汗液电解质。汗液只以 mL 表示，不换算成 METs、热量、心率或代谢率。
 
-实现状态：脚本与参数文件在 `organs/human-organs/skin/`，模块定向测试见 [`test/organs.skin.test.mjs`](../../../test/organs.skin.test.mjs)。根清单与 `bodyFluid` 三出口已接入；当前根清单为 43 个部位、39 份唯一参数文件，女性清单 46 个部位、42 份，男性清单 45 个部位、41 份。端到端水账测试见 [`test/organs.sweat-gateway.test.mjs`](../../../test/organs.sweat-gateway.test.mjs)，体温—出汗集成测试见 [`test/organs.thermoregulation-gateway.test.mjs`](../../../test/organs.thermoregulation-gateway.test.mjs)。完整 `npm test` 结果以当前 HEAD 为准。尚未做真实 DSH 会话、独立人体出汗数据或临床验证。
+实现状态：脚本与参数文件在 `organs/human-organs/skin/`，模块定向测试见 [`test/organs.skin.test.mjs`](../../../test/organs.skin.test.mjs)。根清单与 `bodyFluid` 三出口已接入；当前根清单为 45 个部位、40 份唯一参数文件，女性清单 48 个部位、43 份，男性清单 47 个部位、42 份。端到端水账测试见 [`test/organs.sweat-gateway.test.mjs`](../../../test/organs.sweat-gateway.test.mjs)，体温—出汗集成测试见 [`test/organs.thermoregulation-gateway.test.mjs`](../../../test/organs.thermoregulation-gateway.test.mjs)。完整 `npm test` 结果以当前 HEAD 为准。尚未做真实 DSH 会话、独立人体出汗数据或临床验证。
 
 **清单依赖（transfer 配对校验）。** `sweatVolumeMl` 声明 `transferIn: ["bodyFluid.waterVolumeMl"]`；`bodyFluid.waterVolumeMl` 同时声明 `transferOut: ["bladder.volumeMl", "lungs.respiratoryWaterLossMl", "skin.sweatVolumeMl"]`。完整硬 transfer 闭包为根与男性清单 15 个部位（`stomach/hydration.ts`、`smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGlucose`、`kidneyGluconeogenesis`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、`skin`、`lungs`），女性清单另加 `uterus` 与 `mammaryGlands` 共 17 个部位。缺任一个都会在 `createFieldRegistry` 启动校验时报字段配对错误；不能用一个未加载的槽位或“先欠着”的请求绕过。`physicalActivity` 只是 `skin`、`lungs`、`muscleGlucose` 等的普通轮初读取，不是 transfer 配对依赖；根清单仍包含它，以提供 `exercise` 能力。
 
@@ -14,11 +14,11 @@
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `sweat.ts` | `skin` | `sweatRequestMl`、`sweatVolumeMl` | 轮初 `physicalActivity.remainingExerciseMin` / `intensity`；轮初 `thermoregulation.coreTemperatureC`（可选）；`io.dt`；同目录参数 | `sweat.parameters.json` |
+| `sweat.ts` | `skin` | `sweatRequestMl`、`sweatVolumeMl` | 轮初活动、温湿输入中的 `climate.airTemperatureC`（缺省 25°C）、核心温度/基线与本次运行已采用的发热增量；`io.dt` | `sweat.parameters.json` |
 
 - `actionTypes = []`；无动作、无通知、无直接 `transfer`。
 - 参数文件与脚本同目录，模块在 import 时经 `lib/parameters.js` 只读加载；参数是工程默认值，不做运行中热切换。
-- 唯一消费者是 `bodyFluid`；`skin` 不读也不写 `bodyFluid` 的水量，实际汗液只由 `bodyFluid` 发起的 transfer 进入 `sweatVolumeMl`。
+- `bodyFluid` 读请求、支付实汗；`thermoregulation` 下一轮只用已支付的汗液，按当轮轮初湿度和衣层限定蒸发。`skin` 不读写体液量；未蒸发的那部分水不补回、不追加冷却、不留待下一轮。
 
 ## 2. 字段与单位
 
@@ -40,7 +40,7 @@ temperatureFactor  = max(0, 1 + 0.04 × (T − 25))
 exercising         = R > 0 && I > 0
 exerciseRate       = exercising ? referenceRateMlPerMin × I × temperatureFactor : 0
 deadbandC          = exercising ? 0 : (setpointC < 37 ? nocturnalDeadbandOffsetC : interthresholdOffsetC)
-thermalThresholdC  = exercising ? max(37, setpointC) : setpointC + deadbandC
+thermalThresholdC  = (exercising ? max(37, setpointC) : setpointC + deadbandC) + feverSetpointOffsetC
 thermalRate        = heatGain × max(0, C − thermalThresholdC)
 rate               = min(maxRateMlPerMin, max(0, exerciseRate + thermalRate))
 sweatRequestMl     = rate × dtMin
@@ -51,11 +51,10 @@ write.sweatVolumeMl = 0
 
 `R = 0` 且未越过 `thermalThresholdC`（或未加载 `thermoregulation`）时请求为 0；`I = 0` 的合法活动且未越阈时请求也为 0。温度因子在 0 处截断；上限只作用于总速率（默认 75 kg 为 15 mL/min，随体重缩放），请求量仍按 `dtMin` 缩放。
 
-同目录参数（共 7 项 `design`，前三项速率/上限/增益按 `scaleByBodyWeight` 缩放）：
+同目录参数（共 6 项 `design`；参考速率、上限和热汗增益按体重缩放）：
 
 | 参数 ID | 默认值 | 单位 | 状态 | 来源与说明 |
 | --- | ---: | --- | --- | --- |
-| `skin.sweat.ambientTemperatureC` | 25 | `°C` | `design` | `source: null`；默认环境温度，不是实测环境；25°C 同时是温度因子的参考温度 |
 | `skin.sweat.referenceRateMlPerMin` | 0.6 | `mL/min` | `design` | `source: null`；75 kg 基准、25°C、`intensity=1` 的工程参考出汗率（按体重缩放） |
 | `skin.sweat.ambientGainPerC` | 0.04 | `1/°C` | `design` | `source: null`；环境温度每偏离 25°C 1°C 的工程线性斜率 |
 | `skin.sweat.maxRateMlPerMin` | 15 | `mL/min` | `design` | `source: null`；75 kg 基准工程速率上限（按体重缩放） |
@@ -63,9 +62,9 @@ write.sweatVolumeMl = 0
 | `skin.interthresholdOffsetC` | 0.25 | `°C` | `design` | `SRC-WENGER-1976`（工程占位，参考日间阈间带 ~0.2 °C 与停运后非热抑汗）：非运动静息态相对动态设定点的热汗死区偏置 |
 | `skin.nocturnalDeadbandOffsetC` | 0.45 | `°C` | `design` | `SRC-WENGER-1976`（工程占位，参考夜间 03:00–05:00 阈间带加宽）：`setpointC < 37 °C` 时静息死区展宽 |
 
-七个参数全部标为 `design`，没有独立人体验证或个体出汗测量；参数文件中的 `range` 只是工程调参范围，不是人体耐受范围或百分位。
+参数全部标为 `design`，没有独立人体验证；`range` 只是工程调参范围。25 °C 仍是出汗温度因子的参考温度，原 `skin.sweat.ambientTemperatureC` 仅供旧档缺气温时迁移，不再是运行参数。
 
-模块导出纯函数 `sweatRequestMl({ remainingExerciseMin, intensity, dtMin, ambientTemperatureC, coreTemperatureC, setpointC })`：它不读状态、不写状态、不调用 `transfer`，只按上式计算请求。`heartbeat` 传入同目录默认环境温度 25°C 与轮初核心温度/设定点。纯函数本身不校验活动字段；异常校验在 `heartbeat` 读取 `physicalActivity` 与 `thermoregulation` 时完成。
+纯函数 `sweatRequestMl` 只按上式计算请求，不读写状态。心跳从轮初快照传入气温、核心温和基础设定点；先按**基础**设定点选档再加轮初 `feverSetpointOffsetC`（仅本次运行已采用的发布，缺省 0）。空气湿度与衣层不直接改出汗曲线，详见[实汗与蒸发分账](../brain/README.md#thermoregulation)。
 
 ## 4. 默认时序：第 1 轮活动、第 2 轮请求、第 3 轮实际
 
@@ -116,7 +115,7 @@ transfer bodyFluid → skin: U_sweat
 = 累计饮水
 ```
 
-其中“胃水”是 `stomach.waterVolumeMl`，“队列水”是 `stomach.mealQueue` 中剩余水量之和，“小肠水”是 `smallIntestine.waterVolumeMl`，“结肠残渣水”是 `colon.residueWaterMl`，“膀胱尿”是当前 `bladder.volumeMl`；结肠回收是残渣水池到体液的内部回流，只体现在残渣水项，不另加外部流入。`voidedMl` 已包含主动与非自主排出，只累计一次。`sweatRequestMl` 与肺请求不进入水账，只有实际 `sweatVolumeMl` 和 `respiratoryWaterLossMl` 逐轮累加；无活动时两项为 0。测试容差为 `1e-6 mL`。
+其中“胃水”是 `stomach.waterVolumeMl`，“队列水”是 `stomach.mealQueue` 中剩余水量之和，“小肠水”是 `smallIntestine.waterVolumeMl`，“结肠残渣水”是 `colon.residueWaterMl`，“膀胱尿”是当前 `bladder.volumeMl`；结肠回收是残渣水池到体液的内部回流，只体现在残渣水项，不另加外部流入。`voidedMl` 已包含主动与非自主排出，只累计一次。`sweatRequestMl` 与肺请求不进入水账，只有实际 `sweatVolumeMl` 和 `respiratoryWaterLossMl` 逐轮累加；静息且未触发热致出汗时两项为 0。测试容差为 `1e-6 mL`。
 
 未加载 `thermoregulation` 时，30 min、`intensity=1` 的同一次活动产生 18 mL 汗液和 9 mL 运动相关呼吸失水，二者分别记账；加载 `thermoregulation` 后核心温度升高，`thermalRate > 0`，汗量会高于 18 mL，具体取决于温度轨迹。18 mL 只是未计热致出汗的时序算例。18 mL 仍是皮肤汗量，不是 27 mL；9 mL 肺失水不属于皮肤字段，也不能合并成皮肤读数。
 
@@ -133,7 +132,7 @@ transfer bodyFluid → skin: U_sweat
 
 ## 7. 证据与未建模边界
 
-- 七个参数全部标为 `design`（死区偏置以 `SRC-WENGER-1976` 与 `SRC-KENNY-2008` 为机制参考、具体数值为工程占位），没有独立人体验证；参数含义详见 §3。文献笔记见 [`references/notes/gagnon-2011.md`](references/notes/gagnon-2011.md)、[`references/notes/kenny-2008.md`](references/notes/kenny-2008.md)、[`references/notes/cramer-2019.md`](references/notes/cramer-2019.md)、[`references/notes/candas-1979.md`](references/notes/candas-1979.md) 与 [`references/notes/alber-wallerstrom-1985.md`](references/notes/alber-wallerstrom-1985.md)；[`references/notes/gagge-1967.md`](references/notes/gagge-1967.md) 与 [`references/notes/fukazawa-2009.md`](references/notes/fukazawa-2009.md) 供 `interoception.sweatDampMm` 对标。
-- 静息不感汗散失（`SRC-MITCHELL-1972`）、微滴擦拭动态及高湿压制滴汗效率（`SRC-CANDAS-1979`）现阶段仍**未建模**（`skin.sweatVolumeMl` 只计主动与热致主动出汗通量）；不建 METs、热量/kcal、摄氧量、心率、血压、血气、肌糖原、乳酸、疲劳、睡眠、运动类型、皮肤分区、汗液电解质或疾病。
+- 六项参数全部标为 `design`（死区偏置以 `SRC-WENGER-1976` 与 `SRC-KENNY-2008` 为机制参考、具体数值为工程占位），没有独立人体验证；参数含义详见 §3。文献笔记见 [`references/notes/gagnon-2011.md`](references/notes/gagnon-2011.md)、[`references/notes/kenny-2008.md`](references/notes/kenny-2008.md)、[`references/notes/cramer-2019.md`](references/notes/cramer-2019.md)、[`references/notes/candas-1979.md`](references/notes/candas-1979.md) 与 [`references/notes/alber-wallerstrom-1985.md`](references/notes/alber-wallerstrom-1985.md)；[`references/notes/gagge-1967.md`](references/notes/gagge-1967.md) 与 [`references/notes/fukazawa-2009.md`](references/notes/fukazawa-2009.md) 供 `interoception.sweatDampMm` 对标。
+- `skin.sweatVolumeMl` 只计主动与热致出汗；体温模块已限定可蒸发量，但没有模拟静息不感失水（`SRC-MITCHELL-1972`）、汗滴/衣物残留动态或按实测皮肤湿润度拟合的效率（`SRC-CANDAS-1979`）；不建 METs、热量/kcal、摄氧量、心率、血压、血气、肌糖原、乳酸、疲劳、睡眠、运动类型、皮肤分区、汗液电解质或疾病。
 - 不声称真实 DSH 会话验收或临床验证；离线算例不能外推为人体出汗测量或临床结论。
 - 设计背景见 [`2026-11-23-activity-sweat-design.md`](../../../docs/superpowers/specs/2026-11-23-activity-sweat-design.md) §4–§8；活动侧见 [`physicalActivity`](../skeletal-muscle/README.md)；肺侧见 [`lungs`](../lungs/README.md)；共享来源登记簿见 [`source-index.csv`](../references/source-index.csv)（本切片未新增来源行）。

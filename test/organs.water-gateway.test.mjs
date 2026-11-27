@@ -20,6 +20,8 @@ const partIds = [
   'bloodOxygen',
   'bodyFluid',
   'brainNotify',
+  'climate',
+  'clothing',
   'colon',
   'duodenum',
   'esophagus',

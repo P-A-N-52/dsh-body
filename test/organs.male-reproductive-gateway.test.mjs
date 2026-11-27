@@ -77,7 +77,7 @@ test('the male manifest boots forty-five parts with testes, epididymis and rewar
   const { gateway } = await startBody(t);
   const parts = gateway.getState().parts;
 
-  assert.equal(Object.keys(parts).length, 45);
+  assert.equal(Object.keys(parts).length, 47);
   assert.deepEqual(parts.testes, { testosteroneRelative: 1, sleepDebtDays: 0 });
   assert.deepEqual(parts.reward, { wantingMm: 25, hedonicMm: 15, satietyMm: 0 });
   assert.deepEqual(parts.epididymis, { spermStorageMl: 0, ejaculatedMl: 0 });

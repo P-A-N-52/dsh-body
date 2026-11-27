@@ -16,15 +16,15 @@
 
 | 文件 | 谁写、何时读 | 用来做什么 |
 | --- | --- | --- |
-| [`body-modules.json`](../body-modules.json)（`manifestPath`） | 开发者改，Gateway 启动时读 | 根清单：声明要加载的脚本、每个脚本读取的状态字段、补算上限和脚本超时（当前 43 部位、39 份唯一参数文件）。 |
-| [`body-modules.female.json`](../body-modules.female.json) | 开发者改，作为另一份 `manifestPath` 在启动时读 | 女性独立清单：根清单 43 脚本 + `ovaries` + `uterus` + `mammary-glands/milk.ts`，`body-water/water.ts` 换成 `water.female.ts`，`glucose.ts` 换成 `glucose.female.ts`，共 46 部位、42 份唯一参数文件（硬 transfer 闭包 17 部位）；必须配独立 `statePath`。 |
+| [`body-modules.json`](../body-modules.json)（`manifestPath`） | 开发者改，Gateway 启动时读 | 根清单：声明要加载的脚本、每个脚本读取的状态字段、补算上限和脚本超时（当前 45 部位、40 份唯一参数文件）。 |
+| [`body-modules.female.json`](../body-modules.female.json) | 开发者改，作为另一份 `manifestPath` 在启动时读 | 女性独立清单：根清单 + `ovaries` + `uterus` + `mammary-glands/milk.ts`，`body-water/water.ts` 换成 `water.female.ts`，`glucose.ts` 换成 `glucose.female.ts`，共 48 部位、43 份唯一参数文件（硬 transfer 闭包 17 部位）；必须配独立 `statePath`。 |
 | `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active`、`profile`、`parameters` 或 `nsfw` | **一具身体一份存档**：所有部位的值、时钟、动作、通知，以及可选个体 `profile`（支持 `weightKg`、`heightCm`、`timezoneOffsetMin` 与女性静息泌乳预设 `lactating?: boolean`）、稀疏参数差异 `parameters`、`nsfw` 开关与 `boundSessionId` 都在一起。根清单与女性/男性清单各用一份存档，不要为每个器官或每个脚本再建存档，也不要在同一份存档上切换清单。 |
 | [`package.json`](../package.json) | 项目维护者改，由 Node/npm 使用 | 声明 ESM、Node 版本、测试命令和发布文件，不登记心跳脚本，也不存身体数据。`files` 收录根清单、女性清单与男性清单；[`cordis.patch.yml`](../cordis.patch.yml) 是 DSH 插件装载描述，不是身体 JSON。 |
-| `organs/human-organs/**/*.parameters.json`、`organs/human-compartments/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官/隔室组件的默认值与引用标注（`design` / `prior` / `policy` / `fitted_dev`）：参数值、单位、证据状态、范围与来源。当前仓库共有 47 份唯一参数文件：根清单（43 部位）加载 39 份（`skeletal-muscle/activity.ts` 无参数文件，三个区域部位共享 `skeletal-muscle/glucose-uptake.parameters.json`，`stomach/ghrelin.ts` 经 `motility-core.ts` 复用 `stomach/motility.parameters.json`，另有 `parathyroid` 与 `calcium` 各 1 份）；女性清单（46 部位）加载 42 份（多出 `ovaries`、`uterus`、`mammary-glands` 3 份）；男性清单（45 部位）加载 41 份（多出 `testes`、`epididymis` 2 份）；另有 3 份不随主清单加载的 DI 变体（+3 = 47 份）。`systems/` 已不再有参数文件。 |
+| `organs/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官、隔室与衣层的默认值、单位、证据状态、范围及来源。全库共 48 份：根清单 45 部位加载 40 份（`climate` 无参数文件，`clothing` 有 1 份）；女性清单 48 部位加载 43 份，男性清单 47 部位加载 42 份；另有 3 份不随主清单加载的 DI 变体。共享参数只计一次。 |
 
-**清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径。仓库默认清单现加载 43 条部位脚本（已纳入中枢奖赏 `brain/reward.ts` 及 `parathyroid` / `bloodCalcium`，其余与既往一致）；男性清单 [`body-modules.male.json`](../body-modules.male.json) 共 45 部位 / 41 份唯一参数文件；女性清单共 46 部位 / 42 份唯一参数文件（硬闭包仍为根/男性 15 部位、女性 17 部位）。`startupScripts`、`catchUpMinutes`（720）与 `scriptTimeoutMs`（10000）含义不变。
+**清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径。`startupScripts`、`catchUpMinutes`（720）与 `scriptTimeoutMs`（10000）含义不变。三份主清单的硬 transfer 闭包仍为根/男性 15 部位、女性 17 部位。
 
-**女性与男性清单。** [`body-modules.female.json`](../body-modules.female.json)（46 部位、42 份唯一参数文件，硬 transfer 闭包 17 部位）与 [`body-modules.male.json`](../body-modules.male.json)（45 部位、41 份唯一参数文件，硬闭包 15 部位）是独立身体清单，各自使用独立 `statePath`（根清单 43 / 39）。女性生殖链已升级为：`ovaries` 采用 `SRC-STRICKER-2006` 每日血清中位数插值物理浓度（`estradiolPmolL`、`progesteroneNmolL`、`lhIuL`、`fshIuL`）与慢性高催乳素/泌乳抑制度 `cycleSuppression`；`uterus` 经量参考调整为 `30 mL/周期`（对齐 `SRC-HALLBERG-1966` 总体中位数，保留单口径水账）、支持黄体平台 `0.9`（`SRC-BAKOS-1994`）以及高潮/催产素相关 `contractionMm` 与 `pelvicCongestionMm`；`mammaryGlands` 实现非妊娠高 PRL + 机械排空刺激诱导状态机（区分 `galactorrhea` 溢乳与 `lactating` 规整产奶，支持 `profile.lactating: true`）、局部充盈自抑制 `1 − DF²` 与催产素门控 `express_milk` / `breastfeed` 喷乳反射（保持合成入池一次记水账、绝不双扣体液）；详见 [`ovaries`](../organs/human-organs/ovaries/README.md)、[`uterus`](../organs/human-organs/uterus/README.md) 与 [`mammary-glands`](../organs/human-organs/mammary-glands/README.md)。
+**女性与男性清单。** [`body-modules.female.json`](../body-modules.female.json) 与 [`body-modules.male.json`](../body-modules.male.json) 各自使用独立 `statePath`；部位和参数数量见上表。女性生殖链已升级为：`ovaries` 采用 `SRC-STRICKER-2006` 每日血清中位数插值物理浓度（`estradiolPmolL`、`progesteroneNmolL`、`lhIuL`、`fshIuL`）与慢性高催乳素/泌乳抑制度 `cycleSuppression`；`uterus` 经量参考调整为 `30 mL/周期`（对齐 `SRC-HALLBERG-1966` 总体中位数，保留单口径水账）、支持黄体平台 `0.9`（`SRC-BAKOS-1994`）以及高潮/催产素相关 `contractionMm` 与 `pelvicCongestionMm`；`mammaryGlands` 实现非妊娠高 PRL + 机械排空刺激诱导状态机（区分 `galactorrhea` 溢乳与 `lactating` 规整产奶，支持 `profile.lactating: true`）、局部充盈自抑制 `1 − DF²` 与催产素门控 `express_milk` / `breastfeed` 喷乳反射（保持合成入池一次记水账、绝不双扣体液）；详见 [`ovaries`](../organs/human-organs/ovaries/README.md)、[`uterus`](../organs/human-organs/uterus/README.md) 与 [`mammary-glands`](../organs/human-organs/mammary-glands/README.md)。
 
 清单与存档在启动时解析。状态查询、动作排队和心跳使用主进程内存中的存档对象。BodyWorker 只加载一次模块和它们登记的函数。
 
@@ -118,7 +118,7 @@ bodyFluid.waterVolumeMl      → bladder.volumeMl
 - 当前根清单与男性清单的硬 transfer 闭包为 15 个部位：`stomach`（`hydration.ts`）、`smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGluconeogenesis`、`kidneyGlucose`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、`skin`、`lungs`；缺任一端都会在启动时因配对校验失败。女性清单在此基础上加 `uterus` 与 `mammaryGlands`，硬闭包为 17 个部位（`ovaries` 只是子宫的普通轮初读取，不在配对内）；女性清单缺 `uterus` 或 `mammaryGlands` 时启动分别报 `transferOut target "uterus.bleedingMl" is not declared` 或 `transferOut target "mammaryGlands.milkMl" is not declared`。女性清单另用 `glucose.female.ts`，其 `glucoseMassG.transferOut` 末位声明 `mammaryGlands.lactoseG`，因此乳腺也在糖侧配对内。`esophagus` 不声明 transfer，不在闭包内。
 - 水账在根清单的恒等式上增加累计 `uterus.bleedingMl` 与 `mammaryGlands.milkMl`（仅女性变体）；`bleedingRequestMl` / `milkRequestMl` 不进入水账，只有实际转移量计入。根清单水账与三出口语义不变。
 - 旧 `motility.ts` 以 `trackWater: false`、`trackCarbohydrate: false` 运行，推进既有 `mealQueue` 时会剥离切片的水与碳水元数据；不要用“完整清单 → 旧清单 → 完整清单”保存待释放水/碳水，切回时按 0 计。正常旧档升级只补默认值，不猜历史成分。
-- 这些水链脚本已加入根清单；水链完成时为 12 个部位，血氧池与肺通气切片加入后为 22 个（两者都不新增 transfer，闭包仍为 9 个），肝糖原切片加入后为 23 个，内分泌轴与松果体接入后为 28 个，唾液腺切片接入后为 29 个；分区骨骼肌、循环、体温、肾糖异生与食管/结肠切片接入后为 38 个，新增 `brain/sleep.ts` 后当前为根 39 个、硬闭包 15 个（女性 42 个、硬闭包 17 个，男性 41 个、硬闭包 15 个）。Task 10 真实 DSH 会话验收已完成（30 轮 A/B 与排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，仓库外未入库）；参数与证据边界见各器官 README。Task 10 与 M19（33/33 核对通过，证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）均早于 `sleep`、5 项新增体感、双轨退避、休眠绑定与纯感觉工具改造，不覆盖这些后续行为。非自主排尿、不适、DI 变体、生殖链、分区肌肉与 P0 三清单 24 h 回归等离线与 Gateway 测试位于 `test/organs.*.test.mjs`。
+- 这些水链脚本已加入根清单；水链完成时为 12 个部位，血氧池与肺通气切片加入后为 22 个（两者都不新增 transfer，闭包仍为 9 个），肝糖原切片加入后为 23 个，内分泌轴与松果体接入后为 28 个，唾液腺切片接入后为 29 个；分区骨骼肌、循环、体温、肾糖异生与食管/结肠切片接入后为 38 个，新增 `brain/sleep.ts` 时根/女/男分别达到 39 / 42 / 41 个；现行计数见 §2。Task 10 真实 DSH 会话验收已完成（30 轮 A/B 与排尿重试/409，证据在 `/tmp/dsh-body/task10-dsh.5SgAh8/`，仓库外未入库）；参数与证据边界见各器官 README。Task 10 与 M19（33/33 核对通过，证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`，仓库外未入库）均早于 `sleep`、5 项新增体感、双轨退避、休眠绑定与纯感觉工具改造，不覆盖这些后续行为。非自主排尿、不适、DI 变体、生殖链、分区肌肉与 P0 三清单 24 h 回归等离线与 Gateway 测试位于 `test/organs.*.test.mjs`。
 
 ### 食管与结肠薄切片（当前模块）
 
@@ -218,7 +218,7 @@ transfer kidneyGluconeogenesis.glucoseOutputG → glucose.glucoseMassG: renalOut
 
 **旧档与重启。** 旧档缺 `liver` 时补 `storageRequestG = 0`、`glycogenG = 80`、`storageG = 0`、`glycogenCapacityG = 100`、`outputG = 0`；缺 `kidneyGluconeogenesis` 时补 `glucoseOutputG = 0`；缺 `muscleGlucose` 时补 `uptakeRequestG = 0`、`uptakeG = 0`，缺区域时补 `uptakeG = 0`、`glycogenG = 15 / 135 / 150`、`glycogenConsumedG = 0`；旧档只有 `muscleGlucose.glycogenG` 时，各区域第一轮按存在区域份额迁移：默认种子状态用迁移份额取代 300 g 份额初值，已有真实状态则并入存量；聚合器第一次 write 后旧总量不再保留，后续不会重复迁移；若旧实现已经完成迁移并删除 `muscleGlucose.glycogenG`，新代码无法识别或自动回改，唯一可靠纠正是从迁移前备份恢复；这里不声称已验证存在这种真实存档。在途 `uptakeG` 仍由聚合器正常分配。`glucose` 旧档的 `excessMassG` 由首轮轮初质量现算；`pancreasEndocrine` 旧档补 `insulinPmolL = 60` 与 `glucagonRelative = 1`，不承诺保留旧 `insulinRelative` 偏差，不反推历史。含 `glucose` 的旧清单必须补上 `liver`、`kidneyGluconeogenesis`、`muscleGlucose` 与三个区域（或对应缺区域变体），否则启动时报 transfer 配对错误。重启保留已提交请求、存量与在途 `storageG` / `uptakeG`，下一轮只处理一次；容量每轮由 `liver` 按参数重写为 100；`outputG` 不参与释放计算。
 
-**清单与参数。** 当前根清单为 41 部位、37 份唯一参数文件，女性清单为 44 部位、40 份，男性清单为 43 部位、39 份；硬 transfer 闭包为根/男性 15 部位、女性 17 部位。`glucose.residualDisposalHalfTimeMin = 60` 与 `glucose.basalConsumptionGPerMin = 0.12` 在 `glucose.parameters.json`；肌肉与肝参数在 `glucose-uptake.parameters.json` 与 `glycogen.parameters.json`；肾糖异生在 `kidney/gluconeogenesis.parameters.json`；`pancreasEndocrine.*`（11 项）在 `pancreas/insulin.parameters.json`，全为 `design`、`source: null` 工程调参。
+**清单与参数。** 现行清单与硬 transfer 闭包数量见 §2。`glucose.residualDisposalHalfTimeMin = 60` 与 `glucose.basalConsumptionGPerMin = 0.12` 在 `glucose.parameters.json`；肌肉与肝参数在 `glucose-uptake.parameters.json` 与 `glycogen.parameters.json`；肾糖异生在 `kidney/gluconeogenesis.parameters.json`；`pancreasEndocrine.*`（11 项）在 `pancreas/insulin.parameters.json`，全为 `design`、`source: null` 工程调参。
 
 **当前实现。** 上述脚本、参数、字段、transfer 配对、旧档补齐、缺区域变体和清单计数已实现；模块契约测试在 `test/organs.liver.test.mjs`、`test/organs.renal-gluconeogenesis.test.mjs`、`test/organs.muscle-glucose.test.mjs`、`test/organs.muscle-regions.test.mjs` 与 `test/organs.glucose.test.mjs`，真实 Gateway 账本测试在 `test/organs.liver-gateway.test.mjs`、`test/organs.renal-gluconeogenesis-gateway.test.mjs`、`test/organs.glucose-gateway.test.mjs`、`test/organs.tissue-uptake-gateway.test.mjs`、`test/organs.muscle-regions-gateway.test.mjs` 与 24 小时空腹体温/血糖代理回归测试 `test/organs.steady-state-24h.test.mjs`。这些测试都是离线的，不是实机验收。
 
@@ -261,7 +261,7 @@ U_sweat  = clamp(skin.sweatRequestMl, 0, max(0, W_start − U_kidney − U_lung)
 
 ### 血氧池与自动通气（当前模块）
 
-本切片新增 `bloodOxygen` 隔室与 `lungsVentilation` 部位，不新增动作、通知或 `transfer`；两者都不写其他部位。当前全清单硬 transfer 闭包为根/男性 15 部位、女性 17 部位；当前根清单为 41 部位 / 37 份唯一参数文件，女性清单为 44 部位 / 40 份，男性清单为 43 部位 / 39 份。
+本切片新增 `bloodOxygen` 隔室与 `lungsVentilation` 部位，不新增动作、通知或 `transfer`；两者都不写其他部位。现行清单与硬 transfer 闭包数量见 §2。
 
 | 部位 / 脚本 | 写什么 | 读什么 | 消费者 |
 | --- | --- | --- | --- |
@@ -318,7 +318,7 @@ alveolarO2CapacityMlMin = 60000 × 0.058333 / 1.4   （约 2500 mL/min）
 
 ### 唾液腺与口干（当前模块）
 
-本切片新增 `salivaryGlands`，脚本为 `organs/human-organs/salivary-glands/saliva.ts`，处理 `eat` / `drink` 动作。它不新增 `transfer` 或通知；当前硬闭包为根/男性 15 / 女性 17 个部位，根清单当前 41 部位、37 份唯一参数文件，女性清单 44 部位、40 份，男性清单 43 部位、39 份。
+本切片新增 `salivaryGlands`，脚本为 `organs/human-organs/salivary-glands/saliva.ts`，处理 `eat` / `drink` 动作。它不新增 `transfer` 或通知；现行清单与硬 transfer 闭包数量见 §2。
 
 | 部位 / 脚本 | 写什么 | 读什么 | 消费者 |
 | --- | --- | --- | --- |
@@ -354,7 +354,7 @@ mouthMoistureMm    = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100
 
 - **默认非泌乳、预设与诱导状态机。** 默认女性身体未在哺乳；可通过存档顶层 `profile.lactating: true`（在 `nsfw: true` 下把 `inductionProgress` / `lactating` 设为已建立稳态）或持续高 PRL（`>= 45 ng/mL`）+ 机械刺激（`express_milk` / `breastfeed`）逐步推进 `inductionProgress ∈ [0, 1]`（≥ `0.25` 出现 `galactorrhea` 溢乳、达到 `1.0` 进入 `lactating` 产奶；停止刺激按 `7 d` 半衰期退化）。`nsfw: false` 时清零泌乳请求与排乳并让充盈回落。
 - **水/糖单口径守恒与两段池。** 新合成乳汁先通过 `milkRequestMl`（`bodyFluid → mammaryGlands.milkMl`）与 `lactoseRequestG`（`glucose → mammaryGlands.lactoseG`）一次记账进入腺泡池 `storedMilkMl`（上限 `360 mL`，按 `DF = storedMilkMl / 360` 产生 `1 − DF²` 局部自抑制并推导 `fullnessMm`）；`express_milk` / `breastfeed` 在 `oxytocinPgMl >= 5 pg/mL` 门控下将 `storedMilkMl` 按单次 PAMR 排出为 `ejectedMilkMl`，后续刺激延续不重复套用 PAMR，且绝不双扣 `bodyFluid` 或 `glucose`。
-- **清单与证据。** 女性清单 46 部位、42 份唯一参数文件（硬闭包 17）；`milk.parameters.json` 现含 14 项参数（其中 `basalMilkRateMlPerMin = 0.54`、`storageCapacityMl = 360`、`breastfeedPamr = 0.673` 挂 `SRC-KENT-2006`，`expressPamr = 0.75` 挂 `SRC-PRIME-2012`，其余 `design`）。详细方程与文献边界见 [`mammary-glands`](../organs/human-organs/mammary-glands/README.md)。
+- **清单与证据。** 女性清单数量见 §2；`milk.parameters.json` 现含 14 项参数（其中 `basalMilkRateMlPerMin = 0.54`、`storageCapacityMl = 360`、`breastfeedPamr = 0.673` 挂 `SRC-KENT-2006`，`expressPamr = 0.75` 挂 `SRC-PRIME-2012`，其余 `design`）。详细方程与文献边界见 [`mammary-glands`](../organs/human-organs/mammary-glands/README.md)。
 
 ### 性行为与性反应周期（当前模块）
 
@@ -365,10 +365,27 @@ mouthMoistureMm    = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100
 - **男女不应期与性周期差异：** 女性（加载 `ovaries` 且无 `testes`）取消固定 20 min 绝对不应期，仅保留 `femalePostOrgasmPauseMin = 2 min` 防连跳窗口，期间允许再次激发唤醒与多次高潮，性欲与唤醒幅值受 `ovaries` E2/P4（温和 `[0.9, 1.15]` 区间）、`reward` 与 `pituitary.prolactinNgMl` 共同调节（`SRC-RONEY-2013`）；男性保留 `refractoryMin = 20 min` 基础不应期并受高 PRL 延长（`testes` 9 项参数另纳入睡眠债务与应激/PRL 抑制）。高潮释放当轮默认停止 `remainingSexMin` 与配对体力活动（除非 `orgasm.continueStimulation === true`）；未达阈值或处于不应期提交 `orgasm` 会记录 `lastAttemptedOrgasmAtSimMin` / `lastOrgasmBlockReason`，并经 `brainNotify` 发一次跳过常规冷却的 `context` 反馈及 `body_state` 3 min 窗口解释。
 - **高潮余韵与奖赏联动：** 释放时推高 `afterglowMm`（半衰期 `22 min`），在 `autonomic.ts` 与 `reward.hedonicMm` / `pituitary.oxytocinPgMl` 共同形成 `[0, 20] mm` 副交感余韵回升；`interoception` 暴露 `hedonicCalmMm` 并适度缓冲非低血糖 `stressMm`；`brainNotify` 追踪 `lastOrgasmAtSimMin` 以 5 min 防陈旧窗口触发高潮事件通知，并与性兴奋通知去重、同步给予受阻/出汗/交感退避复位。详见 [`sexual-response`](../organs/human-organs/sexual-response/README.md) 与 [`brain`](../organs/human-organs/brain/README.md)。
 
+### 身体气候与衣层（当前模块）
+
+三份主清单各自保存 `climate = { airTemperatureC, relativeHumidityPct }` 与 `clothing = { wornLayerIds }`。场景或穿着方只提交明确输入，不新增宿主工具、身份或远程场景权限，也不由系统提示、天气服务或提醒自动变化。可以在启用对应部位的初始身体预设写 `snapshot.parts`，运行中用 `POST /actions` 或现有 `body_act` 的结构化直传（工具自动填会话及动作 ID，不让翻译官猜温湿）。HTTP 例子省略会话字段：
+
+```jsonl
+{"id":"room","type":"set_environment","airTemperatureC":32,"relativeHumidityPct":90}
+{"id":"tshirt-on","type":"wear_layer","layerId":"tshirt"}
+{"id":"jacket-on","type":"wear_layer","layerId":"jacket"}
+{"id":"jacket-off","type":"remove_layer","layerId":"jacket"}
+```
+
+温度必须是有限数，湿度为含边界的 `0–100`（`90` 表示 90%）。`climate` 只取当批最后一对完整有效值；`clothing` 按队列顺序维护有序唯一 ID，重复穿、脱未穿项、未知 ID 和非法动作载荷无效果。动作仍走原绑定、暂停、整轮提交与 ID 回执；记录保留时同载荷重试复用回执，异载荷冲突；裁剪后不保证去重。`queued` / `applied` 只描述队列，不保证领域值变化。第 N 轮提交的输入最早影响第 N+1 轮计算。
+
+旧档在补算和重试前只填缺项：湿度 50%、衣层 `[]`；缺气温才检查存档 `parameters` 的 `skin.sweat.ambientTemperatureC` 与 `thermoregulation.ambientTemperatureC`。无有限覆盖取 25 °C；仅一值或同值沿用；冲突选择体温侧以保留旧干梯度，`startup.climateTemperatureMigration` 记录皮肤旧值、体温旧值与选择。已有气候、衣着、核心温和实汗不会被旧参数重写；两旧键仅留作迁移，以后用场景动作改气温。
+
+发热预留可选 manifest owner `feverDrive` 的非负有限 `setpointOffsetC`（°C 温差），没有默认提供者也没有动作。普通读仍走 `io.read`；只有需确认本次运行的信号才用 `io.readPublished(id)`：返回当前已启用且曾通过整轮提交写出的部位的冻结轮初状态，否则 `undefined`。初值、旧存档、启动脚本补丁和失败批次不是该部位发送的新发布。重新启动即重置发布记录，首个补算/重试轮一样；体温基线与已付汗保持。衣层参数见[输入 README](../organs/body-inputs/README.md)，工程回放与不可比较项见[验收记录](../organs/body-inputs/thermal-replay.md)。
+
 ### 循环、体温调节与消化反馈补充（当前模块）
 
 - **循环（`heart` + `blood`）：** `heart/heart.ts` 读轮初活动强度、`autonomic.sympatheticMm`、`sleep` 副交感下调与 `blood.bloodVolumeMl`，算 `drive = sleepBase + max(activityGain × intensity, sympatheticDriveGain × effectiveSympatheticMm)`、`preloadFactor = clamp(bloodVolumeMl / 5000, 0.5, 1.15)`、`strokeVolumeMl = clamp(70 × (1 + 0.2 × (drive − 1)) × preloadFactor, 30, 140)` 与 `cardiacOutputMlMin = heartRatePerMin × strokeVolumeMl`（清醒静息 `70 × 70 = 4900`，睡眠期下调至约 55–60 bpm，惊醒时交感飙升拉高心率）。`blood/blood.ts` 在 `bodyFluid` 加载时将 `bloodVolumeMl` 耦合为 `clamp(5000 × bodyFluid.waterVolumeMl / 30000, 2500, 6000)`（未加载时保留自身状态），按 `referenceCardiacOutputMlMin = 4900` 与 `autonomic.sympatheticMm` 轻度血管收缩加成推出 `systolicMmHg` / `diastolicMmHg`（首轮静息精确 `120 / 80 mmHg`）、`oxygenDeliveryMlMin`、`maxOxygenDeliveryMlPerMin` 与 `gfrMlMin`。详见 [`heart`](../organs/human-organs/heart/README.md) 与 [`blood`](../organs/human-compartments/blood/README.md)。
-- **体温调节（`thermoregulation`）：** `brain/thermoregulation.ts` 按本地时钟 `resolveCircadianHour(io.wallTimeMs)` 与 `sleep.sleeping` 计算动态设定点（`37 ± 0.25 °C`，睡中下调 `0.2 °C`），结合轮初 `bloodOxygen.oxygenConsumptionMlMin`（`metabolicFactor = 0.005 kcal/mL`）与寒战 `2 × max(0, effectiveSetpointC − T)` 算产热，按 `0.58 × (skin.sweatVolumeMl / dtMin) + 0.104167 × (T − 25) + vasodilationKcalMin` 算散热（高于设定点开放外周血管舒张 `vasodilationGain = 0.50 kcal/(min·°C)`、按体重缩放封顶 `0.55 kcal/min`），积分 `coreTemperatureC` 并钳位 `[25, 45] °C`。消费端：`skin` 对运动/静息及夜间分离阈间带计算热致出汗，`lungsVentilation` 对静息（`+0.8 °C` 偏置）与运动（`0.35` 增益因子）分离触发热致喘息，`hypothalamusEndocrine` 读 `< 36.8°C` 驱动 TRH，`interoception` 软读 `heatMm` / `coldMm`。相关校准与多轮场景见 `test/organs.steady-state-24h.test.mjs` 与 `test/organs.physiology-calibration.test.mjs`（均为离线与 Gateway 集成回归，未作真实 DSH 会话实机复测）。详见 [`brain`](../organs/human-organs/brain/README.md)。
+- **体温调节（`thermoregulation`）：** 氧耗与寒战供热；干热项用非负基础/舒张导度乘带符号温差和衣层干倍率；蒸发项只扣轮初已付实汗中可被当轮水汽压差与衣层透过倍率蒸发的部分，不重复扣水。唯一温度写者按净热积分并钳到 `[25, 45] °C`。原昼夜/睡眠 `setpointC` 和可选发热增量分开发布，默认增量 0；详见[热账字段与参数](../organs/human-organs/brain/README.md#thermoregulation)及[真实 Gateway 工程与论文对照](../organs/body-inputs/thermal-replay.md)。
 - **消化链闭环反馈：** `stomach` 排空速率乘 `1 − 0.5 × clamp(duodenum.nutrientExposure, 0, 1)`；`stomachGhrelin` 在含能摄入当轮改为分级下调 `clamp(min(current, nadir) − suppression, 0, peak)`（`suppression = 0.3 × mechanical + 0.3 × exposure + 0.4 × energyKcal / 250`）；`smallIntestine` 水吸收随 `waterDeficit` 微调、碳水吸收随高血糖浓度梯度负反馈减缓。详见 [`stomach`](../organs/human-organs/stomach/README.md) 与 [`small-intestine`](../organs/human-organs/small-intestine/README.md)。
 - **离线重放工具：** [`tools/replay.mjs`](../tools/replay.mjs) 默认重放固定 5 模块 P0/P1 子集（含历史 `stomach/motility.ts`）以保持与既有用例兼容；传入 `--manifest [path]`（未指定路径时默认 `body-modules.json`，也可传入 `body-modules.male.json` / `body-modules.female.json` 与 `--signals`）即可通过 `createFieldRegistry` 与 `applyOperations` 运行完整清单的多器官离线仿真与守恒诊断。
 

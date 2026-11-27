@@ -222,7 +222,7 @@ test('an amputee manifest without muscleLimbs boots and normalizes over the rema
   });
 
   const booted = gateway.getState().parts;
-  assert.equal(Object.keys(booted).length, 42);
+  assert.equal(Object.keys(booted).length, JSON.parse(readFileSync(manifestPath, 'utf8')).scripts.length);
   assert.ok(booted.muscleHead, 'muscleHead must be loaded');
   assert.ok(booted.muscleTrunk, 'muscleTrunk must be loaded');
   assert.equal(Object.hasOwn(booted, 'muscleLimbs'), false);

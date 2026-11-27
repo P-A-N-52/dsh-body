@@ -44,7 +44,7 @@
 
 ## 当前实现范围
 
-根清单 `body-modules.json`（43 部位、39 份唯一参数文件，硬 transfer 闭包 15 部位；`sex` / `orgasm` 动作入口默认受 `nsfw: false` 门控）：
+根清单 `body-modules.json`（45 部位、40 份唯一参数文件，硬 transfer 闭包 15 部位；`sex` / `orgasm` 动作入口默认受 `nsfw: false` 门控）：
 
 | 器官 | 已实现功能 |
 | --- | --- |
@@ -53,7 +53,8 @@
 | 十二指肠 | 近期营养暴露代理（与唾液产率联动放大碳水餐暴露增益） |
 | 唾液腺 | 进食/饮水后 5 min 刺激窗口内的唾液产率、脱水时产率下降与湿润度/口干读数（水合静息 100 mm / `dryMouthMm = 0`）；有碳水到达十二指肠时按唾液产率放大淀粉酶增益；唾液不进水账 |
 | 小肠 | 水与碳水一阶吸收（脱水时微调水吸收，高血糖经梯度负反馈减慢碳水吸收）；离开通量按 95% 吸收 / 5% 残渣分流转入结肠 |
-| 皮肤 | 活动相关汗液请求与实际汗量（含体重缩放、静息/夜间阈间死区），高核心温度时叠加加性热致出汗 |
+| [气候与衣层输入](organs/body-inputs/README.md) | 分身体持久化显式温湿输入与逐件穿脱（短袖、外套）；干交换与蒸发透过独立。不接天气服务、不自动穿脱。 |
+| 皮肤 | 出汗请求与体液支付的实汗（活动、核心温度和阈间死区）；只对实际蒸发量计算散热，不把蒸发重复计入水账 |
 | 肺 | 运动相关呼吸失水、Hey Plot（先扩潮气量后提频）自动通气与静息/运动分离热喘息 |
 | 胰腺 | 血糖驱动的血浆胰岛素绝对浓度（`insulinPmolL`，Michaelis–Menten 可饱和清除 ODE）与胰高血糖素相对信号 |
 | 肝 | 肝糖原储存（上限 100 g）与平滑比例 + 低血糖/胰高血糖素/皮质醇（`cortisolNmolL / 180`）/交感神经驱动的释放（静息基线 0.096 g/min） |
@@ -61,7 +62,7 @@
 | 肾 | ADH 驱动产尿（受 GFR 缩放）、肾糖质量排泄；肾糖异生按平滑比例在空腹/低血糖或胰高血糖素高于基线时向葡萄糖隔室产糖（静息基线 0.024 g/min）；可选中枢/肾性 DI 变体（独立清单） |
 | 膀胱 | 储尿、主动排尿、过度充盈非自主排空（`involuntaryVoidedMl` 触发一次高危漏尿通知） |
 | 结肠 | 残渣水指数回收（`0.01 /min`）回流体液、粪便储存、`defecate` 排出与便意读数 |
-| 脑 | 下丘脑 ADH（含血容量驱动）、基于 `Hughes 2018` 高渗拟合与 0 mm 水合基线的口渴驱动、内分泌轴（TRH/CRH 与垂体 `tshRelative`/`acthPgMl`/`prolactinNgMl`/`oxytocinPgMl`）、自主神经、中枢奖赏、体温调节（昼夜/睡眠设定点 + 外周血管舒张散热）、睡眠节律、体感读出（23 项 0–100 mm 读数与 Gagge 平衡潮湿感 `sweatDampMm`）、全感受与高潮/受阻无数字通知策略及 `wake-evaluation.ts` 共享睡醒判定 |
+| 脑 | 下丘脑 ADH（含血容量驱动）、基于 `Hughes 2018` 高渗拟合与 0 mm 水合基线的口渴驱动、内分泌轴（TRH/CRH 与垂体 `tshRelative`/`acthPgMl`/`prolactinNgMl`/`oxytocinPgMl`）、自主神经、中枢奖赏、体温调节（带符号干交换、受限蒸发、昼夜/睡眠基线与缺省为零的可选发热增量）、睡眠节律、体感读出（23 项 0–100 mm 读数与 Gagge 平衡潮湿感 `sweatDampMm`）、全感受与高潮/受阻无数字通知策略及 `wake-evaluation.ts` 共享睡醒判定 |
 | 甲状腺 | TSH 驱动的 T4 相对信号（1440 min 代谢池时间尺度），缩放基础氧耗并负反馈抑制 TRH/TSH |
 | 肾上腺 | ACTH Hill 驱动与 49 min 实证消除的总皮质醇浓度（`cortisolNmolL`，基线 `180 nmol/L`），缩放肝糖释放、产生 `stressMm` 并负反馈抑制 CRH/ACTH |
 | 甲状旁腺 | 血钙负反馈调控的血浆 PTH 物理浓度代理（`pthPgMl`，`pg/mL`，参考基线 `30`、上限 `90`、`15 min` 半时） |
@@ -73,7 +74,7 @@
 | 血氧隔室 | 行为、消化、睡眠与 T4 缩放基础氧耗（T4=1 时 1.0× = 250 mL/min）、受通气与循环上限约束的供需平衡与 SpO2 代理 |
 | 血钙隔室 | 血钙浓度（`mgDl`，基线 `9.5`）与骨钙缓冲库（`boneStoreG`，初始 `100 g`、上限 `200 g`），读 `parathyroid.pthPgMl` 维持释放/沉积及 GFR 重吸收稳态；经 `interoception` 接入 `brainNotify` 与 `wake-evaluation` 主动提醒与睡醒判定 |
 
-女性清单 `body-modules.female.json`（46 部位、42 份唯一参数文件，硬 transfer 闭包 17 部位，独立存档）在此基础上增加：
+女性清单 `body-modules.female.json`（48 部位、43 份唯一参数文件，硬 transfer 闭包 17 部位，独立存档）在此基础上增加：
 
 | 器官 | 已实现功能 |
 | --- | --- |
@@ -81,16 +82,16 @@
 | 子宫 | 内膜增厚、经期失水（`30 mL/周期` 代理）、痛经（并入 `discomfort` 第五路）与高潮/催产素相关 `contractionMm` / `pelvicCongestionMm` |
 | 乳腺 | 默认非泌乳（`lactating: false`、0 泌乳、`prolactinNgMl` 维持昼夜基线约 `8 ng/mL`），受 `nsfw` 开关门控；支持 `profile.lactating: true` 或多日诱导状态机（`galactorrhea` 溢乳与 `lactating` 规整产奶）、`1 − DF²` 局部自抑制及催产素门控 `express_milk` / `breastfeed` 喷乳反射（并入 `discomfort` 第六路；合成水走 `bodyFluid` 第五出口，乳糖走女性 `glucose` 变体，绝不双扣体液） |
 
-男性清单 `body-modules.male.json`（45 部位、41 份唯一参数文件，硬 transfer 闭包 15 部位，独立存档）在根清单上只增加：
+男性清单 `body-modules.male.json`（47 部位、42 份唯一参数文件，硬 transfer 闭包 15 部位，独立存档）在根清单上只增加：
 
 | 器官 | 已实现功能 |
 | --- | --- |
 | 睾丸 | 睾酮相对量（基线 1、昼夜波动、60 min 半时、`sleepDebtDays` 多日睡眠债与应激/高 PRL 抑制），放大性反应唤醒并产生 `libidoMm`（受 `nsfw` 门控） |
 | 附睾 | 精液储存（上限 5 mL，按速率回补），高潮后排空为 `ejaculatedMl` |
 
-**膳食长链脂质选配清单**：[`organs/presets/human-lipid/body-modules.json`](organs/presets/human-lipid/body-modules.json) 在根清单上只替换共享胃入口并增加七个部位（共 50 部位、46 份唯一参数文件、19 部位 transfer 闭包）。按[中文启用说明](organs/presets/human-lipid/README.md)设置 `manifestPath` 与独立 `statePath`，沿用 `body_act(eat/drink)`；`fatG` 可选，明确为零填 `0`、未知省略，不从热量反推。胆囊回补、胰外分泌和肠淋巴推动已知餐源脂质账，不改变默认、女性或男性清单，也不新增内脏动作。
+**膳食长链脂质选配清单**：[`organs/presets/human-lipid/body-modules.json`](organs/presets/human-lipid/body-modules.json) 在根清单上只替换共享胃入口并增加七个部位（共 52 部位、47 份唯一参数文件、19 部位 transfer 闭包）。按[中文启用说明](organs/presets/human-lipid/README.md)设置 `manifestPath` 与独立 `statePath`，沿用 `body_act(eat/drink)`；`fatG` 可选，明确为零填 `0`、未知省略，不从热量反推。胆囊回补、胰外分泌和肠淋巴推动已知餐源脂质账，不改变默认、女性或男性清单，也不新增内脏动作。选配清单保留根清单的气候与衣层输入。
 
-仓库共有 54 份 `.parameters.json` 文件（根清单 39 份 + 女性新增 3 份 + 男性新增 2 份 + 3 份未挂入主清单的 DI 变体 + 脂质预设新增 7 份），各器官脚本从本目录加载参数文件。各身体使用独立存档。
+仓库共有 55 份 `.parameters.json` 文件（根清单 40 份 + 女性新增 3 份 + 男性新增 2 份 + 3 份未挂入主清单的 DI 变体 + 脂质预设新增 7 份）。`parathyroid` 与 `calcium` 已挂载进默认、女性和男性清单，各器官脚本只读取本目录参数文件（`blood.ts` / `duodenum` 已通过 `heart.maxCardiacOutputMlMin` 与各自参考参数完成跨器官参数文件解耦）。各身体使用独立存档。
 
 Gateway 现同时在 `<bodyDir>/logs/` 维护滚动历史（均设有界保留上限，默认各 `500` 条）：`logs/state-history.jsonl` 仅在状态发生变化或初始/补算提交时追加变更字段，`logs/notification-history.json` 记录每条通知从 `queued` → `acked`（绑定投递 `messageId`）→ `inserted`（由 DSH `agent/inbox/inserted` 事件或 `/notifications/receipt` 确认进入会话收件箱）的状态与时间戳。
 
@@ -100,11 +101,12 @@ Gateway 现同时在 `<bodyDir>/logs/` 维护滚动历史（均设有界保留�
 
 - `body_bind` 显式管理当前会话与身体的绑定/解绑或状态查询（`action: 'bind' | 'unbind' | 'status'`）；DSH 插件默认以 `requireBinding: true` 启动，未绑定时身体保持 `dormant` 休眠（时钟冻结且唤醒不补算休眠时间），`agent/disposed` 时自动解绑；多身体场景由 [multibody.js](multibody.js) 按 `bodies.json` 路由各会话独立身体。
 - `body_act` 提交身体动作：支持 `eat`、`drink`、`exercise` 及 `nsfw: true` 时的 `sex`（可选 `exertion` 解耦全身负荷与感官刺激）/ `express_milk` / `breastfeed`，以及无载荷的 `urinate`、`defecate`、`stop_exercise`、`sleep`、`wake_up`（与 `nsfw: true` 时的 `orgasm`，可选 `continueStimulation`）。主对话 Agent 可优先传自然语言 `description`（由 [action-translator.js](action-translator.js) 经 `ctx.llm.stream()` 单工具调用翻为生理数值，并从当前身体 `<bodyDir>/logs/action-translations.json` 同类型最近 100 条里匹配相似与连续参考；`ctx.llm` 不可用/多次失败时直接报错，不胡编数值；`eat`/`drink` 时在顶层顺手返回纯定性零数字味觉文本 `tasteFeedback`），也兼容直传定量字段；动作进入队列下一轮结算，同 ID 同输入重试复用回执。
+- 场景与穿着可经 `POST /actions` 或原 `body_act` 明确提交 `set_environment`（完整温湿对）、`wear_layer` / `remove_layer`（`layerId`）。不从描述猜测气候或衣层。见[动作与恢复契约](docs/gateway-and-scripts.md#身体气候与衣层当前模块)。
 - `body_state` 把已提交的身体快照转为**纯定性、零数值**的主观感受摘要（不包含任何数字、单位或生理测定值；`nsfw: false` 时屏蔽性/泌乳感受）；原始精确数值仅保留在调试/测试通道 `GET /state` 与 `gateway.getState()`。
 - `index.js` 在宿主存在 `systemPrompt` 服务时注册静态纯感觉准则（`systemPrompt.section`）与已绑定激活态的轻度背景体感（`systemPrompt.context`，均零数值）；无该服务时安全旁路；存在 `ctx.on` 时监听 `agent/inbox/inserted` 并回写通知阅读回执到 `logs/notification-history.json`。
 - `brainNotify` 覆盖除食管呛咳与 `discomfort` 外的核心、扩展体感（含低钙/高钙）、漏尿边沿、高潮/受阻边沿与非标 `sensations`，采用普通（20–240 min）/高危（5–60 min）双轨指数退避、滞回与缓解重置、睡眠门控、NSFW 门控与多感受零数字聚合。
 - LLM 通过提交动作驱动身体，状态由器官脚本计算并整轮提交。
-- 参数全库共 54 份 `.parameters.json`、406 条参数：`prior` 19 项（有登记文献支撑）、`fitted_dev` 1 项（开发集拟合，不是独立验证）、`design` 366 项（工程假设，含选配脂链 22 项）、`policy` 20 项（提醒策略），无 `validated`。选配脂链通过真实 Gateway 端到端回放验账；未做独立人体或 DSH 宿主会话验证。
+- 参数全库共 55 份 `.parameters.json`、412 条参数：`prior` 19 项（有登记文献支撑）、`fitted_dev` 1 项（开发集拟合，不是独立验证）、`design` 372 项（工程假设，含选配脂链 22 项）、`policy` 20 项（提醒策略），无 `validated`。既有生理校准、解耦与多身体逻辑已有离线、真实 Gateway 集成及容器内 DSH 挂接观察。选配脂链和身体热输入以本版真实 Gateway 回放验账，未做对应的 DSH 宿主会话或独立人体、临床验证。
 
 ## 开发与验证
 

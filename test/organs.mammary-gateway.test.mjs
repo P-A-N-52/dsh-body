@@ -148,7 +148,7 @@ test('seeded lactating female with prolactin drives milk, the lactose sink and d
   await gateway.ready;
 
   const booted = gateway.getState().parts;
-  assert.equal(Object.keys(booted).length, 46);
+  assert.equal(Object.keys(booted).length, JSON.parse(readFileSync(femaleManifestPath, 'utf8')).scripts.length);
   assert.ok(booted.mammaryGlands, 'the female manifest must load mammaryGlands');
   assert.ok(booted.reward, 'the female manifest must load reward');
   assert.equal(booted.mammaryGlands.lactating, true);
@@ -277,7 +277,7 @@ test('the root manifest has no mammary part and still boots with the three-sink 
   await gateway.ready;
 
   const parts = gateway.getState().parts;
-  assert.equal(Object.keys(parts).length, 43);
+  assert.equal(Object.keys(parts).length, JSON.parse(readFileSync(rootManifestPath, 'utf8')).scripts.length);
   assert.equal(Object.hasOwn(parts, 'mammaryGlands'), false);
   assert.ok(parts.reward);
   assert.equal(parts.pituitary.prolactinNgMl, 8);

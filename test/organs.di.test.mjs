@@ -27,6 +27,8 @@ const partIds = [
   'bloodOxygen',
   'bodyFluid',
   'brainNotify',
+  'climate',
+  'clothing',
   'colon',
   'duodenum',
   'esophagus',
@@ -164,7 +166,7 @@ function snapshot(parts) {
 
 test('the root manifest keeps the normal water chain with no DI variant loaded', () => {
   const manifest = JSON.parse(readFileSync(rootManifestPath, 'utf8'));
-  assert.equal(manifest.scripts.length, 43);
+  assert.equal(manifest.scripts.length, 45);
   assert.ok(manifest.scripts.includes(normalAdhPath));
   assert.ok(manifest.scripts.includes(normalKidneyPath));
   assert.ok(manifest.scripts.includes(lungsPath));
@@ -246,6 +248,9 @@ test('a central DI manifest zeroes ADH and produces four mL per minute of urine'
     urinate: ['bladder'],
     sleep: ['sleep'],
     wake_up: ['sleep'],
+    set_environment: ['climate'],
+    wear_layer: ['clothing'],
+    remove_layer: ['clothing'],
     exercise: ['physicalActivity'],
     stop_exercise: ['physicalActivity'],
   });
@@ -368,7 +373,7 @@ test('body_act and body_state keep their shapes under a DI manifest', async (t) 
   assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_bind', 'body_state']);
   assert.deepEqual(
     tools.body_act.parameters.properties.type.enum,
-    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'stop_exercise', 'sleep', 'wake_up'],
+    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'stop_exercise', 'sleep', 'wake_up', 'remove_layer', 'set_environment', 'wear_layer'],
   );
   assert.deepEqual(tools.body_act.output.schema.required, ['ok', 'statusCode', 'receipt']);
   assert.deepEqual(tools.body_state.output.schema.required, ['status', 'focus', 'feelings', 'summary']);

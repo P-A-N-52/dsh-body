@@ -4,7 +4,7 @@
 
 `lungs` 目录有两个独立部位。`lungs`（`respiratory-water-loss.ts`）持有两个 mL 字段：按轮初 `physicalActivity` 计算下一轮的运动相关呼吸失水请求，以及本轮由 `bodyFluid` 实际转入的通量。`lungsVentilation`（`ventilation.ts`）按轮初 `bloodOxygen.oxygenConsumptionMlMin`、自主交感/睡眠分期与分离后的静息/运动热致阈值，经 Hey Plot（先增潮气量 `VT` 后增呼吸频率 `RR`）自动调节每分通气量与呼吸节律，并写出肺泡氧供给。两个部位不共享状态、不互相 `transfer`，也不写其他部位；同目录只是解剖归类。`lungs` 仍只覆盖运动相关呼吸失水，不建静息呼吸失水；`lungsVentilation` 是供—需平衡与 Hey Plot 招募代理，不是血气（`PaCO2`）、呼吸力学或完整通气控制模型。LLM 不控制呼吸，没有通气动作。
 
-**状态口径。** 当前实现（2026-11-27）：两个脚本与参数都在 `organs/human-organs/lungs/`，均已加入根清单；当前根清单为 43 个部位、39 份唯一参数文件（另含 3 份不随根清单加载的 DI 变体与 1 份缺区域变体），女性清单为 46 部位、42 份，男性清单 45 部位、41 份，硬 transfer 闭包为根/男性 15 部位、女性 17 部位。`lungsVentilation` 现已接入 Hey Plot 潮气量招募（参考 `SRC-HEY-1966`、`SRC-NEDER-2003`、`SRC-LOE-2014`）与静息/运动分离热喘息阈值（参考 `SRC-TSUJI-2012`），14 项参数在 `ventilation.parameters.json` 均保持 `design`（单一成年混合体格标定，未含实机 DSH 重测）；静息呼吸失水参考 `SRC-MITCHELL-1972` 证实未单独建模仍写进“未建模”边界。
+**状态口径。** 当前实现（2026-11-27）：两个脚本与参数都在 `organs/human-organs/lungs/`，均已加入根清单；当前根清单为 45 个部位、40 份唯一参数文件（另含 3 份不随根清单加载的 DI 变体与 1 份缺区域变体），女性清单为 48 部位、43 份，男性清单 47 部位、42 份，硬 transfer 闭包为根/男性 15 部位、女性 17 部位。`lungsVentilation` 现已接入 Hey Plot 潮气量招募（参考 `SRC-HEY-1966`、`SRC-NEDER-2003`、`SRC-LOE-2014`）与静息/运动分离热喘息阈值（参考 `SRC-TSUJI-2012`），17 项参数在 `ventilation.parameters.json` 均保持 `design`（单一成年混合体格标定，未含实机 DSH 重测）；静息呼吸失水参考 `SRC-MITCHELL-1972` 证实未单独建模仍写进“未建模”边界。
 
 ## 1. 脚本与部位
 
@@ -90,7 +90,7 @@ alveolarO2CapacityMlMin = maxVentilationMlMin × inspiredO2Fraction / deadSpaceF
 
 - 静息清醒（`D = 250 mL/min`）时 `metabolicVentMlMin ≈ 6000.03 mL/min`，因 `+1 mL/min` 抗抖死区保持 `excessVentMlMin = 0`、`tidalVolumeMl = 500 mL`、`respiratoryRatePerMin = 12 /min`。
 - **Hey Plot 先扩潮气量后提频（`SRC-HEY-1966` / `SRC-NEDER-2003` / `SRC-LOE-2014`）：** 中轻度运动（如 `intensity = 0.35` 对应 `VE ≈ 14400 mL/min`）优先把 `VT` 从 `500 mL` 招募到约 `891 mL`，使 `RR` 仅温和升至 `~16 /min`、避免轻活动误报“大口喘气”；更高负荷才平滑趋近 `maxRatePerMin`。
-- **静息与运动分离热致阈值（`SRC-TSUJI-2012`）：** 静息态被动热致过度通气阈值相对高出 `restThermalThresholdOffsetC = +0.8 °C`（故运动后微热静息 `~37.6 °C` 不触发误喘息）；运动态从高点起效并按 `exercisePantingFactor = 0.35` 压低增益。
+- **静息与运动分离热致阈值（`SRC-TSUJI-2012`）：** 先取 `max(37 °C, 轮初 thermoregulation.setpointC)`；静息再加 `restThermalThresholdOffsetC = 0.8 °C`，运动不加、但把热喘增益乘 `exercisePantingFactor = 0.35`。算完上述旧阈值后再加轮初由本次运行采用的 `feverSetpointOffsetC`（无新发布时为 0）。它只平移热喘阈值，不改变代谢或交感通气底盘，也不把蒸发热损混入呼吸失水。
 - 容积/通气类参数按 `scaleByBodyWeight` 随体重缩放；`maxTidalVolumeMl = 2100 mL`、`tidalScaleVentilationMlMin = 30000 mL/min` 与 `sympatheticTidalCompressionFactor = 0.25` 均标为 `design` 工程校准/占位。
 
 同目录参数（`owner: lungsVentilation`，共 17 项 `design`）：

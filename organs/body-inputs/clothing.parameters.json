@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "owner": "clothing",
+  "parameters": [
+    {
+      "id": "clothing.tshirt.dryExchangeMultiplier",
+      "unit": "1",
+      "value": 0.85,
+      "status": "design",
+      "source": null,
+      "note": "短袖内层对干交换的工程倍率，允许 (0, 1]；不是实测 clo。"
+    },
+    {
+      "id": "clothing.tshirt.evaporationMultiplier",
+      "unit": "1",
+      "value": 0.8,
+      "status": "design",
+      "source": null,
+      "range": [0, 1],
+      "note": "短袖内层的工程蒸发透过倍率，不是实测蒸发阻抗。"
+    },
+    {
+      "id": "clothing.jacket.dryExchangeMultiplier",
+      "unit": "1",
+      "value": 0.55,
+      "status": "design",
+      "source": null,
+      "note": "外套对干交换的工程倍率，允许 (0, 1]；不是实测 clo。"
+    },
+    {
+      "id": "clothing.jacket.evaporationMultiplier",
+      "unit": "1",
+      "value": 0.45,
+      "status": "design",
+      "source": null,
+      "range": [0, 1],
+      "note": "外套的工程蒸发透过倍率，不是实测蒸发阻抗。"
+    }
+  ]
+}

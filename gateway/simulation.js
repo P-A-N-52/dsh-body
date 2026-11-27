@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { isPlainObject as isRecord } from '../json-safe.js';
+import { legacyAirTemperature } from '../organs/body-inputs/climate-state.js';
 import { setAction } from './actions.js';
 import { emptyCheckpoint } from './checkpoint.js';
 import { heartbeatSeconds } from './config.js';
@@ -42,6 +43,8 @@ export function createBodySimulation({
   let heartbeatWork;
   let timer;
   let registry = new Map();
+  // Live for this Gateway run, not for one worker instance (which can restart on failure).
+  const publishedParts = new Set();
   let fatalFailure = null;
   let lastHeartbeat = {
     lastSuccessAtMs: null,
@@ -75,6 +78,7 @@ export function createBodySimulation({
       wallTimeMs: batch.targetWallTimeMs,
       suppressNotifications,
       boundSessionId: current.boundSessionId ?? null,
+      publishedPartIds: [...publishedParts],
     });
     const nextParts = applyOperations({
       registry,
@@ -84,6 +88,7 @@ export function createBodySimulation({
       transfers,
     });
     return {
+      publishedPartIds: Object.keys(parts),
       snapshot: {
         simulatedSeconds: batch.targetSimulatedSeconds,
         parts: { ...current.snapshot.parts, ...nextParts },
@@ -95,6 +100,10 @@ export function createBodySimulation({
         createdAtWallTimeMs: batch.targetWallTimeMs,
       })),
     };
+  }
+
+  function recordPublications(result) {
+    for (const id of result.publishedPartIds) publishedParts.add(id);
   }
 
   function recordFatal(error, batchTargetSimulatedSeconds) {
@@ -185,6 +194,7 @@ export function createBodySimulation({
         next = { ...next, activeBatch: batch };
         const result = await runHeartbeat(next, batch);
         next = store.prune(applyBatch(next, result, batch));
+        recordPublications(result);
         remaining -= 1;
         if (remaining <= 0) {
           const elapsedAfter = Math.floor((nowMs - next.wallTimeMs) / heartbeatIntervalMs);
@@ -209,6 +219,7 @@ export function createBodySimulation({
         next = { ...next, activeBatch: batch };
         const result = await runHeartbeat(next, batch);
         next = store.prune(applyBatch(next, result, batch));
+        recordPublications(result);
       }
       return { checkpoint: next, catchUpError: null };
     } catch (error) {
@@ -242,6 +253,7 @@ export function createBodySimulation({
   async function restore(saved, modules, initializers) {
     const startedAtMs = now();
     registry = createFieldRegistry(modules);
+    publishedParts.clear();
     const current = saved ?? emptyCheckpoint(startedAtMs);
     const { active } = current;
     const resumedFromPause = active && saved?.startup?.active === false;
@@ -265,6 +277,19 @@ export function createBodySimulation({
     const loadedParts = Object.fromEntries(modules.map(({ id, initialState }) => [
       id, withDefaults(initialState, reconciled.snapshot.parts[id], `Body part ${id}`),
     ]));
+    let climateTemperatureMigration = null;
+    if (Object.hasOwn(initialParts.climate ?? {}, 'airTemperatureC')
+      && !Object.hasOwn(reconciled.snapshot.parts.climate ?? {}, 'airTemperatureC')) {
+      const { airTemperatureC, conflict } = legacyAirTemperature(reconciled.parameters);
+      loadedParts.climate.airTemperatureC = airTemperatureC;
+      climateTemperatureMigration = conflict;
+    }
+    const thermo = loadedParts.thermoregulation;
+    if (Object.hasOwn(initialParts.thermoregulation ?? {}, 'effectiveSetpointC')) {
+      thermo.feverSetpointOffsetC = 0;
+      thermo.effectiveSetpointC = Number.isFinite(thermo.setpointC)
+        ? thermo.setpointC : initialParts.thermoregulation.setpointC;
+    }
     const highestPendingEffectiveAt = reconciled.pendingActionIds.length
       ? Math.max(...reconciled.pendingActionIds.map((id) => reconciled.actions[id].effectiveAt))
       : 0;
@@ -316,7 +341,11 @@ export function createBodySimulation({
         snapshot = { ...snapshot, parts: { ...snapshot.parts, ...updates } };
       }
     }
-    return { ...restored, snapshot, startup };
+    return {
+      ...restored,
+      snapshot,
+      startup: climateTemperatureMigration ? { ...startup, climateTemperatureMigration } : startup,
+    };
   }
 
   function health(port) {
@@ -383,6 +412,7 @@ export function createBodySimulation({
       const result = await runHeartbeat(store.current, batch);
       if (isStopping()) return { ran: true, failed: false };
       store.commit(applyBatch(store.current, result, batch));
+      recordPublications(result);
       logs?.recordStateCommit(store.current, { reason: 'heartbeat', actionIds: batch.actionIds });
       logs?.recordNotificationsQueued(result.notifications);
       lastHeartbeat = {
