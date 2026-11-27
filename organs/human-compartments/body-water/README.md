@@ -10,6 +10,32 @@
 
 **清单依赖（transfer 配对校验）。** 正常入口的 `waterVolumeMl` 同时声明 `transferIn: ["smallIntestine.waterVolumeMl", "colon.reclaimedWaterMl"]` 与 `transferOut: ["bladder.volumeMl", "lungs.respiratoryWaterLossMl", "skin.sweatVolumeMl"]`；女性变体在 `transferOut` 末位再加 `uterus.bleedingMl` 与 `mammaryGlands.milkMl`。所以自定义清单加载正常 `bodyFluid` 时必须同时加载 `smallIntestine`、`colon`、`bladder`、`lungs` 与 `skin`；加载女性变体还必须加载 `uterus` 与 `mammaryGlands`，否则启动报 `transferOut target "uterus.bleedingMl" is not declared` 或 `transferOut target "mammaryGlands.milkMl" is not declared`。女性清单的硬 transfer 闭包是在根清单 15 部位之上再加 `uterus` 与 `mammaryGlands`，共 17 部位；`ovaries` 只是子宫的普通轮初读取，不在配对校验内。以下闭包描述按根清单的正常入口：`smallIntestine` 还接收胃水链入口 `stomach/hydration.ts` 的水，向 `colon.residueWaterMl` 转出残渣，并向 `glucose.glucoseMassG` 转出碳水；`glucose` 又向 `kidneyGlucose.excretedGlucoseG` 转出肾糖，并向 `muscleGlucose.uptakeG` 转出肌摄糖。因此完整硬 transfer 闭包是 `hydration.ts`（胃）、`smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGluconeogenesis`、`kidneyGlucose`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、`skin`、`lungs` 十五个部位，缺任一个都会在 `createFieldRegistry` 启动校验时报字段配对错误；旧入口 `motility.ts` 不声明这些 transfer，不能替代水链胃入口。反过来，加载 `smallIntestine` 也必须带齐上述目标与来源。女性清单另用 `glucose.female.ts`，其 `glucoseMassG.transferOut` 末位多一个 `mammaryGlands.lactoseG`，因此乳腺也在这个闭包内。`physicalActivity` 只是 `skin`、`lungs` 与 `muscleGlucose` 的普通轮初读取，不是 transfer 配对依赖；根清单包含它以提供 `exercise` 能力。`kidney`、`hypothalamusAdh`、`hypothalamusThirst`、`pituitary` 与 `interoception` 之间只有普通 `io.read`，没有 transfer 字段对，所以不在配对校验内；缺这些部位时启动不报错，相关脚本按各自的缺失默认值处理。`esophagus` 不声明 transfer，也不在闭包内。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "bodyFluid.referenceVolumeMl": 32000 } }
+```
+
+### water.parameters.json
+
+参数文件：[`water.parameters.json`](water.parameters.json)。入口及清单：[`water.ts`](water.ts)（[默认](../../../body-modules.json) / [男性](../../../body-modules.male.json)）；[`water.female.ts`](water.female.ts)（[女性](../../../body-modules.female.json)）。读取脚本：[`water-core.ts`](water-core.ts)。
+
+普通与女性的入口使用同一 core 和同一份参数；女性清单追加月经与乳汁水出口。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `bodyFluid.referenceVolumeMl` | `30000` | `mL` | `design` | `weightKg / 75` | — |
+| `bodyFluid.deficitScaleMl` | `500` | `mL` | `design` | `weightKg / 75` | — |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

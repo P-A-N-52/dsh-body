@@ -6,6 +6,34 @@
 
 实现状态：脚本、参数、模块契约测试与真实 Gateway 测试已落地；当前根清单为 43 部位、39 份唯一参数文件，女性清单为 46 部位、42 份，男性清单为 45 部位、41 份；本切片不新增 `transfer`，硬闭包为根与男性 15 个部位、女性 17 个。四个 `salivaryGlands.*` 参数与消费者参数 `duodenum.salivaryAmylaseGain`、`duodenum.referenceSalivaRateMlPerMin` 全部是 `design`、`source: null`（`duodenum` 已通过本地参考产率参数与 `saliva.parameters.json` 解耦）。本文只描述离线模型与契约，未做真实 DSH 会话、唾液流率实测或临床验证。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "salivaryGlands.basalRateMlPerMin": 0.6 } }
+```
+
+### saliva.parameters.json
+
+参数文件：[`saliva.parameters.json`](saliva.parameters.json)。入口及清单：[`saliva.ts`](saliva.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`saliva.ts`](saliva.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `salivaryGlands.basalRateMlPerMin` | `0.5` | `mL/min` | `design` | 无 | — |
+| `salivaryGlands.mealGain` | `3` | `1` | `design` | 无 | — |
+| `salivaryGlands.mealWindowMin` | `5` | `min` | `design` | 无 | — |
+| `salivaryGlands.dehydrationFactor` | `0.5` | `1` | `design` | 无 | — |
+
+本文件额外登记的 `duodenum.salivaryAmylaseGain` 不在 `parameters` 数组内，不由本器官读取；实际默认见 [`nutrient-exposure.parameters.json`](../duodenum/nutrient-exposure.parameters.json)。
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 动作 | 写什么 | 读什么 | 参数文件 |

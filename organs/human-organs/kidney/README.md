@@ -6,6 +6,103 @@
 
 实现状态：正常脚本、参数与定向测试已在 `organs/human-organs/kidney/`，并已加入根清单（当前根清单 43 个部位、39 份唯一参数文件，女性清单 46 个部位、42 份，男性清单 45 个部位、41 份；另有 3 份 DI 变体与 1 份缺区域变体不随根清单加载）。DI 样变体只在独立清单/独立存档中显式加载，根清单与正常参数不含变体。单独加载正常脚本时不需要 `transfer` 配对，但没有 `hypothalamusAdh` 时请求会回落到基线。M19 真实 DSH 会话已补验正常与两组 DI 清单（2026-11-22，33/33 verdicts）：sim 300 正常请求 0.9998 mL、中枢 ADH 0 请求 4 mL、肾性 ADH 1.0022 但请求固定 4 mL，通知 0；证据在 `/tmp/dsh-body/m19-real-dsh.syuWHR/`（仓库外未入库）。M19 只覆盖 2–5 轮短会话；4 mL/min 仍是 `design` 代理，不是诊断或治疗依据。肾糖排泄是独立部位，契约见 §6；`glucose-excretion.ts`、参数、模块契约测试和根清单注册均已落地，`glucose` 侧的请求—结算已接入；同一切片还加入 `liver` 的肝糖储存/释放，肾糖异生切片再加入 `kidneyGluconeogenesis`，含 `glucose` 的硬 transfer 闭包因此为根与男性 15 部位、女性 17 部位。肾糖链与肾糖异生链尚未做真实 DSH 会话或临床验证。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "kidney.urine.baselineRateMlPerMin": 1.1 } }
+```
+
+<details>
+<summary>gluconeogenesis.parameters.json</summary>
+
+参数文件：[`gluconeogenesis.parameters.json`](gluconeogenesis.parameters.json)。入口及清单：[`gluconeogenesis.ts`](gluconeogenesis.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`gluconeogenesis.ts`](gluconeogenesis.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `kidneyGluconeogenesis.maxOutputRateGPerMin` | `0.5` | `g/min` | `design` | `weightKg / 75` | — |
+| `kidneyGluconeogenesis.maxOutputPerRoundG` | `0.6` | `g` | `design` | `weightKg / 75` | — |
+| `kidneyGluconeogenesis.baselineMgDl` | `90` | `mg/dL` | `design` | 无 | — |
+| `kidneyGluconeogenesis.basalOutputRateGPerMin` | `0.024` | `g/min` | `design` | `weightKg / 75` | — |
+| `kidneyGluconeogenesis.hypoglycemiaOutputGainGPerMinPerMgDl` | `0.005` | `g/(min·mg/dL)` | `design` | `weightKg / 75` | — |
+| `kidneyGluconeogenesis.glucagonOutputGainGPerMin` | `0.05` | `g/min` | `design` | `weightKg / 75` | — |
+
+</details>
+
+<details>
+<summary>glucose-excretion.parameters.json</summary>
+
+参数文件：[`glucose-excretion.parameters.json`](glucose-excretion.parameters.json)。入口及清单：[`glucose-excretion.ts`](glucose-excretion.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`glucose-excretion.ts`](glucose-excretion.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `kidneyGlucose.filtrationRatePerMin` | `0.0005` | `min^-1` | `prior` | 无 | — |
+| `kidneyGlucose.renalThresholdMgKg` | `339` | `mg/kg` | `prior` | 无 | — |
+| `kidneyGlucose.distributionVolumeDlPerKg` | `1.88` | `dL/kg` | `design` | 无 | — |
+| `kidneyGlucose.referenceBodyMassKg` | `75` | `kg` | `design` | `weightKg / 75` | — |
+
+</details>
+
+<details>
+<summary>urine-production-di-central.parameters.json</summary>
+
+参数文件：[`urine-production-di-central.parameters.json`](urine-production-di-central.parameters.json)。入口及清单：[`urine-production-di-central.ts`](urine-production-di-central.ts)（可选中枢 DI 样入口，替换正常产尿，配套中枢 DI 样 ADH；独立清单和存档）。读取脚本：[`urine-production-di-central.ts`](urine-production-di-central.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `kidney.diCentral.baselineRateMlPerMin` | `1` | `mL/min` | `design` | 无 | — |
+| `kidney.diCentral.adhGain` | `3` | `1` | `design` | 无 | — |
+| `kidney.diCentral.minRelativeRate` | `0.25` | `1` | `design` | 无 | — |
+| `kidney.diCentral.maxRelativeRate` | `4` | `1` | `design` | 无 | — |
+
+</details>
+
+<details>
+<summary>urine-production-di-nephrogenic.parameters.json</summary>
+
+参数文件：[`urine-production-di-nephrogenic.parameters.json`](urine-production-di-nephrogenic.parameters.json)。入口及清单：[`urine-production-di-nephrogenic.ts`](urine-production-di-nephrogenic.ts)（可选肾性 DI 样入口，替换正常产尿，不读 ADH；独立清单和存档）。读取脚本：[`urine-production-di-nephrogenic.ts`](urine-production-di-nephrogenic.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `kidney.diNephrogenic.urineRateMlPerMin` | `4` | `mL/min` | `design` | 无 | — |
+
+</details>
+
+<details>
+<summary>urine-production.parameters.json</summary>
+
+参数文件：[`urine-production.parameters.json`](urine-production.parameters.json)。入口及清单：[`urine-production.ts`](urine-production.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`urine-production.ts`](urine-production.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `kidney.urine.baselineRateMlPerMin` | `1` | `mL/min` | `design` | 无 | — |
+| `kidney.urine.adhGain` | `1` | `1` | `design` | 无 | — |
+| `kidney.urine.minRelativeRate` | `0.25` | `1` | `design` | 无 | — |
+| `kidney.urine.maxRelativeRate` | `2` | `1` | `design` | 无 | — |
+
+</details>
+
+<details>
+<summary>blood.parameters.json（共享）</summary>
+
+参数文件：[`blood.parameters.json`](../../human-compartments/blood/blood.parameters.json)。入口及清单：[`urine-production.ts`](urine-production.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`urine-production.ts`](urine-production.ts)。
+
+直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `blood.baselineGfrMlMin` | `100` | `mL/min` | `design` | `weightKg / 75` | 含直接覆盖读取。 |
+
+</details>
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

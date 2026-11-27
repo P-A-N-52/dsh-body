@@ -2,6 +2,55 @@
 
 本目录有两个独立部位：`breastComposition` 记录组织形态，随根、男性和女性三份成人清单加载；`mammaryGlands` 计算泌乳与排乳，只随女性清单加载。设置前者不会启用后者或改变 `nsfw`。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "mammaryGlands.basalMilkRateMlPerMin": 0.55 } }
+```
+
+无本地参数文件的入口：[`composition.ts`](composition.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；输出字段和脚本内常量不是可覆盖 ID。
+
+### composition.parameters.json
+
+参数文件：[`composition.parameters.json`](composition.parameters.json)。正式清单和已登记可选入口没有读取这个文件。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `breastComposition.bilateralTissueVolumeMl` | `null` | `mL` | `unset` | 无 | 只登记；无读取，不作有效覆盖。未设值，不是 0。 |
+| `breastComposition.fibroglandularVolumePct` | `null` | `%` | `unset` | 无 | 只登记；无读取，不作有效覆盖。未设值，不是 0。 |
+
+### milk.parameters.json
+
+参数文件：[`milk.parameters.json`](milk.parameters.json)。入口及清单：[`milk.ts`](milk.ts)（[女性](../../../body-modules.female.json)）。读取脚本：[`milk.ts`](milk.ts)。
+
+女性清单加载；`nsfw: false`（Gateway 缺省）关闭泌乳产出。开启后仍看泌乳状态和动作，`profile.lactating` 可为新部位播种，不重置已保存状态。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `mammaryGlands.basalMilkRateMlPerMin` | `0.54` | `mL/min` | `prior` | 无 | — |
+| `mammaryGlands.storageCapacityMl` | `360` | `mL` | `prior` | `weightKg / 75` | — |
+| `mammaryGlands.lactoseGPerMl` | `0.074` | `g/mL` | `design` | 无 | — |
+| `mammaryGlands.galactorrheaRateMlPerMin` | `0.012` | `mL/min` | `design` | 无 | — |
+| `mammaryGlands.inductionPrlThresholdNgMl` | `45` | `ng/mL` | `design` | 无 | — |
+| `mammaryGlands.galactorrheaThreshold` | `0.25` | `1` | `design` | 无 | — |
+| `mammaryGlands.hormonalInductionPerDay` | `0.05` | `1/d` | `design` | 无 | — |
+| `mammaryGlands.stimulatedInductionPerDay` | `0.055` | `1/d` | `design` | 无 | — |
+| `mammaryGlands.involutionHalfTimeDays` | `7` | `d` | `design` | 无 | — |
+| `mammaryGlands.breastfeedPamr` | `0.673` | `1` | `prior` | 无 | — |
+| `mammaryGlands.expressPamr` | `0.75` | `1` | `prior` | 无 | — |
+| `mammaryGlands.engorgementPamrPenaltyPer100Ml` | `0.14` | `1` | `design` | 无 | — |
+| `mammaryGlands.letdownOxytocinThresholdPgMl` | `5` | `pg/mL` | `design` | 无 | — |
+| `mammaryGlands.fullnessHalfTimeMin` | `15` | `min` | `design` | 无 | — |
+
+<!-- organ-parameters:end -->
+
 ## 乳房组织组成
 
 [脚本 `composition.ts`](composition.ts) 用双组分近似记录连续组成，不划分“脂肪型”或“腺体型”。在 [`composition.parameters.json`](composition.parameters.json) 中，两项输入都没有人群默认值：

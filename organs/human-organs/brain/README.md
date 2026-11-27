@@ -4,6 +4,367 @@
 
 实现状态：脚本与参数已在 `organs/human-organs/brain/`，十一个大脑脚本（含中枢奖赏 `reward.ts`）均随三份主清单及选配脂质清单加载；`body_bind` / `body_state`（纯定性零数值）/ `body_act` 工具（含进食/饮水翻译官顺手返回的零数字纯文本 `tasteFeedback`）、DSH `systemPrompt` 挂载与通知投递在 `index.js` / `tools.js` / `notifications.js`。当前根清单 45 部位、40 份唯一参数文件，女性清单 48 部位、43 份，男性清单 47 部位、42 份，选配脂质清单 52 部位、47 份，全库共 55 份唯一参数文件；`uterus`、`ovaries` 与 `mammaryGlands` 只随女性清单 `body-modules.female.json` 加载，`testes` / `epididymis` 只随男性清单 `body-modules.male.json` 加载，`parathyroid` 与 `bloodCalcium` 已挂载进三份主清单及选配脂质清单。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "hypothalamusAdh.timeConstantMin": 12 } }
+```
+
+<details>
+<summary>autonomic.parameters.json</summary>
+
+参数文件：[`autonomic.parameters.json`](autonomic.parameters.json)。入口及清单：[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`autonomic.ts`](autonomic.ts)。
+
+交感/副交感另有睡眠、活动等路径；性反应相关路径受 `nsfw` 门控。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `autonomic.basalParasympatheticMm` | `20` | `mm` | `design` | 无 | — |
+| `autonomic.sleepParasympatheticMm` | `75` | `mm` | `design` | 无 | — |
+| `autonomic.startleBurstMm` | `85` | `mm` | `design` | 无 | — |
+| `autonomic.riseHalfTimeMin` | `2` | `min` | `design` | 无 | — |
+| `autonomic.decayHalfTimeMin` | `12` | `min` | `design` | 无 | — |
+| `autonomic.startleClearThresholdMm` | `10` | `mm` | `design` | 无 | — |
+| `autonomic.exerciseSympatheticGain` | `65` | `mm` | `design` | 无 | — |
+| `autonomic.hypoglycemiaThresholdMgDl` | `65` | `mg/dL` | `design` | 无 | — |
+| `autonomic.hypoglycemiaGainPerMgDl` | `2.5` | `mm/(mg/dL)` | `design` | 无 | — |
+| `autonomic.hypoxiaGain` | `80` | `mm` | `design` | 无 | — |
+| `autonomic.hypotensionThresholdMmHg` | `90` | `mmHg` | `design` | 无 | — |
+| `autonomic.hypotensionGainPerMmHg` | `2.5` | `mm/mmHg` | `design` | 无 | — |
+| `autonomic.coldThresholdC` | `36.5` | `°C` | `design` | 无 | — |
+| `autonomic.coldGainPerC` | `25` | `mm/°C` | `design` | 无 | — |
+| `autonomic.sleepColdThresholdOffsetC` | `0.5` | `°C` | `design` | 无 | — |
+| `autonomic.nremSympatheticFactor` | `0.4` | `1` | `design` | 无 | — |
+| `autonomic.remSympatheticToneMm` | `10` | `mm` | `design` | 无 | — |
+| `autonomic.sleepParaRemMultiplier` | `0.72` | `1` | `design` | 无 | — |
+| `autonomic.painDiscomfortThresholdMm` | `70` | `mm` | `design` | 无 | — |
+| `autonomic.painSympatheticGain` | `0.8` | `1` | `design` | 无 | — |
+| `autonomic.orgasmSympatheticBurstMm` | `70` | `mm` | `design` | 无 | — |
+| `autonomic.sleepEntryDecayHalfTimeMin` | `4` | `min` | `design` | 无 | — |
+
+</details>
+
+<details>
+<summary>hypothalamus-adh-di-central.parameters.json</summary>
+
+参数文件：[`hypothalamus-adh-di-central.parameters.json`](hypothalamus-adh-di-central.parameters.json)。入口及清单：[`hypothalamus-adh-di-central.ts`](hypothalamus-adh-di-central.ts)（可选中枢 DI 样入口，替换正常 ADH 模块，配套肾变体；独立清单和存档）。读取脚本：[`hypothalamus-adh-di-central.ts`](hypothalamus-adh-di-central.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `hypothalamusAdh.central.fixedRelativeConcentration` | `0` | `1` | `design` | 无 | — |
+
+</details>
+
+<details>
+<summary>hypothalamus-adh.parameters.json</summary>
+
+参数文件：[`hypothalamus-adh.parameters.json`](hypothalamus-adh.parameters.json)。入口及清单：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `hypothalamusAdh.timeConstantMin` | `10` | `min` | `design` | 无 | — |
+| `hypothalamusAdh.deficitGain` | `1` | `1/1` | `design` | 无 | — |
+| `hypothalamusAdh.volumeGain` | `0.5` | `1/1` | `design` | 无 | — |
+| `hypothalamusAdh.relativeMinimum` | `0` | `1` | `design` | 无 | — |
+| `hypothalamusAdh.relativeMaximum` | `3` | `1` | `design` | 无 | — |
+
+</details>
+
+<details>
+<summary>hypothalamus-endocrine.parameters.json</summary>
+
+参数文件：[`hypothalamus-endocrine.parameters.json`](hypothalamus-endocrine.parameters.json)。入口及清单：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `hypothalamusEndocrine.trhFeedbackGain` | `1` | `1/1` | `design` | 无 | — |
+| `hypothalamusEndocrine.crhFeedbackGain` | `1` | `1/1` | `design` | 无 | — |
+| `hypothalamusEndocrine.crhCircadianAmplitude` | `0.35` | `1` | `design` | 无 | — |
+| `hypothalamusEndocrine.crhPeakHour` | `7` | `h` | `design` | 无 | — |
+| `hypothalamusEndocrine.sympatheticCrhGain` | `0.01` | `1/mm` | `design` | 无 | — |
+| `hypothalamusEndocrine.carAmplitude` | `0.45` | `1` | `design` | 无 | — |
+| `hypothalamusEndocrine.carLatentMin` | `10` | `min` | `design` | 无 | — |
+| `hypothalamusEndocrine.sleepCrhSuppression` | `0.15` | `1` | `design` | 无 | — |
+| `hypothalamusEndocrine.rewardBufferingGain` | `0.25` | `1` | `design` | 无 | — |
+
+</details>
+
+<details>
+<summary>hypothalamus-thirst.parameters.json</summary>
+
+参数文件：[`hypothalamus-thirst.parameters.json`](hypothalamus-thirst.parameters.json)。入口及清单：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `hypothalamusThirst.baselineMm` | `0` | `mm` | `design` | 无 | — |
+| `hypothalamusThirst.referenceOsmolalityMOsmKg` | `285.23` | `mOsm/kg` | `design` | 无 | — |
+| `hypothalamusThirst.osmolalityThresholdMOsmKg` | `285.23` | `mOsm/kg` | `prior` | 无 | — |
+| `hypothalamusThirst.osmolalitySlopeMmPerMOsmKg` | `5.4` | `mm/(mOsm/kg)` | `prior` | 无 | — |
+| `hypothalamusThirst.osmoticPoolReferenceMl` | `30000` | `mL` | `design` | `weightKg / 75` | — |
+
+</details>
+
+<details>
+<summary>interoception.parameters.json</summary>
+
+参数文件：[`interoception.parameters.json`](interoception.parameters.json)。入口及清单：[`interoception.ts`](interoception.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`interoception.ts`](interoception.ts)。
+
+一般体感继续运行；性唤醒、性欲与性后舒缓读数受 `nsfw` 门控。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `interoception.hunger.baselineMm` | `50` | `mm` | `design` | 无 | — |
+| `interoception.fullness.baselineMm` | `0` | `mm` | `design` | 无 | — |
+| `interoception.hunger.ghrelinGain` | `50` | `mm/1` | `design` | 无 | — |
+| `interoception.fullness.ghrelinGain` | `-50` | `mm/1` | `design` | 无 | — |
+| `interoception.hunger.mechanicalGain` | `-20` | `mm/1` | `design` | 无 | — |
+| `interoception.fullness.mechanicalGain` | `100` | `mm/1` | `design` | 无 | — |
+| `interoception.hunger.nutrientGain` | `-5` | `mm/(kcal/min)` | `design` | 无 | — |
+| `interoception.fullness.nutrientGain` | `10` | `mm/(kcal/min)` | `design` | 无 | — |
+| `interoception.thirst.fallbackMm` | `0` | `mm` | `design` | 无 | — |
+| `interoception.urinaryUrgency.referenceVolumeMl` | `410` | `mL` | `design` | 无 | — |
+| `interoception.discomfort.onsetMm` | `70` | `mm` | `design` | 无 | — |
+| `interoception.thermoregulation.setpointC` | `37` | `°C` | `design` | 无 | — |
+| `interoception.temperatureReadoutGainMmPerC` | `50` | `mm/°C` | `design` | 无 | — |
+| `interoception.calcium.referenceMgDl` | `9.5` | `mg/dL` | `design` | 无 | — |
+| `interoception.calcium.readoutGainMmPerMgDl` | `50` | `mm/(mg/dL)` | `design` | 无 | — |
+| `interoception.bowelUrgency.referenceStoolG` | `200` | `g` | `design` | 无 | — |
+| `interoception.hypoglycemia.thresholdMgDl` | `75` | `mg/dL` | `design` | 无 | — |
+| `interoception.hypoglycemia.gainMmPerMgDl` | `4` | `mm/(mg/dL)` | `design` | 无 | — |
+| `interoception.palpitation.restHrThresholdPerMin` | `115` | `1/min` | `design` | 无 | — |
+| `interoception.palpitation.hrGainMmPerBpm` | `1.5` | `mm/(1/min)` | `design` | 无 | — |
+| `interoception.palpitation.minExerciseIntensity` | `0.2` | `1` | `design` | 无 | — |
+| `interoception.palpitation.sbpThresholdMmHg` | `95` | `mmHg` | `design` | 无 | — |
+| `interoception.palpitation.sbpGainMmPerMmHg` | `5` | `mm/mmHg` | `design` | 无 | — |
+| `interoception.palpitation.sympatheticThresholdMm` | `25` | `mm` | `design` | 无 | — |
+| `interoception.palpitation.sympatheticGain` | `1.2` | `1` | `design` | 无 | — |
+| `interoception.stress.sympatheticWeight` | `0.9` | `1` | `design` | 无 | — |
+| `interoception.sweatDamp.halfTimeMin` | `5` | `min` | `design` | 无 | — |
+| `interoception.sweatDamp.referenceEvapRateMlMin` | `4.5` | `mL/min` | `design` | `weightKg / 75` | — |
+| `interoception.muscleFatigue.halfTimeMin` | `30` | `min` | `design` | 无 | — |
+| `interoception.muscleFatigue.exerciseGainMmPerMin` | `2.1` | `mm/min` | `design` | 无 | — |
+| `interoception.muscleFatigue.depletionWeight` | `0.5` | `1` | `design` | 无 | — |
+| `interoception.sleepiness.melatoninWeight` | `0.4` | `1` | `design` | 无 | — |
+| `interoception.sleepiness.pressureWeight` | `0.8` | `1` | `design` | 无 | — |
+| `interoception.sleepiness.inertiaWeight` | `0.6` | `1` | `design` | 无 | — |
+| `interoception.sleepiness.sympatheticSuppressionWeight` | `0.55` | `1` | `design` | 无 | — |
+| `interoception.sleepiness.exerciseSuppressionGain` | `25` | `mm` | `design` | 无 | — |
+| `interoception.sleepiness.arousalSuppressionWeight` | `0.25` | `1` | `design` | 无 | — |
+| `interoception.sleepiness.cortisolSuppressionGain` | `15` | `mm` | `design` | 无 | — |
+
+</details>
+
+<details>
+<summary>notify.parameters.json</summary>
+
+参数文件：[`notify.parameters.json`](notify.parameters.json)。入口及清单：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`sleep.ts`](sleep.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`notify.ts`](notify.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`wake-evaluation.ts`](wake-evaluation.ts)、[`notify.ts`](notify.ts)。
+
+通知策略，不是生理阈值；普通通知、睡眠阈值和紧急路径不同，NSFW 信号另受 `nsfw` 门控。
+
+共享脚本只消费各路径所需的子集；不是每个入口都使用组内所有键。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `brainNotify.hunger.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.hunger.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.fullness.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.fullness.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.urinary.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.urinary.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.thirst.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.thirst.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.default.marked` | `65` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`、`notify.ts`。 |
+| `brainNotify.default.strong` | `85` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`、`notify.ts`。 |
+| `brainNotify.resetBelow` | `40` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.baseIntervalMin` | `20` | `min` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.maxIntervalMin` | `240` | `min` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.urgentBaseIntervalMin` | `5` | `min` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.urgentMaxIntervalMin` | `60` | `min` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.wakeAtLevel` | `3` | `1` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.sleepImportantThresholdMm` | `92` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`。 |
+| `brainNotify.deepSleepImportantThresholdMm` | `95` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`。 |
+| `brainNotify.maxTrackedSessions` | `32` | `1` | `policy` | 无 | 读取：`notify.ts`。 |
+
+</details>
+
+<details>
+<summary>pituitary.parameters.json</summary>
+
+参数文件：[`pituitary.parameters.json`](pituitary.parameters.json)。入口及清单：[`pituitary.ts`](pituitary.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`pituitary.ts`](pituitary.ts)。
+
+普通轴仍运行；哺乳/性反应相关的 PRL、催产素调节支路受 `nsfw` 门控。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `pituitary.tshFeedbackGain` | `1` | `1` | `design` | 无 | — |
+| `pituitary.tshHalfTimeMin` | `53.9` | `min` | `prior` | 无 | — |
+| `pituitary.acthBasalPgMl` | `12` | `pg/mL` | `design` | 无 | — |
+| `pituitary.acthFeedbackGain` | `1` | `1` | `design` | 无 | — |
+| `pituitary.acthHalfTimeMin` | `20` | `min` | `prior` | 无 | — |
+| `pituitary.prolactinBasalNgMl` | `8` | `ng/mL` | `design` | 无 | — |
+| `pituitary.prolactinCircadianAmplitudeNgMl` | `2.1` | `ng/mL` | `prior` | 无 | — |
+| `pituitary.prolactinSleepBoostNgMl` | `6` | `ng/mL` | `design` | 无 | — |
+| `pituitary.prolactinSucklingGainNgMl` | `82` | `ng/mL` | `design` | 无 | — |
+| `pituitary.prolactinOrgasmBoostNgMl` | `14` | `ng/mL` | `design` | 无 | — |
+| `pituitary.prolactinHalfTimeMin` | `34.6` | `min` | `design` | 无 | — |
+| `pituitary.oxytocinBasalPgMl` | `2` | `pg/mL` | `design` | 无 | — |
+| `pituitary.oxytocinSucklingBoostPgMl` | `14` | `pg/mL` | `design` | 无 | — |
+| `pituitary.oxytocinArousalGainPgMl` | `6` | `pg/mL` | `design` | 无 | — |
+| `pituitary.oxytocinOrgasmBoostPgMl` | `22` | `pg/mL` | `design` | 无 | — |
+| `pituitary.oxytocinHalfTimeMin` | `3.8` | `min` | `design` | 无 | — |
+
+</details>
+
+<details>
+<summary>reward.parameters.json</summary>
+
+参数文件：[`reward.parameters.json`](reward.parameters.json)。入口及清单：[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`reward.ts`](reward.ts)。
+
+一般奖赏仍运行，性相关信号路径受 `nsfw` 门控。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `reward.basalWantingMm` | `25` | `mm` | `design` | 无 | — |
+| `reward.basalHedonicMm` | `15` | `mm` | `design` | 无 | — |
+| `reward.sexWantingGain` | `0.5` | `1` | `design` | 无 | — |
+| `reward.ghrelinWantingGainMm` | `18` | `mm` | `design` | 无 | — |
+| `reward.orgasmHedonicBoostMm` | `68` | `mm` | `design` | 无 | — |
+| `reward.orgasmSatietyBoostMm` | `78` | `mm` | `design` | 无 | — |
+| `reward.exerciseHedonicGainMm` | `32` | `mm` | `design` | 无 | — |
+| `reward.mealHedonicGainMm` | `18` | `mm` | `design` | 无 | — |
+| `reward.mealSatietyGainMm` | `28` | `mm` | `design` | 无 | — |
+| `reward.oxytocinHedonicGainMmPerPgMl` | `1.2` | `mm/(pg/mL)` | `design` | 无 | — |
+| `reward.stressSuppressionGain` | `0.35` | `1` | `design` | 无 | — |
+| `reward.wantingHalfTimeMin` | `8` | `min` | `design` | 无 | — |
+| `reward.hedonicHalfTimeMin` | `25` | `min` | `design` | 无 | — |
+| `reward.satietyHalfTimeMin` | `40` | `min` | `design` | 无 | — |
+
+</details>
+
+<details>
+<summary>sleep.parameters.json</summary>
+
+参数文件：[`sleep.parameters.json`](sleep.parameters.json)。入口及清单：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`sleep.ts`](sleep.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`notify.ts`](notify.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`wake-evaluation.ts`](wake-evaluation.ts)、[`sleep.ts`](sleep.ts)。
+
+共享脚本只消费各路径所需的子集；不是每个入口都使用组内所有键。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `sleep.wakePressureRateMmMin` | `0.08` | `mm/min` | `design` | 无 | 读取：`sleep.ts`。 |
+| `sleep.sleepRecoveryHalfTimeMin` | `150` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`、`sleep.ts`。 |
+| `sleep.naturalWakePressureThresholdMm` | `10` | `mm` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.naturalWakeMinDurationMin` | `360` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.naturalWakeMelatoninCeilingRelative` | `1.45` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.fullRestNaturalWakePressureMm` | `4` | `mm` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.fullRestNaturalWakeMinDurationMin` | `420` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.cyclePeriodMin` | `90` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.earlyDeepWindowMin` | `240` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.deepStageMaxPressureThresholdMm` | `40` | `mm` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.lightPreFraction` | `0.15` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.highDeepFraction` | `0.45` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.lowDeepFraction` | `0.2` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.dyspneaCrisisMm` | `90` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.severeHypotensionSbpMmHg` | `78` | `mmHg` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
+| `sleep.highSympatheticLightOnlyThresholdMm` | `35` | `mm` | `design` | 无 | 读取：`sleep.ts`。 |
+| `sleep.deepRecoveryMultiplier` | `1.3` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`、`sleep.ts`。 |
+| `sleep.remRecoveryMultiplier` | `0.9` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`、`sleep.ts`。 |
+| `sleep.inertiaNaturalWakeMm` | `15` | `mm` | `design` | 无 | 读取：`sleep.ts`。 |
+| `sleep.inertiaLightWakeMm` | `40` | `mm` | `design` | 无 | 读取：`sleep.ts`。 |
+| `sleep.inertiaDeepWakeMm` | `65` | `mm` | `design` | 无 | 读取：`sleep.ts`。 |
+| `sleep.inertiaStartleWakeMm` | `25` | `mm` | `design` | 无 | 读取：`sleep.ts`。 |
+| `sleep.inertiaHalfTimeMin` | `20` | `min` | `design` | 无 | 读取：`sleep.ts`。 |
+
+</details>
+
+<details>
+<summary>thermoregulation.parameters.json</summary>
+
+参数文件：[`thermoregulation.parameters.json`](thermoregulation.parameters.json)。入口及清单：[`thermoregulation.ts`](thermoregulation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`thermoregulation.ts`](thermoregulation.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `thermoregulation.setpointC` | `37` | `°C` | `design` | 无 | — |
+| `thermoregulation.ambientTemperatureC` | `25` | `°C` | `design` | 无 | — |
+| `thermoregulation.heatCapacityKcalPerC` | `60` | `kcal/°C` | `design` | `weightKg / 75` | — |
+| `thermoregulation.metabolicFactor` | `0.005` | `kcal/mL` | `design` | 无 | — |
+| `thermoregulation.shiveringGain` | `2` | `kcal/(min·°C)` | `design` | `weightKg / 75` | — |
+| `thermoregulation.lossGain` | `0.104167` | `kcal/(min·°C)` | `design` | `weightKg / 75` | — |
+| `thermoregulation.evaporationKcalPerMl` | `0.58` | `kcal/mL` | `design` | 无 | — |
+| `thermoregulation.circadianAmplitudeC` | `0.25` | `°C` | `design` | 无 | — |
+| `thermoregulation.circadianPeakHour` | `17` | `h` | `design` | 无 | — |
+| `thermoregulation.sleepSetpointOffsetC` | `0.2` | `°C` | `design` | 无 | — |
+| `thermoregulation.vasodilationGain` | `0.5` | `kcal/(min·°C)` | `design` | `weightKg / 75` | — |
+| `thermoregulation.maxVasodilationKcalMin` | `0.55` | `kcal/min` | `design` | `weightKg / 75` | — |
+
+</details>
+
+<details>
+<summary>blood.parameters.json（共享）</summary>
+
+参数文件：[`blood.parameters.json`](../../human-compartments/blood/blood.parameters.json)。入口及清单：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)。
+
+直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `blood.referenceBloodVolumeMl` | `5000` | `mL` | `design` | `weightKg / 75` | 含直接覆盖读取。 |
+
+</details>
+
+<details>
+<summary>water.parameters.json（共享）</summary>
+
+参数文件：[`water.parameters.json`](../../human-compartments/body-water/water.parameters.json)。入口及清单：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)。
+
+普通与女性的入口使用同一 core 和同一份参数；女性清单追加月经与乳汁水出口。
+
+直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `bodyFluid.referenceVolumeMl` | `30000` | `mL` | `design` | `weightKg / 75` | 含直接覆盖读取。 |
+| `bodyFluid.deficitScaleMl` | `500` | `mL` | `design` | `weightKg / 75` | 含直接覆盖读取。 |
+
+</details>
+
+<details>
+<summary>response.parameters.json（共享）</summary>
+
+参数文件：[`response.parameters.json`](../sexual-response/response.parameters.json)。入口及清单：[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`response.ts`](../sexual-response/response.ts)。
+
+性反应及释放判据随 `nsfw` 门控；只写覆盖不会开启该功能。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `sexualResponse.orgasmAllowedMm` | `70` | `mm` | `design` | 无 | — |
+| `sexualResponse.orgasmForcedMm` | `95` | `mm` | `design` | 无 | — |
+| `sexualResponse.refractoryMin` | `20` | `min` | `design` | 无 | 其余清单分支的不应期基线，另有 PRL 影响。 |
+| `sexualResponse.femalePostOrgasmPauseMin` | `2` | `min` | `design` | 无 | 有卵巢且无睾丸时的停顿分支。 |
+
+</details>
+
+<details>
+<summary>oxygen.parameters.json（共享）</summary>
+
+参数文件：[`oxygen.parameters.json`](../../human-compartments/blood-oxygen/oxygen.parameters.json)。入口及清单：[`thermoregulation.ts`](thermoregulation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`thermoregulation.ts`](thermoregulation.ts)。
+
+直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `bloodOxygen.basalMlMin` | `250` | `mL/min` | `design` | `weightKg / 75` | 含直接覆盖读取。 |
+
+</details>
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

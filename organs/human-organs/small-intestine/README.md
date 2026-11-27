@@ -8,6 +8,34 @@
 
 **清单依赖。** 水通道要求同时加载 `stomach/hydration.ts`、`bodyFluid`、`bladder`、`colon`、[`skin`](../skin/README.md) 与 [`lungs`](../lungs/README.md)：`bodyFluid.waterVolumeMl` 按肾→肺→汗的顺序向膀胱、肺和皮肤三个出口分配轮初水，`skin.sweatVolumeMl` 与 `lungs.respiratoryWaterLossMl` 分别声明来自体液的 `transferIn`；`colon.residueWaterMl` 接收本脚本按离开通量比例分流出的未吸收残渣水，并把回收水转回 `bodyFluid`。碳水通道要求加载 `organs/human-compartments/glucose/glucose.ts`，而葡萄糖的入口与出口又要求 `liver`、`kidneyGluconeogenesis`、`kidneyGlucose`、`muscleGlucose` 以及三个骨骼肌区域部位（`muscleHead`、`muscleTrunk`、`muscleLimbs`）。因此完整硬 transfer 闭包是根与男性清单共 15 个部位（`hydration.ts`、`smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGlucose`、`kidneyGluconeogenesis`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、`skin`、`lungs`），女性清单再加 `uterus` 与 `mammaryGlands` 共 17 个部位；沿用旧自定义清单、缺少任一配对部位时，启动会因 transfer 配对缺失而拒绝继续。旧 `stomach/motility.ts` 不含小肠，仍可独立加载。[`physicalActivity`](../skeletal-muscle/README.md) 只是 [`skin`](../skin/README.md)、[`lungs`](../lungs/README.md) 与 [`muscleGlucose`](../skeletal-muscle/README.md) 的普通轮初读取，不是 transfer 配对依赖，也不在小肠的读写链上。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "smallIntestine.absorption.halfTimeMin": 25 } }
+```
+
+### water-absorption.parameters.json
+
+参数文件：[`water-absorption.parameters.json`](water-absorption.parameters.json)。入口及清单：[`water-absorption.ts`](water-absorption.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`water-absorption.ts`](water-absorption.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `smallIntestine.absorption.halfTimeMin` | `20` | `min` | `design` | 无 | — |
+| `smallIntestine.residueFraction` | `0.05` | `1` | `design` | 无 | — |
+| `smallIntestine.carbohydrateAbsorption.halfTimeMin` | `20` | `min` | `design` | 无 | — |
+| `smallIntestine.waterAbsorptionDehydrationFactor` | `0.1` | `1` | `design` | 无 | — |
+| `smallIntestine.carbAbsorptionInsulinGain` | `0` | `1` | `design` | 无 | 兼容键，参与公式但默认零使胰岛素项无贡献；非零仅改变工程代理。缺胰腺信号用相对基线 1。 |
+| `smallIntestine.carbAbsorptionGradientGain` | `0.2` | `1` | `design` | 无 | 碳水吸收的浓度梯度代理；缺血糖信号时用基线。 |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

@@ -34,4 +34,32 @@
    - **纯感觉、零数值与双轨门控硬规则**：`brainNotify` 对 `>= 65 mm` 默认投递不唤醒 `context`（`agent.inject`）、对 `>= 85 mm` 或 `urgent: true` 投递唤醒 `wake`（`agent.followup`），支持 `3 -> 2` 步降并在 `< 40 mm` 复位；普通与紧急通道各自按指数退避（20→240 min / 5→60 min），`nsfw: true` 随 `nsfw` 开关门控。`contextText` / `wakeText` **严禁包含任何阿拉伯数字或数值单位**（含数字将被拦截并回退为通用无数字定性描述）。
    - **自定义动作自动注册**：器官导出的 `actionTypes` 会进入 Gateway 能力表，`tools.js` (`body_act`) 会自动把已声明动作加入 `type` 枚举并透传 JSON-safe 载荷（未声明动作仍返回 `400`；`sex` / `orgasm` 在 `nsfw: false` 时被门控拒绝）。
 
+## 个体参数覆盖示例
+
+到目标部位的 `organs/**/README.md` 找 **个体可自定义参数与默认值**，先核对它是否在这具身体的清单中、是否需要特定输入或门控。例如，为一具仿真身体把[心脏](organs/human-organs/heart/README.md#个体可自定义参数与默认值)的静息心率基线设为 `72 1/min`：
+
+```json
+{
+  "parameters": {
+    "heart.restingHeartRatePerMin": 72
+  }
+}
+```
+
+1. 停止 Gateway，备份这具身体实际 `statePath` 对应的 `body-state.json`。
+2. 将示例中的完整 ID 和数值合并到存档**顶层**的 `parameters` 对象，保留其他键和整个存档。不要改 `body-modules*.json`、`parts` 输出或仓库中的默认参数 JSON。恢复某一项默认时删除相应覆盖键，不要用 `null` 代替删除；必读参数被覆盖成 `null` 可能使模块加载失败。
+3. 启动 Gateway。覆盖在加载模块时读取，不热更新；`initialState` 只补缺项，修改基线不等于自动清空旧存量或重置周期。各部位自己的迁移或指定重置规则仍适用。
+
+没覆盖的 ID 使用该模块自己的 JSON 基础值（已有少量直接读取覆盖的共享路径会回退到脚本内置基线，器官 README 会标明）。仅标有 `weightKg / 75` 且传入 ID 的参数使用该缩放；数值覆盖是最终输入，不再乘体重比。未缩放的项仍可能受其他状态、公式钳制或耦合影响。`status` 是来源/证据口径，不是临床验证；`range` 元数据并不等同统一运行时校验。
+
+维护目录时，先改实际读取脚本、同目录参数 JSON/清单，手工核对未消费、共享与条件路径，再从仓库根目录运行：
+
+```sh
+node tools/sync-organ-parameters.mjs --write
+node tools/sync-organ-parameters.mjs --check
+node --test test/tools.organ-parameter-docs.test.mjs
+```
+
+不带参数等同 `--check`，不会写文件；`--write` 只会新增或替换现有 README 的 `organ-parameters` 标记区块，不修改手写段落或默认 JSON。脚本、清单或 JSON 变化后与 README 同提交。新增部位请先写手工 README；有新可选替换、条件、保留键或非字面的参数读取方式时，同步维护生成工具的相应说明，不把未识别的声明当成有效覆盖。
+
 - 提交前查看 `git status`，只提交本次相关文件。不上传本地身体存档、会话通知、凭据、日志、`node_modules/`、`.tower/`、`.superpowers/` 或本地 Pulse 源码检出。

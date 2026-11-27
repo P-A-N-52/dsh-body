@@ -6,6 +6,38 @@
 
 实现状态：脚本、参数与模块契约测试已落地，当前根清单为 43 个部位、39 份唯一参数文件（另含 3 份 DI 变体与 1 份缺区域变体），女性清单为 46 个部位、42 份参数文件，男性清单为 45 个部位、41 份参数文件；硬 transfer 闭包为根与男性 15 部位、女性 17 部位。十个参数全部是 `design`、`source: null`，没有登记人体来源。本文只描述离线模型与契约，未做真实 DSH 会话、肝糖原实测、独立血糖曲线或临床验证。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "liver.basalOutputRateGPerMin": 0.1 } }
+```
+
+### glycogen.parameters.json
+
+参数文件：[`glycogen.parameters.json`](glycogen.parameters.json)。入口及清单：[`glycogen.ts`](glycogen.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`glycogen.ts`](glycogen.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `liver.maxOutputRateGPerMin` | `1` | `g/min` | `design` | `weightKg / 75` | — |
+| `liver.initialGlycogenG` | `80` | `g` | `design` | `weightKg / 75` | 补种子或缺失值，不用此值覆盖已存肝糖原。 |
+| `liver.glycogenCapacityG` | `100` | `g` | `design` | `weightKg / 75` | — |
+| `liver.maxUptakeRateGPerMin` | `0.2` | `g/min` | `design` | `weightKg / 75` | — |
+| `liver.halfMaxExcessG` | `15` | `g` | `design` | `weightKg / 75` | — |
+| `liver.insulinSensitivity` | `0.5` | `1` | `design` | 无 | — |
+| `liver.basalOutputRateGPerMin` | `0.096` | `g/min` | `design` | `weightKg / 75` | — |
+| `liver.hypoglycemiaOutputGainGPerMinPerMgDl` | `0.015` | `g/(min·mg/dL)` | `design` | `weightKg / 75` | — |
+| `liver.glucagonOutputGainGPerMin` | `0.15` | `g/min` | `design` | `weightKg / 75` | — |
+| `liver.sympatheticOutputGain` | `0.005` | `1/mm` | `design` | 无 | — |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本、部位与 transfer
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

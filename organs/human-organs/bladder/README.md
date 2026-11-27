@@ -8,6 +8,30 @@
 
 **清单依赖（transfer 配对校验）。** `volumeMl` 声明 `transferIn: ["bodyFluid.waterVolumeMl"]`，所以加载 `bladder` 时必须同时加载 `bodyFluid`；`bodyFluid` 又声明来自 `smallIntestine.waterVolumeMl` 的 `transferIn`，以及到 `bladder.volumeMl`、`lungs.respiratoryWaterLossMl` 与 `skin.sweatVolumeMl` 的三个 `transferOut`；`smallIntestine` 再声明来自 `stomach.waterVolumeMl` 的 `transferIn`，以及 `carbohydrateG` 的 `transferOut: ["glucose.glucoseMassG"]`，而 `glucose` 还声明到 `kidneyGlucose.excretedGlucoseG` 与 `muscleGlucose.uptakeG` 的 `transferOut`。完整硬 transfer 闭包是 `stomach/hydration.ts`、`smallIntestine`、`colon`、`bodyFluid`、`bladder`、`glucose`、`liver`、`kidneyGluconeogenesis`、`kidneyGlucose`、`muscleGlucose`、`muscleHead`、`muscleTrunk`、`muscleLimbs`、`skin` 与 `lungs` 十五个部位：水路由胃经小肠入体液再到膀胱，`bodyFluid` 另向 `lungs` 与 `skin` 转水，也接收 `colon.reclaimedWaterMl`；`glucose` 向 `liver`、`kidneyGlucose` 与 `muscleGlucose` 结算，`muscleGlucose` 再向三个区域转出，`kidneyGluconeogenesis` 向 `glucose` 产糖。缺任一个都会在 `createFieldRegistry` 启动校验时报字段配对错误。旧入口 `stomach/motility.ts` 不声明 `waterVolumeMl` 或 `carbohydrateG` 的 transfer，不能替代 `hydration.ts`。启用后，只要 `bladder` 已加载，`GET /capabilities` 就显示 `urinate: ["bladder"]`；但字段声明仍要求闭包内全部十五个部位同在清单里，`kidney` 等软读取则不影响启动。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "bladder.voiding.postVoidResidualMl": 20 } }
+```
+
+### storage.parameters.json
+
+参数文件：[`storage.parameters.json`](storage.parameters.json)。入口及清单：[`storage.ts`](storage.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`storage.ts`](storage.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `bladder.voiding.postVoidResidualMl` | `0` | `mL` | `design` | 无 | — |
+| `bladder.voiding.involuntaryThresholdMl` | `600` | `mL` | `design` | 无 | — |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

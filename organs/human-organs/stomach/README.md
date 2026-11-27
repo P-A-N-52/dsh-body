@@ -4,6 +4,61 @@
 
 实现状态：脚本与参数已在 `organs/human-organs/stomach/`，并已加入根清单；根清单挂载水链入口 `hydration.ts`，旧入口 `motility.ts` 仍可单独加载。同一清单绝不能同时加载两个 `stomach` 入口；也不要把水链清单切到旧清单再切回来保存待释放水或碳水，往返会丢失队列的水/碳水身份（见 §2）。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "stomach.emptying.halfTimeMin": 15 } }
+```
+
+### gastric-sensory.parameters.json
+
+参数文件：[`gastric-sensory.parameters.json`](gastric-sensory.parameters.json)。入口及清单：[`gastric-sensory.ts`](gastric-sensory.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`gastric-sensory.ts`](gastric-sensory.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `stomachSensory.referenceVolumeMl` | `1000` | `mL` | `design` | 无 | — |
+| `stomachSensory.response.exponent` | `1` | `1` | `design` | 无 | — |
+
+### ghrelin.parameters.json
+
+参数文件：[`ghrelin.parameters.json`](ghrelin.parameters.json)。入口及清单：[`ghrelin.ts`](ghrelin.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`ghrelin.ts`](ghrelin.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `stomachGhrelin.fasting.baseline` | `1` | `1` | `design` | 无 | — |
+| `stomachGhrelin.fasting.peak` | `1.8` | `1` | `design` | 无 | — |
+| `stomachGhrelin.fasting.rise.onsetMin` | `180` | `min` | `design` | 无 | — |
+| `stomachGhrelin.fasting.rise.apparentHalfTimeMin` | `120` | `min` | `design` | 无 | — |
+| `stomachGhrelin.postmeal.nadir` | `0.5` | `1` | `design` | 无 | — |
+| `stomachGhrelin.recovery.apparentHalfTimeMin` | `90` | `min` | `design` | 无 | — |
+| `stomachGhrelin.distensionGain` | `0.3` | `1` | `design` | 无 | — |
+| `stomachGhrelin.nutrientGain` | `0.3` | `min/kcal` | `design` | 无 | — |
+| `stomachGhrelin.intakeGain` | `0.4` | `1` | `design` | 无 | — |
+| `stomachGhrelin.referenceIntakeKcal` | `250` | `kcal` | `design` | 无 | — |
+
+### motility.parameters.json
+
+参数文件：[`motility.parameters.json`](motility.parameters.json)。入口及清单：[`hydration.ts`](hydration.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`motility.ts`](motility.ts)（可选旧入口，替换水链胃，不跟踪水或碳水转移）。读取脚本：[`motility-core.ts`](motility-core.ts)。
+
+胃动力入口共用核心；`ghrelin.ts` 在导入核心时加载此文件，但只借用摄入解析，排空参数不直接调饥饿素。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `stomach.emptying.halfTimeMin` | `13` | `min` | `design` | 无 | — |
+| `stomach.emptying.baselineMl` | `0` | `mL` | `design` | 无 | — |
+| `stomach.emptying.energyDensityGainMinPerKcalPerMl` | `53.75` | `min/(kcal/mL)` | `fitted_dev` | 无 | — |
+| `stomach.emptying.solidHalfTimeMin` | `68.7` | `min` | `design` | 无 | — |
+| `stomach.gastricInhibitionGain` | `0.5` | `1` | `design` | 无 | — |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
