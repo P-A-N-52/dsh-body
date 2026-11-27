@@ -25,15 +25,19 @@ export const fields = {
   tissueUptakeTotalG: mass,
 };
 
-export function heartbeat(io: LipidIO<typeof initialState>): void {
+type IO = LipidIO<typeof initialState> & {
+  call(partId: 'adipose', name: 'storageCapacityG'): unknown;
+};
+
+export function heartbeat(io: IO): void {
   const prev = io.read(id) ?? initialState;
-  const adipose = io.read('adipose'); // transfer 注册要求此供体和接收部位同时挂载。
+  const adipose = io.read('adipose');
   const mealTgG = nonNegative(prev.mealTgG, 'lipidCirculation.mealTgG');
   const nefaEquivalentG = nonNegative(prev.nefaEquivalentG, 'lipidCirculation.nefaEquivalentG');
   const storageFraction = nonNegative(adipose?.storageFraction, 'adipose.storageFraction');
   if (storageFraction > 1) throw new Error('adipose.storageFraction must be at most 1');
-  const room = Math.max(0, nonNegative(adipose?.capacityG, 'adipose.capacityG')
-    - nonNegative(adipose?.storedTgG, 'adipose.storedTgG'));
+  const capacityG = nonNegative(io.call('adipose', 'storageCapacityG'), 'adipose.storageCapacityG');
+  const room = Math.max(0, capacityG - nonNegative(adipose?.storedTgG, 'adipose.storedTgG'));
   const dtMin = io.dt / 60;
   const cleared = outflow(mealTgG, tgClearance, dtMin);
   const mealTgUptakeG = cleared * (1 - storageFraction);

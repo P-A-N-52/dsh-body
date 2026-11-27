@@ -5,15 +5,17 @@ import { nonNegative, outflow, parameter, saturate, type LipidIO } from '../lipi
 export const id = 'adipose';
 const params = loadParameters(new URL('./meal-storage.parameters.json', import.meta.url));
 const capacityG = parameter(params, 'adipose.capacityG');
-const initialStoredTgG = parameter(params, 'adipose.initialStoredTgG', { max: capacityG });
+const initialStoredTgG = parameter(params, 'adipose.initialStoredTgG');
 const tau = parameter(params, 'adipose.insulinTimeConstantMin', { positive: true });
 const halfEffect = parameter(params, 'adipose.insulinHalfEffectRelative', { positive: true });
 const maxStorageFraction = parameter(params, 'adipose.maxStorageFraction', { max: 1 });
 const maxMobilization = parameter(params, 'adipose.mobilizationMaxPerMin', { max: 5 });
 const insulinReference = parameter(params, 'adipose.insulinReferencePmolL', { positive: true });
 
+export const functions = { storageCapacityG: () => capacityG };
+
 export const initialState = {
-  storedTgG: initialStoredTgG,
+  storedTgG: Math.min(initialStoredTgG, capacityG),
   capacityG,
   insulinRelative: 1,
   storageFraction: maxStorageFraction * saturate(1, halfEffect),

@@ -1,20 +1,49 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkpoint, launch } from '../test-support/harness.mjs';
+import { checkpoint, launch, makeTempDir } from '../test-support/harness.mjs';
 import { createBodyTools } from '../tools.js';
 
 const manifestPath = fileURLToPath(new URL('../organs/presets/human-lipid/body-modules.json', import.meta.url));
 const meal = { type: 'eat', volumeMl: 250, energyKcal: 220, mealKind: 'liquid', carbohydrateG: 6 };
 const tolerance = 1e-9;
+const heartbeatIntervalMs = 60_000;
 const parts = (run) => run.gateway.getState().parts;
 
-async function start(t, { seedParts = {}, parameters = {}, statePath } = {}) {
+async function start(t, { seedParts = {}, parameters = {}, statePath, nowMs = 0, manifest = manifestPath } = {}) {
   return launch(t, {
     seed: statePath ? null : { ...checkpoint({ wallTimeMs: 0, parts: seedParts }), parameters },
     statePath,
-    gatewayOptions: { manifestPath, now: () => 0 },
+    heartbeatIntervalMs,
+    gatewayOptions: { manifestPath: manifest, now: () => nowMs },
   });
+}
+
+function manifestWithTransientFailure(t) {
+  const dir = makeTempDir();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const fromHere = (path) => relative(dir, resolve(dirname(manifestPath), path));
+  manifest.startupScripts = manifest.startupScripts.map(fromHere);
+  manifest.scripts = manifest.scripts.map((entry) => typeof entry === 'string'
+    ? fromHere(entry) : { ...entry, path: fromHere(entry.path) });
+  manifest.scripts.push('./abort-once.mjs');
+  writeFileSync(join(dir, 'abort-once.mjs'), `
+import { existsSync, writeFileSync } from 'node:fs';
+export const id = 'lipidRetryProbe';
+export const fields = {};
+const marker = new URL('./failed-once', import.meta.url);
+export function heartbeat() {
+  if (existsSync(marker)) return;
+  writeFileSync(marker, '');
+  throw new Error('planned lipid batch failure');
+}
+`);
+  const path = join(dir, 'body-modules.json');
+  writeFileSync(path, JSON.stringify(manifest));
+  return path;
 }
 
 async function intake(run, action, callId = 'meal') {
@@ -192,4 +221,56 @@ test('an elevated endocrine signal suppresses next-round net mobilization withou
   assert.equal(secondElevated.lipidCirculation.nefaUptakeG, secondBasal.lipidCirculation.nefaUptakeG);
   checkLedger(secondBasal, 60);
   checkLedger(secondElevated, 60);
+});
+
+test('an offline adipose capacity reduction constrains the first committed round, including catch-up and retry', async (t) => {
+  for (const mode of ['online heartbeat', 'startup catch-up', 'retry of failed catch-up']) {
+    await t.test(mode, async (t) => {
+      const failsOnce = mode === 'retry of failed catch-up';
+      const mobilizationRate = failsOnce ? 0.00035 : 0;
+      const original = await start(t, {
+        seedParts: { lipidCirculation: { mealTgG: 10 } },
+        parameters: { 'adipose.mobilizationMaxPerMin': mobilizationRate },
+      });
+      const before = await tick(original);
+      assert.ok(before.lipidCirculation.storedThisRoundG > 0);
+      const actionId = failsOnce ? await intake(original, { ...meal, fatG: 4 }) : null;
+      await original.gateway.stop();
+      const saved = original.state();
+      const capacity = failsOnce ? 0 : before.adipose.storedTgG + (mode === 'startup catch-up' ? 0.05 : 0);
+      saved.parameters['adipose.capacityG'] = capacity;
+      writeFileSync(original.statePath, JSON.stringify(saved));
+
+      const isCatchUp = mode !== 'online heartbeat';
+      const run = await start(t, {
+        statePath: original.statePath,
+        nowMs: saved.wallTimeMs + (isCatchUp ? heartbeatIntervalMs : 0),
+        manifest: failsOnce ? manifestWithTransientFailure(t) : manifestPath,
+      });
+      if (failsOnce) {
+        assert.match(run.state().startup.catchUpError, /planned lipid batch failure/);
+        assert.equal(run.state().activeBatch.attempts, 1);
+        assert.equal(run.gateway.getReceipt(actionId).status, 'queued');
+        for (const id of ['adipose', 'lipidCirculation', 'stomach']) assert.deepEqual(parts(run)[id], before[id]);
+        checkLedger(parts(run), 70);
+      }
+      const after = mode === 'startup catch-up' ? parts(run) : await tick(run);
+      assert.equal(run.state().startup.caughtUpSeconds, mode === 'startup catch-up' ? 60 : 0);
+      assert.equal(run.gateway.getState().simulatedSeconds, 120);
+      assert.equal(run.state().activeBatch, null);
+      assert.equal(after.adipose.capacityG, capacity);
+      const room = Math.max(0, capacity - before.adipose.storedTgG);
+      assert.equal(after.lipidCirculation.storedThisRoundG, room);
+      const expectedUptake = before.lipidCirculation.mealTgG * -Math.expm1(-0.06) * (1 - before.adipose.storageFraction);
+      assert.ok(Math.abs(after.lipidCirculation.mealTgUptakeG - expectedUptake) < tolerance);
+      assert.ok(Math.abs(after.lipidCirculation.mealTgG - (before.lipidCirculation.mealTgG - expectedUptake - room)) < tolerance);
+      assert.equal(after.adipose.storedTgG, before.adipose.storedTgG - after.adipose.mobilizedG + room);
+      if (failsOnce) {
+        assert.ok(after.adipose.storedTgG > 0 && after.adipose.mobilizedG > 0);
+        assert.equal(run.gateway.getReceipt(actionId).status, 'applied');
+        assert.equal(after.stomach.explicitFatIntakeG, 4);
+      }
+      checkLedger(after, failsOnce ? 74 : 70);
+    });
+  }
 });

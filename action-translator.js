@@ -548,7 +548,7 @@ export function buildTranslatorSystemPrompt({ nsfwEnabled = false } = {}) {
     '一致性与拆分原则：',
     '1. 若提供了同身体“相似历史参考”或“近期连续参考”，在相同食物/习惯和连续指代（如“又吃了一口”“把剩下的喝完”）上保持量级与比例严格一致。',
     '2. 若单条吃喝描述里明显同时包含固体餐食和伴随饮品（如“吃了半碗饭，喝了两口可乐”），可拆为有序多条（如 eat + drink，最多 4 条）；单一动作不要无故拆分。',
-    '3. 若调用方给出了 explicitConstraints（如指定了 durationMin），输出须严格遵循。',
+    '3. 若调用方给出了 explicitConstraints（如指定了 durationMin），输出须严格遵循。指定 fatG 时，唯一一条摄入可在 eat / drink 间改类；若拆分，必须恰有一条与请求类型相同来承接该克数，不要把这笔克数重复分给配餐。无法明确归属时不要拆分。',
     '4. 仅当动作包含 eat 或 drink 时，顺手在顶层 tasteFeedback 给出一句简短纯定性、严禁包含任何阿拉伯或全角数字的中文味道与口感反馈（风味、酸甜苦辣咸鲜、冷热温度感、脆嫩滑腻与余味）；非吃喝动作不要填 tasteFeedback，也不要因味觉追加不存在的生理字段。',
   );
   return lines.join('\n');
@@ -709,7 +709,7 @@ async function collectStreamBlocks(stream, signal) {
   return { finish, blocks };
 }
 
-function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explicitConstraints, applyExplicit) {
+function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explicitOverrides) {
   if (!isRecord(rawAction)) {
     return { error: 'Each translated action must be an object' };
   }
@@ -732,10 +732,8 @@ function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explici
   for (const key of QUANTITATIVE_OVERRIDE_KEYS) {
     if (rawAction[key] !== undefined) clean[key] = rawAction[key];
   }
-  if (applyExplicit) {
-    for (const [key, value] of Object.entries(explicitConstraints)) {
-      if (value !== undefined) clean[key] = value;
-    }
+  for (const [key, value] of Object.entries(explicitOverrides)) {
+    if (value !== undefined) clean[key] = value;
   }
 
   if (type === 'exercise' || type === 'sex') {
@@ -769,7 +767,7 @@ function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explici
   if (invalid !== null) {
     return { error: invalid };
   }
-  if (clean.fatG !== undefined && !(applyExplicit && explicitConstraints.fatG !== undefined)) {
+  if (clean.fatG !== undefined && explicitOverrides.fatG === undefined) {
     clean.fatGSource = 'estimate';
   }
   return { action: clean };
@@ -811,6 +809,13 @@ function parseTranslatedResult({ blocks, finish }, requestedType, nsfwEnabled, e
     return { error: `${TRANSLATOR_TOOL_NAME} returned too many actions (${rawActions.length} > 4)` };
   }
 
+  const hasExplicitIntakeFat = (requestedType === 'eat' || requestedType === 'drink')
+    && explicitConstraints.fatG !== undefined;
+  if (hasExplicitIntakeFat && rawActions.length > 1
+    && rawActions.filter((action) => action?.type === requestedType).length !== 1) {
+    return { error: `Explicit fatG needs one intake action, or exactly one ${requestedType} when splitting intake` };
+  }
+
   const applyExplicitOnSingle = rawActions.length === 1 && rawActions[0]?.type === requestedType;
   const hasExplicitConstraints = Object.keys(explicitConstraints).length > 0;
   let appliedExplicitToMatchingType = false;
@@ -819,13 +824,9 @@ function parseTranslatedResult({ blocks, finish }, requestedType, nsfwEnabled, e
     const applyExplicitHere = applyExplicitOnSingle
       || (!appliedExplicitToMatchingType && hasExplicitConstraints && rawActions[i]?.type === requestedType);
     if (applyExplicitHere) appliedExplicitToMatchingType = true;
-    const checked = sanitizeTranslatedAction(
-      rawActions[i],
-      requestedType,
-      nsfwEnabled,
-      explicitConstraints,
-      applyExplicitHere,
-    );
+    const explicitOverrides = applyExplicitHere ? explicitConstraints
+      : (hasExplicitIntakeFat && rawActions.length === 1 ? { fatG: explicitConstraints.fatG } : {});
+    const checked = sanitizeTranslatedAction(rawActions[i], requestedType, nsfwEnabled, explicitOverrides);
     if (checked.error) {
       return { error: `actions[${i}]: ${checked.error}` };
     }

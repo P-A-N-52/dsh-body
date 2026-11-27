@@ -16,6 +16,7 @@
 直接指向原位清单；只复制 JSON 会让相对脚本路径失效。重新启动后沿原本会话绑定规则使用 `body_act`。继续用同一份脂质存档重启会保留胃切片、胆囊库存和所有脂质存量；不在同一个存档上来回切换预设。新档或缺脂字段的旧数据不从历史 kcal 推测脂肪，旧在途切片缺成分按未知观测，其余既有输入不必改。
 
 - 自然描述：`body_act({type: "drink", description: "喝了一小杯全脂奶"})`。原翻译官只在食物和份量足够明确时给出 `fatG`，并标记 `fatGSource: "estimate"`；不能可靠估计就省略。词句里的营养标签若要作为明确约束，可直接提供 `fatG`，也可保留描述来补其余必填值。
+- 翻译时明确指定 `fatG`（包括 `0`），只有一条摄入时即使在 `eat` 和 `drink` 之间改类，也保留该克数与明确来源，不用翻译估值替代。若拆成多条，只有恰好一条符合请求类型才可承接；否则先重试，持续歧义则拒绝，未通过的动作不入队。
 - 数值直通：`body_act({type: "eat", volumeMl: 250, energyKcal: 220, mealKind: "liquid", carbohydrateG: 6, fatG: 20})`。`fatG` 是已知的膳食**长链脂肪 TG 当量**（有限、非负 g）；明确无脂才填 `0`，未知不填，不能用 `null` 冒充。`energyKcal` 仍是全餐总能量，既不拿来反推脂肪，也不另加一笔 `9 × fatG`。`drink` 的脂肪只进非固餐组，原水子集代理照常入账。可像以前一样用 `durationMin` 分片。
 - 只增加原 `body_act(eat/drink)` 的可选成分，不新增动作或宿主工具。未启用预设时仍可提交原吃喝载荷，不推进脂质账；`body_state` 仍只给纯定性体感。检查数值用 `GET /state` 或 `gateway.getState()`。
 
@@ -35,6 +36,8 @@
 - [肝供胆](../../human-organs/liver/bile.md)、[胆囊与胆道](../../human-organs/gallbladder/README.md)、[胰外分泌](../../human-organs/pancreas/exocrine.md)；
 - [胃动力（沿用原参数与证据）](../../human-organs/stomach/README.md)、[小肠脂质](../../human-organs/small-intestine/README.md#选配长链脂质)；
 - [肠淋巴](../../human-compartments/intestinal-lymph/README.md)、[循环 TG/NEFA](../../human-compartments/lipid-circulation/README.md)、[短程脂肪库](../../human-compartments/adipose/README.md)。
+
+停机下调 `adipose.capacityG` 后，新上限从首个可提交轮起生效（含补算、失败后重试）。已存库存不截断；首轮也不能使用本轮动员才腾出的空间，拒收量留在循环。
 
 新增参数全为 `design` / `source: null`，没有人体拟合。修改胃/胰内分泌等共用参数仍会影响各自原消费者；脂链没有重新定义这些参数。
 

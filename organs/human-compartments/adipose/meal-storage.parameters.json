@@ -3,7 +3,7 @@
   "owner": "adipose",
   "parameters": [
     { "id": "adipose.capacityG", "value": 150, "unit": "g", "status": "design", "source": null, "note": "短程可动用 TG 当量库容量，非人体总脂肪。" },
-    { "id": "adipose.initialStoredTgG", "value": 60, "unit": "g", "status": "design", "source": null, "note": "新库初始可动用量，须不超过容量，不重置已保存库存。" },
+    { "id": "adipose.initialStoredTgG", "value": 60, "unit": "g", "status": "design", "source": null, "note": "仅缺库存时的初始可动用量，受配置容量限制；不重置或截断已保存库存。" },
     { "id": "adipose.insulinTimeConstantMin", "value": 8, "unit": "min", "status": "design", "source": null, "note": "胰岛素相对值响应时间常数，须大于 0。" },
     { "id": "adipose.insulinHalfEffectRelative", "value": 1, "unit": "1", "status": "design", "source": null, "note": "储存/动员敏感度的相对半效值，须大于 0。" },
     { "id": "adipose.maxStorageFraction", "value": 0.8, "unit": "1", "range": [0, 1], "status": "design", "source": null, "note": "循环清除可给脂肪库的最高比例。" },
