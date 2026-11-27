@@ -26,7 +26,9 @@
 }
 ```
 
-[真实 Gateway 对照](../../../test/organs.breast-composition-gateway.test.mjs)中，同为 `600 mL`，填 `20%` 得纤维腺体 `120 mL`、脂肪 `480 mL`，填 `60%` 得 `360 mL`、`240 mL`；都是合成例，不是人体参考值。同样的已泌乳配置下（`nsfw: true`、`profile.lactating: true`），从启动到第 3 轮水、糖、奶量和储奶完全相同；第 2 轮已有实际乳汁水结算。该读数不是物质库存，不换算成脂肪质量、也不额外加到 [全身体成分](../../human-compartments/body-composition/README.md)。它仅见于本机 `/state`、`gateway.getState()` 及脚本状态读取，不新增动作、主观感受或通知。
+[真实 Gateway 对照](../../../test/organs.breast-composition-gateway.test.mjs)中，同为 `600 mL`，填 `20%` 得纤维腺体 `120 mL`、脂肪 `480 mL`，填 `60%` 得 `360 mL`、`240 mL`；都是合成例，不是人体参考值。同样的已泌乳配置下（`nsfw: true`、`profile.lactating: true`），从启动到第 3 轮水、糖、奶量和储奶完全相同；第 2 轮已有实际乳汁水结算。该读数不是物质库存，不换算成脂肪质量、也不额外加到 [全身体成分](../../human-compartments/body-composition/README.md)。它不新增动作、主观感受或通知。
+
+**数值与留存。** 当前数值可通过本机 `GET /state`、`gateway.getState()` 或脚本状态读取查看；定性宿主工具 `body_state` 不返回原始数值。提交过的数值也可能写入存档旁的 `logs/state-history.jsonl`，按现有滚动保留策略管理，可经本机 `GET /logs/state` 或 `gateway.getStateHistory()` 读取。将参数设为 `null` 或取消覆盖只影响之后的读数，不会追溯擦除历史。可使用虚构设定，分享日志前先检查其中是否含个人测量值。
 
 **方法与证据边界。** [NCI《Dense Breasts》](https://www.cancer.gov/types/breast/breast-changes/dense-breasts) 的 “What are dense breasts?” 区分腺体、纤维结缔组织和脂肪：纤维腺体是前两者的合称，不是纯分泌腺上皮，也不预测产乳能力。 [Chan 等，Radiology 2011](https://pmc.ncbi.nlm.nih.gov/articles/PMC3219914/)（[DOI](https://doi.org/10.1148/radiol.11110506)，Methods 的组织分割与统计分析）在 30 名无症状亚洲女性的非增强 MRI 中用 `FV/BV × 100%`，这里只用于说明体积分数口径，不假定研究的组织分母与本模型一致，不外推至男性或哺乳期，也不作为默认值来源。两项参数 `source: null`；下文 `360 mL` 储奶容量不代表乳房组织体积。
 

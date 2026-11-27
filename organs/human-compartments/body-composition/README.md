@@ -1,6 +1,8 @@
 # 全身体成分（`bodyComposition`）
 
-[脚本 `composition.ts`](composition.ts) 给根、男性和女性清单提供同一个**只读档案读数**。它不建脂肪库存，不参加 `add` / `transfer`，也不改变体液、血糖、泌乳、能量消耗或阈值。读数可在本机 `GET /state`、`gateway.getState()` 或模块 `io.read('bodyComposition')` 中查询，不新增动作、提醒或 DSH 工具。
+[脚本 `composition.ts`](composition.ts) 给根、男性和女性清单提供同一个**只读档案读数**。它不建脂肪库存，不参加 `add` / `transfer`，也不改变体液、血糖、泌乳、能量消耗或阈值。不新增动作、提醒或 DSH 工具。
+
+**数值与留存。** 当前数值可在本机 `GET /state`、`gateway.getState()` 或模块 `io.read('bodyComposition')` 中查看；定性宿主工具 `body_state` 不返回原始数值。提交过的数值也可能写入存档旁的 `logs/state-history.jsonl`，按现有滚动保留策略管理，可经本机 `GET /logs/state` 或 `gateway.getStateHistory()` 读取。将 `profile.bodyFatPercent` 改为 `null` 或移除该字段只影响之后的读数，不会追溯擦除历史。分享日志前先检查其中是否含个人数据。
 
 ## 需要什么数据
 

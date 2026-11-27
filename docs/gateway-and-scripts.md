@@ -63,7 +63,8 @@ DSH 插件的默认存档是 `$DSH_HOME/dsh-body/body-state.json`（通常是 `~
 - `profile.bodyFatPercent` 为全身脂肪**质量百分数**，填 `20` 表示 20%；省略或填 `null` 表示未知。示例的 `parts.bodyComposition` 给出 `13 kg` 脂肪与 `52 kg` 去脂质量；未知时两项都为 `null`，不按 BMI 或清单估计。
 - `breastComposition.*` 参数来自[同目录组成参数文件](../organs/human-organs/mammary-glands/composition.parameters.json)（均为 `unset` / `null`），用存档里的同名键覆盖。体积必须是正有限 mL；百分数为匹配口径的双侧**体积百分数**。示例给出 `120 mL` 纤维腺体与 `480 mL` 脂肪。只给一项会保留该输入，但不推导分量；显式 `null` 同样表示未知。
 - 两种百分数都接受 `[0,100]` 的有限数值，不接受数字字符串或越界值。正常启动以配置而非旧 `snapshot` 为准；如恢复时仍有未结算批次，首个成功心跳刷新读数。暂停档不加载模块，保留已提交快照。
-- 根、男性、女性清单均可通过本机 `GET /state` 或 `gateway.getState()` 查看这两个部位。只改形态不重算水、糖、乳汁或其他库存，乳房体积也不另计全身脂肪。三个工具及定性的 `body_state` 不变。见[全身体成分](../organs/human-compartments/body-composition/README.md)与[乳房组织组成](../organs/human-organs/mammary-glands/README.md#乳房组织组成)的输入口径与对照。
+- 根、男性、女性清单都提供这两个部位。只改形态不重算水、糖、乳汁或其他库存，乳房体积也不另计全身脂肪。见[全身体成分](../organs/human-compartments/body-composition/README.md)与[乳房组织组成](../organs/human-organs/mammary-glands/README.md#乳房组织组成)的输入口径与对照。
+- **数值与留存。** 本机 `GET /state` 和 `gateway.getState()` 可查看当前快照中的原始数值；定性宿主工具 `body_state` 不返回这些数值。已提交的组成字段也可能进入存档旁的 `logs/state-history.jsonl`，按现有滚动保留策略管理，可由本机 `GET /logs/state` 或 `gateway.getStateHistory()` 读取。改设 `null`、移除体脂输入或取消乳房参数覆盖只影响之后的读数，不会追溯擦除已写入的历史。可使用虚构数值；分享日志前请检查是否包含个人测量值。
 
 ## 3. 写 TS 时，参数谁给，结果给谁？
 
