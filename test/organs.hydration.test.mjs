@@ -173,6 +173,8 @@ test('the hydration entry keeps the stomach id and declares the water transfer',
   assert.deepEqual(hydration.actionTypes, ['drink', 'eat']);
   assert.equal(hydration.initialState.waterVolumeMl, 0);
   assert.equal(hydration.initialState.emptiedWaterMl, 0);
+  assert.equal(hydration.initialState.deliveredWaterMl, 0);
+  assert.deepEqual(hydration.fields.deliveredWaterMl, { unit: 'mL', mode: 'absolute' });
   assert.equal(hydration.fields.waterVolumeMl.unit, 'mL');
   assert.deepEqual(hydration.fields.waterVolumeMl.transferOut, ['smallIntestine.waterVolumeMl']);
   assert.equal(hydration.fields.emptiedWaterMl.unit, 'mL');
@@ -515,6 +517,7 @@ test('old queue entries without water metadata deliver no water', () => {
   const { written } = tick({ stomach: old });
   assert.equal(written.volumeMl, 50);
   assert.equal(written.waterVolumeMl, 0);
+  assert.equal(written.deliveredWaterMl, 0, 'legacy liquid volume does not establish a water dose');
   assert.equal(written.emptiedWaterMl, 0);
   assert.equal(written.mealQueue[0].remainingRounds, 2);
 });

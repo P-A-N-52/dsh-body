@@ -145,7 +145,7 @@ test('thirst needs three rounds to wake and the body never drinks on its own', a
   });
 });
 
-test('an explicit 2000 mL drink lowers thirst through the water chain without zeroing on the action round', async (t) => {
+test('a 2000 mL drink briefly relieves thirst, then absorption settles the rebound without another wake', async (t) => {
   silence(t);
   const { gateway, tools } = await startBody(t);
 
@@ -195,10 +195,8 @@ test('an explicit 2000 mL drink lowers thirst through the water chain without ze
   );
   assert.ok(Math.abs(waterLedgerMl(afterDrink, cumulativeVoidedMl) - drinkMl) <= 1e-6);
 
-  let observedThirst = afterDrink.interoception.thirst;
-  let sawStrongThirst = false;
-  let sawMarkedThirst = false;
-  let sawBelowReset = false;
+  let sawMarkedRebound = false;
+  let settledAfterRebound = false;
   let sawStomachWater = false;
   let sawIntestinalWater = false;
 
@@ -219,33 +217,25 @@ test('an explicit 2000 mL drink lowers thirst through the water chain without ze
       `round ${round}: water ledger ${ledgerMl}`,
     );
 
-    if (observedThirst >= thirstStrongMm) {
-      sawStrongThirst = true;
-      assert.equal(
-        parts.brainNotify.sessions[sessionId].levels.thirst,
-        3,
-        `round ${round}: strong thirst keeps level 3`,
-      );
-    } else if (observedThirst >= thirstMarkedMm) {
-      sawMarkedThirst = true;
-      assert.equal(
-        parts.brainNotify.sessions[sessionId].levels.thirst,
-        2,
-        `round ${round}: marked thirst keeps level 2`,
-      );
+    const level = parts.brainNotify.sessions[sessionId].levels.thirst;
+    if (round === 5) {
+      assert.ok(parts.hypothalamusThirst.thirst >= thirstStrongMm, 'slow drive is still high');
+      assert.ok(thirst < resetBelowMm, 'the first subjective relief crosses the reset threshold');
+      assert.equal(level, 3, 'the notifier still reads the strong action-round snapshot');
+    } else {
+      assert.equal(level, 0, `round ${round}: the rebound does not send a new reminder`);
+      assert.ok(thirst < thirstStrongMm, 'absorption keeps the rebound below the strong threshold');
+      if (thirst >= thirstMarkedMm) sawMarkedRebound = true;
+      if (sawMarkedRebound && thirst < resetBelowMm) settledAfterRebound = true;
     }
-    if (thirst < resetBelowMm) sawBelowReset = true;
-
     if (parts.stomach.waterVolumeMl > 0) sawStomachWater = true;
     if (parts.smallIntestine.waterVolumeMl > 0) sawIntestinalWater = true;
-    observedThirst = thirst;
   }
 
   const final = gateway.getState().parts;
   const finalSession = final.brainNotify.sessions[sessionId];
-  assert.ok(sawStrongThirst, 'strong thirst should persist while the drink is absorbed');
-  assert.ok(sawMarkedThirst, 'marked thirst should appear on the way down');
-  assert.ok(sawBelowReset, 'thirst should fall below the reset threshold');
+  assert.ok(sawMarkedRebound, 'the slow water deficit briefly reappears as the quick relief fades');
+  assert.ok(settledAfterRebound, 'thirst settles below reset again as water is absorbed');
   assert.ok(sawStomachWater, 'the drink should pass through the stomach');
   assert.ok(sawIntestinalWater, 'the drink should pass through the small intestine');
   assert.ok(final.interoception.thirst < resetBelowMm);

@@ -1,7 +1,7 @@
 /*
  * 部位 `interoception`：把胃壁机械感受、胃饥饿素和十二指肠营养暴露汇成
- * 0–100 mm VAS 代理的饥饿（hunger）与饱满（fullness），并转出下丘脑口渴驱动
- * （thirst）、膀胱充盈的尿意代理（urinaryUrgency）、子宫痉挛的痛经代理
+ * 0–100 mm VAS 代理的饥饿（hunger）与饱满（fullness），把下丘脑慢驱动与已吞水的
+ * 快速缓解合成口渴（thirst），另输出膀胱充盈的尿意代理（urinaryUrgency）、子宫痉挛的痛经代理
  * （uterineCrampMm，同步进入不适）、性反应兴奋体感（sexualArousalMm）、血氧气促代理（dyspneaMm）、
  * 口腔干燥代理（dryMouthMm）、性欲代理（libidoMm）、便意代理（bowelUrgencyMm）、低血糖乏力心慌
  * （hypoglycemiaMm）、心悸/低血压不适（palpitationMm）、出汗潮湿黏腻（sweatDampMm）与肌肉疲乏
@@ -17,8 +17,8 @@
  * `muscleHead`/`muscleTrunk`/`muscleLimbs` 都是可选部位的软读：
  * 未加载时按基线/0；其中 `sexualArousalMm`、`libidoMm` 与 `mammaryFullness` 受全局
  * `nsfw` 开关门控（`getNsfwSetting() === false` 时置 0）；`esophagus.chokingMm` 只留在
- * `discomfort` 内，不单独输出或发通知。本脚本只产出体感，不发送通知；除 `sweatDampMm` 与
- * `muscleFatigueMm` 读取自己的上一轮衰减状态外，其余读数不读自身历史。
+ * `discomfort` 内，不单独输出或发通知。本脚本不发送通知；`sweatDampMm`、
+ * `muscleFatigueAcuteMm` 与 `oralThirstReliefFraction` 使用自身上一轮状态，其余读数不回灌。
  *
  * 来源（笔记路径、原文定位、支撑什么、不能推出什么）
  * - SRC-CUMMINGS-2001 / cummings-2001：`organs/human-organs/stomach/references/notes/cummings-2001.md`，
@@ -46,16 +46,18 @@
  *   摘要只确认 15 名健康女学生，是否未产摘要未说明；190/268/410 mL 是设计文档/主会话全文交接的
  *   FSF/FDV/SDV 量级，摘要未报告，原文表/图与误差类型待核。只借 410 mL 作为尿意归一化的量级
  *   锚点；它不是摘要已报告值，不是自然排尿阈值，也不是个体尿意标定，不能从膀胱体积换算压力。
+ * - SRC-FIGARO-1997 / figaro-1997：`references/notes/figaro-1997.md` 摘要 Results（PMID 9227585）；
+ *   口饮与鼻胃管对照的最初 5 min 只支撑吸收前口渴可缓解的方向，不标定剂量或半衰期。
  *
  * design（不是人体测量或拟合）
  * - 线性叠加、两个基线、六个增益（hunger / fullness 各对相对饥饿素、mechanical 与
  *   nutrientExposure 一条）、输入钳位与缺失默认值（mechanical 0、相对饥饿素 1、
  *   nutrientExposure 0）全部是工程假设。没有来源把机械感受、营养暴露或相对饥饿素校准到
  *   0–100 mm VAS；上述研究只支撑方向、时间窗或定性排序。
- * - `thirst` 不是本脚本计算的感觉强度，而是把 `hypothalamusThirst.thirst` 原样钳到
- *   0–100 mm；缺失或非有限输入回落 `interoception.thirst.fallbackMm`（`design`，默认 50 mm），
- *   与口渴脚本的 `design` 基线一致。不建模血浆渗透压、口咽暂缓解渴或饮水动机；`thirst` 不
- *   自动产生喝水动作。
+ * - 口渴：轮初慢驱动 `hypothalamusThirst.thirst` 钳到 0–100 mm（缺失回落 0 mm），再乘
+ *   `1 − oralThirstReliefFraction`。快信号用上一轮已提交 `stomach.deliveredWaterMl` 填补剩余
+ *   缓解空间，之后按 2 min 半衰；20 mL 填补半份剩余空间（均为 `design`）。只合成体感，
+ *   不回写慢驱动、体液、ADH、尿请求或口干，也不自动饮水。
  * - `urinaryUrgency = clamp(100 mm × 轮初 bladder.volumeMl / 410 mL, 0, 100)`。410 mL 只是
  *   De Wachter 队列 SDV 的交接量级锚点（`design`，原文表/图待核），不是摘要已报告值，
  *   不是自然排尿阈值，也不是膀胱压力；它读取轮初膀胱量，所以排尿后的低尿意和当轮新转入的
@@ -128,10 +130,10 @@
  *   `blood` 未加载或字段非有限时对应项为 0。
  * - `sweatDampMm`（`design` 口径）：读取上一轮 `interoception.sweatDampMm`（缺省 0）按 20 min
  *   半时衰减，再叠加 `skin.sweatVolumeMl` 折算的瞬时汗率（`sweatRateMlMin × 4 × dtMin`）。
- * - `muscleFatigueMm`（`design` 口径）：读取上一轮 `interoception.muscleFatigueMm`（缺省 0）
- *   按 30 min 半时恢复并叠加运动强度增量（`2.1 × intensity × dtMin`），再叠加已加载骨骼肌区域
- *   （`muscleHead`/`muscleTrunk`/`muscleLimbs`，按体重缩放的 15/135/150 g 基线）糖原亏空比例的
- *   0.5 倍。
+ * - 肌肉疲乏（`design`）：只推进独立急性负担 `muscleFatigueAcuteMm`（30 min 半时恢复，
+ *   活动段每分钟以 `2.1 × intensity` 加荷），再把轮初已加载骨骼肌区域的糖原亏空百分点乘 0.5
+ *   加入 `muscleFatigueMm` 读数。总读数只钳位、不回灌。缺急性负担的旧档首轮按当时糖原亏空
+ *   有界估计，已饱和的旧读数不能唯一反演急性负担。
  * - `uterineCrampMm = clamp(finiteOr(uterus.crampMm, 0), 0, 100)` 将轮初子宫痉挛读数暴露到状态。
  * - `sleepinessMm`：未加载 `sleep` 时保留原松果体褪黑素公式逐点不变；加载 `sleep` 时结合
  *   `sleep.sleepPressureMm`（若同时存在 `pineal` 则取 `clamp(0.4 × melatoninMm + 0.8 × sleepPressureMm, 0, 100)`，
@@ -164,6 +166,7 @@ type InteroceptionState = {
   hunger: number;
   fullness: number;
   thirst: number;
+  oralThirstReliefFraction: number | null;
   urinaryUrgency: number;
   discomfort: number;
   sexualArousalMm: number;
@@ -181,6 +184,7 @@ type InteroceptionState = {
   palpitationMm: number;
   sweatDampMm: number;
   muscleFatigueMm: number;
+  muscleFatigueAcuteMm: number | null;
   uterineCrampMm: number;
   mammaryFullnessMm: number;
   hedonicCalmMm: number;
@@ -201,6 +205,11 @@ type DuodenumReading = {
 
 type ThirstReading = {
   thirst?: number;
+};
+
+type StomachWaterReading = {
+  deliveredWaterMl?: number;
+  lastIntakeAt?: number | null;
 };
 
 type BladderReading = {
@@ -368,6 +377,7 @@ type IO = {
   readonly dt?: number;
   read(): Readonly<SnapshotReading> | undefined;
   read(id: 'interoception'): Readonly<Partial<InteroceptionState>> | null | undefined;
+  read(id: 'stomach'): Readonly<StomachWaterReading> | undefined;
   read(id: 'stomachSensory'): Readonly<SensoryReading> | undefined;
   read(id: 'stomachGhrelin'): Readonly<GhrelinReading> | undefined;
   read(id: 'duodenum'): Readonly<DuodenumReading> | undefined;
@@ -410,6 +420,8 @@ const fullnessMechanicalGain = requireParameter(parameters, 'interoception.fulln
 const hungerNutrientGain = requireParameter(parameters, 'interoception.hunger.nutrientGain');
 const fullnessNutrientGain = requireParameter(parameters, 'interoception.fullness.nutrientGain');
 const thirstFallbackMm = requireParameter(parameters, 'interoception.thirst.fallbackMm');
+const oralReliefHalfTimeMin = requireParameter(parameters, 'interoception.thirst.oralReliefHalfTimeMin');
+const oralReliefHalfDoseMl = requireParameter(parameters, 'interoception.thirst.oralReliefHalfDoseMl');
 const urinaryUrgencyReferenceVolumeMl = requireParameter(
   parameters,
   'interoception.urinaryUrgency.referenceVolumeMl',
@@ -478,7 +490,7 @@ const sweatDampReferenceEvapRateMlMin = scaleByBodyWeight(
   requireParameter(parameters, 'interoception.sweatDamp.referenceEvapRateMlMin'),
   'interoception.sweatDamp.referenceEvapRateMlMin',
 );
-const muscleFatigueHalfTimeMin = requireParameter(
+const muscleFatigueDecayPerMin = Math.LN2 / requireParameter(
   parameters,
   'interoception.muscleFatigue.halfTimeMin',
 );
@@ -530,6 +542,7 @@ export const initialState: InteroceptionState = {
   hunger: hungerBaseline,
   fullness: fullnessBaseline,
   thirst: thirstFallbackMm,
+  oralThirstReliefFraction: null,
   urinaryUrgency: 0,
   discomfort: 0,
   sexualArousalMm: 0,
@@ -547,6 +560,7 @@ export const initialState: InteroceptionState = {
   palpitationMm: 0,
   sweatDampMm: 0,
   muscleFatigueMm: 0,
+  muscleFatigueAcuteMm: null,
   uterineCrampMm: 0,
   mammaryFullnessMm: 0,
   hedonicCalmMm: 0,
@@ -556,6 +570,7 @@ export const fields = {
   hunger: { unit: 'mm', mode: 'absolute' },
   fullness: { unit: 'mm', mode: 'absolute' },
   thirst: { unit: 'mm', mode: 'absolute' },
+  oralThirstReliefFraction: { unit: '1', mode: 'absolute' },
   urinaryUrgency: { unit: 'mm', mode: 'absolute' },
   discomfort: { unit: 'mm', mode: 'absolute' },
   sexualArousalMm: { unit: 'mm', mode: 'absolute' },
@@ -573,6 +588,7 @@ export const fields = {
   palpitationMm: { unit: 'mm', mode: 'absolute' },
   sweatDampMm: { unit: 'mm', mode: 'absolute' },
   muscleFatigueMm: { unit: 'mm', mode: 'absolute' },
+  muscleFatigueAcuteMm: { unit: 'mm', mode: 'absolute' },
   uterineCrampMm: { unit: 'mm', mode: 'absolute' },
   mammaryFullnessMm: { unit: 'mm', mode: 'absolute' },
   hedonicCalmMm: { unit: 'mm', mode: 'absolute' },
@@ -630,10 +646,18 @@ export function heartbeat(io: IO): void {
       + fullnessNutrientGain * nutrient,
     fullnessBaseline,
   );
-  const thirst = clampOrFallback(
-    finiteOr(io.read('hypothalamusThirst')?.thirst, thirstFallbackMm),
-    thirstFallbackMm,
-  );
+  const slowThirstMm = clampMm(finiteOr(io.read('hypothalamusThirst')?.thirst, thirstFallbackMm));
+  const stomach = io.read('stomach');
+  // A snapshot may retain a removed provider's state. Only use the preceding round's intake.
+  const deliveredWaterMl = isFiniteNumber(stomach?.lastIntakeAt)
+    && stomach.lastIntakeAt === io.read()?.simulatedSeconds
+    ? Math.max(0, finiteOr(stomach.deliveredWaterMl, 0))
+    : 0;
+  const prevRelief = clamp(finiteOr(prevInteroception?.oralThirstReliefFraction, 0), 0, 1);
+  const doseFraction = -Math.expm1(-Math.LN2 * deliveredWaterMl / oralReliefHalfDoseMl);
+  const oralThirstReliefFraction = (prevRelief + (1 - prevRelief) * doseFraction)
+    * Math.pow(0.5, dtMin / oralReliefHalfTimeMin);
+  const thirst = slowThirstMm * (1 - oralThirstReliefFraction);
   const bladderVolume = Math.max(0, finiteOr(io.read('bladder')?.volumeMl, 0));
   const urinaryUrgency = clampOrFallback(
     (100 * bladderVolume) / urinaryUrgencyReferenceVolumeMl,
@@ -869,20 +893,24 @@ export function heartbeat(io: IO): void {
     )
     : prevSweatDamp;
 
-  const prevMuscleFatigue = clamp(finiteOr(prevInteroception?.muscleFatigueMm, 0), 0, 100);
-  const acuteFatigue = prevMuscleFatigue * Math.pow(0.5, dtMin / muscleFatigueHalfTimeMin)
-    + (exercising ? muscleFatigueExerciseGainMmPerMin * activityIntensity * dtMin : 0);
-  const depletion = computeMuscleGlycogenDepletion(io);
-  const muscleFatigueMm = clamp(
-    acuteFatigue + muscleFatigueDepletionWeight * depletion,
-    0,
-    100,
-  );
+  const depletionMm = muscleFatigueDepletionWeight * computeMuscleGlycogenDepletion(io);
+  const savedAcuteMm = prevInteroception?.muscleFatigueAcuteMm;
+  // null survives the Gateway's default fill, so missing legacy state is not mistaken for zero.
+  const prevAcuteMm = isFiniteNumber(savedAcuteMm)
+    ? Math.max(0, savedAcuteMm)
+    : Math.max(0, clampMm(finiteOr(prevInteroception?.muscleFatigueMm, 0)) - depletionMm);
+  const activeMin = Math.min(dtMin, remainingExerciseMin);
+  const addedAcuteMm = (muscleFatigueExerciseGainMmPerMin * activityIntensity / muscleFatigueDecayPerMin)
+    * -Math.expm1(-muscleFatigueDecayPerMin * activeMin);
+  const muscleFatigueAcuteMm = prevAcuteMm * Math.exp(-muscleFatigueDecayPerMin * dtMin)
+    + addedAcuteMm * Math.exp(-muscleFatigueDecayPerMin * (dtMin - activeMin));
+  const muscleFatigueMm = clampMm(muscleFatigueAcuteMm + depletionMm);
 
   io.write({
     hunger,
     fullness,
     thirst,
+    oralThirstReliefFraction,
     urinaryUrgency,
     discomfort,
     sexualArousalMm,
@@ -900,6 +928,7 @@ export function heartbeat(io: IO): void {
     palpitationMm,
     sweatDampMm,
     muscleFatigueMm,
+    muscleFatigueAcuteMm,
     uterineCrampMm,
     mammaryFullnessMm: mammaryFullness,
     hedonicCalmMm,

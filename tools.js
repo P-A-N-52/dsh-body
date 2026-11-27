@@ -365,9 +365,11 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
   const hungerMm = readMm(intero, 'hunger');
   const fullnessMm = readMm(intero, 'fullness');
   const thirstPart = readPart(parts, 'hypothalamusThirst');
-  const thirstMm = thirstPart !== undefined
-    ? (readMm(thirstPart, 'thirst') ?? readMm(intero, 'thirst'))
-    : readMm(intero, 'thirst');
+  const subjectiveThirstMm = readMm(intero, 'thirst');
+  const oralRelief = readNum(intero, 'oralThirstReliefFraction');
+  const hasThirstProjection = oralRelief !== undefined && oralRelief >= 0 && oralRelief <= 1;
+  const thirstMm = (hasThirstProjection ? subjectiveThirstMm : undefined)
+    ?? readMm(thirstPart, 'thirst') ?? subjectiveThirstMm;
   const salivaryPart = readPart(parts, 'salivaryGlands');
   const mouthMoistureMm = readMm(salivaryPart, 'mouthMoistureMm');
   const mealStimulusMin = readNum(salivaryPart, 'mealStimulusMin') ?? 0;

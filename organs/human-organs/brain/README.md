@@ -8,12 +8,12 @@
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `interoception.ts` | `interoception` | `hunger`、`fullness`、`thirst`、`urinaryUrgency`、`discomfort`、`sexualArousalMm`、`dyspneaMm`、`stressMm`、`sleepinessMm`、`dryMouthMm`、`libidoMm`、`bowelUrgencyMm`、`heatMm`、`coldMm`、`hypocalcemiaMm`、`hypercalcemiaMm`、`hypoglycemiaMm`、`palpitationMm`、`sweatDampMm`、`muscleFatigueMm`、`uterineCrampMm`、`mammaryFullnessMm`、`hedonicCalmMm`、可选 `sensations` | 自身上一轮 `sweatDampMm` / `muscleFatigueMm`；轮初 `stomachSensory.mechanical`、`stomachGhrelin.relativeConcentration`、`duodenum.nutrientExposure`、`hypothalamusThirst.thirst`、`bladder.volumeMl`、`uterus.crampMm`、`mammaryGlands.fullnessMm`、`esophagus.chokingMm`、`colon`、`sexualResponse.arousalMm`/`afterglowMm`、`bloodOxygen.oxygenDeficit`、`adrenal.cortisolNmolL`、`autonomic.sympatheticMm`、`pineal.melatoninRelative`、`sleep`、`salivaryGlands.mouthMoistureMm`、`testes.testosteroneRelative`、`ovaries.estradiolPmolL`/`progesteroneNmolL`、`pituitary.prolactinNgMl`、`reward.wantingMm`/`hedonicMm`/`satietyMm`、`thermoregulation.coreTemperatureC`/`setpointC`、`bloodCalcium.mgDl`、`glucose.concentrationMgDl`、`heart.heartRatePerMin`、`blood.systolicMmHg`、`physicalActivity`、`skin.sweatVolumeMl`、`muscleHead`/`muscleTrunk`/`muscleLimbs.glycogenG`、他部位 `discomfortMm` / `sensations`；`getNsfwSetting()`、`io.dt` | `interoception.parameters.json` |
+| `interoception.ts` | `interoception` | `hunger`、`fullness`、`thirst`、`urinaryUrgency`、`discomfort`、`sexualArousalMm`、`dyspneaMm`、`stressMm`、`sleepinessMm`、`dryMouthMm`、`libidoMm`、`bowelUrgencyMm`、`heatMm`、`coldMm`、`hypocalcemiaMm`、`hypercalcemiaMm`、`hypoglycemiaMm`、`palpitationMm`、`sweatDampMm`、`muscleFatigueMm`、`uterineCrampMm`、`mammaryFullnessMm`、`hedonicCalmMm`；持久化 `muscleFatigueAcuteMm` / `oralThirstReliefFraction`；可选 `sensations` | 自身上一轮 `sweatDampMm` / `muscleFatigueAcuteMm` / `oralThirstReliefFraction`；轮初 `stomach.deliveredWaterMl` / `lastIntakeAt`、`stomachSensory.mechanical`、`stomachGhrelin.relativeConcentration`、`duodenum.nutrientExposure`、`hypothalamusThirst.thirst`、`bladder.volumeMl`、`uterus.crampMm`、`mammaryGlands.fullnessMm`、`esophagus.chokingMm`、`colon`、`sexualResponse.arousalMm`/`afterglowMm`、`bloodOxygen.oxygenDeficit`、`adrenal.cortisolNmolL`、`autonomic.sympatheticMm`、`pineal.melatoninRelative`、`sleep`、`salivaryGlands.mouthMoistureMm`、`testes.testosteroneRelative`、`ovaries.estradiolPmolL`/`progesteroneNmolL`、`pituitary.prolactinNgMl`、`reward.wantingMm`/`hedonicMm`/`satietyMm`、`thermoregulation.coreTemperatureC`/`setpointC`、`bloodCalcium.mgDl`、`glucose.concentrationMgDl`、`heart.heartRatePerMin`、`blood.systolicMmHg`、`physicalActivity`、`skin.sweatVolumeMl`、`muscleHead`/`muscleTrunk`/`muscleLimbs.glycogenG`、他部位 `discomfortMm` / `sensations`；`getNsfwSetting()`、`io.dt` | `interoception.parameters.json` |
 | `notify.ts` | `brainNotify` | `lastSessionId`、`sessions`（含双轨时间戳/退避步数、`lastInvoluntaryVoidedMl`、`lastOrgasmAtSimMin`、`levels`、`sensations`、`sensationLevels`、`wasSleeping`、`sleepBacklog`） | `interoception`（4 核 + 15 扩展 + 可选 `sensations`）、轮初 `bladder.voidedMl`/`involuntaryVoidedMl`、`colon.defecatedG`、`sleep.sleeping`、`blood.systolicMmHg`、`uterus.crampMm`、`mammaryGlands.fullnessMm`/`ejectedMilkMl`/`lactating`、`sexualResponse.phase`/`lastOrgasmAtSimMin`；`io.actions`（`sessionId` 与缓解动作，含 `express_milk` / `breastfeed`）、`io.boundSessionId`、`io.suppressNotifications`、`io.simulatedSeconds`、`getNsfwSetting()` | `notify.parameters.json` |
 | `sleep.ts` | `sleep` | `sleeping`、`sleepPressureMm`、`sleepDurationMin`、`sleepStage`、`sleepInertiaMm`、`wakeEvent` | 自己的轮初状态；轮初 `pineal.melatoninRelative`、`autonomic.sympatheticMm` 及危机/不适相关部位；`io.actions` 中的 `sleep` / `wake_up` / 主动唤醒动作；`io.dt` | `sleep.parameters.json` |
 | `autonomic.ts` | `autonomic` | `sympatheticMm`、`parasympatheticMm`、`startleActive` | 自己的轮初状态；`sleep`、`pineal`、`physicalActivity`、`glucose`、`bloodOxygen`、`blood`、`thermoregulation`、`interoception`、`uterus`、`sexualResponse`（含 `afterglowMm` 与经 `evaluateSexualRelease` 判定的释放）、`reward.hedonicMm`、`pituitary.oxytocinPgMl`、`ovaries`、`testes`、`io.actions`、`io.dt`、`io.simulatedSeconds`、`getNsfwSetting()` | `autonomic.parameters.json` |
 | `hypothalamus-adh.ts` | `hypothalamusAdh` | `relativeConcentration` | `bodyFluid.waterDeficit`；轮初 `blood.bloodVolumeMl`（可选） | `hypothalamus-adh.parameters.json` |
-| `hypothalamus-thirst.ts` | `hypothalamusThirst` | `thirst` | `bodyFluid.waterDeficit` | `hypothalamus-thirst.parameters.json` |
+| `hypothalamus-thirst.ts` | `hypothalamusThirst` | 慢驱动 `thirst` | `bodyFluid.waterVolumeMl`（缺失时读 `waterDeficit`） | `hypothalamus-thirst.parameters.json` |
 | `thermoregulation.ts` | `thermoregulation` | `coreTemperatureC`、`setpointC` | 自己的轮初温度；`sleep.sleeping`；轮初 `bloodOxygen.oxygenConsumptionMlMin`（可选）、`skin.sweatVolumeMl`（可选）；`io.wallTimeMs`、`io.dt` | `thermoregulation.parameters.json` |
 | `hypothalamus-endocrine.ts` | `hypothalamusEndocrine` | `trhRelative`、`crhRelative`、`carElapsedMin` | 自己的轮初状态；`thyroid`、`adrenal.cortisolNmolL`（除以 180 归一化）、`thermoregulation`、`glucose`、`physicalActivity`、`autonomic.sympatheticMm`、`sleep`（含 `carLatentMin` 10 min 潜伏起坡）、`reward.hedonicMm` 与 `pituitary.oxytocinPgMl`（非低血糖应激温和缓冲）；`io.wallTimeMs`、`io.dt` | `hypothalamus-endocrine.parameters.json` |
 | `pituitary.ts` | `pituitary` | `tshRelative`、`acthPgMl`、`prolactinNgMl`、`oxytocinPgMl` | 自己的轮初状态；`hypothalamusEndocrine`、`thyroid`、`adrenal.cortisolNmolL`、`mammaryGlands.lactating` / `stimulationMin`（与 `milkMl` 解耦）、`sleep`、`sexualResponse`、`io.actions`、`io.dt`、`io.wallTimeMs`、`io.simulatedSeconds` | `pituitary.parameters.json` |
@@ -27,7 +27,8 @@
 | --- | --- | --- |
 | `hunger` | `mm` | 饥饿的 0–100 mm VAS 代理 |
 | `fullness` | `mm` | 饱满的 0–100 mm VAS 代理 |
-| `thirst` | `mm` | 口渴的 0–100 mm 代理；把 `hypothalamusThirst.thirst` 原样钳位后读出 |
+| `thirst` | `mm` | 主观口渴的 0–100 mm 代理；用快速缓解比例减弱轮初 `hypothalamusThirst.thirst` 的慢驱动 |
+| `oralThirstReliefFraction` | `1` | 持久化快缓解状态，范围 [0,1]；`null` 表示尚未提交过合成读数，不是缺水观测 |
 | `urinaryUrgency` | `mm` | 尿意的 0–100 mm 代理；由轮初 `bladder.volumeMl` 归一化 |
 | `discomfort` | `mm` | 不适的 0–100 mm 代理；七个感受（饥饿、饱满、口渴、尿意、子宫痉挛、乳腺胀奶、食管呛咳）超过 70 mm 舒适区后的强度取最大值 |
 | `sexualArousalMm` | `mm` | 性反应周期的唤醒读数 0–100 mm；把 `sexualResponse.arousalMm` 原样钳位后读出，不是性欲、情绪或生殖器测量 |
@@ -44,17 +45,22 @@
 | `hypoglycemiaMm` | `mm` | 低血糖乏力心慌代理 0–100 mm；`glucose.concentrationMgDl` 有限时为 `clamp((75 − concentrationMgDl) × 4, 0, 100)`，未加载或非有限按 `0`；不是血糖测量或临床低血糖分级 |
 | `palpitationMm` | `mm` | 心悸/低血压循环不适代理 0–100 mm；非中高强度运动时取静止心动过速与低收缩压最大值，中高强度运动中只取低血压项；不是心电监护或休克评分 |
 | `sweatDampMm` | `mm` | 出汗潮湿黏腻代理 0–100 mm；将轮初 `skin.sweatVolumeMl` 折算汗率按体重缩放后的有效蒸发饱和参考 `referenceEvapRateMlMin`（4.5 mL/min）映射为 Gagge 皮肤湿润度稳态平衡目标，并与自身上一轮按 5 min 半衰期平滑趋近（无累积过冲） |
-| `muscleFatigueMm` | `mm` | 肌肉疲乏代理 0–100 mm；读取自身上一轮状态按 30 min 半时指数恢复，叠加活动强度增量与已加载骨骼肌区域糖原亏空比例的 0.5 倍 |
+| `muscleFatigueMm` | `mm` | 肌肉疲乏代理 0–100 mm；急性负担加轮初肌糖原亏空贡献，钳位后不回灌 |
+| `muscleFatigueAcuteMm` | `mm` | 持久化独立急性负担；运动加荷、按 30 min 半时恢复。仅首次初始化或迁移尚未完成时为 `null` |
 | `uterineCrampMm` | `mm` | 子宫痉挛/痛经暴露读数 0–100 mm；将轮初 `uterus.crampMm` 钳位暴露到 `interoception` 状态（同步仍进入 `discomfort` 第五路），未加载或非有限按 `0` |
 | `mammaryFullnessMm` | `mm` | 乳腺胀满暴露读数 0–100 mm；受 `nsfw` 开关门控，开启时将轮初 `mammaryGlands.fullnessMm` 钳位暴露并进入 `discomfort` 第六路，未加载或关闭 `nsfw` 按 `0` |
 | `hedonicCalmMm` | `mm` | 享乐松弛余韵代理 0–100 mm；结合 `reward.hedonicMm`（高出基线 15 mm 部分）、受 `nsfw` 门控的 `sexualResponse.afterglowMm` 与原始压力扣减得到，并作用于 `stressMm` 轻度缓冲及清醒期轻度放松困倦微调；不进 `discomfort` 也不独立触发通知 |
 
-`interoception` 全部 23 个固定 `mm` 字段（外加可选扩展 `sensations`）**不是物理长度、神经放电、激素浓度、膀胱压力或逼尿肌张力**，也不是胃容积、直肠压力、残余尿诊断值、汗液测量、肌肉乳酸或离子钙测量。`mm` 只沿用 100-mm 视觉模拟量表的刻度；把它们与胃内容量、血浆饥饿素、AVP pmol/L、膀胱 mL、粪便 g、压力、血气分压、皮质醇浓度、褪黑素浓度、血钙浓度、血糖浓度、心率/血压、汗量或口腔湿润度互换没有方法学依据。`discomfort` 是“当前最强的不适感受”代理，不是疼痛评分、情绪、疾病严重度或各感受总分；子宫痉挛只是 0–100 mm 的痛经代理，乳腺胀奶只是 0–100 mm 的胀奶代理，食管呛咳只是 0–100 mm 的风险代理，都不是痛觉、乳腺压力或临床呛咳测量。其中 `sexualArousalMm`、`libidoMm`、`mammaryFullnessMm` 与 `discomfort` 内的乳腺胀奶贡献受 `getNsfwSetting()` 门控（`false` 时置 0）；`esophagus.chokingMm` 只留在 `discomfort` 内，不单独输出字段，也不触发通知。
+`interoception` 的 23 个 `mm` 体感读数及同刻度的急性负担状态**不是物理长度、神经放电、激素浓度、膀胱压力或逼尿肌张力**，也不是胃容积、直肠压力、残余尿诊断值、汗液测量、肌肉乳酸或离子钙测量。`mm` 只沿用 100-mm 视觉模拟量表的刻度；把它们与胃内容量、血浆饥饿素、AVP pmol/L、膀胱 mL、粪便 g、压力、血气分压、皮质醇浓度、褪黑素浓度、血钙浓度、血糖浓度、心率/血压、汗量或口腔湿润度互换没有方法学依据。`discomfort` 是“当前最强的不适感受”代理，不是疼痛评分、情绪、疾病严重度或各感受总分；子宫痉挛只是 0–100 mm 的痛经代理，乳腺胀奶只是 0–100 mm 的胀奶代理，食管呛咳只是 0–100 mm 的风险代理，都不是痛觉、乳腺压力或临床呛咳测量。其中 `sexualArousalMm`、`libidoMm`、`mammaryFullnessMm` 与 `discomfort` 内的乳腺胀奶贡献受 `getNsfwSetting()` 门控（`false` 时置 0）；`esophagus.chokingMm` 只留在 `discomfort` 内，不单独输出字段，也不触发通知。
 
-23 项读数与 `discomfort` 的方程（除 `sweatDampMm` 与 `muscleFatigueMm` 读取自身上一轮状态做指数衰减外，其余字段均仅由轮初输入计算）：
+以下方程只用轮初快照；`oralThirstReliefFraction`、`sweatDampMm` 与 `muscleFatigueAcuteMm` 从上一轮自身状态接续。`dtMin = io.dt / 60`：
 
 ```text
-thirst         = clamp(hypothalamusThirst.thirst, 0, 100)   // 缺失或非有限回落 0 mm（Hughes 2018 正常水合基线）
+S              = clamp(finiteOr(hypothalamusThirst.thirst, 0), 0, 100)  // 轮初慢驱动
+U              = 本轮初所见上一轮实际交付的 stomach.deliveredWaterMl（mL；无新鲜记录为 0）
+R              = 上一轮 oralThirstReliefFraction（未初始化为 0）
+R_next         = 2^(−dtMin / 2) × [1 − (1 − R) × 2^(−U / 20)]
+thirst         = (1 − R_next) × S
 urinaryUrgency = clamp(100 mm × bladder.volumeMl / 410 mL, 0, 100)
 uterineCrampMm = clamp(finiteOr(uterus.crampMm, 0), 0, 100) // 无子宫或缺失按 0
 mammaryFullness = nsfwEnabled ? clamp(finiteOr(mammaryGlands.fullnessMm, 0), 0, 100) : 0
@@ -95,10 +101,13 @@ palpitationMm  = max(hrPart, bpPart)
 sweatRateMlMin  = skin 已加载 && dtMin > 0 ? max(0, finiteOr(skin.sweatVolumeMl, 0)) / dtMin : 0
 targetSweatDamp = clamp(100 × sweatRateMlMin / max(0.1, scaleByBodyWeight(4.5)), 0, 100)
 sweatDampMm     = clamp(targetSweatDamp + (prev.sweatDampMm − targetSweatDamp) × 2^(−dtMin / 5), 0, 100)
-acuteFatigue   = prev.muscleFatigueMm × 2^(−dtMin / 30)
-               + (exercising ? 2.1 × intensity × dtMin : 0)
-depletion      = 已加载肌糖原区域 (15/135/150 g × weightScale) 的亏空比例 × 100（未亏空为 0）
-muscleFatigueMm = clamp(acuteFatigue + 0.5 × depletion, 0, 100)
+D              = 轮初有效肌区相对总基线的亏空比例 × 100（百分点，范围 0–100）
+I              = clamp(physicalActivity.intensity, 0, 1)
+activeMin      = clamp(physicalActivity.remainingExerciseMin, 0, dtMin)
+λ              = ln(2) / 30
+A_next         = A × exp(−λ × dtMin)
+               + (2.1 × I / λ) × (1 − exp(−λ × activeMin)) × exp(−λ × (dtMin − activeMin))
+muscleFatigueMm = clamp(A_next + 0.5 × D, 0, 100)
 excess(x)      = clamp(100 × (x − 70) / (100 − 70), 0, 100)
 discomfort     = max(excess(hunger), excess(fullness), excess(thirst),
                      excess(urinaryUrgency), excess(uterineCrampMm), excess(mammaryFullness),
@@ -107,11 +116,13 @@ discomfort     = max(excess(hunger), excess(fullness), excess(thirst),
 
 说明：
 - `nsfwEnabled = getNsfwSetting() !== false`：在 BodyWorker 中未配置或显式为 `false` 时，`sexualArousalMm`、`libidoMm`、`mammaryFullnessMm` 与 `discomfort` 内的 `mammaryFullness` 置 `0`；脱离 Worker 的独立单元测试中 `getNsfwSetting()` 为 `null`（`!== false`），保持可读。
-- `sweatDampMm`（平衡半衰期 5 min 工程占位、`referenceEvapRateMlMin = 4.5 mL/min` 按体重缩放，机制对标 `SRC-GAGGE-1967` / `SRC-CRAMER-2019` / `SRC-FUKAZAWA-2009`，替代旧版 117 倍累积过冲）与 `muscleFatigueMm`（30 min 半时）均属 `design` 工程校准；`muscleFatigueMm` 的肌糖原基线按 `scaleByBodyWeight` 缩放 `muscleHead`（15 g）/ `muscleTrunk`（135 g）/ `muscleLimbs`（150 g）。
+- `sweatDampMm` 的平衡半衰期 5 min 属 `design`；`referenceEvapRateMlMin = 4.5 mL/min` 按体重缩放，机制对标 `SRC-GAGGE-1967` / `SRC-CRAMER-2019` / `SRC-FUKAZAWA-2009`，替代旧版 117 倍累积过冲。
+- **疲劳恢复（`design`）：** 急性负担 `A` 与读数 `F`（`muscleFatigueMm`）分离。活动的前 `activeMin` 分钟一边加荷一边恢复，剩余时间只恢复。满强度、未亏糖的首个活动分钟约 2.076 mm（旧版 2.1 mm）；长轮不再把整轮负荷加在末尾。糖原亏空按有效肌区的总存量与总基线计算，基线 `muscleHead` 15 g、`muscleTrunk` 135 g、`muscleLimbs` 150 g 按体重缩放；无有效肌区时 `D=0`，运动仍可产生 `A`。固定 `D`、无活动时 `F` 趋向 `clamp(0.5 × D, 0, 100)`，不逐轮累加亏空。缺 `A` 的旧档首轮用 `max(0, clamp(F_old, 0, 100) − 0.5 × D)` 有界估计；若 `F_old=100`，不能反推出唯一急性负担，也无法剥离旧规则曾重复累加的亏空。新档 `F=0` 推得 `A=0`，首次提交后继续持久化 `A`，重启不再从 `F` 估计。例：旧 `F=45`、`D=10`，估 `A=40`，休息 20 min 得 `F≈30.1984`。
+- **快速解渴（`design`）：** 入胃水提交后下一轮才产生缓解。`U` 只取实际交付量，复用原胃 `lastIntakeAt` 核对轮初仿真秒；缺失或旧读数不补剂量。相同轮内水量先合计；跨轮分片之间会衰减，不能把同剂量瞬饮与分片当成同一时间曲线。20 mL 从 `R=0` 开始，首次可见 `R≈0.35355`（已含 1 min 衰减）；供水不足时 `R` 变小，口渴可以回来。保存/重启接续已提交的 `R` 与仍待读的一轮胃观察；新档或旧档没有 `R` 时按 0 开始。快信号只影响主观口渴及其既有消费者，不写慢驱动、体液、ADH、尿请求或口干；口干仍由轮初唾液湿润度计算。`body_state` 用带有效 `R` 的已提交 `interoception.thirst`（`R=0` 也有效）；未提交或不支持该字段的快照照旧优先读取慢驱动。动作、提醒政策与阈值不变，没有新增工具或自动饮水。
 - `sleepinessMm` 在未加载 `sleep` 时逐点保持原 `pineal` 公式；同时加载 `sleep` 时融合 `pineal`、`sleepPressureMm`、`sleepInertiaMm` 与清醒期交感/性唤起/高皮质醇拮抗及轻度 `0.12 × hedonicCalmMm` 放松助眠偏置（以上权重均为脚本内 `design` 常数）。
 - M19 真实 DSH 会话（2026-11-22，33/33 verdicts，证据 `/tmp/dsh-body/m19-real-dsh.syuWHR/`）早于本次更新，仅验证过当时 `thirst` / `urinaryUrgency` / `discomfort` 读数与 `interoception` 一轮偏移。
 
-`initialState` 为 `{ hunger: 50, fullness: 0, thirst: 0, urinaryUrgency: 0, discomfort: 0, sexualArousalMm: 0, dyspneaMm: 0, stressMm: 0, sleepinessMm: 0, dryMouthMm: 0, libidoMm: 0, bowelUrgencyMm: 0, heatMm: 0, coldMm: 0, hypocalcemiaMm: 0, hypercalcemiaMm: 0, hypoglycemiaMm: 0, palpitationMm: 0, sweatDampMm: 0, muscleFatigueMm: 0, uterineCrampMm: 0, mammaryFullnessMm: 0, hedonicCalmMm: 0 }`（无扩展感受时不写出 `sensations` 键）。
+默认 `initialState` 中 `hunger` 为 50 mm，`oralThirstReliefFraction` 与 `muscleFatigueAcuteMm` 为 `null`（未初始化），其余固定字段为 0；无扩展感受时不写 `sensations` 键。
 
 ### `sleep`
 
@@ -200,7 +211,7 @@ lossMl = referenceFluidVolumeMl − bodyFluid.waterVolumeMl   // 按体重同步
   thirst = clamp(baselineMm + osmolalitySlopeMmPerMOsmKg × max(0, equivalentOsm − osmolalityThresholdMOsmKg), 0, 100)
 ```
 
-水合稳态基线归 `0 mm`（替代旧版常驻 `50 mm` 虚渴），纯水亏损按体液有效渗透池容积折算等效血浆渗透压，并与 `SRC-HUGHES-2018`（12 项高渗试验荟萃 `n=167`：`285.23 mOsm/kg` 阈值与 `5.4 mm/(mOsm/kg)` 线性斜率，标 `prior`）及 `SRC-CHEUVRONT-2013` 温和脱水期渗透压机制对齐；吸收前口咽快解（`SRC-FIGARO-1997`）尚未建分支。
+水合稳态基线归 `0 mm`（替代旧版常驻 `50 mm` 虚渴），纯水亏损按体液有效渗透池容积折算等效血浆渗透压，并与 `SRC-HUGHES-2018`（12 项高渗试验荟萃 `n=167`：`285.23 mOsm/kg` 阈值与 `5.4 mm/(mOsm/kg)` 线性斜率，标 `prior`）及 `SRC-CHEUVRONT-2013` 温和脱水期渗透压机制对齐。此字段只表示慢驱动；吸收前快速缓解由 `interoception` 另算，绝不改此驱动或渗透压代理。
 
 `brainNotify` 的字段：
 
@@ -213,14 +224,15 @@ lossMl = referenceFluidVolumeMl − bodyFluid.waterVolumeMl   // 按体重同步
 
 ## 3. 输入与方程
 
-以上只读输入都取自同一轮的轮初快照（除 `interoception` 中 `sweatDampMm` 与 `muscleFatigueMm` 读取自身上一轮状态用于指数衰减外）；缺失或非有限时按默认值处理：
+输入均来自同一轮的轮初快照；缺失或非有限时按默认值处理：
 
 | 输入 | 含义 | 缺失 / 非有限默认值 |
 | --- | --- | --- |
 | `stomachSensory.mechanical` | 胃壁机械感受代理，0–1；不是张力或神经放电 | 0 |
 | `stomachGhrelin.relativeConcentration` | 相对饥饿素浓度；餐间基准 1、餐后谷值 0.5，空腹时可高于 1（工程上升，目标约 1.8）；不是 `ng/mL` | 1 |
 | `duodenum.nutrientExposure` | 十二指肠近期营养暴露代理，`kcal/min`；不是吸收速率或血糖 | 0 |
-| `hypothalamusThirst.thirst` | 下丘脑口渴驱动，0–100 mm 代理 | 50 |
+| `hypothalamusThirst.thirst` | 轮初下丘脑慢口渴驱动，0–100 mm 代理 | 0 |
+| `stomach.deliveredWaterMl` / `lastIntakeAt` | 上一轮已提交的实际入胃水量（mL）；原时间戳仅核对轮次 | 无新鲜入胃水观测时不加剂量 |
 | `bladder.volumeMl` | 轮初膀胱体积，mL；不是压力 | 0 |
 | `uterus.crampMm` | 子宫痉挛代理，0–100 mm；不是疼痛测量、VAS 实测或临床痛经分级。仅女性清单加载 | 0 |
 | `mammaryGlands.fullnessMm` | 乳腺胀奶代理，0–100 mm；受 `nsfw` 开关门控。仅女性清单加载 | 0 |
@@ -269,6 +281,11 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 | `interoception.hunger.nutrientGain` | -5 | `mm/(kcal/min)` | `design` | — |
 | `interoception.fullness.nutrientGain` | 10 | `mm/(kcal/min)` | `design` | — |
 | `interoception.thirst.fallbackMm` | 0 | `mm` | `design` | `SRC-HUGHES-2018` |
+| `interoception.thirst.oralReliefHalfTimeMin` | 2（范围 [0.5, 10]） | `min` | `design` | — |
+| `interoception.thirst.oralReliefHalfDoseMl` | 20（范围 [5, 250]） | `mL` | `design` | — |
+| `interoception.muscleFatigue.halfTimeMin` | 30 | `min` | `design` | — |
+| `interoception.muscleFatigue.exerciseGainMmPerMin` | 2.1 | `mm/min` | `design` | — |
+| `interoception.muscleFatigue.depletionWeight` | 0.5 | `1`（以百分刻度换算为 mm） | `design` | — |
 | `interoception.urinaryUrgency.referenceVolumeMl` | 410 | `mL` | `design` | `SRC-DEWACHTER-2003` |
 | `interoception.discomfort.onsetMm` | 70 | `mm` | `design` | — |
 | `interoception.sweatDamp.halfTimeMin` | 5 | `min` | `design` | `SRC-KENNY-2008` |
@@ -376,7 +393,7 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 
 ## 5. 调节方式
 
-`interoception` 汇聚来自胃、十二指肠、下丘脑、膀胱、子宫、乳腺、食管、结肠、性反应、血氧、肾上腺、松果体、睡眠节律、唾液腺、睾丸、体温调节、血钙、血糖、心率/血压、体力活动、皮肤与三分区肌糖原及非标扩展 `sensations` 的读数（其中仅 `sweatDampMm` 与 `muscleFatigueMm` 读取自身上一轮状态用于半衰期衰减，其余均为轮初纯映射）；`sleep` 维护清醒/睡眠双稳态与 Process S 睡眠压力，`sleep` 动作同时清零 `physicalActivity`；`hypothalamusThirst` 只读 `bodyFluid.waterDeficit`；`hypothalamusAdh` 读同一水量亏缺与轮初 `blood.bloodVolumeMl`；`thermoregulation` 只读轮初氧耗与汗液写核心温度；内分泌下丘脑与垂体脚本只读轮初快照和外周激素。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
+`interoception` 汇聚来自胃、十二指肠、下丘脑、膀胱、子宫、乳腺、食管、结肠、性反应、血氧、肾上腺、松果体、睡眠节律、唾液腺、睾丸、体温调节、血钙、血糖、心率/血压、体力活动、皮肤与三分区肌糖原及非标扩展 `sensations` 的读数（`sweatDampMm`、`muscleFatigueAcuteMm` 与 `oralThirstReliefFraction` 从自身轮初状态接续）；`sleep` 维护清醒/睡眠双稳态与 Process S 睡眠压力，`sleep` 动作同时清零 `physicalActivity`；`hypothalamusThirst` 只读轮初体液缺水；`hypothalamusAdh` 读同一水量亏缺与轮初 `blood.bloodVolumeMl`；`thermoregulation` 只读轮初氧耗与汗液写核心温度；内分泌下丘脑与垂体脚本只读轮初快照和外周激素。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
 
 - 恶心、腹胀、疼痛、过度饱满（撑感）等独立症状；`discomfort` 只是七个内置感受（含子宫痉挛、乳腺胀奶、食管呛咳）及非标扩展贡献超出 70 mm 舒适区后的最大强度代理，不是其中任何一项的独立测量或评分；`esophagus.chokingMm` 只留在 `discomfort` 内，不单独输出字段也不触发 `brainNotify`；
 - 餐食成分（脂肪 / 蛋白 / 碳水比例）、黏度、能量密度、温度、碳酸与甜味剂；
@@ -386,7 +403,7 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 - 个体差异（指脑部脚本内部的年龄/性别/BMI/胃排空/膀胱容量参数；顶层个体差异 `profile` 与稀疏 `parameters` 覆盖由 `lib/parameters.js` 注入，其中 `profile.timezoneOffsetMin` 控制生物钟时区偏移）；
 - CCK、GLP-1 等肠激素，以及迷走与中枢反馈；
 - 血浆/尿渗透压、电解质、RAAS；
-- 吸收前口咽解渴、习惯化、饮水动机与自动喝水；
+- 口咽感受器与口咽反馈到 ADH 的生理机制、习惯化、饮水动机与自动喝水；当前只用实际入胃饮水量构造快缓解代理；
 - 乳腺解剖、乳房体积/压力与乳汁详细成分（当前 `milk.ts` 仅含基于参考产奶率 `0.54 mL/min`、`360 mL` 存储容量与 PAMR 排乳效率的工程状态机）；
 - 性反应周期、性欲、情绪、伴侣与受孕/妊娠：受 `nsfw` 门控（默认 `false`），开启时仍只作无数字体感与信号调制，不模拟伴侣关系或生殖结局；
 - 呼吸控制与血气：脑不建呼吸节律、呼吸功、PaO2 / PaCO2、血红蛋白 / 氧合曲线或 CO2 / 酸碱调节；
@@ -403,7 +420,7 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
   - `levine-2015.md`（`SRC-LEVINE-2015`，Table 1 与 Methods 第 3 节）：237 mL、355 kcal 高脂液餐后 0–60 min 的胃饱满 VAS 时序与量表口径。
   - `camps-2016.md`（`SRC-CAMPS-2016`，摘要 Results）：饱感排序可以与胃排空 t50 排序不一致。
 - 水链逐篇笔记：
-  - `references/notes/figaro-1997.md`（`SRC-FIGARO-1997`，摘要 Results）：热运动脱水 n=6、cm VAS；只支撑口咽解渴与持续补液可分开，首段不建该支路。
+  - `references/notes/figaro-1997.md`（`SRC-FIGARO-1997`，摘要 Results）：热运动脱水 n=6、cm VAS；只支持吸收前渴感可快速下降的方向，不用于快路的剂量、半衰期或 ADH 标定。
   - [`../kidney/references/notes/ota-1994.md`](../kidney/references/notes/ota-1994.md)（`SRC-OTA-1994`，Methods p.100、Figs. 1/3/4）：主队列 5 名甲减患者 + 5 名正常对照；只支撑水负荷后 AVP 降、尿变稀的方向。
   - [`../kidney/references/notes/andersen-1990.md`](../kidney/references/notes/andersen-1990.md)（`SRC-ANDERSEN-1990`，摘要 Results）：AVP 输注后肾反应可延迟；剂量轴不是血浓度。
   - [`../bladder/references/notes/de-wachter-2003.md`](../bladder/references/notes/de-wachter-2003.md)（`SRC-DEWACHTER-2003`，摘要）：健康女学生 n=15；190/268/410 mL 是交接数值、原文表/图待核，410 只作尿意归一化锚点。
@@ -430,7 +447,7 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 
 ## 7. 当前限制
 
-- **体感提醒与无数字交互已接通，但仍属离线与 Gateway 测试口径**：`interoception` 为 `producer only`（仅 `sweatDampMm` 与 `muscleFatigueMm` 读取自身上一轮状态）；`brainNotify` 覆盖 4 项核心 + 17 项扩展体感 + 漏尿边沿 + 高潮事件边沿 + 可扩展 `sensations` 并调用 `io.notify`，`notifications.js` 按 `mode` 投递到已绑定会话，`tools.js` (`body_state`) 转为纯定性零数值感受描述（含 `discomfort`、`wakeEvent`、`reward` 与排乳等待前兆）。M19 真实 DSH 会话早于本次更新；新的通知策略、`sleep` 闭环、休眠绑定、纯感觉交互、`logs/` 状态与通知滚动历史文件以及 `agent/inbox/inserted` 阅读回执链目前仅覆盖于离线单元与真实 Gateway / 模拟宿主集成测试，尚无新的真实 DSH 会话或独立人体验证；多会话并发绑定仍未实现。
+- **体感提醒与无数字交互已接通，但仍属离线与 Gateway 测试口径**：`interoception` 只发布体感与内部恢复状态（不调用 `io.notify`）；`brainNotify` 覆盖 4 项核心 + 17 项扩展体感 + 漏尿边沿 + 高潮事件边沿 + 可扩展 `sensations` 并调用 `io.notify`，`notifications.js` 按 `mode` 投递到已绑定会话，`tools.js` (`body_state`) 转为纯定性零数值感受描述（含 `discomfort`、`wakeEvent`、`reward` 与排乳等待前兆）。M19 真实 DSH 会话早于本次更新；新的通知策略、`sleep` 闭环、休眠绑定、纯感觉交互、`logs/` 状态与通知滚动历史文件以及 `agent/inbox/inserted` 阅读回执链目前仅覆盖于离线单元与真实 Gateway / 模拟宿主集成测试，尚无新的真实 DSH 会话或独立人体验证；多会话并发绑定仍未实现。
 - **不是生理测量**：23 个 `interoception` 输出、3 个 `reward` 输出与 6 个 `sleep` 字段都是主观评分或工程代理，不能当作物理长度、神经放电、激素浓度、胃容积、膀胱压力、血气、血糖、PSG/EEG 分期或残余尿诊断。
 - **通知不自动产生进食/饮水/排泄/入睡动作**：提醒只发纯定性体感文本；`drink` / `eat` / `urinate` / `defecate` / `sleep` / `wake_up` / `stop_exercise` 仍由会话通过 `body_act` 显式触发。
 - **尿意没有生理阈值**：`urinaryUrgency` 只按膀胱体积归一化，并在 410 mL 处饱和；65/85 mm 只是提醒 policy，不是排尿阈值；600 mL 非自主排空是工程兜底，发生时会发出一次漏尿 `wake` 感知文本。
