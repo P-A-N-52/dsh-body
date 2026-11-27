@@ -10,6 +10,5 @@ export function nonnegativeFeverOffsetC(value: unknown): number {
 }
 
 export function appliedFeverOffsetC(io: PublishedThermalInput): number {
-  if (io.readPublished?.('feverDrive') === undefined) return 0;
   return nonnegativeFeverOffsetC(io.readPublished?.('thermoregulation')?.feverSetpointOffsetC);
 }

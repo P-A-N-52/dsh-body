@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
+import { relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkpoint, launch } from '../test-support/harness.mjs';
+import { checkpoint, launch, makeTempDir } from '../test-support/harness.mjs';
 
 const manifestUrl = new URL('../body-modules.json', import.meta.url);
 const engineScripts = JSON.parse(readFileSync(manifestUrl, 'utf8')).scripts;
@@ -16,18 +17,22 @@ const evaporationFixture = {
 };
 
 async function start(t, {
-  parts = {}, parameters = flatSetpoint, extras = {}, statePath, seed, now = fixedStart, catchUpMinutes = 0,
+  parts = {}, parameters = flatSetpoint, extras = {}, statePath, seed, now = fixedStart,
+  catchUpMinutes = 0, withStartupReset = false,
 } = {}) {
   let clock = now;
-  const useRealManifest = Object.keys(extras).length === 0;
+  const useRealManifest = !withStartupReset && Object.keys(extras).length === 0;
   const modules = useRealManifest ? {} : {
     ...Object.fromEntries(engineScripts.map((entry, i) => [
       `real-${i}.ts`, `export * from '${new URL(entry, manifestUrl)}';`,
     ])),
     ...extras,
   };
+  const dir = withStartupReset ? makeTempDir() : undefined;
+  if (dir) t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const startupScripts = dir ? [relative(dir, fileURLToPath(new URL('../startup/reset-parts.js', import.meta.url)))] : [];
   const body = await launch(t, {
-    modules, statePath, catchUpMinutes, heartbeatIntervalMs: roundMs,
+    dir, startupScripts, modules, statePath, catchUpMinutes, heartbeatIntervalMs: roundMs,
     seed: statePath ? null : (seed ?? {
       ...checkpoint({ wallTimeMs: now, parts, profile: { timezoneOffsetMin: 0 } }), parameters,
     }),
@@ -175,15 +180,95 @@ test('water-limited actual sweat is paid once even with zero evaporation capacit
   t.diagnostic(`paid ${b.paidSweatMl} mL, evaporated ${b.evaporatedSweatMl} → ${a.evaporatedSweatMl} mL`);
 });
 
-const provider = (offset, publicationRound = 60) => ({
+const feverDrive = (heartbeat, initialOffsetC = 1, resetOnStart = []) => ({
   'fever.mjs': `
     export const id = 'feverDrive';
-    export const initialState = { setpointOffsetC: 1 };
+    export const initialState = { setpointOffsetC: ${initialOffsetC} };
+    export const resetOnStart = ${JSON.stringify(resetOnStart)};
     export const fields = { setpointOffsetC: { unit: '°C', mode: 'absolute' } };
-    export function heartbeat(io) {
-      if (io.simulatedSeconds === ${publicationRound}) io.write({ setpointOffsetC: ${offset} });
-    }
+    export function heartbeat(io) { ${heartbeat} }
   `,
+});
+const provider = (offset, publicationRound = 60) => feverDrive(
+  `if (io.simulatedSeconds === ${publicationRound}) io.write({ setpointOffsetC: ${offset} });`,
+);
+const adoptedOffsets = (rounds) => rounds.map(({ thermoregulation }) => thermoregulation.feverSetpointOffsetC);
+
+test('a fever pulse expires after one successful round, with one more round of downstream sensation', async (t) => {
+  const pulse = await start(t, { extras: provider(2) });
+  const explicitZero = await start(t, {
+    extras: feverDrive('io.write({ setpointOffsetC: io.simulatedSeconds === 60 ? 2 : 0 });'),
+  });
+  const continuous = await start(t, { extras: feverDrive('io.write({ setpointOffsetC: 2 });') });
+  const traces = [[], [], []];
+  for (let round = 0; round < 5; round++) {
+    const states = await Promise.all([pulse.advance(), explicitZero.advance(), continuous.advance()]);
+    for (const [index, state] of states.entries()) traces[index].push(state);
+  }
+  const [silent, zero, sustained] = traces;
+  t.diagnostic(JSON.stringify({ pulse: adoptedOffsets(silent), explicitZero: adoptedOffsets(zero),
+    continuous: adoptedOffsets(sustained), pulseColdMm: silent.map((state) => state.interoception.coldMm) }));
+  assert.deepEqual(adoptedOffsets(zero), [0, 2, 0, 0, 0]);
+  assert.deepEqual(adoptedOffsets(silent), [0, 2, 0, 0, 0]);
+  assert.deepEqual(adoptedOffsets(sustained), [0, 2, 2, 2, 2]);
+  assert.equal(silent[4].feverDrive.setpointOffsetC, 2, 'stored part stays intact but is not a fresh publication');
+  assert.ok(silent[2].interoception.coldMm > 80, 'consumer uses the offset thermoregulation adopted in round 2');
+  assert.equal(silent[3].interoception.coldMm, 0);
+  for (let round = 0; round < silent.length; round++) {
+    for (const id of ['thermoregulation', 'interoception', 'skin', 'lungsVentilation']) {
+      assert.deepEqual(silent[round][id], zero[round][id], `${id} in round ${round + 1}`);
+    }
+  }
+});
+
+test('a failed round does not expire the prior publication, and a later publication takes effect', async (t) => {
+  const body = await start(t, {
+    extras: {
+      ...feverDrive(`
+        if (io.simulatedSeconds === 60) io.write({ setpointOffsetC: 2 });
+        if (io.simulatedSeconds === 180) io.write({ setpointOffsetC: 1 });
+      `),
+      'failure.mjs': `
+        import { existsSync, writeFileSync } from 'node:fs';
+        const marker = new URL('./failed-once', import.meta.url);
+        export const id = 'failure';
+        export const fields = {};
+        export function heartbeat(io) {
+          if (io.simulatedSeconds !== 120 || existsSync(marker)) return;
+          writeFileSync(marker, '');
+          throw new Error('retry round 2');
+        }
+      `,
+    },
+  });
+  const first = await body.advance();
+  assert.deepEqual(await body.tick(), { ran: true, failed: true });
+  assert.equal(body.state().activeBatch.attempts, 1);
+  assert.equal(body.gateway.getState().simulatedSeconds, 60);
+  const retry = await body.advance();
+  assert.equal(body.state().activeBatch, null);
+  assert.equal(body.gateway.getState().simulatedSeconds, 120);
+  assert.equal(retry.thermoregulation.feverSetpointOffsetC, 2, 'retry sees the last committed publication');
+  const rounds = [first, retry, await body.advance(), await body.advance(), await body.advance()];
+  assert.deepEqual(adoptedOffsets(rounds), [0, 2, 0, 1, 0]);
+});
+
+test('resetOnStart after catch-up does not replace a committed fever publication', async (t) => {
+  const body = await start(t, {
+    now: fixedStart + roundMs,
+    seed: { ...checkpoint({ wallTimeMs: fixedStart, profile: { timezoneOffsetMin: 0 } }), parameters: flatSetpoint },
+    catchUpMinutes: 1,
+    withStartupReset: true,
+    extras: feverDrive('io.write({ setpointOffsetC: 0 });', 2, ['setpointOffsetC']),
+  });
+  assert.equal(body.state().startup.caughtUpSeconds, 60);
+  assert.equal(body.parts().feverDrive.setpointOffsetC, 2, 'stock initializer reset the ordinary snapshot');
+  const after = await body.advance();
+  t.diagnostic(JSON.stringify({ resetSnapshotOffsetC: 2,
+    adoptedOffsetC: after.thermoregulation.feverSetpointOffsetC, shiveringKcal: balanceOf(after).shiveringHeatKcal }));
+  assert.equal(after.thermoregulation.feverSetpointOffsetC, 0, 'only the actual catch-up publication can affect the next round');
+  assert.equal(after.thermoregulation.effectiveSetpointC, 37);
+  close(balanceOf(after).shiveringHeatKcal, 0, 'no shivering from reset-only offset', 1e-6);
 });
 
 test('a fresh fever publication raises the target before cold sensation, not the HPA/autonomic threshold', async (t) => {
@@ -210,14 +295,16 @@ test('fever shifts heat and rest panting thresholds without changing the baselin
   const parameters = { ...flatSetpoint, 'thermoregulation.setpointC': 36.7 };
   const low = await start(t, { parts, parameters, extras: provider(0) });
   const high = await start(t, { parts, parameters, extras: provider(1) });
-  for (let i = 0; i < 2; i++) await Promise.all([low.advance(), high.advance()]);
+  await Promise.all([low.advance(), high.advance()]);
+  const [, adopted] = await Promise.all([low.advance(), high.advance()]);
+  assert.ok(adopted.thermoregulation.setpointC < 37 && adopted.thermoregulation.effectiveSetpointC > 37);
   const [a, b] = await Promise.all([low.advance(), high.advance()]);
+  assert.equal(b.thermoregulation.feverSetpointOffsetC, 0, 'the pulse has expired for thermoregulation');
   assert.ok(a.interoception.heatMm > 0 && a.lungsVentilation.ventilationMlMin > 6001);
   assert.ok(a.skin.sweatRequestMl > 0);
   assert.equal(b.interoception.heatMm, 0);
   close(b.lungsVentilation.ventilationMlMin, 6000.034285910205, 'metabolic ventilation only');
   assert.equal(b.skin.sweatRequestMl, 0);
-  assert.ok(b.thermoregulation.setpointC < 37 && b.thermoregulation.effectiveSetpointC > 37);
 });
 
 test('removal and a silent provider both ignore saved drive while retrying the first catch-up batch', async (t) => {

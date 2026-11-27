@@ -32,6 +32,20 @@ async function tick(body) {
   assert.deepEqual(await body.tick(), { ran: true, failed: false });
 }
 
+test('a fresh body keeps both initial climate values from its enabled owner', async (t) => {
+  const preset = { airTemperatureC: 16, relativeHumidityPct: 80 };
+  const body = await boot(t, {
+    modules: {
+      ...modules,
+      'climate.ts': `${modules['climate.ts']}\nexport const initialState = ${JSON.stringify(preset)};`,
+    },
+  });
+  assert.equal(body.state().startup.hasSavedState, false);
+  assert.deepEqual(parts(body).climate, preset);
+  await tick(body);
+  assert.deepEqual(parts(body).climate, preset);
+});
+
 test('only complete valid climate pairs take effect, last valid in queue order', async (t) => {
   const body = await boot(t);
   assert.deepEqual(parts(body).climate, defaults);

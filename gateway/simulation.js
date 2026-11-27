@@ -43,8 +43,8 @@ export function createBodySimulation({
   let heartbeatWork;
   let timer;
   let registry = new Map();
-  // Live for this Gateway run, not for one worker instance (which can restart on failure).
-  const publishedParts = new Set();
+  // The last successful round's values, separate from startup patches and worker lifetime.
+  let publishedParts = {};
   let fatalFailure = null;
   let lastHeartbeat = {
     lastSuccessAtMs: null,
@@ -78,7 +78,7 @@ export function createBodySimulation({
       wallTimeMs: batch.targetWallTimeMs,
       suppressNotifications,
       boundSessionId: current.boundSessionId ?? null,
-      publishedPartIds: [...publishedParts],
+      publishedParts,
     });
     const nextParts = applyOperations({
       registry,
@@ -102,8 +102,8 @@ export function createBodySimulation({
     };
   }
 
-  function recordPublications(result) {
-    for (const id of result.publishedPartIds) publishedParts.add(id);
+  function recordPublications({ publishedPartIds, snapshot }) {
+    publishedParts = Object.fromEntries(publishedPartIds.map((id) => [id, snapshot.parts[id]]));
   }
 
   function recordFatal(error, batchTargetSimulatedSeconds) {
@@ -253,7 +253,7 @@ export function createBodySimulation({
   async function restore(saved, modules, initializers) {
     const startedAtMs = now();
     registry = createFieldRegistry(modules);
-    publishedParts.clear();
+    publishedParts = {};
     const current = saved ?? emptyCheckpoint(startedAtMs);
     const { active } = current;
     const resumedFromPause = active && saved?.startup?.active === false;
@@ -278,7 +278,8 @@ export function createBodySimulation({
       id, withDefaults(initialState, reconciled.snapshot.parts[id], `Body part ${id}`),
     ]));
     let climateTemperatureMigration = null;
-    if (Object.hasOwn(initialParts.climate ?? {}, 'airTemperatureC')
+    if (saved !== null
+      && Object.hasOwn(initialParts.climate ?? {}, 'airTemperatureC')
       && !Object.hasOwn(reconciled.snapshot.parts.climate ?? {}, 'airTemperatureC')) {
       const { airTemperatureC, conflict } = legacyAirTemperature(reconciled.parameters);
       loadedParts.climate.airTemperatureC = airTemperatureC;

@@ -211,8 +211,7 @@ export function heartbeat(io: IO): void {
   const baseThermalThresholdC = thermoregulation === undefined
     ? thermoregulationSetpointC
     : Math.max(thermoregulationSetpointC, thermoregulation.setpointC);
-  const publishedOffsetC = io.readPublished?.('feverDrive') === undefined
-    ? undefined : io.readPublished?.('thermoregulation')?.feverSetpointOffsetC;
+  const publishedOffsetC = io.readPublished?.('thermoregulation')?.feverSetpointOffsetC;
   const feverOffsetC = typeof publishedOffsetC === 'number' && Number.isFinite(publishedOffsetC)
     ? Math.max(0, publishedOffsetC) : 0;
   const thermalThresholdC = baseThermalThresholdC + (exercising ? 0 : restThermalThresholdOffsetC) + feverOffsetC;

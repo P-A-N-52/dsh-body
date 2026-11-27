@@ -378,9 +378,11 @@ mouthMoistureMm    = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100
 
 温度必须是有限数，湿度为含边界的 `0–100`（`90` 表示 90%）。`climate` 只取当批最后一对完整有效值；`clothing` 按队列顺序维护有序唯一 ID，重复穿、脱未穿项、未知 ID 和非法动作载荷无效果。动作仍走原绑定、暂停、整轮提交与 ID 回执；记录保留时同载荷重试复用回执，异载荷冲突；裁剪后不保证去重。`queued` / `applied` 只描述队列，不保证领域值变化。第 N 轮提交的输入最早影响第 N+1 轮计算。
 
-旧档在补算和重试前只填缺项：湿度 50%、衣层 `[]`；缺气温才检查存档 `parameters` 的 `skin.sweat.ambientTemperatureC` 与 `thermoregulation.ambientTemperatureC`。无有限覆盖取 25 °C；仅一值或同值沿用；冲突选择体温侧以保留旧干梯度，`startup.climateTemperatureMigration` 记录皮肤旧值、体温旧值与选择。已有气候、衣着、核心温和实汗不会被旧参数重写；两旧键仅留作迁移，以后用场景动作改气温。
+没有存档时，`climate` 整对采用已启用部位的 `initialState`；三份主清单仍为 25 °C / 50% RH。旧档在补算和重试前只填缺项：默认湿度 50%、衣层 `[]`；只有旧档缺气温才检查存档 `parameters` 的 `skin.sweat.ambientTemperatureC` 与 `thermoregulation.ambientTemperatureC`。无有限覆盖取 25 °C；仅一值或同值沿用；冲突选择体温侧以保留旧干梯度，`startup.climateTemperatureMigration` 记录皮肤旧值、体温旧值与选择。已有气候、衣着、核心温和实汗不会被旧参数重写；两旧键仅留作迁移，以后用场景动作改气温。
 
-发热预留可选 manifest owner `feverDrive` 的非负有限 `setpointOffsetC`（°C 温差），没有默认提供者也没有动作。普通读仍走 `io.read`；只有需确认本次运行的信号才用 `io.readPublished(id)`：返回当前已启用且曾通过整轮提交写出的部位的冻结轮初状态，否则 `undefined`。初值、旧存档、启动脚本补丁和失败批次不是该部位发送的新发布。重新启动即重置发布记录，首个补算/重试轮一样；体温基线与已付汗保持。衣层参数见[输入 README](../organs/body-inputs/README.md)，工程回放与不可比较项见[验收记录](../organs/body-inputs/thermal-replay.md)。
+发热预留可选 manifest owner `feverDrive` 的非负有限 `setpointOffsetC`（°C 温差），没有默认提供者也没有动作。普通状态走 `io.read`；`io.readPublished(id)` 只返回**本次运行上一成功轮**已启用部位通过 `io.write` 实际提交的冻结值，上一成功轮未写则返回 `undefined`。失败不推进该有效期；启动补丁可更新普通快照但不替换已提交的发布。重启清空发布记录，首个补算/重试轮不沿用旧发热信号；保留核心温与已付实汗。
+
+例如第 N 轮发热源写正值、第 N+1 轮沉默：体温第 N+1 轮采用该值，第 N+2 轮回零；皮肤、冷热感和热喘读上一轮体温已采用值，所以第 N+2 轮仍反映该偏移，第 N+3 轮才回零。持续生效需要每轮发布，再发布可重新生效。衣层参数见[输入 README](../organs/body-inputs/README.md)，工程回放与不可比较项见[验收记录](../organs/body-inputs/thermal-replay.md)。
 
 ### 循环、体温调节与消化反馈补充（当前模块）
 

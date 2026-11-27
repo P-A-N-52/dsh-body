@@ -179,7 +179,7 @@ next   = current + (1 − exp(−dtMin / timeConstantMin)) × (target − curren
 | --- | --- | --- |
 | `coreTemperatureC` | `°C` | 轮末核心温度代理，初值 37 °C，数值钳位 `[25, 45]` °C；不是皮温、实测核心体温或诊断 |
 | `setpointC` | `°C` | 原昼夜/睡眠基线（按本地钟点余弦，默认 `37 ± 0.25`，睡中再减 `0.2`） |
-| `feverSetpointOffsetC` | `°C`（温差） | 本轮采用的可选 `feverDrive.setpointOffsetC`，只读本次运行已提交的非负有限发布，缺省 0 |
+| `feverSetpointOffsetC` | `°C`（温差） | 本轮采用的可选 `feverDrive.setpointOffsetC`，只读本次运行上一成功轮实际提交的非负有限值，缺省 0 |
 | `effectiveSetpointC` | `°C` | `setpointC + feverSetpointOffsetC`；寒战和舒张使用该点 |
 | `heatBalance` | 记录 | 最近一次积分的水热观测（无记录时 `null`），不回写水量或其他器官 |
 
@@ -202,7 +202,9 @@ coreTemperatureC = clamp(C + Qnet / heatCapacityKcalPerC, 25, 45)
 
 `heatBalance` 记录 `dtMin`（min）、`coreTemperatureStartC` / `effectiveSetpointC` / `airTemperatureC`（°C）、`relativeHumidityPct`（%）、`heatCapacityKcalPerC`（kcal/°C）、`dryExchangeMultiplier` / `evaporationMultiplier`（1）、`baseConductanceKcalMinPerC` / `vasodilationConductanceKcalMinPerC`（kcal/(min·°C)）、`vaporPressureDeficitKpa`（kPa）、`paidSweatMl`（轮初，即上轮已付）、`evaporationLimitMl` / `evaporatedSweatMl`（mL/轮）、`metabolicHeatKcal` / `shiveringHeatKcal` / `dryHeatLossKcal` / `evaporativeHeatLossKcal` / `netHeatKcal`（kcal/轮）、`clamped`（是否改动积分结果）。请求和支付仍由该轮的 `skin.sweatRequestMl` / `skin.sweatVolumeMl` 分别观测：第 N 轮请求，N+1 轮扣体液，N+2 轮用其算蒸发，未蒸发不留存也不返还。
 
-未启用提供者、仅有存档/初始值、或当前运行尚未有发布时偏移为 0；重启、首轮补算和在途重试同样屏蔽。`heatBalance` 若来自旧提交仍是该轮历史（不会回算），当前增量及有效点单独回落。`skin`、`interoception`、`lungsVentilation` 读取轮初已采用的偏移，在选好旧昼夜/活动阈值后才相加，HPA 和自主冷响应仍读基线。三份主清单都不装发热提供者，没有发热动作、病原体、免疫或诊断。
+体温只采用本次运行上一成功轮由已启用提供者实际提交的偏移；该轮沉默时读 0，普通失败不消耗上一轮的发布，启动补丁不能成为发布。重启首轮（含补算与在途重试）不读旧增量；已有 `heatBalance` 仍是历史记录，不回算。
+
+`skin`、`interoception`、`lungsVentilation` 读取**上一成功轮体温已采用的偏移**，在选好旧昼夜/活动阈值后才相加。源停更后体温先回到基线，下游再晚一轮；HPA 和自主冷响应仍读基线。三份主清单都不装发热提供者，没有发热动作、病原体、免疫或诊断。
 
 ### `hypothalamusThirst`
 
