@@ -9,7 +9,39 @@
       "status": "design",
       "range": [35, 39],
       "source": null,
-      "note": "核心温度设定点工程默认值；只作为出汗、寒战、喘息与冷热读数的参考点，不是实测体温调定点或个体测量"
+      "note": "身体正常核心温基线（静态工程默认）；不同于轮初昼夜/睡眠目标、发热偏移或实际核心温"
+    },
+    {
+      "id": "thermoregulation.normalCoreMinC",
+      "unit": "°C",
+      "value": null,
+      "status": "unset",
+      "source": null,
+      "note": "核心正常带下界；缺省以本体静态基线为下界，保持旧体感曲线；工程参考，不钳位体温"
+    },
+    {
+      "id": "thermoregulation.normalCoreMaxC",
+      "unit": "°C",
+      "value": null,
+      "status": "unset",
+      "source": null,
+      "note": "核心正常带上界；缺省以本体静态基线为上界，保持旧体感曲线；工程参考，不钳位体温"
+    },
+    {
+      "id": "thermoregulation.ambientComfortMinC",
+      "unit": "°C",
+      "value": null,
+      "status": "unset",
+      "source": null,
+      "note": "独立空气舒适带下界，仅供脚本与实际气温比较；必须与上界成对生效，未配置为未知"
+    },
+    {
+      "id": "thermoregulation.ambientComfortMaxC",
+      "unit": "°C",
+      "value": null,
+      "status": "unset",
+      "source": null,
+      "note": "独立空气舒适带上界，不参与核心积分或失水；必须与下界成对生效，未配置为未知"
     },
     {
       "id": "thermoregulation.heatCapacityKcalPerC",

@@ -12,7 +12,7 @@ export function formatError(error) {
   return parts.length ? parts.join(': ') : String(error);
 }
 
-export function createBodyRunner({ scripts, scriptTimeoutMs }) {
+export function createBodyRunner({ scripts, scriptTimeoutMs, thermalDefaults }) {
   let workerConfig = { profile: null, parameters: null, nsfw: false };
   let worker;
   let pending;
@@ -46,6 +46,7 @@ export function createBodyRunner({ scripts, scriptTimeoutMs }) {
     const instance = new Worker(new URL('./body-worker.js', import.meta.url), {
       workerData: {
         scripts,
+        thermalDefaults,
         profile: workerConfig.profile,
         parameters: workerConfig.parameters,
         nsfw: workerConfig.nsfw,

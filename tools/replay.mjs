@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { maxNotificationTextLength, readManifest } from '../gateway/config.js';
 import { applyOperations, createFieldRegistry } from '../gateway/operations.js';
 import { assertJsonValue, isPlainObject as isRecord } from '../json-safe.js';
+import { getThermalProfile, setWorkerParameterConfig } from '../lib/parameters.js';
 import * as motility from '../organs/human-organs/stomach/motility.ts';
 import * as ghrelin from '../organs/human-organs/stomach/ghrelin.ts';
 import * as gastricSensory from '../organs/human-organs/stomach/gastric-sensory.ts';
@@ -163,6 +164,8 @@ async function runLegacyReplay(scenario) {
 async function runManifestReplay(scenario, { manifestArg, extraSignals }) {
   const resolvedManifestPath = manifestArg ? resolve(manifestArg) : defaultManifestPath;
   const manifest = readManifest(resolvedManifestPath);
+  setWorkerParameterConfig({ thermalDefaults: manifest.thermalDefaults });
+  const thermalProfile = getThermalProfile();
 
   const loaded = [];
   const byId = new Map();
@@ -239,7 +242,7 @@ async function runManifestReplay(scenario, { manifestArg, extraSignals }) {
     }
 
     const contexts = new Map();
-    const common = { read, actions, dt: ROUND_SECONDS, simulatedSeconds, wallTimeMs };
+    const common = { read, getThermalProfile: () => thermalProfile, actions, dt: ROUND_SECONDS, simulatedSeconds, wallTimeMs };
     const legacyContext = Object.freeze({
       ...common,
       call(id, name, ...args) {

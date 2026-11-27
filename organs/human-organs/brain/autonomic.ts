@@ -13,7 +13,10 @@
  *   3. 入睡当轮即抑除运动驱动并加速平复残余交感、转入副交感主导；自然醒当轮立即释放副交感；
  *   4. 清醒期强烈疼痛/不适与性高潮推动一过性交感升高，但高潮不置 `startleActive`。
  */
-import { getNsfwSetting, loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  getDefaultCoreBaselineC, getNsfwSetting, getThermalProfile, hasParameterOverride,
+  loadParameters, requireParameter,
+} from '../../../lib/parameters.js';
 import { evaluateSexualRelease } from '../sexual-response/response.ts';
 import {
   evaluateSleepTransition,
@@ -31,6 +34,7 @@ export interface AutonomicState {
 }
 
 interface AutonomicIo {
+  getThermalProfile?: typeof getThermalProfile;
   read(id: 'autonomic'): Readonly<AutonomicState> | undefined;
   read(id: 'sleep'): Readonly<{
     sleeping?: unknown;
@@ -169,12 +173,14 @@ export function heartbeat(io: AutonomicIo): void {
     * Math.max(0, hypotensionThresholdMmHg - systolicMmHg);
 
   const thermoregulation = io.read('thermoregulation');
-  const coreTempC = finiteOr(thermoregulation?.coreTemperatureC, 37);
+  const { baselineCoreC } = io.getThermalProfile?.() ?? getThermalProfile();
+  const coreTempC = finiteOr(thermoregulation?.coreTemperatureC, baselineCoreC);
+  const awakeColdThresholdC = hasParameterOverride('autonomic.coldThresholdC')
+    ? coldThresholdC
+    : baselineCoreC + (coldThresholdC - getDefaultCoreBaselineC());
   const effectiveColdThresholdC = endingSleepingLikely
-    ? (typeof thermoregulation?.setpointC === 'number' && Number.isFinite(thermoregulation.setpointC)
-      ? thermoregulation.setpointC - sleepColdThresholdOffsetC
-      : coldThresholdC - sleepColdThresholdOffsetC)
-    : coldThresholdC;
+    ? finiteOr(thermoregulation?.setpointC, awakeColdThresholdC) - sleepColdThresholdOffsetC
+    : awakeColdThresholdC;
   const rawColdDrive = coldGainPerC * Math.max(0, effectiveColdThresholdC - coreTempC);
 
   const nremDamping = endingSleepingLikely && sleepStage !== 'rem'

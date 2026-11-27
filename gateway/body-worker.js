@@ -1,15 +1,17 @@
 import { fileURLToPath } from 'node:url';
 import { parentPort, workerData } from 'node:worker_threads';
 import { assertJsonValue, isPlainObject as isRecord } from '../json-safe.js';
-import { setWorkerParameterConfig } from '../lib/parameters.js';
+import { getThermalProfile, setWorkerParameterConfig } from '../lib/parameters.js';
 import { maxNotificationTextLength } from './config.js';
 import { createFieldRegistry } from './operations.js';
 
 setWorkerParameterConfig({
   profile: workerData.profile,
   parameters: workerData.parameters,
+  thermalDefaults: workerData.thermalDefaults,
   nsfw: Boolean(workerData.nsfw),
 });
+const thermalProfile = getThermalProfile();
 
 const modules = new Map();
 const frozenObjects = new WeakSet();
@@ -140,6 +142,7 @@ async function heartbeat({
     readPublished(id) {
       return modules.has(id) && Object.hasOwn(publishedParts, id) ? publishedParts[id] : undefined;
     },
+    getThermalProfile: () => thermalProfile,
     actions,
     dt,
     simulatedSeconds,

@@ -24,7 +24,7 @@
 | [`package.json`](../package.json) | 项目维护者改，由 Node/npm 使用 | 声明 ESM、Node 版本、测试命令和发布文件，不登记心跳脚本，也不存身体数据。`files` 收录三份主清单，选配脂质清单随 `organs/` 一起打包；[`cordis.patch.yml`](../cordis.patch.yml) 是 DSH 插件装载描述，不是身体 JSON。 |
 | `organs/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官、隔室与衣层的默认值、单位、证据状态、范围及来源。全库共 56 份，含 3 份仅供 DI 变体使用的参数。各清单的参数文件数见上表；共享参数只计一次，`climate` 无参数文件，`clothing` 有 1 份；`bodyComposition` 只读存档 `profile`，无参数文件，`breastComposition` 使用 mammary-glands 目录 1 份共用参数文件（两个输入缺省 `unset`，值为 `null`）。 |
 
-**清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径。`startupScripts`、`catchUpMinutes`（720）与 `scriptTimeoutMs`（10000）含义不变。三份主清单的硬 transfer 闭包仍为根/男性 15 部位、女性 17 部位。
+**清单字段。** 可选的 [`thermalDefaults`](#按身体配置温度参考) 声明温度参考预设。`scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径。`startupScripts`、`catchUpMinutes`（720）与 `scriptTimeoutMs`（10000）含义不变。三份主清单的硬 transfer 闭包仍为根/男性 15 部位、女性 17 部位。
 
 **女性与男性清单。** [`body-modules.female.json`](../body-modules.female.json) 与 [`body-modules.male.json`](../body-modules.male.json) 各自使用独立 `statePath`；部位和参数数量见上表。`bodyComposition` 与 `breastComposition` 在三份成人清单都可用；泌乳模块 `mammaryGlands` 仍仅在女性清单加载。女性生殖链已升级为：`ovaries` 采用 `SRC-STRICKER-2006` 每日血清中位数插值物理浓度（`estradiolPmolL`、`progesteroneNmolL`、`lhIuL`、`fshIuL`）与慢性高催乳素/泌乳抑制度 `cycleSuppression`；`uterus` 经量参考调整为 `30 mL/周期`（对齐 `SRC-HALLBERG-1966` 总体中位数，保留单口径水账）、支持黄体平台 `0.9`（`SRC-BAKOS-1994`）以及高潮/催产素相关 `contractionMm` 与 `pelvicCongestionMm`；`mammaryGlands` 实现非妊娠高 PRL + 机械排空刺激诱导状态机（区分 `galactorrhea` 溢乳与 `lactating` 规整产奶，支持 `profile.lactating: true`）、局部充盈自抑制 `1 − DF²` 与催产素门控 `express_milk` / `breastfeed` 喷乳反射（保持合成入池一次记水账、绝不双扣体液）；详见 [`ovaries`](../organs/human-organs/ovaries/README.md)、[`uterus`](../organs/human-organs/uterus/README.md) 与 [`mammary-glands`](../organs/human-organs/mammary-glands/README.md)。
 
@@ -62,7 +62,7 @@ DSH 插件的默认存档是 `$DSH_HOME/dsh-body/body-state.json`（通常是 `~
 
 - `profile.bodyFatPercent` 为全身脂肪**质量百分数**，填 `20` 表示 20%；省略或填 `null` 表示未知。示例的 `parts.bodyComposition` 给出 `13 kg` 脂肪与 `52 kg` 去脂质量；未知时两项都为 `null`，不按 BMI 或清单估计。
 - `breastComposition.*` 参数来自[同目录组成参数文件](../organs/human-organs/mammary-glands/composition.parameters.json)（均为 `unset` / `null`），用存档里的同名键覆盖。体积必须是正有限 mL；百分数为匹配口径的双侧**体积百分数**。示例给出 `120 mL` 纤维腺体与 `480 mL` 脂肪。只给一项会保留该输入，但不推导分量；显式 `null` 同样表示未知。
-- 两种百分数都接受 `[0,100]` 的有限数值，不接受数字字符串或越界值。正常启动以配置而非旧 `snapshot` 为准；如恢复时仍有未结算批次，首个成功心跳刷新读数。暂停档不加载模块，保留已提交快照。
+- 两种百分数都接受 `[0,100]` 的有限数值，不接受数字字符串或越界值。正常启动以配置而非旧 `snapshot` 为准；如恢复时仍有未结算批次，首个成功心跳刷新读数。暂停档不刷新读数，保留已提交快照。
 - 根、男性、女性清单都提供这两个部位。只改形态不重算水、糖、乳汁或其他库存，乳房体积也不另计全身脂肪。见[全身体成分](../organs/human-compartments/body-composition/README.md)与[乳房组织组成](../organs/human-organs/mammary-glands/README.md#乳房组织组成)的输入口径与对照。
 - **数值与留存。** 本机 `GET /state` 和 `gateway.getState()` 可查看当前快照中的原始数值；定性宿主工具 `body_state` 不返回这些数值。已提交的组成字段也可能进入存档旁的 `logs/state-history.jsonl`，按现有滚动保留策略管理，可由本机 `GET /logs/state` 或 `gateway.getStateHistory()` 读取。改设 `null`、移除体脂输入或取消乳房参数覆盖只影响之后的读数，不会追溯擦除已写入的历史。可使用虚构数值；分享日志前请检查是否包含个人测量值。
 
@@ -83,11 +83,11 @@ DSH 插件的默认存档是 `$DSH_HOME/dsh-body/body-state.json`（通常是 `~
 
 ### 参数文件是只读输入
 
-可调参数不放脚本常量，放组件自己的 `*.parameters.json`；脚本只写通用模型。参数文件跟随器官脚本放在同一目录，例如 `organs/human-organs/stomach/motility.parameters.json`。当前 Gateway 不替模块读参数文件，也不提供热切换；模块在 **import 时**自己读一次，之后整轮心跳都用这份值。只读通道在 [`lib/parameters.js`](../lib/parameters.js)，包括：
+可调参数不放脚本常量，放组件自己的 `*.parameters.json`；脚本只写通用模型。参数文件跟随器官脚本放在同一目录，例如 `organs/human-organs/stomach/motility.parameters.json`。模块通常在 **import 时**自己读参数。共享的五个温度参考由 Gateway 在导入模块前解析；两条路径都不热切换。只读通道在 [`lib/parameters.js`](../lib/parameters.js)，包括：
 
 | 函数 | 行为 |
 | --- | --- |
-| `loadParameters(parametersUrl)` | 读 JSON，返回 `{ [参数 ID]: 值 }`。校验 `schemaVersion === 1`、`owner` 非空、每个参数 `id` 以 `owner.` 开头且不重复、`status: "unset"` 与 `value: null` 一一对应；若当前 Worker 所属身体存档顶层 `parameters` 存在同名 key，返回稀疏覆盖后的值。 |
+| `loadParameters(parametersUrl)` | 读 JSON，返回 `{ [参数 ID]: 值 }`。校验 `schemaVersion === 1`、`owner` 非空、每个参数 `id` 以 `owner.` 开头且不重复、`status: "unset"` 与 `value: null` 一一对应；若当前 Worker 所属身体存档顶层 `parameters` 存在同名 key，返回稀疏覆盖后的值；五个温度参考 ID 额外支持下述清单预设及可选边界规则。 |
 | `requireParameter(values, id)` | 返回值；若值为 `null` 或缺失，抛出带参数 ID 的错误。脚本需要的参数还没标定时，应当在这里失败，而不是拿 `0` 继续跑。 |
 | `getBodyProfile()` / `hasParameterOverride(id)` / `getNumericParameterOverride(id)` / `scaleByBodyWeight(value, parameterId)` | 返回当前身体 `{ weightKg, heightCm }`、查询是否显式覆盖，并按 `weightKg / 75` 自动缩放体格相关参数（`75 kg` 原值逐位不变；`parameters` 显式覆盖优先于自动缩放）。核心隔室、血液、心脏、血氧、肺通气、体温调节、肝糖原、肾糖异生、肌糖原、下丘脑 ADH 与产尿基线已同步接入，保证不同体重下静息 `37.0 °C` 与空腹 `90.0 mg/dL` 平衡不被拆散。 |
 | `getProfileBodyFatPercent()` | 返回 `profile.bodyFatPercent`（0–100 的质量百分数）或 `null`；`getBodyProfile()` 的返回形状不变。 |
@@ -120,6 +120,78 @@ const halfTimeMin = requireParameter(parameters, 'stomach.emptying.halfTimeMin')
 ```
 
 胃脚本调用 `io.functions.stomachGhrelinLevel()`，得到当轮开始时的饥饿素相对浓度。只有部位 ID 的路径（如 `["stomachGhrelin"]`）会返回该部位的完整只读状态。字段或部位缺失时返回 `undefined`。多个脚本读到的值都来自同一轮初快照。上面的条目是示意；P0/P1 的 `motility.ts` 实际直接读自己的轮初状态，不声明 `inject`，`brain/interoception.ts` 也直接 `io.read('stomachSensory')` 等部位，不需要 `inject`。M3 水链的脚本同样直接 `io.read(...)`；它们之间的搬水靠 `fields` 里的 `transferOut` / `transferIn` 配对，不靠 `inject`。
+
+### 按身体配置温度参考
+
+`io.getThermalProfile()` 在普通路径、`inject` 路径及包外自定义 `heartbeat` 中都可用，不需要加载人体温控器官，也不需要 `body_act`。它返回当前身体的冻结对象，字段都是 `°C` 标量：
+
+| 脚本读取字段 | `thermalDefaults` / 存档 `parameters` 的完整 ID | 缺省 |
+| --- | --- | --- |
+| `baselineCoreC` | `thermoregulation.setpointC` | 参数文件的 37 °C（`design`） |
+| `normalCoreMinC` | `thermoregulation.normalCoreMinC` | 本体 `baselineCoreC` |
+| `normalCoreMaxC` | `thermoregulation.normalCoreMaxC` | 本体 `baselineCoreC` |
+| `ambientComfortMinC` | `thermoregulation.ambientComfortMinC` | `null`，未知 |
+| `ambientComfortMaxC` | `thermoregulation.ambientComfortMaxC` | `null`，未知 |
+
+顺序是本具身体的 `parameters` **有限数字** > 该清单的 `thermalDefaults` > [原参数文件](../organs/human-organs/brain/thermoregulation.parameters.json)。省略键可继承；四个可选边界写 `null` 也继承，但必填基线 `thermoregulation.setpointC` 显式写 `null` 仍会报错。核心范围须包含基线；可只填一侧，另一侧取基线。空气边界允许负值和 0，生效后必须两侧齐备且下界 ≤ 上界，否则启用时在导入脚本、补算或积分前报错，原存档不改。默认空气舒适带未知，不是 `0 °C` 也不是热收支用的默认气温。
+
+例如在新目录中建立以下独立 `body-modules.json`。给人体清单加参考时，保留原 `scripts` / `startupScripts`，合入 `thermalDefaults` 并追加脚本即可。32 °C 对照只是虚构工程预设，不是已标定物种。
+
+```json
+{
+  "scripts": ["./thermal-inspect.mjs"],
+  "thermalDefaults": {
+    "thermoregulation.setpointC": 32,
+    "thermoregulation.normalCoreMinC": 31.5,
+    "thermoregulation.normalCoreMaxC": 32.5,
+    "thermoregulation.ambientComfortMinC": 18,
+    "thermoregulation.ambientComfortMaxC": 24
+  }
+}
+```
+
+要单独修改一具身体，在停机后把下面的**片段**合入它已有存档的顶层 `parameters`，保留 `snapshot` 等键，再启动。例子只放宽正常核心带上界和空气舒适带下界；其他值仍用清单或参数文件。不重置当前核心温、库存或之前已提交的状态；新部位才用配置基线补初值。
+
+```json
+{
+  "parameters": {
+    "thermoregulation.normalCoreMaxC": 32.75,
+    "thermoregulation.ambientComfortMinC": 16
+  }
+}
+```
+
+在清单旁新建 `thermal-inspect.mjs`。只写本脚本自己的判定结果，不写温度、舒适参考或水账：
+
+```js
+export const id = 'thermalInspection';
+export const initialState = { baselineCoreC: null, coreInNormalBand: null, airInComfortBand: null };
+export const fields = {
+  baselineCoreC: { unit: '°C', mode: 'absolute' },
+  coreInNormalBand: { unit: '1', mode: 'absolute' },
+  airInComfortBand: { unit: '1', mode: 'absolute' },
+};
+
+function inBand(reading, min, max) {
+  if (!Number.isFinite(reading) || min === null || max === null) return null;
+  return min <= reading && reading <= max;
+}
+
+export function heartbeat(io) {
+  const p = io.getThermalProfile();
+  const core = io.read('thermoregulation')?.coreTemperatureC;
+  const air = io.read('climate')?.airTemperatureC;
+  io.write({
+    baselineCoreC: p.baselineCoreC,
+    coreInNormalBand: inBand(core, p.normalCoreMinC, p.normalCoreMaxC),
+    airInComfortBand: inBand(air, p.ambientComfortMinC, p.ambientComfortMaxC),
+  });
+}
+```
+
+这个独立清单即使没有两个测量部位，也会报静态 `baselineCoreC: 32`、两个判定 `null`。若轮初有 `climate.airTemperatureC: 16` 和核心温 `32`，未加存档覆盖时输出核心 `true`、空气 `false`；若空气字段缺失，不用核心温或配置值代替。第三方也可用自己的核心/气温部位替换两个 `io.read`，或在清单中用 `inject` 取得真实轮初输入。`tools/replay.mjs --manifest` 同样读清单预设，不读身体存档。
+
+人体内感受用相对核心带计算冷热；皮肤、肺与内分泌仍使用各自原有的动态偏置和热防御。静态参考不是体温钳位，也不替代昼夜/睡眠目标或实际核心温；空气舒适带不参与散热、出汗结算或肺失水。未实现外温型热平衡、异温或冬眠、非人物种热适应、临床阈值或新行为策略。
 
 ### 水链的 transfer 配对（当前模块）
 

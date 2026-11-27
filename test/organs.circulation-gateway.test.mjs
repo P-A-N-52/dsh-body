@@ -79,7 +79,9 @@ function prepareLowOutputManifest(dir) {
     join(root, 'organs/human-compartments/blood/blood.parameters.json'),
     join(bloodDir, 'blood.parameters.json'),
   );
-  copyFileSync(join(root, 'lib/parameters.js'), join(dir, 'lib/parameters.js'));
+  for (const path of ['lib/parameters.js', 'lib/thermal-profile.js', 'json-safe.js']) {
+    copyFileSync(join(root, path), join(dir, path));
+  }
 
   const heartParameters = JSON.parse(
     readFileSync(join(root, 'organs/human-organs/heart/heart.parameters.json'), 'utf8'),

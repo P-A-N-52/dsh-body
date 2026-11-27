@@ -121,13 +121,13 @@ write.respiratoryWaterLossMl = 0
 
 ### 自动通气方程
 
-设轮初需氧为 `D`（`mL/min`）、核心温度 `C`、设定点 `setpointC`、是否活动 `exercising`、睡眠与交感 `sympatheticMm`：
+设轮初需氧为 `D`（`mL/min`）、核心温度 `C`、昼夜/睡眠目标 `setpointC`、是否活动 `exercising`、睡眠与交感 `sympatheticMm`。`B = io.getThermalProfile().baselineCoreC` 取 `thermoregulation.setpointC` 的有效静态配置（缺省 `37 °C`）。空气舒适带不影响喘息或呼吸失水；正常核心带也不替代肺自己的静息偏置：
 
 ```text
 sleepFloorFactor     = sleeping && sympatheticMm < sleepSympatheticBypassThresholdMm
                          ? (deep ? deepSleepFloorFactor : lightSleepFloorFactor) : 1
 minVentilationMlMin  = restingVentilationMlMin × sleepFloorFactor
-baseThermalThreshC   = thermoregulation 未加载 ? 37 : max(37, thermoregulation.setpointC)
+baseThermalThreshC   = max(B, finiteOr(thermoregulation.setpointC, B))
 thermalThresholdC    = exercising ? baseThermalThreshC : baseThermalThreshC + restThermalThresholdOffsetC
 effectivePantingGain = exercising ? pantingGain × exercisePantingFactor : pantingGain
 pantingMlMin         = thermoregulation 未加载 ? 0 : effectivePantingGain × max(0, C − thermalThresholdC)

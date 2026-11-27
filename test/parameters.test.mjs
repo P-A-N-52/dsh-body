@@ -308,6 +308,10 @@ test('heart, blood and thermoregulation parameters are design defaults with no s
     },
     'organs/human-organs/brain/thermoregulation.parameters.json': {
       'thermoregulation.setpointC': [37, '°C'],
+      'thermoregulation.normalCoreMinC': [null, '°C'],
+      'thermoregulation.normalCoreMaxC': [null, '°C'],
+      'thermoregulation.ambientComfortMinC': [null, '°C'],
+      'thermoregulation.ambientComfortMaxC': [null, '°C'],
       'thermoregulation.evaporationReferenceTemperatureC': [32, '°C'],
       'thermoregulation.evaporationConductanceMlMinPerKpa': [3, 'mL/(min·kPa)'],
       'thermoregulation.heatCapacityKcalPerC': [60, 'kcal/°C'],
@@ -333,7 +337,7 @@ test('heart, blood and thermoregulation parameters are design defaults with no s
       const parameter = byId[parameterId];
       assert.equal(parameter.value, value, `${parameterId}: value`);
       assert.equal(parameter.unit, unit, `${parameterId}: unit`);
-      assert.equal(parameter.status, 'design', `${parameterId}: status`);
+      assert.equal(parameter.status, value === null ? 'unset' : 'design', `${parameterId}: status`);
       if (parameterId.startsWith('heart.')) {
         assert.ok(parameter.source === null || parameter.source === 'SRC-SOMERS-1993', `${parameterId}: source`);
       } else if (parameterId === 'thermoregulation.vasodilationGain') {

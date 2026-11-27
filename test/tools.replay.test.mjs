@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { rmSync, writeFileSync } from 'node:fs';
+import { makeTempDir } from '../test-support/harness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -97,4 +99,38 @@ test('manifest replay defaults --manifest with no path to body-modules.json on t
       `expected coreTemperatureC near 37°C at simMin ${entry.simMin}, got ${entry['thermoregulation.coreTemperatureC']}`,
     );
   }
+});
+
+test('manifest replay exposes the same frozen thermal preset to an independent heartbeat', (t) => {
+  const dir = makeTempDir();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const manifest = join(dir, 'manifest.json');
+  const scenario = join(dir, 'scenario.json');
+  writeFileSync(manifest, JSON.stringify({
+    scripts: [{ path: './thermal.mjs', inject: {} }],
+    thermalDefaults: { 'thermoregulation.setpointC': 32, 'thermoregulation.normalCoreMaxC': 32.75 },
+  }));
+  writeFileSync(scenario, JSON.stringify({
+    id: 'thermal', protocol: { actions: [] },
+    observe: { atMin: [1], signals: ['report.upperMarginC', 'report.ambientComfortMaxC'] },
+  }));
+  writeFileSync(join(dir, 'thermal.mjs'), `
+    export const id = 'report';
+    export const initialState = { upperMarginC: null, ambientComfortMaxC: null };
+    export const fields = {
+      upperMarginC: { unit: '°C', mode: 'absolute' }, ambientComfortMaxC: { unit: '°C', mode: 'absolute' },
+    };
+    export function heartbeat(io) {
+      const config = io.getThermalProfile();
+      if (!Object.isFrozen(config)) throw new Error('mutable thermal config');
+      io.write({ upperMarginC: config.normalCoreMaxC - config.baselineCoreC,
+        ambientComfortMaxC: config.ambientComfortMaxC });
+    }
+  `);
+  const result = JSON.parse(execFileSync(process.execPath, ['tools/replay.mjs', '--manifest', manifest, scenario], {
+    cwd: root, encoding: 'utf8',
+  }));
+  assert.deepEqual(result.observations[1], {
+    simMin: 1, 'report.upperMarginC': 0.75, 'report.ambientComfortMaxC': null,
+  });
 });

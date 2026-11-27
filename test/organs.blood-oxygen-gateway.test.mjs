@@ -71,7 +71,9 @@ function prepareLowCapacityManifest(dir) {
   mkdirSync(targetDir, { recursive: true });
   copyFileSync(join(sourceDir, 'ventilation.ts'), join(targetDir, 'ventilation.ts'));
   mkdirSync(join(dir, 'lib'), { recursive: true });
-  copyFileSync(join(root, 'lib/parameters.js'), join(dir, 'lib/parameters.js'));
+  for (const path of ['lib/parameters.js', 'lib/thermal-profile.js', 'json-safe.js']) {
+    copyFileSync(join(root, path), join(dir, path));
+  }
 
   const parameters = JSON.parse(
     readFileSync(join(sourceDir, 'ventilation.parameters.json'), 'utf8'),
