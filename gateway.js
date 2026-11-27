@@ -39,9 +39,13 @@ export function startGateway({
   maxNotificationHistory = defaultMaxNotificationHistory,
   requireBinding = false,
   defaultNsfw = false,
+  legacyStatePath,
 } = {}) {
   if (typeof requireBinding !== 'boolean') throw new TypeError('requireBinding must be a boolean');
   if (typeof defaultNsfw !== 'boolean') throw new TypeError('defaultNsfw must be a boolean');
+  if (legacyStatePath !== undefined && legacyStatePath !== null && typeof legacyStatePath !== 'string') {
+    throw new TypeError('legacyStatePath must be a string or null');
+  }
   if (typeof statePath !== 'string' || !statePath) {
     throw new TypeError('statePath is required');
   }
@@ -75,7 +79,9 @@ export function startGateway({
   });
   const store = createCheckpointStore({
     statePath: destination,
-    legacyStatePath: join(dirname(absoluteManifestPath), 'body-state.json'),
+    legacyStatePath: legacyStatePath === undefined
+      ? join(dirname(absoluteManifestPath), 'body-state.json')
+      : legacyStatePath,
     maxCheckpointBytes,
     maxActionRecords,
     actionRetentionMs,
@@ -118,10 +124,10 @@ export function startGateway({
       nsfw: activeNsfw(updated),
     };
   }
-  async function unbindSession() {
+  async function unbindSession(expectedSessionId = null) {
     requireReady();
     if (stopping) throw new Error('Body Gateway is stopping');
-    const updated = await simulation.unbind();
+    const updated = await simulation.unbind(expectedSessionId);
     return {
       ok: true,
       active: updated.active,

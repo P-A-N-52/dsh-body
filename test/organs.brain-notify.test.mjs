@@ -116,7 +116,7 @@ test('no session id means no notification', () => {
   assert.deepEqual(written, { lastSessionId: null, sessions: {} });
 });
 
-test('io.boundSessionId acts as fallback target and action sessionId overrides it', () => {
+test('io.boundSessionId takes precedence over action sessionId', () => {
   const viaBound = round({
     interoception: { hunger: 70, fullness: 0 },
     actions: [],
@@ -127,16 +127,25 @@ test('io.boundSessionId acts as fallback target and action sessionId overrides i
   assert.equal(viaBound.notifications[0].sessionId, 'bound-session');
   assert.equal(viaBound.written.lastSessionId, 'bound-session');
 
-  const overridden = round({
+  const keptBound = round({
     state: viaBound.written,
-    interoception: { hunger: 70, fullness: 0, thirst: 70 },
+    interoception: { hunger: 70, fullness: 0, thirst: 90 },
     actions: [{ sessionId: 'action-session' }],
     boundSessionId: 'bound-session',
     simulatedSeconds: 120,
   });
-  assert.equal(overridden.notifications.length, 1);
-  assert.equal(overridden.notifications[0].sessionId, 'action-session');
-  assert.equal(overridden.written.lastSessionId, 'action-session');
+  assert.equal(keptBound.notifications.length, 1);
+  assert.equal(keptBound.notifications[0].sessionId, 'bound-session');
+  assert.equal(keptBound.written.lastSessionId, 'bound-session');
+  assert.equal(Object.hasOwn(keptBound.written.sessions, 'action-session'), false);
+
+  const viaActionFallback = round({
+    interoception: { hunger: 70, fullness: 0 },
+    actions: [{ sessionId: 'action-session' }],
+    simulatedSeconds: 60,
+  });
+  assert.equal(viaActionFallback.notifications.length, 1);
+  assert.equal(viaActionFallback.notifications[0].sessionId, 'action-session');
 });
 
 test('marked hunger sends one context notification with dual-track backoff schema', () => {

@@ -373,3 +373,30 @@ test('retried ackNotification preserves messageId and pre-ack inbox insertion ti
     { id: 'n-retry', meta: { messageId: 'msg-retry-1', insertedAtWallTimeMs: 50_000 } },
   ]);
 });
+
+test('notifications are not delivered when gateway is dormant or bound to a different session', async () => {
+  let boundSessionId = null;
+  let dormant = true;
+  const queue = [notification({ id: 'n-stale', sessionId: 'session-a' })];
+  const delivered = [];
+  const gateway = {
+    getBoundSessionId: () => boundSessionId,
+    isDormant: () => dormant,
+    getNotifications: () => queue.map((item) => ({ ...item })),
+    ackNotification: (id) => ({ id, acked: false }),
+  };
+  const pump = createNotificationPump({
+    gateway,
+    agentFor: (sessionId) => fakeAgent(sessionId, delivered),
+    makeId: () => 'msg-ignored',
+    logger: silentLogger,
+  });
+
+  assert.deepEqual(await pump.run(), [{ id: 'n-stale', status: 'waiting' }]);
+  assert.deepEqual(delivered, []);
+
+  dormant = false;
+  boundSessionId = 'session-b';
+  assert.deepEqual(await pump.run(), [{ id: 'n-stale', status: 'waiting' }]);
+  assert.deepEqual(delivered, []);
+});

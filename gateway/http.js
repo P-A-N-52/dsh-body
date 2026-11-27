@@ -189,17 +189,51 @@ export function createBodyHttpServer({
     if (typeof bindSession !== 'function') {
       return reply(response, 501, { error: 'Binding is not supported' });
     }
-    const result = await bindSession(payload.sessionId.trim());
-    return reply(response, 200, result);
+    try {
+      const result = await bindSession(payload.sessionId.trim());
+      return reply(response, 200, result);
+    } catch (error) {
+      if (error?.statusCode === 409) {
+        return reply(response, 409, { ok: false, error: error.message });
+      }
+      throw error;
+    }
   }
 
   async function handleUnbindPost(request, response) {
-    request.resume();
+    let expectedSessionId;
+    const type = String(request.headers['content-type'] ?? '');
+    if (/^application\/json\s*(;|$)/i.test(type)) {
+      let payload;
+      try {
+        payload = await readJsonBody(request);
+      } catch (error) {
+        return reply(response, error.statusCode ?? 400, { error: error.message });
+      }
+      if (!isRecord(payload)) {
+        return reply(response, 400, { error: 'Expected a JSON object' });
+      }
+      if (payload.sessionId !== undefined) {
+        if (typeof payload.sessionId !== 'string' || !payload.sessionId.trim()) {
+          return reply(response, 400, { error: 'Expected a nonempty sessionId' });
+        }
+        expectedSessionId = payload.sessionId.trim();
+      }
+    } else {
+      request.resume();
+    }
     if (typeof unbindSession !== 'function') {
       return reply(response, 501, { error: 'Binding is not supported' });
     }
-    const result = await unbindSession();
-    return reply(response, 200, result);
+    try {
+      const result = await unbindSession(expectedSessionId);
+      return reply(response, 200, result);
+    } catch (error) {
+      if (error?.statusCode === 409) {
+        return reply(response, 409, { ok: false, error: error.message });
+      }
+      throw error;
+    }
   }
 
   async function handleRequest(request, response) {

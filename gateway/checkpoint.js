@@ -393,7 +393,7 @@ export function createCheckpointStore({
 
   function load() {
     const saved = loadCheckpoint(statePath)
-      ?? (statePath === legacyStatePath ? null : loadCheckpoint(legacyStatePath));
+      ?? (legacyStatePath && statePath !== legacyStatePath ? loadCheckpoint(legacyStatePath) : null);
     if (saved === null) return null;
 
     const checkpoint = migrateCheckpoint(saved, statePath);

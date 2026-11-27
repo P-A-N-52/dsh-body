@@ -11,18 +11,19 @@ export const inject = ['tools', 'agents'];
 const notificationIntervalMs = 1000;
 const defaultBootTimeoutMs = 30_000;
 
-function buildBodyCognitionPrompt({ nsfwEnabled = false } = {}) {
+function buildBodyCognitionPrompt() {
   const lines = [
     '【身体认知与纯感觉交互准则】',
-    '你拥有一具实时运行的虚拟身体，但你只能以纯粹的主观定性感受来体会自身状态（如饥饿、饱腹、口渴、口干、尿意、便意、呼吸顺畅或发闷、心跳与循环感受、冷暖出汗、肌肉疲乏、低血糖发虚、钙稳态异样如手脚发麻抽紧或倦怠、困倦与精力起伏、紧张焦虑或舒畅惬意，以及下腹不适与经期感受）。',
+    '虚拟身体默认不绑定任何会话，也不要主动调用 body_bind 绑定身体；仅当用户明确要求将当前对话绑定到身体时才调用 body_bind。',
+    '只有当上下文中存在 [身体背景感受] 或当前会话已明确绑定到虚拟身体时，你才以纯主观定性感受体会自身状态（如饥饿、饱腹、口渴、口干、尿意、便意、呼吸顺畅或发闷、心跳与循环感受、冷暖出汗、肌肉疲乏、低血糖发虚、钙稳态异样如手脚发麻抽紧或倦怠、困倦与精力起伏、紧张焦虑或舒畅惬意，以及下腹不适与经期感受）。',
     '严禁在任何回复中凭空编造、扮演或输出具体生理数值、百分比、体积或计量单位（例如体温、心率、血压、毫升、千卡、毫克或分钟数）。',
-    nsfwEnabled
-      ? '当身体处于未绑定休眠状态时，先通过 body_bind 将身体绑定到当前会话；需要细致体会某处或全身状态时调用 body_state；要通过进食、喝水、运动、排尿、排便、中止运动（stop_exercise）、入睡（sleep）、醒来（wake_up）以及亲密互动或泌乳护理（sex、orgasm、express_milk、breastfeed）等行为回应身体需求时调用 body_act，并对吃喝/运动/亲密互动用 description 如实描述自然行为（如“吃了一口米饭”“慢跑一会”），无需自己估算或填入热量、毫升数与强度数字；进食或喝水后若返回定性味道与口感反馈（tasteFeedback），请直接以当下的感官体验自然回应。'
-      : '当身体处于未绑定休眠状态时，先通过 body_bind 将身体绑定到当前会话；需要细致体会某处或全身状态时调用 body_state；要通过进食、喝水、运动、排尿、排便、中止运动（stop_exercise）、入睡（sleep）或醒来（wake_up）等行为回应身体需求时调用 body_act，并对吃喝/运动用 description 如实描述自然行为（如“吃了一口米饭”“慢跑一会”），无需自己估算或填入热量、毫升数与强度数字；进食或喝水后若返回定性味道与口感反馈（tasteFeedback），请直接以当下的感官体验自然回应。',
+    '在已绑定状态下，需要细致体会某处或全身状态时调用 body_state；要通过进食、喝水、运动、排尿、排便、中止运动（stop_exercise）、入睡（sleep）或醒来（wake_up）等行为回应身体需求时调用 body_act，并对吃喝/运动用 description 如实描述自然行为（如“吃了一口米饭”“慢跑一会”），无需自己估算或填入热量、毫升数与强度数字；进食或喝水后若返回定性味道与口感反馈（tasteFeedback），请直接以当下的感官体验自然回应。',
     '收到来源为身体通知（body-notify）的消息时，那是你自身发出的内部体感信号，而不是外界用户在说话，请以第一人称的真实体验自然回应。',
   ];
   return lines.join('\n');
 }
+
+const NSFW_CONTEXT_NOTICE = '[亲密与泌乳能力] 当前身体已开启亲密互动与泌乳护理能力（body_act 支持 sex、orgasm、express_milk、breastfeed，并可用 description 描述行为）。';
 
 const SLEEP_CONTEXT_NOTICE = [
   '[睡眠状态行为规则]',
@@ -146,7 +147,7 @@ export async function apply(ctx, config = {}) {
   const resolvedStatePath = statePath ?? join(resolveBodyHome(ctx), 'dsh-body', 'body-state.json');
   const resolvedPort = port === undefined || port === '' ? undefined : Number(port);
   const resolvedBootTimeoutMs = resolveBootTimeoutMs(bootTimeoutMs);
-  const { defaultId, sessions, specs } = resolveBodySpecs({
+  const { defaultId, hasBodiesConfig, sessions, specs } = resolveBodySpecs({
     resolvedStatePath,
     resolvedPort,
     manifestPath,
@@ -165,6 +166,7 @@ export async function apply(ctx, config = {}) {
           port: spec.port,
           requireBinding: true,
           defaultNsfw: spec.nsfw,
+          legacyStatePath: null,
         }),
       });
     } catch (error) {
@@ -201,14 +203,23 @@ export async function apply(ctx, config = {}) {
   const gateway = createBodyFacade({
     entries: readyEntries,
     defaultId,
+    hasBodiesConfig,
     sessions,
   });
 
   const agents = tryGetService(ctx, 'agents');
+  const claimedSessions = new Map();
   for (const entry of readyEntries) {
     const initialBoundId = entry.gateway.getBoundSessionId?.();
-    if (initialBoundId && typeof agents?.get === 'function' && !agents.get(initialBoundId)) {
-      await entry.gateway.unbindSession();
+    if (!initialBoundId) continue;
+    const isDead = typeof agents?.get === 'function' && !agents.get(initialBoundId);
+    const mappedTarget = gateway.resolveSessionTarget?.(initialBoundId);
+    const conflictsExplicitMapping = mappedTarget?.explicitlyMapped && mappedTarget.id !== entry.id;
+    const duplicateOwner = claimedSessions.has(initialBoundId);
+    if (isDead || conflictsExplicitMapping || duplicateOwner) {
+      await entry.gateway.unbindSession(initialBoundId);
+    } else {
+      claimedSessions.set(initialBoundId, entry.id);
     }
   }
 
@@ -277,7 +288,11 @@ export async function apply(ctx, config = {}) {
 
   const pumps = readyEntries.map((entry) => createNotificationPump({
     gateway: entry.gateway,
-    agentFor: (sessionId) => agents?.get?.(sessionId),
+    agentFor: (sessionId) => (
+      entry.gateway.getBoundSessionId?.() === sessionId
+        ? agents?.get?.(sessionId)
+        : undefined
+    ),
   }));
   async function runAllPumps() {
     await Promise.allSettled(pumps.map((pump) => pump.run().catch(reportDeliveryError)));
@@ -290,7 +305,7 @@ export async function apply(ctx, config = {}) {
       if (!disposedSessionId) return;
       for (const entry of readyEntries) {
         if (entry.gateway.getBoundSessionId?.() === disposedSessionId) {
-          entry.gateway.unbindSession().catch(reportUnbindError);
+          entry.gateway.unbindSession(disposedSessionId).catch(reportUnbindError);
         }
       }
     }));
@@ -342,7 +357,7 @@ export async function apply(ctx, config = {}) {
     ctx.effect(() => systemPrompt.section({
       name: 'dsh-body:cognition',
       order: 120,
-      text: buildBodyCognitionPrompt({ nsfwEnabled: Boolean(gateway.getNsfw?.() ?? nsfw) }),
+      text: buildBodyCognitionPrompt(),
     }));
   }
   if (typeof systemPrompt?.context === 'function') {
@@ -365,15 +380,17 @@ export async function apply(ctx, config = {}) {
             return '';
           }
           const snapshot = scoped.getState();
+          const scopedNsfw = Boolean(scoped.getNsfw?.() ?? health?.nsfw);
           const base = formatBodyFeelingsContext(snapshot, {
-            nsfw: Boolean(scoped.getNsfw?.() ?? health?.nsfw),
+            nsfw: scopedNsfw,
             dormant: false,
             active: true,
           });
-          if (snapshot?.parts?.sleep?.sleeping === true) {
-            return base ? `${base}\n${SLEEP_CONTEXT_NOTICE}` : SLEEP_CONTEXT_NOTICE;
-          }
-          return base;
+          const parts = [];
+          if (base) parts.push(base);
+          if (scopedNsfw) parts.push(NSFW_CONTEXT_NOTICE);
+          if (snapshot?.parts?.sleep?.sleeping === true) parts.push(SLEEP_CONTEXT_NOTICE);
+          return parts.join('\n');
         } catch {
           return '';
         }

@@ -115,9 +115,18 @@ export function createNotificationPump({
       return [];
     }
 
+    const hasBindingScope = typeof gateway.getBoundSessionId === 'function';
+    const currentBoundSessionId = hasBindingScope ? gateway.getBoundSessionId() : undefined;
+    const isDormant = typeof gateway.isDormant === 'function' ? Boolean(gateway.isDormant()) : false;
+
     const results = [];
     for (const notification of notifications) {
       const { id, sessionId } = notification;
+
+      if (hasBindingScope && (isDormant || !currentBoundSessionId || sessionId !== currentBoundSessionId)) {
+        results.push({ id, status: 'waiting' });
+        continue;
+      }
 
       if (delivered.has(id)) {
         results.push({ id, status: (await acknowledge(id)) ? 'delivered' : 'failed' });

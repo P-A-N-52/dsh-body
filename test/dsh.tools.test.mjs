@@ -750,7 +750,8 @@ test('body_state reports dormant and paused states cleanly and never leaks numbe
   assert.equal(dormantResult.status, 'dormant');
   assert.equal(dormantResult.focus, 'hunger');
   assert.deepEqual(dormantResult.feelings, []);
-  assert.match(dormantResult.summary, /body_bind/);
+  assert.match(dormantResult.summary, /未绑定/);
+  assert.equal(dormantResult.summary.includes('body_bind'), false);
 
   const dormantNsfw = await dormantTools.body_state.execute({ focus: 'sexualResponse' }, fakeExec({ callId: 'dormant-nsfw' }));
   assertNoDigits(dormantNsfw, 'dormant nsfw body_state');
@@ -793,7 +794,7 @@ test('body_bind binds, unbinds, reports status, and gates dormant body_act with 
   assert.equal(dormantAct.ok, false);
   assert.equal(dormantAct.statusCode, 409);
   assert.equal(dormantAct.receipt.dormant, true);
-  assert.equal(dormantAct.receipt.hint, 'Call body_bind first.');
+  assert.equal(dormantAct.receipt.hint, undefined);
 
   const bound = await tools.body_bind.execute({}, fakeExec({ sessionId: 'session-bind' }));
   assert.equal(bound.ok, true);
@@ -803,6 +804,44 @@ test('body_bind binds, unbinds, reports status, and gates dormant body_act with 
   assert.equal(bound.boundSessionId, 'session-bind');
   assertNoDigits(bound.feeling, 'body_bind feeling');
   assert.equal(gateway.isDormant(), false);
+
+  // Other sessions cannot inspect, unbind, hijack, act on, or sense a bound body.
+  const otherState = await tools.body_state.execute({ focus: 'sexualResponse' }, fakeExec({ sessionId: 'session-other' }));
+  assert.equal(otherState.status, 'dormant');
+  assert.equal(otherState.focus, 'redacted');
+  assert.deepEqual(otherState.feelings, []);
+
+  const otherStatus = await tools.body_bind.execute({ action: 'status' }, fakeExec({ sessionId: 'session-other' }));
+  assert.equal(otherStatus.ok, false);
+  assert.equal(otherStatus.bound, false);
+  assert.equal(otherStatus.boundSessionId, null);
+
+  const otherHijack = await tools.body_bind.execute({ action: 'bind' }, fakeExec({ sessionId: 'session-other' }));
+  assert.equal(otherHijack.ok, false);
+  assert.equal(otherHijack.boundSessionId, null);
+  assert.equal(otherHijack.feeling, undefined);
+
+  const otherSpoof = await tools.body_bind.execute(
+    { action: 'unbind', sessionId: 'session-bind' },
+    fakeExec({ sessionId: 'session-other' }),
+  );
+  assert.equal(otherSpoof.ok, false);
+  assert.equal(otherSpoof.boundSessionId, null);
+
+  const otherUnbind = await tools.body_bind.execute({ action: 'unbind' }, fakeExec({ sessionId: 'session-other' }));
+  assert.equal(otherUnbind.ok, false);
+  assert.equal(gateway.getBoundSessionId(), 'session-bind');
+
+  const otherAct = await tools.body_act.execute(
+    { type: 'drink', volumeMl: 200, sessionId: 'session-bind' },
+    fakeExec({ sessionId: 'session-other', callId: 'spoof-act' }),
+  );
+  assert.equal(otherAct.ok, false);
+  assert.equal(otherAct.statusCode, 403);
+
+  const noExecState = await tools.body_state.execute({});
+  assert.equal(noExecState.status, 'dormant');
+  assert.deepEqual(noExecState.feelings, []);
 
   const actAfterBind = await tools.body_act.execute(
     { type: 'sleep' },

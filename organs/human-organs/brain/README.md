@@ -206,10 +206,10 @@ lossMl = referenceFluidVolumeMl − bodyFluid.waterVolumeMl   // 按体重同步
 
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
-| `lastSessionId` | `1` | 最近一次带 `sessionId` 的动作或 `io.boundSessionId` 所属会话；没有则为 `null` |
+| `lastSessionId` | `1` | 优先取 `io.boundSessionId`，无绑定时取最近一次带 `sessionId` 的动作所属会话；没有则为 `null` |
 | `sessions` | `1` | 每个会话的提醒状态：`lastSentAt`、`backoffStep`、`lastUrgentSentAt`、`urgentBackoffStep`、`lastInvoluntaryVoidedMl`、`lastOrgasmAtSimMin`、`lastAttemptedOrgasmAtSimMin`、`lastSeenAt`、`levels`、`sensations`、`sensationLevels`、`wasSleeping`、`sleepBacklog` |
 
-`sessions` 是内部策略状态，不是生理读数；按 `maxTrackedSessions` 保留最近 32 个会话。每个会话各自保存 `levels`（`{ hunger, fullness, urinary, thirst }`）、`sensations`（17 项扩展体感水位字典）与可选 `sensationLevels`（非标扩展感受水位字典，均存 0/2/3）；每轮只对当前目标会话（本轮最后带 `sessionId` 的动作，否则 `io.boundSessionId`，再否则持久化的 `lastSessionId`）按当轮观测调和，其他会话不被当轮观测改写。`lastKind` / `lastLevel` 保留兼容旧档迁移。旧会话缺少 `levels` 时按 `lastKind/lastLevel` 惰性补出对应信号的水位；顶层 `initialState` 为 `{ lastSessionId: null, sessions: {} }`。
+`sessions` 是内部策略状态，不是生理读数；按 `maxTrackedSessions` 保留最近 32 个会话。每个会话各自保存 `levels`（`{ hunger, fullness, urinary, thirst }`）、`sensations`（17 项扩展体感水位字典）与可选 `sensationLevels`（非标扩展感受水位字典，均存 0/2/3）；每轮只对当前目标会话（优先 `io.boundSessionId`，否则本轮最后带 `sessionId` 的动作，再否则持久化的 `lastSessionId`）按当轮观测调和，其他会话不被当轮观测改写。`lastKind` / `lastLevel` 保留兼容旧档迁移。旧会话缺少 `levels` 时按 `lastKind/lastLevel` 惰性补出对应信号的水位；顶层 `initialState` 为 `{ lastSessionId: null, sessions: {} }`。
 
 ## 3. 输入与方程
 
@@ -473,7 +473,7 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 
 **多感受零数字聚合与补算保护**：
 - 存在可发送候选时，紧急通道优先并合并同轮所有新跨档候选（`mode: 'wake'`），否则发送普通候选（`mode: 'context'`）。候选按“危机优先 → 档位降序 → 固定临床优先级 `SIGNAL_PRIORITY`”排序，去重后以 `身体感受：...；...。` 聚合在 280 字符内；所有单句与聚合文本均经 `hasDigits`（`/\d|\p{Nd}/u`）拦截，含数字即回退通用无数字提示。
-- 目标会话按 `io.actions` 最后一条 `sessionId` → `io.boundSessionId` → `prev.lastSessionId` 解析。
+- 目标会话优先取 `io.boundSessionId`，仅当其为空时依次回落到 `io.actions` 最后一条 `sessionId` → `prev.lastSessionId`。
 - 启动补算轮带 `io.suppressNotifications = true`：`brainNotify` 只调和下降水位，不调用 `io.notify`，不消耗退避步数与时间戳。
 
 **未实现/未实测**：多会话同时绑定、以及本次新增日志/回执与血钙通知逻辑的真实 DSH 会话验收（当前仅完成离线单测、模拟宿主与真实 Gateway 集成测试）。Gateway 的 `GET /notifications` 仍是待确认队列；投递泵在 `inject`/`followup` 入队后 ACK，同时向 `logs/notification-history.json` 写入投递记录并在收到 `agent/inbox/inserted` 后补写阅读回执时间（若宿主不触发该事件则保留 `insertedAtWallTimeMs: null`）。

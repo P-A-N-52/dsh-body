@@ -152,9 +152,10 @@ test('apply starts dormant with requireBinding, activates via body_bind, deliver
     rmSync(dir, { recursive: true, force: true });
   });
 
-  await apply(ctx, { manifestPath, statePath, port: 0 });
+  await apply(ctx, { manifestPath, statePath, port: 0, notificationIntervalMs: 10 });
 
   assert.deepEqual([...registeredTools.keys()].sort(), ['body_act', 'body_bind', 'body_state']);
+  assert.equal(delivered.length, 0);
 
   const dormantAct = await registeredTools.get('body_act').execute(
     { type: 'eat', volumeMl: 200, energyKcal: 100, mealKind: 'liquid' },
@@ -164,7 +165,10 @@ test('apply starts dormant with requireBinding, activates via body_bind, deliver
   assert.equal(dormantAct.statusCode, 409);
   assert.equal(dormantAct.receipt.dormant, true);
 
-  const dormantState = await registeredTools.get('body_state').execute({ part: 'counter' });
+  const dormantState = await registeredTools.get('body_state').execute(
+    { part: 'counter' },
+    { agent: { session: { id: 'session-a' } } },
+  );
   assert.equal(dormantState.status, 'dormant');
   assert.deepEqual(dormantState.feelings, []);
   assert.equal(/\d/.test(JSON.stringify(dormantState)), false);
@@ -178,6 +182,7 @@ test('apply starts dormant with requireBinding, activates via body_bind, deliver
   assert.equal(bindResult.dormant, false);
   assert.equal(bindResult.boundSessionId, 'session-a');
 
+  await until(() => delivered.length === 1);
   assert.equal(delivered.length, 1);
   assert.equal(delivered[0].method, 'followup');
   assert.equal(delivered[0].message.content[0].text, '身体感受：口渴。');
@@ -193,12 +198,26 @@ test('apply starts dormant with requireBinding, activates via body_bind, deliver
   assert.equal(actResult.ok, true);
   assert.equal(actResult.statusCode, 202);
 
-  const stateResult = await registeredTools.get('body_state').execute({ part: 'counter' });
+  const stateResult = await registeredTools.get('body_state').execute(
+    { part: 'counter' },
+    { agent: { session: { id: 'session-a' } } },
+  );
   assert.equal(stateResult.status, 'active');
   assert.equal(stateResult.focus, 'all');
   assert.ok(Array.isArray(stateResult.feelings));
   assert.equal(typeof stateResult.summary, 'string');
   assert.equal(/\d/.test(JSON.stringify(stateResult)), false);
+
+  // Calling without session context or from another session must never leak session-a's state.
+  const noSessionState = await registeredTools.get('body_state').execute({ part: 'counter' });
+  assert.equal(noSessionState.status, 'dormant');
+  assert.deepEqual(noSessionState.feelings, []);
+  const otherSessionState = await registeredTools.get('body_state').execute(
+    { part: 'counter' },
+    { agent: { session: { id: 'session-other' } } },
+  );
+  assert.equal(otherSessionState.status, 'dormant');
+  assert.deepEqual(otherSessionState.feelings, []);
 
   await disposeAll();
   disposed = true;
@@ -244,14 +263,20 @@ test('apply integrates optional systemPrompt, unbinds stale boundSessionId on bo
 
   assert.equal(promptMock.sections.has('dsh-body:cognition'), true);
   assert.equal(promptMock.sections.get('dsh-body:cognition').order, 120);
-  assert.equal(/\d/.test(promptMock.sections.get('dsh-body:cognition').text), false);
+  const cognitionText = promptMock.sections.get('dsh-body:cognition').text;
+  assert.equal(/\d/.test(cognitionText), false);
+  assert.match(cognitionText, /不要主动调用 body_bind/);
+  assert.equal(/\bsex\b|\borgasm\b|express_milk|breastfeed/.test(cognitionText), false);
   assert.equal(promptMock.contexts.has('dsh-body:feelings'), true);
   assert.equal(promptMock.contexts.get('dsh-body:feelings').order, 120);
 
   const feelingsContext = promptMock.contexts.get('dsh-body:feelings').text;
 
   // Stale session id was unbound on boot via agents.get('stale-session').
-  const initialStatus = await registeredTools.get('body_bind').execute({ action: 'status' });
+  const initialStatus = await registeredTools.get('body_bind').execute(
+    { action: 'status' },
+    { agent: { session: { id: 'session-a' } } },
+  );
   assert.equal(initialStatus.dormant, true);
   assert.equal(initialStatus.bound, false);
   assert.equal(initialStatus.boundSessionId, null);
@@ -276,19 +301,47 @@ test('apply integrates optional systemPrompt, unbinds stale boundSessionId on bo
   assert.match(boundContext, /^\[身体背景感受\]/);
   assert.equal(/\d/.test(boundContext), false);
 
+  // Another session cannot hijack, inspect, act on, or unbind session-a's body.
+  const otherHijack = await registeredTools.get('body_bind').execute(
+    { action: 'bind' },
+    { agent: { session: { id: 'session-other' } } },
+  );
+  assert.equal(otherHijack.ok, false);
+  assert.equal(otherHijack.boundSessionId, null);
+  assert.equal(otherHijack.feeling, undefined);
+
+  const otherAct = await registeredTools.get('body_act').execute(
+    { type: 'eat', volumeMl: 100, energyKcal: 50, mealKind: 'liquid' },
+    { agent: { session: { id: 'session-other' } }, callId: 'call-other' },
+  );
+  assert.equal(otherAct.ok, false);
+  assert.equal(otherAct.statusCode, 403);
+
   // Disposing another session keeps session-a bound.
   emit('agent/disposed', { agent: { session: { id: 'session-other' } } });
   await new Promise((resolve) => setTimeout(resolve, 15));
-  assert.equal((await registeredTools.get('body_bind').execute({ action: 'status' })).dormant, false);
+  assert.equal(
+    (await registeredTools.get('body_bind').execute(
+      { action: 'status' },
+      { agent: { session: { id: 'session-a' } } },
+    )).dormant,
+    false,
+  );
 
   // Disposing bound session auto-hibernates the body.
   emit('agent/disposed', { agent: { session: { id: 'session-a' } } });
   await until(async () => {
-    const status = await registeredTools.get('body_bind').execute({ action: 'status' });
+    const status = await registeredTools.get('body_bind').execute(
+      { action: 'status' },
+      { agent: { session: { id: 'session-a' } } },
+    );
     return status.dormant === true;
   });
 
-  const afterDisposeStatus = await registeredTools.get('body_bind').execute({ action: 'status' });
+  const afterDisposeStatus = await registeredTools.get('body_bind').execute(
+    { action: 'status' },
+    { agent: { session: { id: 'session-a' } } },
+  );
   assert.equal(afterDisposeStatus.bound, false);
   assert.equal(afterDisposeStatus.boundSessionId, null);
   assert.equal(feelingsContext({ agent: { session: { id: 'session-a' } } }), '');

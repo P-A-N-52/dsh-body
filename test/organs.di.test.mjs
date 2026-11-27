@@ -388,7 +388,7 @@ test('body_act and body_state keep their shapes under a DI manifest', async (t) 
   await gateway.tick();
   await gateway.tick();
 
-  const state = await tools.body_state.execute({ part: 'kidney' });
+  const state = await tools.body_state.execute({ part: 'kidney' }, fakeExec());
   assert.deepEqual(Object.keys(state).sort(), ['feelings', 'focus', 'status', 'summary']);
   assert.equal(state.status, 'active');
   assert.equal(state.focus, 'kidney');

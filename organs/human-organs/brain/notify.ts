@@ -635,12 +635,14 @@ function latestSessionId(
   boundSessionId: unknown,
   previous: string | null | undefined,
 ): string | null {
+  const bound = validSessionString(boundSessionId);
+  if (bound !== null) return bound;
   let fromAction: string | null = null;
   for (const action of actions) {
     const candidate = validSessionString(action?.sessionId);
     if (candidate !== null) fromAction = candidate;
   }
-  return fromAction ?? validSessionString(boundSessionId) ?? validSessionString(previous);
+  return fromAction ?? validSessionString(previous);
 }
 
 function collectActionTypes(actions: readonly Action[]): Set<string> {

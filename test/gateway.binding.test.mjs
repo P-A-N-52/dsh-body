@@ -173,16 +173,44 @@ test('POST /bind and gateway.bindSession wake from dormancy, re-anchor wallTimeM
   assert.equal(notifications[0].sessionId, 'session-alpha');
   assert.equal(notifications[0].text, '身体感到微渴。');
 
-  // Re-binding via gateway.bindSession switches io.boundSessionId without re-anchoring if already active.
-  const rebind = await body.gateway.bindSession('session-beta');
-  assert.deepEqual(rebind, {
-    ok: true,
-    active: true,
-    dormant: false,
-    boundSessionId: 'session-beta',
-    nsfw: true,
-  });
+  // Re-binding via gateway.bindSession or POST /bind while bound to another session is rejected with 409.
+  await assert.rejects(
+    () => body.gateway.bindSession('session-beta'),
+    (error) => error?.statusCode === 409 && /already bound/i.test(error.message),
+  );
+  const rebindHttp = await body.post('/bind', { sessionId: 'session-beta' });
+  assert.equal(rebindHttp.status, 409);
+  assert.equal(body.gateway.getBoundSessionId(), 'session-alpha');
 
+  // Actions from another session or missing sessionId are rejected with 403 while bound.
+  const spoofAct = await body.post('/actions', {
+    id: 'act-spoof',
+    type: 'eat',
+    volumeMl: 100,
+    sessionId: 'session-beta',
+  });
+  assert.equal(spoofAct.status, 403);
+  const missingSessionAct = await body.post('/actions', {
+    id: 'act-missing-session',
+    type: 'eat',
+    volumeMl: 100,
+  });
+  assert.equal(missingSessionAct.status, 403);
+
+  // Unbinding with a mismatching expectedSessionId fails; matching unbind clears pending notifications for that session.
+  await assert.rejects(
+    () => body.gateway.unbindSession('session-beta'),
+    (error) => error?.statusCode === 409,
+  );
+  const unbindHttpMismatch = await body.post('/unbind', { sessionId: 'session-beta' });
+  assert.equal(unbindHttpMismatch.status, 409);
+  assert.equal(body.gateway.getBoundSessionId(), 'session-alpha');
+
+  await body.gateway.unbindSession('session-alpha');
+  assert.equal(body.gateway.getBoundSessionId(), null);
+  assert.deepEqual(body.gateway.getNotifications(), []);
+
+  await body.gateway.bindSession('session-beta');
   nowMs += 60_000;
   await body.tick();
   const afterSecondTick = body.gateway.getState();

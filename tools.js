@@ -230,9 +230,33 @@ function bandToLevel(band) {
   return 'steady';
 }
 
-function resolveSessionId(args, exec) {
-  const candidate = exec?.agent?.session?.id ?? exec?.sessionId ?? args?.sessionId;
+function resolveExecSessionId(exec) {
+  const candidate = exec?.agent?.session?.id
+    ?? exec?.agent?.id
+    ?? exec?.session?.id
+    ?? exec?.sessionId;
   return typeof candidate === 'string' && candidate.trim() !== '' ? candidate.trim() : null;
+}
+
+function resolveBindTargetSessionId(args, exec) {
+  const execSessionId = resolveExecSessionId(exec);
+  const argSessionId = typeof args?.sessionId === 'string' && args.sessionId.trim() !== ''
+    ? args.sessionId.trim()
+    : null;
+  if (execSessionId !== null) {
+    if (argSessionId !== null && argSessionId !== execSessionId) {
+      return { sessionId: null, mismatch: true };
+    }
+    return { sessionId: execSessionId, mismatch: false };
+  }
+  return { sessionId: argSessionId, mismatch: false };
+}
+
+function redactUnownedFocus(rawFocus) {
+  const trimmed = typeof rawFocus === 'string' ? rawFocus.trim() : '';
+  if (!trimmed) return 'all';
+  if (NSFW_ONLY_FOCUS_ALIASES.has(trimmed.toLowerCase())) return 'redacted';
+  return sanitizeFocusLabel(trimmed);
 }
 
 export function buildActionPayload(args, { sessionId, callId }) {
@@ -900,7 +924,7 @@ export function buildBodyFeelingsSummary(
       status: 'dormant',
       focus: NSFW_ONLY_FOCUS_ALIASES.has(lowerFocus) && !nsfwEnabled ? 'redacted' : resolvedFocus,
       feelings: [],
-      summary: '身体当前处于未绑定休眠状态，生理时钟已冻结；请先调用 body_bind 绑定当前会话后再感知身体状态。',
+      summary: '身体当前处于未绑定休眠状态，生理时钟已冻结，默认未绑定当前会话。',
     };
   }
 
@@ -1041,7 +1065,7 @@ function currentBindStatus(gateway) {
   };
 }
 
-function buildGateErrorResponse(gateway) {
+function buildGateErrorResponse(gateway, sessionId = null) {
   const status = currentBindStatus(gateway);
   if (!status.active) {
     return {
@@ -1050,15 +1074,24 @@ function buildGateErrorResponse(gateway) {
       receipt: { error: 'Body Gateway is paused', active: false },
     };
   }
+  if (status.bound && status.boundSessionId !== sessionId) {
+    return {
+      ok: false,
+      statusCode: 403,
+      receipt: {
+        error: 'Body Gateway is bound to another session',
+        boundToAnotherSession: true,
+      },
+    };
+  }
   if (status.dormant) {
     return {
       ok: false,
       statusCode: 409,
       receipt: {
-        error: 'Body Gateway is dormant until bound to a session. Call body_bind first to bind this session.',
+        error: 'Body Gateway is dormant because no session is bound',
         dormant: true,
         boundSessionId: null,
-        hint: 'Call body_bind first.',
       },
     };
   }
@@ -1201,15 +1234,19 @@ export function createBodyTools(gateway, options = {}) {
     },
     async execute(args = {}, exec) {
       const input = isPlainRecord(args) ? args : {};
-      const sessionId = resolveSessionId(input, exec);
+      const sessionId = resolveExecSessionId(exec);
       if (sessionId === null) {
         return { ok: false, statusCode: 400, receipt: { error: 'body_act requires an agent session id' } };
       }
-      gateway?.useSession?.(sessionId);
       const target = resolveScopedGateway(gateway, sessionId);
       if (!target) {
-        return { ok: false, statusCode: 503, receipt: { error: 'Target body gateway is unavailable' } };
+        const hasMappedTarget = typeof gateway?.resolveId === 'function' ? Boolean(gateway.resolveId(sessionId)) : true;
+        return hasMappedTarget
+          ? { ok: false, statusCode: 503, receipt: { error: 'Target body gateway is unavailable' } }
+          : { ok: false, statusCode: 403, receipt: { error: 'No body is mapped to this session' } };
       }
+      const gateError = buildGateErrorResponse(target, sessionId);
+      if (gateError) return gateError;
       const nsfwEnabled = isNsfwEnabled(target);
       const extraActionTypes = getExtraActionTypes(target);
       if (NSFW_ACTION_TYPES.includes(input.type) && !nsfwEnabled) {
@@ -1226,8 +1263,6 @@ export function createBodyTools(gateway, options = {}) {
         if (overrideInvalid !== null) {
           return { ok: false, statusCode: 400, receipt: { error: overrideInvalid } };
         }
-        const gateError = buildGateErrorResponse(target);
-        if (gateError) return gateError;
 
         const explicitConstraints = extractExplicitOverrides(input);
         const cacheKey = explicitCallId ? `${sessionId}\0${explicitCallId}` : null;
@@ -1289,14 +1324,7 @@ export function createBodyTools(gateway, options = {}) {
                 primaryReceipt: submitResults[0].body,
               });
             }
-            const failedReceipt = submitted.statusCode === 409 && submitted.body?.dormant === true
-              ? {
-                ...submitted.body,
-                error: `${submitted.body.error}. Call body_bind first to bind this session.`,
-                hint: 'Call body_bind first.',
-              }
-              : submitted.body;
-            return { ok: false, statusCode: submitted.statusCode, receipt: failedReceipt };
+            return { ok: false, statusCode: submitted.statusCode, receipt: submitted.body };
           }
           submitResults.push(submitted);
         }
@@ -1345,13 +1373,7 @@ export function createBodyTools(gateway, options = {}) {
       const directInput = stripTranslatorInputFields(input);
       const payload = buildActionPayload(directInput, { sessionId, callId });
       const { statusCode, body } = target.submitAction(payload);
-      const receipt = statusCode === 409 && body?.dormant === true
-        ? {
-          ...body,
-          error: `${body.error}. Call body_bind first to bind this session.`,
-          hint: 'Call body_bind first.',
-        }
-        : body;
+      const receipt = body;
 
       if (statusCode === 202 && isTranslatable && rawDescription !== '') {
         const bodyTranslator = getTranslator(target);
@@ -1451,29 +1473,54 @@ export function createBodyTools(gateway, options = {}) {
     },
     async execute(args = {}, exec) {
       const input = isPlainRecord(args) ? args : {};
-      const sessionId = resolveSessionId(input, exec);
-      if (sessionId !== null) gateway?.useSession?.(sessionId);
+      const sessionId = resolveExecSessionId(exec);
+      const rawFocus = input.focus ?? input.part;
+      if (sessionId === null) {
+        return {
+          status: 'dormant',
+          focus: redactUnownedFocus(rawFocus),
+          feelings: [],
+          summary: '当前会话缺少有效会话标识，无法感知身体状态。',
+        };
+      }
       const target = resolveScopedGateway(gateway, sessionId);
       if (!target) {
-        return {
-          status: 'paused',
-          focus: sanitizeFocusLabel(input.focus ?? input.part),
-          feelings: null,
-          summary: '当前身体网关暂不可用。',
-        };
+        const hasMappedTarget = typeof gateway?.resolveId === 'function' ? Boolean(gateway.resolveId(sessionId)) : true;
+        return hasMappedTarget
+          ? {
+            status: 'paused',
+            focus: sanitizeFocusLabel(rawFocus),
+            feelings: null,
+            summary: '当前身体网关暂不可用。',
+          }
+          : {
+            status: 'dormant',
+            focus: redactUnownedFocus(rawFocus),
+            feelings: [],
+            summary: '当前会话未绑定身体，无法感知身体状态。',
+          };
       }
       const health = getGatewayHealthSafe(target);
       if (health?.fatal) {
         return {
           status: 'paused',
-          focus: sanitizeFocusLabel(input.focus ?? input.part),
+          focus: sanitizeFocusLabel(rawFocus),
           feelings: [],
           summary: '身体因内部脚本异常已停机，当前无法读取实时体感。',
         };
       }
-      const active = health?.active !== false;
-      const dormant = Boolean(target?.isDormant?.() ?? health?.dormant ?? false);
-      const nsfw = Boolean(target?.getNsfw?.() ?? health?.nsfw ?? false);
+      const bindStatus = currentBindStatus(target);
+      if (bindStatus.bound && bindStatus.boundSessionId !== sessionId) {
+        return {
+          status: 'dormant',
+          focus: redactUnownedFocus(rawFocus),
+          feelings: [],
+          summary: '当前会话未绑定身体，无法感知身体状态。',
+        };
+      }
+      const active = bindStatus.active;
+      const dormant = bindStatus.dormant;
+      const nsfw = bindStatus.nsfw;
       const snapshot = dormant || !active ? null : target.getState();
       return buildBodyFeelingsSummary(snapshot, {
         focus: input.focus,
@@ -1488,7 +1535,7 @@ export function createBodyTools(gateway, options = {}) {
   const bodyBind = {
     name: 'body_bind',
     description: 'Bind, unbind, or inspect the conversation session attached to this body. '
-      + 'When dormant, bind the body to the current session before sensing feelings or performing actions.',
+      + 'Sessions stay unbound by default; do not call body_bind proactively unless the user explicitly asks to bind.',
     parameters: {
       type: 'object',
       properties: {
@@ -1499,7 +1546,7 @@ export function createBodyTools(gateway, options = {}) {
         },
         sessionId: {
           type: 'string',
-          description: 'Optional session id; defaults to the current tool context session id.',
+          description: 'Optional session id; must match the current tool context session id when present.',
         },
       },
       additionalProperties: false,
@@ -1525,10 +1572,32 @@ export function createBodyTools(gateway, options = {}) {
     async execute(args = {}, exec) {
       const input = isPlainRecord(args) ? args : {};
       const action = input.action ?? 'bind';
-      const sessionId = resolveSessionId(input, exec);
-      if (sessionId !== null) gateway?.useSession?.(sessionId);
+      const { sessionId, mismatch } = resolveBindTargetSessionId(input, exec);
+      if (mismatch) {
+        return {
+          ok: false,
+          bound: false,
+          dormant: true,
+          active: true,
+          nsfw: false,
+          boundSessionId: null,
+          error: 'Cannot operate on another session',
+        };
+      }
+      if (sessionId === null) {
+        return {
+          ok: false,
+          bound: false,
+          dormant: true,
+          active: true,
+          nsfw: false,
+          boundSessionId: null,
+          error: 'body_bind requires a nonempty sessionId',
+        };
+      }
       const target = resolveScopedGateway(gateway, sessionId);
       if (!target) {
+        const hasMappedTarget = typeof gateway?.resolveId === 'function' ? Boolean(gateway.resolveId(sessionId)) : true;
         return {
           ok: false,
           bound: false,
@@ -1536,10 +1605,24 @@ export function createBodyTools(gateway, options = {}) {
           active: false,
           nsfw: false,
           boundSessionId: null,
-          error: 'Target body gateway is unavailable',
+          error: hasMappedTarget ? 'Target body gateway is unavailable' : 'No body is mapped to this session',
         };
       }
       const status = currentBindStatus(target);
+
+      if (status.bound && status.boundSessionId !== sessionId) {
+        return {
+          ok: false,
+          bound: false,
+          dormant: true,
+          active: status.active,
+          nsfw: false,
+          boundSessionId: null,
+          error: action === 'unbind'
+            ? 'Cannot unbind a body bound to another session'
+            : (action === 'bind' ? 'Body is already bound to another session' : 'Body is bound to another session'),
+        };
+      }
 
       if (action === 'status') {
         return { ok: true, ...status };
@@ -1550,7 +1633,7 @@ export function createBodyTools(gateway, options = {}) {
           return { ok: false, ...status, error: 'Binding is not supported by this Gateway' };
         }
         try {
-          const updated = await target.unbindSession();
+          const updated = await target.unbindSession(sessionId);
           const boundSessionId = updated?.boundSessionId ?? null;
           return {
             ok: true,
@@ -1561,9 +1644,21 @@ export function createBodyTools(gateway, options = {}) {
             boundSessionId,
           };
         } catch (error) {
+          const latest = currentBindStatus(target);
+          if (latest.bound && latest.boundSessionId !== sessionId) {
+            return {
+              ok: false,
+              bound: false,
+              dormant: true,
+              active: latest.active,
+              nsfw: false,
+              boundSessionId: null,
+              error: 'Cannot unbind a body bound to another session',
+            };
+          }
           return {
             ok: false,
-            ...currentBindStatus(target),
+            ...latest,
             error: error instanceof Error ? error.message : String(error),
           };
         }
@@ -1578,13 +1673,6 @@ export function createBodyTools(gateway, options = {}) {
             ok: false,
             ...status,
             error: 'Body Gateway is paused (active=false)',
-          };
-        }
-        if (sessionId === null) {
-          return {
-            ok: false,
-            ...status,
-            error: 'body_bind requires a nonempty sessionId',
           };
         }
         try {
@@ -1612,9 +1700,21 @@ export function createBodyTools(gateway, options = {}) {
             ...(feeling ? { feeling } : {}),
           };
         } catch (error) {
+          const latest = currentBindStatus(target);
+          if (latest.bound && latest.boundSessionId !== sessionId) {
+            return {
+              ok: false,
+              bound: false,
+              dormant: true,
+              active: latest.active,
+              nsfw: false,
+              boundSessionId: null,
+              error: 'Body is already bound to another session',
+            };
+          }
           return {
             ok: false,
-            ...currentBindStatus(target),
+            ...latest,
             error: error instanceof Error ? error.message : String(error),
           };
         }

@@ -288,11 +288,42 @@ test('apply mounts peer bodies from bodies.json with independent routing, notifi
   assert.deepEqual(alphaTranslations.byType.drink.map((e) => e.description), ['喝了一口水']);
   assert.deepEqual(betaTranslations.byType.drink.map((e) => e.description), ['喝了一杯温水']);
 
+  // Global cognition must not leak beta's nsfw:true; only beta's bound feelingsContext includes NSFW notice.
+  const cognitionText = promptMock.sections.get('dsh-body:cognition').text;
+  assert.equal(/\bsex\b|\borgasm\b|express_milk|breastfeed/.test(cognitionText), false);
+
   // Both sleeping bodies inject sleep rules for their own bound session and wake independently
   const feelingsContext = promptMock.contexts.get('dsh-body:feelings').text;
-  assert.ok(feelingsContext({ agent: { session: { id: 'session-alpha' } } }).includes('[睡眠状态行为规则]'));
-  assert.ok(feelingsContext({ agent: { session: { id: 'qq-group-232970112' } } }).includes('[睡眠状态行为规则]'));
+  const alphaFeelings = feelingsContext({ agent: { session: { id: 'session-alpha' } } });
+  const betaFeelings = feelingsContext({ agent: { session: { id: 'qq-group-232970112' } } });
+  assert.ok(alphaFeelings.includes('[睡眠状态行为规则]'));
+  assert.equal(alphaFeelings.includes('亲密互动'), false);
+  assert.ok(betaFeelings.includes('[睡眠状态行为规则]'));
+  assert.ok(betaFeelings.includes('亲密互动'));
   assert.equal(feelingsContext({ agent: { session: { id: 'unbound-session' } } }), '');
+
+  // Unmapped sessions do NOT fall back to default body (alpha), and missing exec does NOT leak stickySessionId.
+  const unmappedState = await registeredTools.get('body_state').execute(
+    {},
+    { agent: { session: { id: 'unbound-session' } } },
+  );
+  assert.equal(unmappedState.status, 'dormant');
+  assert.deepEqual(unmappedState.feelings, []);
+  const unmappedBind = await registeredTools.get('body_bind').execute(
+    { action: 'bind' },
+    { agent: { session: { id: 'unbound-session' } } },
+  );
+  assert.equal(unmappedBind.ok, false);
+  assert.match(unmappedBind.error, /No body is mapped/);
+  const unmappedAct = await registeredTools.get('body_act').execute(
+    { type: 'drink', volumeMl: 100 },
+    { agent: { session: { id: 'unbound-session' } }, callId: 'unmapped-act' },
+  );
+  assert.equal(unmappedAct.ok, false);
+  assert.equal(unmappedAct.statusCode, 403);
+  const missingExecState = await registeredTools.get('body_state').execute({});
+  assert.equal(missingExecState.status, 'dormant');
+  assert.deepEqual(missingExecState.feelings, []);
 
   await Promise.all([
     ...emit('tools/pre-execute', {
@@ -327,8 +358,76 @@ test('apply mounts peer bodies from bodies.json with independent routing, notifi
   assert.equal(JSON.parse(readFileSync(betaStatePath, 'utf8')).boundSessionId, 'group-pref-999');
   assert.equal(JSON.parse(readFileSync(alphaStatePath, 'utf8')).boundSessionId, 'session-alpha');
 
+  // Another session matching the same wildcard prefix cannot hijack, read, or unbind beta while occupied.
+  const secondPrefixBind = await registeredTools.get('body_bind').execute(
+    { action: 'bind' },
+    { agent: { session: { id: 'group-pref-888' } } },
+  );
+  assert.equal(secondPrefixBind.ok, false);
+  assert.equal(secondPrefixBind.boundSessionId, null);
+  assert.equal(secondPrefixBind.feeling, undefined);
+  assert.equal(JSON.parse(readFileSync(betaStatePath, 'utf8')).boundSessionId, 'group-pref-999');
+
+  const secondPrefixState = await registeredTools.get('body_state').execute(
+    {},
+    { agent: { session: { id: 'group-pref-888' } } },
+  );
+  assert.equal(secondPrefixState.status, 'dormant');
+  assert.deepEqual(secondPrefixState.feelings, []);
+
   await disposeAll();
   disposed = true;
+});
+
+test('malformed bodies.json rejects startup instead of collapsing into single body, and boot does not clone manifest body-state.json', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-multibody-strict-'));
+  const home = join(dir, 'profile');
+  const dshBodyDir = join(home, 'dsh-body');
+  mkdirSync(dshBodyDir, { recursive: true });
+  const manifestPath = setupSleepAndCounterManifest(dir);
+
+  // Place a legacy body-state.json alongside the manifest to verify DSH plugin never clones it.
+  writeFileSync(join(dir, 'body-state.json'), JSON.stringify({
+    ...checkpoint({
+      wallTimeMs: Date.now(),
+      simulatedSeconds: 3600,
+      notifications: [{ id: 'n-legacy', mode: 'wake', sessionId: 'legacy-session', text: '旧通知' }],
+    }),
+    boundSessionId: 'legacy-session',
+  }));
+
+  writeFileSync(join(dshBodyDir, 'bodies.json'), '{not-valid-json');
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'warn', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  const { ctx: badCtx, disposeAll: disposeBad } = makeContext(home, new Map());
+  t.after(async () => {
+    await disposeBad();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  await assert.rejects(() => apply(badCtx, { manifestPath, port: 0 }), /Invalid bodies\.json/);
+
+  const betaStatePath = join(dshBodyDir, 'bodies', 'beta', 'body-state.json');
+  writeFileSync(join(dshBodyDir, 'bodies.json'), JSON.stringify({
+    bodies: {
+      alpha: { port: 0 },
+      beta: { port: 0 },
+    },
+    sessions: {
+      's-alpha': 'alpha',
+      's-beta': 'beta',
+    },
+  }));
+  const { ctx: goodCtx, disposeAll: disposeGood } = makeContext(home, new Map());
+  t.after(async () => {
+    await disposeGood();
+  });
+  await apply(goodCtx, { manifestPath, port: 0 });
+  const betaSaved = JSON.parse(readFileSync(betaStatePath, 'utf8'));
+  assert.equal(betaSaved.boundSessionId ?? null, null);
+  assert.equal(betaSaved.snapshot.simulatedSeconds, 0);
+  assert.deepEqual(betaSaved.notifications, []);
 });
 
 test('boot timeout on one body does not block healthy peer body and explicitly mapped session never hijacks another body', async (t) => {

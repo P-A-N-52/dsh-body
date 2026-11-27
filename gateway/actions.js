@@ -176,6 +176,15 @@ export function createActionQueue({
         body: { error: 'Body Gateway is dormant until bound to a session', dormant: true, boundSessionId: null },
       };
     }
+    if (checkpoint.boundSessionId) {
+      const actionSessionId = typeof action.sessionId === 'string' ? action.sessionId.trim() : '';
+      if (!actionSessionId || actionSessionId !== checkpoint.boundSessionId) {
+        return {
+          statusCode: 403,
+          body: { error: 'Action sessionId does not match the bound session' },
+        };
+      }
+    }
     if (NSFW_ACTIONS.has(action.type) && !isNsfwEnabled(checkpoint)) {
       return {
         statusCode: 403,

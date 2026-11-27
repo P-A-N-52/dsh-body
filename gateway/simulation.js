@@ -486,6 +486,12 @@ export function createBodySimulation({
       start();
       return current;
     }
+    if (current.boundSessionId && current.boundSessionId !== normalized) {
+      start();
+      const error = new Error('Body Gateway is already bound to another session');
+      error.statusCode = 409;
+      throw error;
+    }
     const nowMs = now();
     const next = {
       ...current,
@@ -504,13 +510,34 @@ export function createBodySimulation({
     return next;
   }
 
-  async function unbind() {
+  async function unbind(expectedSessionId = null) {
+    let expected = null;
+    if (expectedSessionId !== null && expectedSessionId !== undefined) {
+      if (typeof expectedSessionId !== 'string' || !expectedSessionId.trim()) {
+        throw new TypeError('expectedSessionId must be a nonempty string');
+      }
+      expected = expectedSessionId.trim();
+    }
     const pendingWork = stop();
     if (pendingWork) await pendingWork.catch(() => undefined);
     const current = store.current;
     if (!current) throw new Error('Body Gateway is not ready');
     if (!current.boundSessionId) return current;
-    const next = { ...current, boundSessionId: null };
+    if (expected !== null && current.boundSessionId !== expected) {
+      start();
+      const error = new Error('Body Gateway is bound to a different session');
+      error.statusCode = 409;
+      throw error;
+    }
+    const unboundSessionId = current.boundSessionId;
+    const remainingNotifications = Array.isArray(current.notifications)
+      ? current.notifications.filter((notification) => notification?.sessionId !== unboundSessionId)
+      : [];
+    const next = {
+      ...current,
+      boundSessionId: null,
+      notifications: remainingNotifications,
+    };
     store.commit(next);
     return next;
   }
