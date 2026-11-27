@@ -60,8 +60,20 @@ function fixture(t) {
   ]}));
   return {
     put, get,
+    addEntries(...paths) {
+      const path = 'body-modules.json';
+      const manifest = JSON.parse(get(path));
+      manifest.scripts.push(...paths.map((file) => `./${file}`));
+      put(path, JSON.stringify(manifest));
+    },
     run: (...args) => spawnSync(process.execPath, [join(root, 'tools/sync-organ-parameters.mjs'), ...args], { cwd: root, encoding: 'utf8' }),
   };
+}
+
+function rowFor(markdown, id) {
+  const row = markdown.split('\n').find((line) => line.startsWith(`| \`${id}\` |`));
+  assert.ok(row, `未列出 ${id}`);
+  return row;
 }
 
 test('默认与 --check 报告缺失标记块而不写入 README', (t) => {
@@ -125,6 +137,110 @@ test('标记单边缺失时 --write 拒绝修改任何 README', (t) => {
   assert.match(result.stderr, /regions\/README\.md.*标记/);
   assert.equal(get(readme), manual);
   assert.equal(get(`${dir}/regions/README.md`), malformed);
+});
+
+test('双标记丢失且 JSON 漂移时拒绝生成第二份目录，整批只读', (t) => {
+  const { get, put, run } = fixture(t);
+  assert.equal(run('--write').status, 0);
+  const region = `${dir}/regions/README.md`;
+  const marked = get(region);
+  const unmarked = marked.replace(`${begin}\n`, '').replace(`${end}\n`, '');
+  put(region, unmarked);
+  const original = get(readme);
+  const changed = JSON.parse(get(params));
+  changed.parameters[0].value = 14;
+  put(params, JSON.stringify(changed));
+  for (const mode of ['--write', '--check']) {
+    const result = run(mode);
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    assert.match(result.stderr, /regions\/README\.md.*同名.*标记/);
+    assert.equal(get(region), unmarked);
+    assert.equal(get(readme), original);
+  }
+  put(region, marked);
+  assert.equal(run('--write').status, 0);
+  assert.match(rowFor(get(region), 'demo.active'), /\| `14` \|/);
+});
+
+test('未受标记保护的同名手写节在首次生成和后续同步时都不被覆盖', (t) => {
+  const { get, put, run } = fixture(t);
+  const hand = '个体可自定义参数与默认值\n----------------------\n\n这是手写的参数解释。\n';
+  put(readme, manual + '\n' + hand);
+  const first = run('--write');
+  assert.equal(first.status, 1, first.stderr || first.stdout);
+  assert.match(first.stderr, /demo\/README\.md.*同名.*标记/);
+  assert.equal(get(readme), manual + '\n' + hand);
+
+  put(readme, manual);
+  assert.equal(run('--write').status, 0);
+  const duplicate = get(readme) + '\n### 个体可自定义参数与默认值 ###\n\n必须保留的正文。\n';
+  put(readme, duplicate);
+  const result = run('--check');
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  assert.match(result.stderr, /demo\/README\.md.*同名.*标记/);
+  assert.equal(get(readme), duplicate);
+});
+
+test('小肠非零 JSON 默认不会生成默认零的说明，并区分上游未加载与非法字段', (t) => {
+  const { get, put, addEntries, run } = fixture(t);
+  const organ = 'organs/human-organs/small-intestine';
+  const source = `${organ}/water-absorption.ts`;
+  const catalog = `${organ}/README.md`;
+  put(catalog, '# 小肠\n');
+  addEntries(source);
+  put(source, `
+    const p = loadParameters(new URL('./water-absorption.parameters.json', import.meta.url));
+    export const heartbeat = () => requireParameter(p, 'smallIntestine.carbAbsorptionInsulinGain')
+      + requireParameter(p, 'smallIntestine.carbAbsorptionGradientGain');
+  `);
+  put(`${organ}/water-absorption.parameters.json`, JSON.stringify({ schemaVersion: 1, owner: 'smallIntestine', parameters: [
+    { id: 'smallIntestine.carbAbsorptionInsulinGain', value: 0.1, unit: '1', status: 'design' },
+    { id: 'smallIntestine.carbAbsorptionGradientGain', value: 0.002, unit: '1', status: 'design' },
+  ]}));
+  const generated = run('--write');
+  assert.equal(generated.status, 0, generated.stderr);
+  assert.equal(run('--check').status, 0);
+  const markdown = get(catalog);
+  const insulin = rowFor(markdown, 'smallIntestine.carbAbsorptionInsulinGain');
+  assert.match(insulin, /\| `0\.1` \|/);
+  assert.doesNotMatch(insulin, /默认(?:为)?[零0]/);
+  assert.match(insulin, /取零.*无贡献/);
+  assert.match(insulin, /胰腺未加载.*基线.*已加载.*报错/);
+  assert.match(rowFor(markdown, 'smallIntestine.carbAbsorptionGradientGain'), /葡萄糖隔室未加载.*基线.*已加载.*报错/);
+});
+
+test('共享源文件的消费入口按参数键区分自身 heartbeat 和只调用释放判据的入口', (t) => {
+  const { get, put, addEntries, run } = fixture(t);
+  const owner = 'organs/human-organs/sexual-response';
+  const caller = `${dir}/release-use.ts`;
+  put(`${owner}/README.md`, '# 性反应\n');
+  put(`${owner}/response.ts`, `
+    const p = loadParameters(new URL('./response.parameters.json', import.meta.url));
+    const halfTime = requireParameter(p, 'sexualResponse.arousalHalfTimeMin');
+    const threshold = requireParameter(p, 'sexualResponse.orgasmAllowedMm');
+    export function evaluateSexualRelease(reading) { return reading >= threshold; }
+    export function heartbeat() { return halfTime; }
+  `);
+  put(`${owner}/response.parameters.json`, JSON.stringify({ schemaVersion: 1, owner: 'sexualResponse', parameters: [
+    { id: 'sexualResponse.arousalHalfTimeMin', value: 5, unit: 'min', status: 'design' },
+    { id: 'sexualResponse.orgasmAllowedMm', value: 70, unit: 'mm', status: 'design' },
+  ]}));
+  put(caller, `
+    import { evaluateSexualRelease } from '../sexual-response/response.ts';
+    export function heartbeat(io) { return evaluateSexualRelease(io.read('sexualResponse').arousalMm); }
+  `);
+  addEntries(`${owner}/response.ts`, caller);
+  const result = run('--write');
+  assert.equal(result.status, 0, result.stderr);
+  const ownPage = get(`${owner}/README.md`);
+  const halfTime = rowFor(ownPage, 'sexualResponse.arousalHalfTimeMin');
+  const threshold = rowFor(ownPage, 'sexualResponse.orgasmAllowedMm');
+  assert.match(halfTime, /消费入口：.*\]\(response\.ts\)/);
+  assert.doesNotMatch(halfTime, /release-use\.ts/);
+  assert.match(threshold, /消费入口：.*\]\(response\.ts\).*\]\(\.\.\/demo\/release-use\.ts\)/);
+  const callerPage = get(readme);
+  assert.match(callerPage, /`sexualResponse\.orgasmAllowedMm`/);
+  assert.doesNotMatch(callerPage, /`sexualResponse\.arousalHalfTimeMin`/);
 });
 
 test('--check 在 JSON 默认值更新后指出过期目录', (t) => {

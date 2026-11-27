@@ -31,8 +31,8 @@
 | `smallIntestine.residueFraction` | `0.05` | `1` | `design` | 无 | — |
 | `smallIntestine.carbohydrateAbsorption.halfTimeMin` | `20` | `min` | `design` | 无 | — |
 | `smallIntestine.waterAbsorptionDehydrationFactor` | `0.1` | `1` | `design` | 无 | — |
-| `smallIntestine.carbAbsorptionInsulinGain` | `0` | `1` | `design` | 无 | 兼容键，参与公式但默认零使胰岛素项无贡献；非零仅改变工程代理。缺胰腺信号用相对基线 1。 |
-| `smallIntestine.carbAbsorptionGradientGain` | `0.2` | `1` | `design` | 无 | 碳水吸收的浓度梯度代理；缺血糖信号时用基线。 |
+| `smallIntestine.carbAbsorptionInsulinGain` | `0` | `1` | `design` | 无 | 兼容键，参与工程代理；取零时胰岛素项无贡献。胰腺未加载时用相对基线 1；已加载时 `insulinPmolL` 缺失、非有限数值或为负均报错，即使增益为零。 |
+| `smallIntestine.carbAbsorptionGradientGain` | `0.2` | `1` | `design` | 无 | 碳水吸收的浓度梯度代理。葡萄糖隔室未加载时用模型血糖基线；已加载时 `concentrationMgDl` 缺失、非有限数值或为负均报错。 |
 
 <!-- organ-parameters:end -->
 

@@ -44,12 +44,12 @@
 
 参数文件：[`response.parameters.json`](../sexual-response/response.parameters.json)。入口及清单：[`uterus.ts`](uterus.ts)（[女性](../../../body-modules.female.json)）。读取脚本：[`response.ts`](../sexual-response/response.ts)。
 
-性反应及释放判据随 `nsfw` 门控；只写覆盖不会开启该功能。
+`nsfw: false` 时 Gateway 拒绝新 `sex` / `orgasm` 动作，模块不发生主动或自动释放。下游 `body_state` 的性反应文案与内感受的相关输入也受门控；这不清除存档。`response.ts` 仍推进已有活动计时、唤起与阶段，并衰减已有余韵。参数覆盖不打开门控。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
-| `sexualResponse.orgasmAllowedMm` | `70` | `mm` | `design` | 无 | — |
-| `sexualResponse.orgasmForcedMm` | `95` | `mm` | `design` | 无 | — |
+| `sexualResponse.orgasmAllowedMm` | `70` | `mm` | `design` | 无 | 主动释放要求门控开启；该阈值也参与旧的尝试阻断标记处理。 |
+| `sexualResponse.orgasmForcedMm` | `95` | `mm` | `design` | 无 | 自动释放要求门控开启且未处于不应期。 |
 | `sexualResponse.refractoryMin` | `20` | `min` | `design` | 无 | 其余清单分支的不应期基线，另有 PRL 影响。 |
 | `sexualResponse.femalePostOrgasmPauseMin` | `2` | `min` | `design` | 无 | 有卵巢且无睾丸时的停顿分支。 |
 

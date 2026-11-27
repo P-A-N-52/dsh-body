@@ -32,7 +32,7 @@
 | `blood.oxygenContentPerPercentMlPerL` | `2` | `mL/L/%` | `design` | 无 | — |
 | `blood.sympatheticSystolicGain` | `0.002` | `1/mm` | `design` | 无 | — |
 | `blood.sympatheticDiastolicGain` | `0.001` | `1/mm` | `design` | 无 | — |
-| `blood.referenceMaxCardiacOutputMlMin` | `16380` | `mL/min` | `design` | `weightKg / 75` | — |
+| `blood.referenceMaxCardiacOutputMlMin` | `16380` | `mL/min` | `design` | `weightKg / 75` | 播种供氧上限；正常优先使用 `heart.maxCardiacOutputMlMin`。仅心脏未加载或该字段缺失时回退，字段存在但非法则报错；不设定心脏输出。 |
 
 ### water.parameters.json（共享）
 

@@ -60,6 +60,8 @@ node tools/sync-organ-parameters.mjs --check
 node --test test/tools.organ-parameter-docs.test.mjs
 ```
 
-不带参数等同 `--check`，不会写文件；`--write` 只会新增或替换现有 README 的 `organ-parameters` 标记区块，不修改手写段落或默认 JSON。脚本、清单或 JSON 变化后与 README 同提交。新增部位请先写手工 README；有新可选替换、条件、保留键或非字面的参数读取方式时，同步维护生成工具的相应说明，不把未识别的声明当成有效覆盖。
+不带参数等同 `--check`，不会写文件；`--write` 只会新增或替换现有 README 的 `organ-parameters` 标记区块，不修改手写段落或默认 JSON。若已有同名节却不在成对标记内，两种模式都会报错：先人工核对，只为确认的旧生成块恢复一对标记；同名手写节保留正文并改名，勿加生成标记。
+
+脚本、清单或 JSON 变化后与 README 同提交。新增部位请先写手工 README；有新可选替换、条件、保留键或非字面的参数读取方式时，同步维护生成工具的相应说明，不把未识别的声明当成有效覆盖。
 
 - 提交前查看 `git status`，只提交本次相关文件。不上传本地身体存档、会话通知、凭据、日志、`node_modules/`、`.tower/`、`.superpowers/` 或本地 Pulse 源码检出。

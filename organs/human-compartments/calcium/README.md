@@ -16,8 +16,10 @@
 示例（只合并这一小段，数值仅用于演示）：
 
 ```json
-{ "parameters": { "calcium.referenceMgDl": 9.6 } }
+{ "parameters": { "calcium.referencePthPgMl": 32 } }
 ```
+
+有有效的甲状旁腺 PTH 输入时，此示例可改变已有存档后续的钙平衡计算，不重置血钙或骨钙库。
 
 ### calcium.parameters.json
 
@@ -25,14 +27,14 @@
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
-| `calcium.referenceMgDl` | `9.5` | `mg/dL` | `design` | 无 | — |
-| `calcium.boneStoreInitialG` | `100` | `g` | `design` | 无 | — |
+| `calcium.referenceMgDl` | `9.5` | `mg/dL` | `design` | 无 | 血钙种子，只用于新建或 `mgDl` 缺失/非有限的回退；不覆盖已有有效值，不是运行设定点。 |
+| `calcium.boneStoreInitialG` | `100` | `g` | `design` | 无 | 骨钙库种子，只用于新建或 `boneStoreG` 缺失/非有限的回退；不覆盖已有有效量。 |
 | `calcium.boneCapacityG` | `200` | `g` | `design` | 无 | — |
 | `calcium.boneReleaseRateGPerMin` | `0.0004` | `g/min` | `design` | 无 | — |
 | `calcium.boneDepositRateGPerMin` | `0.0004` | `g/min` | `design` | 无 | — |
 | `calcium.calciumExcretionPerMlG` | `0.000001` | `g/mL` | `design` | 无 | — |
 | `calcium.distributionVolumeDl` | `140` | `dL` | `design` | 无 | — |
-| `calcium.referencePthPgMl` | `30` | `pg/mL` | `design` | 无 | — |
+| `calcium.referencePthPgMl` | `30` | `pg/mL` | `design` | 无 | 有有效 `parathyroid.pthPgMl` 时作比例分母；未加载甲状旁腺时用相对基线 1，此键不参与该回退。 |
 
 <!-- organ-parameters:end -->
 

@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const start = '<!-- organ-parameters:start -->';
 const end = '<!-- organ-parameters:end -->';
+const sectionTitle = '个体可自定义参数与默认值';
+const sectionHeading = new RegExp(
+  `^ {0,3}(?:#{1,6}[ \\t]+${sectionTitle}(?:[ \\t]+#+)?|${sectionTitle}[ \\t]*\\r?\\n {0,3}(?:=+|-+))[ \\t]*\\r?$`, 'm',
+);
 const manifests = new Map([
   ['body-modules.json', '默认'],
   ['body-modules.female.json', '女性'],
@@ -23,14 +27,26 @@ const reserved = {
   'ovaries.lutealLengthDays': '保留：读取并要求非空，但不参与周期或分期；不能独立调黄体期。',
 };
 const rowNotes = {
+  'blood.referenceMaxCardiacOutputMlMin': '播种供氧上限；正常优先使用 `heart.maxCardiacOutputMlMin`。仅心脏未加载或该字段缺失时回退，字段存在但非法则报错；不设定心脏输出。',
+  'calcium.referenceMgDl': '血钙种子，只用于新建或 `mgDl` 缺失/非有限的回退；不覆盖已有有效值，不是运行设定点。',
+  'calcium.boneStoreInitialG': '骨钙库种子，只用于新建或 `boneStoreG` 缺失/非有限的回退；不覆盖已有有效量。',
+  'calcium.referencePthPgMl': '有有效 `parathyroid.pthPgMl` 时作比例分母；未加载甲状旁腺时用相对基线 1，此键不参与该回退。',
   'glucose.distributionVolumeDlPerKg': '是每 kg 的系数；与模型参考质量相乘，形成分布容积。',
+  'interoception.thirst.fallbackMm': '用于初值及上游口渴缺失或非有限时的回退；正常优先使用 `hypothalamusThirst.thirst`，不是慢渴模型的调节项。',
+  'interoception.bowelUrgency.referenceStoolG': '仅在 `colon.bowelUrgencyMm` 缺失或非有限时，用 `colon.stoolG` 换算便意；正常优先使用结肠给出的有限便意读数。',
   'liver.initialGlycogenG': '补种子或缺失值，不用此值覆盖已存肝糖原。',
   'muscleGlucose.glycogenUseRateGPerMin': '由分区 core 在活动时按区域份额和强度取用，不控制聚合器的摄糖。',
   'ovaries.startCycleDay': '补初值，不重置已有的周期日。',
+  'sexualResponse.arousalHalfTimeMin': '目标高于当前唤起值时使用；旧档剩余活动仍可能驱动此路径。',
+  'sexualResponse.resolutionHalfTimeMin': '目标不高于当前值时使用，关闭门控后仍影响已有唤起的回落。',
+  'sexualResponse.orgasmAllowedMm': '主动释放要求门控开启；该阈值也参与旧的尝试阻断标记处理。',
+  'sexualResponse.orgasmForcedMm': '自动释放要求门控开启且未处于不应期。',
+  'sexualResponse.orgasmDurationMin': '按已保留的释放时点判定阶段，不会因关闭门控抹去该时点。',
   'sexualResponse.femalePostOrgasmPauseMin': '有卵巢且无睾丸时的停顿分支。',
   'sexualResponse.refractoryMin': '其余清单分支的不应期基线，另有 PRL 影响。',
-  'smallIntestine.carbAbsorptionInsulinGain': '兼容键，参与公式但默认零使胰岛素项无贡献；非零仅改变工程代理。缺胰腺信号用相对基线 1。',
-  'smallIntestine.carbAbsorptionGradientGain': '碳水吸收的浓度梯度代理；缺血糖信号时用基线。',
+  'sexualResponse.afterglowHalfTimeMin': '无新释放时衰减已存余韵，关闭门控也不停止衰减。',
+  'smallIntestine.carbAbsorptionInsulinGain': '兼容键，参与工程代理；取零时胰岛素项无贡献。胰腺未加载时用相对基线 1；已加载时 `insulinPmolL` 缺失、非有限数值或为负均报错，即使增益为零。',
+  'smallIntestine.carbAbsorptionGradientGain': '碳水吸收的浓度梯度代理。葡萄糖隔室未加载时用模型血糖基线；已加载时 `concentrationMgDl` 缺失、非有限数值或为负均报错。',
   'uterus.orgasmContractionPeakMm': '仅性反应门控开启时参与。',
   'uterus.contractionHalfTimeMin': '仅性反应门控开启时参与。',
   'uterus.congestionHalfTimeMin': '仅性反应门控开启时参与，且仅用于回落。',
@@ -38,13 +54,13 @@ const rowNotes = {
 const fileNotes = {
   'autonomic.parameters.json': '交感/副交感另有睡眠、活动等路径；性反应相关路径受 `nsfw` 门控。',
   'glucose.parameters.json': '普通与女性的入口使用同一 core 和同一份参数；女性清单追加乳糖结算，不独立覆盖葡萄糖参数。',
-  'interoception.parameters.json': '一般体感继续运行；性唤醒、性欲与性后舒缓读数受 `nsfw` 门控。',
+  'interoception.parameters.json': '一般体感继续运行；`nsfw: false` 将性唤起和性欲读数置零，并屏蔽放松评分中的余韵输入，不清除性反应部位的存档状态。',
   'milk.parameters.json': '女性清单加载；`nsfw: false`（Gateway 缺省）关闭泌乳产出。开启后仍看泌乳状态和动作，`profile.lactating` 可为新部位播种，不重置已保存状态。',
   'menstrual-cycle.parameters.json': '慢性高 PRL 与哺乳是不同抑制输入；`nsfw: false` 关哺乳支路，不关闭普通周期或慢性高 PRL 支路。',
   'motility.parameters.json': '胃动力入口共用核心；`ghrelin.ts` 在导入核心时加载此文件，但只借用摄入解析，排空参数不直接调饥饿素。',
   'notify.parameters.json': '通知策略，不是生理阈值；普通通知、睡眠阈值和紧急路径不同，NSFW 信号另受 `nsfw` 门控。',
   'pituitary.parameters.json': '普通轴仍运行；哺乳/性反应相关的 PRL、催产素调节支路受 `nsfw` 门控。',
-  'response.parameters.json': '性反应及释放判据随 `nsfw` 门控；只写覆盖不会开启该功能。',
+  'response.parameters.json': '`nsfw: false` 时 Gateway 拒绝新 `sex` / `orgasm` 动作，模块不发生主动或自动释放。下游 `body_state` 的性反应文案与内感受的相关输入也受门控；这不清除存档。`response.ts` 仍推进已有活动计时、唤起与阶段，并衰减已有余韵。参数覆盖不打开门控。',
   'reward.parameters.json': '一般奖赏仍运行，性相关信号路径受 `nsfw` 门控。',
   'uterus.parameters.json': '月经请求/痛经依赖卵巢周期输入；月经不随 `nsfw` 关闭，性反应收缩和充血路径则关闭。',
   'water.parameters.json': '普通与女性的入口使用同一 core 和同一份参数；女性清单追加月经与乳汁水出口。',
@@ -56,7 +72,7 @@ const examples = {
   'blood-oxygen': ['bloodOxygen.basalMlMin', 260],
   'body-water': ['bodyFluid.referenceVolumeMl', 32000],
   brain: ['hypothalamusAdh.timeConstantMin', 12],
-  calcium: ['calcium.referenceMgDl', 9.6],
+  calcium: ['calcium.referencePthPgMl', 32, '有有效的甲状旁腺 PTH 输入时，此示例可改变已有存档后续的钙平衡计算，不重置血钙或骨钙库。'],
   colon: ['colon.reclamationRatePerMin', 0.012],
   duodenum: ['duodenum.exposure.timeConstantMin', 12],
   epididymis: ['epididymis.recoveryMlPerMin', 0.0025],
@@ -197,14 +213,16 @@ function render(dir, doc, { params, entries, ids }) {
     const labels = entries.get(file).map(({ label, path }) => path ? `[${label}](${relative(dir, path)})` : label);
     return `${link(dir, file)}（${labels.join(' / ')}）`;
   }).join('；');
+  const scriptList = (paths) => unique(paths).map((file) => link(dir, file)).join('、');
   const exampleGuide = `${relative(dir, 'CONTRIBUTING.md')}#个体参数覆盖示例`;
-  const out = [start, '## 个体可自定义参数与默认值', '',
+  const out = [start, `## ${sectionTitle}`, '',
     `先停止 Gateway，备份该身体实际的 \`body-state.json\`，将要改的 ID 合并到存档顶层 \`parameters\`（[稀疏覆盖示例](${exampleGuide})），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。`, '',
     '表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。', ''];
   const example = examples[basename(dir)];
   if (example && [...doc.groups.values()].some((uses) => uses.some(({ id, external, entry }) => id === example[0] && !external && dirname(entry) === dir))) {
     out.push('示例（只合并这一小段，数值仅用于演示）：', '', '```json',
       `{ "parameters": { "${example[0]}": ${example[1]} } }`, '```', '');
+    if (example[2]) out.push(example[2], '');
   }
   if (![...doc.groups.keys()].some((path) => dirname(path) === dir)) {
     out.push('此目录无独立参数 JSON。若下文列有共享 ID，只覆盖原 ID，不能给这个部位另造一套参数键。', '',
@@ -217,24 +235,29 @@ function render(dir, doc, { params, entries, ids }) {
   for (const [path, uses] of doc.groups) {
     const local = dirname(path) === dir;
     const data = params.get(path);
-    const rows = local ? data.parameters : data.parameters.filter(({ id }) => uses.some((u) => u.id === id));
+    const byId = Map.groupBy(uses, (u) => u.id);
+    const rows = local ? data.parameters : data.parameters.filter(({ id }) => byId.has(id));
+    const groupEntries = unique(uses.map((u) => u.entry));
+    const readers = unique(uses.map((u) => u.file));
+    const entrySubsets = [...byId.values()].some((used) => unique(used.map((u) => u.entry)).length < groupEntries.length);
     const caption = `${basename(path)}${local ? '' : '（共享）'}`;
     if (fold) out.push('<details>', `<summary>${caption}</summary>`, '');
     else out.push(`### ${caption}`, '');
-    const modules = uses.length ? `入口及清单：${entryList(uses.map((u) => u.entry))}。读取脚本：${unique(uses.map((u) => u.file)).map((f) => link(dir, f)).join('、')}。` : '正式清单和已登记可选入口没有读取这个文件。';
+    const modules = uses.length ? `入口及清单：${entryList(groupEntries)}。读取脚本：${scriptList(readers)}。` : '正式清单和已登记可选入口没有读取这个文件。';
     out.push(`参数文件：${link(dir, path)}。${modules}`, '');
     if (fileNotes[basename(path)]) out.push(fileNotes[basename(path)], '');
     if (uses.some((u) => u.external)) out.push('直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。', '');
-    if (new Set(uses.map((u) => u.file)).size > 1) out.push('共享脚本只消费各路径所需的子集；不是每个入口都使用组内所有键。', '');
+    if (entrySubsets) out.push('共享脚本各入口消费的键不完全相同，以逐行标出的消费入口为准。', '');
     out.push('| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |',
       '| --- | ---: | --- | --- | --- | --- |');
     for (const { id, value, unit, status } of rows) {
-      const used = uses.filter((u) => u.id === id);
+      const used = byId.get(id) ?? [];
       const scaling = used.some((u) => u.scaled) ? '`weightKg / 75`' : '无';
       const limits = [reserved[id] ?? (!used.length ? '只登记；无读取，不作有效覆盖。' : rowNotes[id])];
       if (used.some((u) => u.external)) limits.push('含直接覆盖读取。');
       if (value === null) limits.push('未设值，不是 0。');
-      if (uses.some((u) => u.file !== used[0]?.file) && used.length) limits.push(`读取：${unique(used.map((u) => u.file)).map((f) => tick(basename(f))).join('、')}。`);
+      if (readers.length > 1 && used.length) limits.push(`读取：${unique(used.map((u) => u.file)).map((f) => tick(basename(f))).join('、')}。`);
+      if (entrySubsets && used.length && !Object.hasOwn(reserved, id)) limits.push(`消费入口：${scriptList(used.map((u) => u.entry))}。`);
       out.push(`| ${tick(id)} | ${tick(JSON.stringify(value))} | ${tick(unit.replaceAll('|', '\\|'))} | ${tick(status)} | ${scaling} | ${limits.filter(Boolean).join('') || '—'} |`);
     }
     out.push('');
@@ -255,19 +278,23 @@ function replaceBlock(path, text, block) {
   block = block.replaceAll('\n', newline);
   const first = text.indexOf(start);
   const last = text.indexOf(end);
-  if (first === -1 && last === -1) {
-    const heading = text.search(/^## /m);
-    if (heading >= 0) return text.slice(0, heading) + block + newline + newline + text.slice(heading);
-    const gap = text.endsWith(newline + newline) ? '' : text.endsWith(newline) ? newline : newline + newline;
-    return text + gap + block + newline;
-  }
-  if (first < 0 || last < first || text.indexOf(start, first + start.length) !== -1 || text.indexOf(end, last + end.length) !== -1
+  const hasMarkers = first !== -1 || last !== -1;
+  if (hasMarkers && (first < 0 || last < first || text.indexOf(start, first + start.length) !== -1 || text.indexOf(end, last + end.length) !== -1
     || (first > 0 && text[first - 1] !== '\n') || text[last - 1] !== '\n'
     || !text.startsWith(newline, first + start.length)
-    || (last + end.length < text.length && !text.startsWith(newline, last + end.length))) {
+    || (last + end.length < text.length && !text.startsWith(newline, last + end.length)))) {
     throw new Error(`${path}：标记块不成对、重复或不在独立行；请先手工核对。`);
   }
-  return text.slice(0, first) + block + text.slice(last + end.length);
+  const before = hasMarkers ? text.slice(0, first) : text;
+  const after = hasMarkers ? text.slice(last + end.length) : '';
+  if (sectionHeading.test(before) || sectionHeading.test(after)) {
+    throw new Error(`${path}：成对标记之外已有同名节「${sectionTitle}」。请人工核对：只为确认的旧生成块恢复标记并确保仅一份；同名手写节保留正文并改名。`);
+  }
+  if (hasMarkers) return before + block + after;
+  const heading = text.search(/^## /m);
+  if (heading >= 0) return text.slice(0, heading) + block + newline + newline + text.slice(heading);
+  const gap = text.endsWith(newline + newline) ? '' : text.endsWith(newline) ? newline : newline + newline;
+  return text + gap + block + newline;
 }
 
 function main(args) {

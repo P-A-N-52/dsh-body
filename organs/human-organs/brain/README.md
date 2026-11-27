@@ -116,7 +116,7 @@
 
 参数文件：[`interoception.parameters.json`](interoception.parameters.json)。入口及清单：[`interoception.ts`](interoception.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`interoception.ts`](interoception.ts)。
 
-一般体感继续运行；性唤醒、性欲与性后舒缓读数受 `nsfw` 门控。
+一般体感继续运行；`nsfw: false` 将性唤起和性欲读数置零，并屏蔽放松评分中的余韵输入，不清除性反应部位的存档状态。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
@@ -128,14 +128,14 @@
 | `interoception.fullness.mechanicalGain` | `100` | `mm/1` | `design` | 无 | — |
 | `interoception.hunger.nutrientGain` | `-5` | `mm/(kcal/min)` | `design` | 无 | — |
 | `interoception.fullness.nutrientGain` | `10` | `mm/(kcal/min)` | `design` | 无 | — |
-| `interoception.thirst.fallbackMm` | `0` | `mm` | `design` | 无 | — |
+| `interoception.thirst.fallbackMm` | `0` | `mm` | `design` | 无 | 用于初值及上游口渴缺失或非有限时的回退；正常优先使用 `hypothalamusThirst.thirst`，不是慢渴模型的调节项。 |
 | `interoception.urinaryUrgency.referenceVolumeMl` | `410` | `mL` | `design` | 无 | — |
 | `interoception.discomfort.onsetMm` | `70` | `mm` | `design` | 无 | — |
 | `interoception.thermoregulation.setpointC` | `37` | `°C` | `design` | 无 | — |
 | `interoception.temperatureReadoutGainMmPerC` | `50` | `mm/°C` | `design` | 无 | — |
 | `interoception.calcium.referenceMgDl` | `9.5` | `mg/dL` | `design` | 无 | — |
 | `interoception.calcium.readoutGainMmPerMgDl` | `50` | `mm/(mg/dL)` | `design` | 无 | — |
-| `interoception.bowelUrgency.referenceStoolG` | `200` | `g` | `design` | 无 | — |
+| `interoception.bowelUrgency.referenceStoolG` | `200` | `g` | `design` | 无 | 仅在 `colon.bowelUrgencyMm` 缺失或非有限时，用 `colon.stoolG` 换算便意；正常优先使用结肠给出的有限便意读数。 |
 | `interoception.hypoglycemia.thresholdMgDl` | `75` | `mg/dL` | `design` | 无 | — |
 | `interoception.hypoglycemia.gainMmPerMgDl` | `4` | `mm/(mg/dL)` | `design` | 无 | — |
 | `interoception.palpitation.restHrThresholdPerMin` | `115` | `1/min` | `design` | 无 | — |
@@ -168,29 +168,29 @@
 
 通知策略，不是生理阈值；普通通知、睡眠阈值和紧急路径不同，NSFW 信号另受 `nsfw` 门控。
 
-共享脚本只消费各路径所需的子集；不是每个入口都使用组内所有键。
+共享脚本各入口消费的键不完全相同，以逐行标出的消费入口为准。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
-| `brainNotify.hunger.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.hunger.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.fullness.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.fullness.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.urinary.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.urinary.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.thirst.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.thirst.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.default.marked` | `65` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`、`notify.ts`。 |
-| `brainNotify.default.strong` | `85` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`、`notify.ts`。 |
-| `brainNotify.resetBelow` | `40` | `mm` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.baseIntervalMin` | `20` | `min` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.maxIntervalMin` | `240` | `min` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.urgentBaseIntervalMin` | `5` | `min` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.urgentMaxIntervalMin` | `60` | `min` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.wakeAtLevel` | `3` | `1` | `policy` | 无 | 读取：`notify.ts`。 |
-| `brainNotify.sleepImportantThresholdMm` | `92` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`。 |
-| `brainNotify.deepSleepImportantThresholdMm` | `95` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`。 |
-| `brainNotify.maxTrackedSessions` | `32` | `1` | `policy` | 无 | 读取：`notify.ts`。 |
+| `brainNotify.hunger.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.hunger.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.fullness.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.fullness.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.urinary.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.urinary.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.thirst.marked` | `65` | `mm` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.thirst.strong` | `85` | `mm` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.default.marked` | `65` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`、`notify.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `brainNotify.default.strong` | `85` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`、`notify.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `brainNotify.resetBelow` | `40` | `mm` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.baseIntervalMin` | `20` | `min` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.maxIntervalMin` | `240` | `min` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.urgentBaseIntervalMin` | `5` | `min` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.urgentMaxIntervalMin` | `60` | `min` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.wakeAtLevel` | `3` | `1` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
+| `brainNotify.sleepImportantThresholdMm` | `92` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `brainNotify.deepSleepImportantThresholdMm` | `95` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `brainNotify.maxTrackedSessions` | `32` | `1` | `policy` | 无 | 读取：`notify.ts`。消费入口：[`notify.ts`](notify.ts)。 |
 
 </details>
 
@@ -253,33 +253,33 @@
 
 参数文件：[`sleep.parameters.json`](sleep.parameters.json)。入口及清单：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`sleep.ts`](sleep.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`notify.ts`](notify.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`wake-evaluation.ts`](wake-evaluation.ts)、[`sleep.ts`](sleep.ts)。
 
-共享脚本只消费各路径所需的子集；不是每个入口都使用组内所有键。
+共享脚本各入口消费的键不完全相同，以逐行标出的消费入口为准。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
-| `sleep.wakePressureRateMmMin` | `0.08` | `mm/min` | `design` | 无 | 读取：`sleep.ts`。 |
-| `sleep.sleepRecoveryHalfTimeMin` | `150` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`、`sleep.ts`。 |
-| `sleep.naturalWakePressureThresholdMm` | `10` | `mm` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.naturalWakeMinDurationMin` | `360` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.naturalWakeMelatoninCeilingRelative` | `1.45` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.fullRestNaturalWakePressureMm` | `4` | `mm` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.fullRestNaturalWakeMinDurationMin` | `420` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.cyclePeriodMin` | `90` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.earlyDeepWindowMin` | `240` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.deepStageMaxPressureThresholdMm` | `40` | `mm` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.lightPreFraction` | `0.15` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.highDeepFraction` | `0.45` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.lowDeepFraction` | `0.2` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.dyspneaCrisisMm` | `90` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.severeHypotensionSbpMmHg` | `78` | `mmHg` | `design` | 无 | 读取：`wake-evaluation.ts`。 |
-| `sleep.highSympatheticLightOnlyThresholdMm` | `35` | `mm` | `design` | 无 | 读取：`sleep.ts`。 |
-| `sleep.deepRecoveryMultiplier` | `1.3` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`、`sleep.ts`。 |
-| `sleep.remRecoveryMultiplier` | `0.9` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`、`sleep.ts`。 |
-| `sleep.inertiaNaturalWakeMm` | `15` | `mm` | `design` | 无 | 读取：`sleep.ts`。 |
-| `sleep.inertiaLightWakeMm` | `40` | `mm` | `design` | 无 | 读取：`sleep.ts`。 |
-| `sleep.inertiaDeepWakeMm` | `65` | `mm` | `design` | 无 | 读取：`sleep.ts`。 |
-| `sleep.inertiaStartleWakeMm` | `25` | `mm` | `design` | 无 | 读取：`sleep.ts`。 |
-| `sleep.inertiaHalfTimeMin` | `20` | `min` | `design` | 无 | 读取：`sleep.ts`。 |
+| `sleep.wakePressureRateMmMin` | `0.08` | `mm/min` | `design` | 无 | 读取：`sleep.ts`。消费入口：[`sleep.ts`](sleep.ts)。 |
+| `sleep.sleepRecoveryHalfTimeMin` | `150` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`、`sleep.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.naturalWakePressureThresholdMm` | `10` | `mm` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.naturalWakeMinDurationMin` | `360` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.naturalWakeMelatoninCeilingRelative` | `1.45` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.fullRestNaturalWakePressureMm` | `4` | `mm` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.fullRestNaturalWakeMinDurationMin` | `420` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.cyclePeriodMin` | `90` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.earlyDeepWindowMin` | `240` | `min` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.deepStageMaxPressureThresholdMm` | `40` | `mm` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.lightPreFraction` | `0.15` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.highDeepFraction` | `0.45` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.lowDeepFraction` | `0.2` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.dyspneaCrisisMm` | `90` | `mm` | `policy` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.severeHypotensionSbpMmHg` | `78` | `mmHg` | `design` | 无 | 读取：`wake-evaluation.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.highSympatheticLightOnlyThresholdMm` | `35` | `mm` | `design` | 无 | 读取：`sleep.ts`。消费入口：[`sleep.ts`](sleep.ts)。 |
+| `sleep.deepRecoveryMultiplier` | `1.3` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`、`sleep.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.remRecoveryMultiplier` | `0.9` | `1` | `design` | 无 | 读取：`wake-evaluation.ts`、`sleep.ts`。消费入口：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)、[`sleep.ts`](sleep.ts)、[`autonomic.ts`](autonomic.ts)、[`reward.ts`](reward.ts)、[`notify.ts`](notify.ts)。 |
+| `sleep.inertiaNaturalWakeMm` | `15` | `mm` | `design` | 无 | 读取：`sleep.ts`。消费入口：[`sleep.ts`](sleep.ts)。 |
+| `sleep.inertiaLightWakeMm` | `40` | `mm` | `design` | 无 | 读取：`sleep.ts`。消费入口：[`sleep.ts`](sleep.ts)。 |
+| `sleep.inertiaDeepWakeMm` | `65` | `mm` | `design` | 无 | 读取：`sleep.ts`。消费入口：[`sleep.ts`](sleep.ts)。 |
+| `sleep.inertiaStartleWakeMm` | `25` | `mm` | `design` | 无 | 读取：`sleep.ts`。消费入口：[`sleep.ts`](sleep.ts)。 |
+| `sleep.inertiaHalfTimeMin` | `20` | `min` | `design` | 无 | 读取：`sleep.ts`。消费入口：[`sleep.ts`](sleep.ts)。 |
 
 </details>
 
@@ -339,12 +339,12 @@
 
 参数文件：[`response.parameters.json`](../sexual-response/response.parameters.json)。入口及清单：[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`response.ts`](../sexual-response/response.ts)。
 
-性反应及释放判据随 `nsfw` 门控；只写覆盖不会开启该功能。
+`nsfw: false` 时 Gateway 拒绝新 `sex` / `orgasm` 动作，模块不发生主动或自动释放。下游 `body_state` 的性反应文案与内感受的相关输入也受门控；这不清除存档。`response.ts` 仍推进已有活动计时、唤起与阶段，并衰减已有余韵。参数覆盖不打开门控。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
-| `sexualResponse.orgasmAllowedMm` | `70` | `mm` | `design` | 无 | — |
-| `sexualResponse.orgasmForcedMm` | `95` | `mm` | `design` | 无 | — |
+| `sexualResponse.orgasmAllowedMm` | `70` | `mm` | `design` | 无 | 主动释放要求门控开启；该阈值也参与旧的尝试阻断标记处理。 |
+| `sexualResponse.orgasmForcedMm` | `95` | `mm` | `design` | 无 | 自动释放要求门控开启且未处于不应期。 |
 | `sexualResponse.refractoryMin` | `20` | `min` | `design` | 无 | 其余清单分支的不应期基线，另有 PRL 影响。 |
 | `sexualResponse.femalePostOrgasmPauseMin` | `2` | `min` | `design` | 无 | 有卵巢且无睾丸时的停顿分支。 |
 
