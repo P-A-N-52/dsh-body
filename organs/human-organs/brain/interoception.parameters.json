@@ -84,6 +84,24 @@
       "note": "缺失或非有限 hypothalamusThirst.thirst 时的回落值；与 Hughes 2018 正常水合近零口渴基线一致"
     },
     {
+      "id": "interoception.thirst.oralReliefHalfTimeMin",
+      "unit": "min",
+      "value": 2,
+      "status": "design",
+      "range": [0.5, 10],
+      "source": null,
+      "note": "没有新吞水时快速缓解比例的半衰期；范围为工程调参边界，不是人体测量"
+    },
+    {
+      "id": "interoception.thirst.oralReliefHalfDoseMl",
+      "unit": "mL",
+      "value": 20,
+      "status": "design",
+      "range": [5, 250],
+      "source": null,
+      "note": "衰减前填补剩余快速缓解空间一半所需的实际入胃饮水量；工程设定，不是人体口咽剂量"
+    },
+    {
       "id": "interoception.urinaryUrgency.referenceVolumeMl",
       "unit": "mL",
       "value": 410,
@@ -261,7 +279,7 @@
       "status": "design",
       "range": [1, 240],
       "source": null,
-      "note": "活动期后肌肉疲劳半衰期；design"
+      "note": "只衰减急性肌肉负担，活动中与停下后都有效；design"
     },
     {
       "id": "interoception.muscleFatigue.exerciseGainMmPerMin",
@@ -270,7 +288,7 @@
       "status": "design",
       "range": [0, 10],
       "source": null,
-      "note": "满强度活动每分钟累积疲劳斜率；design"
+      "note": "满强度活动的连续加荷斜率（与急性负担同时衰减）；design"
     },
     {
       "id": "interoception.muscleFatigue.depletionWeight",
@@ -279,7 +297,7 @@
       "status": "design",
       "range": [0, 2],
       "source": null,
-      "note": "肌糖原耗竭占比对疲劳基线的托底权重；design"
+      "note": "轮初肌糖原亏空用 0–100 百分刻度；此权重只影响当轮读数，不累积；design"
     },
     {
       "id": "interoception.sleepiness.melatoninWeight",

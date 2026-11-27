@@ -14,6 +14,8 @@ const BASELINE = {
   hunger: 50,
   fullness: 0,
   thirst: 0,
+  oralThirstReliefFraction: 0,
+  thirstProjectionAtSimulatedSeconds: 60,
   urinaryUrgency: 0,
   discomfort: 0,
   sexualArousalMm: 0,
@@ -31,6 +33,7 @@ const BASELINE = {
   palpitationMm: 0,
   sweatDampMm: 0,
   muscleFatigueMm: 0,
+  muscleFatigueAcuteMm: 0,
   uterineCrampMm: 0,
   mammaryFullnessMm: 0,
   hedonicCalmMm: 0,
@@ -42,6 +45,7 @@ const parameterFile = JSON.parse(readFileSync(parametersUrl, 'utf8'));
 function round(inputs = {}) {
   const parts = {
     interoception: inputs.interoception,
+    stomach: inputs.stomach,
     stomachSensory: inputs.sensory,
     stomachGhrelin: inputs.ghrelin,
     duodenum: inputs.duodenum,
@@ -75,7 +79,7 @@ function round(inputs = {}) {
   };
   let written;
   heartbeat({
-    read: (partId) => parts[partId],
+    read: (partId) => partId === undefined ? { simulatedSeconds: inputs.snapshotSeconds ?? 0 } : parts[partId],
     actions: [],
     dt: inputs.dt ?? 60,
     simulatedSeconds: inputs.simulatedSeconds ?? 60,
@@ -98,6 +102,8 @@ test('interoception exports the organ module contract', () => {
     hunger: { unit: 'mm', mode: 'absolute' },
     fullness: { unit: 'mm', mode: 'absolute' },
     thirst: { unit: 'mm', mode: 'absolute' },
+    oralThirstReliefFraction: { unit: '1', mode: 'absolute' },
+    thirstProjectionAtSimulatedSeconds: { unit: 's', mode: 'absolute' },
     urinaryUrgency: { unit: 'mm', mode: 'absolute' },
     discomfort: { unit: 'mm', mode: 'absolute' },
     sexualArousalMm: { unit: 'mm', mode: 'absolute' },
@@ -115,11 +121,17 @@ test('interoception exports the organ module contract', () => {
     palpitationMm: { unit: 'mm', mode: 'absolute' },
     sweatDampMm: { unit: 'mm', mode: 'absolute' },
     muscleFatigueMm: { unit: 'mm', mode: 'absolute' },
+    muscleFatigueAcuteMm: { unit: 'mm', mode: 'absolute' },
     uterineCrampMm: { unit: 'mm', mode: 'absolute' },
     mammaryFullnessMm: { unit: 'mm', mode: 'absolute' },
     hedonicCalmMm: { unit: 'mm', mode: 'absolute' },
   });
-  assert.deepEqual(initialState, BASELINE);
+  assert.deepEqual(initialState, {
+    ...BASELINE,
+    oralThirstReliefFraction: null,
+    thirstProjectionAtSimulatedSeconds: null,
+    muscleFatigueAcuteMm: null,
+  });
 });
 
 test('no inputs give the fasting baseline and no thirst or bladder drive', () => {
@@ -181,6 +193,36 @@ test('thirst passes through from the hypothalamic drive and clamps to 0-100 mm',
   assert.equal(round({ thirst: { thirst: -5 } }).thirst, 0);
   assert.equal(round({ thirst: { thirst: 250 } }).thirst, 100);
   assert.equal(round({ thirst: { thirst: 250 } }).discomfort, 100);
+});
+
+test('a stale stomach readout cannot renew oral relief, and relief alone cannot create thirst', () => {
+  const stale = round({
+    snapshotSeconds: 120,
+    stomach: { deliveredWaterMl: 20, lastIntakeAt: 60 },
+    interoception: { oralThirstReliefFraction: 0.5 },
+    thirst: { thirst: 80 },
+  });
+  assertClose(stale.oralThirstReliefFraction, 0.353553390593, 'old signal only decays');
+  assertClose(stale.thirst, 51.7157287525, 'slow drive reduced by residual relief only');
+  const hydrated = round({
+    snapshotSeconds: 60,
+    stomach: { deliveredWaterMl: 10000, lastIntakeAt: 60 },
+    thirst: { thirst: 0 },
+  });
+  assertClose(hydrated.oralThirstReliefFraction, 0.707106781187, 'large sip is bounded and decays');
+  assert.equal(hydrated.thirst, 0);
+});
+
+test('elapsed relief decays before a fresh dose, and a future stamp cannot amplify it', () => {
+  for (const [stamp, expectedRelief] of [[60, 0.441941738242], [240, 0.530330085890]]) {
+    const next = round({
+      snapshotSeconds: 180,
+      simulatedSeconds: 240,
+      stomach: { deliveredWaterMl: 20, lastIntakeAt: 180 },
+      interoception: { oralThirstReliefFraction: 0.5, thirstProjectionAtSimulatedSeconds: stamp },
+    });
+    assertClose(next.oralThirstReliefFraction, expectedRelief, `relief saved at ${stamp}s`);
+  }
 });
 
 test('urinary urgency scales bladder volume against the 410 mL design anchor', () => {
@@ -586,7 +628,7 @@ test('memoryless readouts stay independent of previous interoception while sweat
   assertClose(written.sweatDampMm, expectedSweat, 'sweatDampMm 5-min half-time decay');
   assertClose(written.muscleFatigueMm, expectedFatigue, 'muscleFatigueMm 30-min half-time decay');
   assert.deepEqual(
-    { ...written, sweatDampMm: 0, muscleFatigueMm: 0 },
+    { ...written, sweatDampMm: 0, muscleFatigueMm: 0, muscleFatigueAcuteMm: 0 },
     BASELINE,
   );
 });
@@ -1051,13 +1093,13 @@ test('muscleFatigueMm builds up with exercise, decays with 30-min half-time, and
   assert.deepEqual(fields.muscleFatigueMm, { unit: 'mm', mode: 'absolute' });
   assert.equal(initialState.muscleFatigueMm, 0);
 
-  // Buildup during exercise: 2.1 * intensity * dtMin
+  // Constant load and concurrent recovery: (2.1 × 0.8 / (ln(2)/30)) × (1 − 2^(-10/30)).
   assertClose(
     round({
       physicalActivity: { remainingExerciseMin: 10, intensity: 0.8 },
       dt: 600,
     }).muscleFatigueMm,
-    16.8,
+    15.0004122963,
     '10-min exercise fatigue buildup',
   );
 
@@ -1124,6 +1166,17 @@ test('muscleFatigueMm builds up with exercise, decays with 30-min half-time, and
     }).muscleFatigueMm,
     25,
   );
+});
+
+test('legacy saturation gives a bounded estimate, while a stored zero acute burden is authoritative', () => {
+  const saturated = round({
+    interoception: { muscleFatigueMm: 100 },
+    muscleHead: { glycogenG: 13.5 },
+  });
+  assertClose(saturated.muscleFatigueAcuteMm, 92.8301970013, 'legacy acute estimate');
+  assertClose(saturated.muscleFatigueMm, 97.8301970013, 'readout after one resting round');
+  const restored = round({ interoception: { muscleFatigueMm: 100, muscleFatigueAcuteMm: 0 } });
+  assert.equal(restored.muscleFatigueMm, 0);
 });
 
 test('uterineCrampMm exposes clamped uterus.crampMm and handles missing or invalid values', () => {

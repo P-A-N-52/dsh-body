@@ -8,7 +8,7 @@
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `hydration.ts` | `stomach` | 原胃字段加水与碳水存量/每轮排空量；声明到 `smallIntestine.waterVolumeMl` 和 `smallIntestine.carbohydrateG` 的转移 | 自己的轮初状态 `stomach`；`io.actions` 里的 `drink` / `eat` | `motility.parameters.json` |
+| `hydration.ts` | `stomach` | 原胃字段加水与碳水存量/每轮排空量，以及实际入胃饮水观测 `deliveredWaterMl`；声明到 `smallIntestine.waterVolumeMl` 和 `smallIntestine.carbohydrateG` 的转移 | 自己的轮初状态 `stomach`；`io.actions` 里的 `drink` / `eat` | `motility.parameters.json` |
 | `motility.ts` | `stomach` | 原胃字段（`volumeMl`、`energyKcal`、`solidVolumeMl`、`solidEnergyKcal`、`emptiedMl`、`emptiedKcal`、`lastIntakeAt`、`mealQueue`）；不记水/碳水、不声明 transfer | 自己的轮初状态 `stomach`；`io.actions` 里的 `drink` / `eat` | `motility.parameters.json` |
 | `ghrelin.ts` | `stomachGhrelin` | `relativeConcentration`、`minutesSinceEnergyIntake` | 自己的轮初状态 `stomachGhrelin`；`io.actions` 中经 `motility-core.parseIntake` 校验合法的 `eat` / `drink` | `ghrelin.parameters.json`；import `motility-core.ts` 时同时只读加载 `motility.parameters.json` |
 | `gastric-sensory.ts` | `stomachSensory` | `mechanical` | `stomach.volumeMl` | `gastric-sensory.parameters.json` |
@@ -35,13 +35,14 @@
 | `mealQueue` | `1` | 内部队列，不是读数：多轮摄入在胃内待释放的余量，保留各自的 `mealKind` 与可选的水余量 |
 | `waterVolumeMl` | `mL` | `volumeMl` 中非固餐水分的那一份（状态）；`hydration.ts` 声明到 `smallIntestine.waterVolumeMl` 的 `transferOut`，初值 0 |
 | `emptiedWaterMl` | `mL` | 本轮随非固餐排出转入小肠的水量（每轮通量，不是累计）；只由 `hydration.ts` 写 |
+| `deliveredWaterMl` | `mL` | `hydration.ts` 在本轮实际交付到胃的饮水量（每轮观测，不是库存、转移或累计）；内感受下轮读 |
 | `carbohydrateG` | `g` | 轮末胃内可消化葡萄糖当量碳水总量（状态），含固体小计；`hydration.ts` 声明到 `smallIntestine.carbohydrateG` 的 `transferOut`，初值 0 |
 | `solidCarbohydrateG` | `g` | `carbohydrateG` 中按固餐组排空的小计（状态），不是总量之外的第二份碳水 |
 | `emptiedCarbohydrateG` | `g` | 本轮胃向小肠转出的碳水（每轮通量，不是累计） |
 
 `volumeMl` / `energyKcal` 是轮末总量；`solidVolumeMl` / `solidEnergyKcal` 是总量中固餐那一份的小计，不是加在总量之外的第二份账本，读取总量时不要再把小计加一遍。`emptiedMl` / `emptiedKcal` 每轮按两组排空之和重新计算，不累加；`emptiedMl` 只作观察与重放读数，`emptiedKcal` 由十二指肠的 `nutrient-exposure.ts` 读取。需要累计排出量时由读者按轮求和。小计只在查询完整 `stomach` 原始状态时可见；`brain/interoception.ts` 不直接读这两个通量字段，它经 `stomachSensory.mechanical`（总量体积）与 `duodenum.nutrientExposure`（由 `emptiedKcal` 滤波的代理）间接取得信号，所以体感读数会随分组后的总量与排出量变化，而不是保持不变。`mealQueue` 只用来保留并发摄入的时间分布，不对应任何生理测量；`lastIntakeAt` 的单位是仿真秒，不是现实时间戳。
 
-取舍说明：`mealKind` 只在 `eat` 的 `solid` 上改变排空路径；`drink`、`liquid` 与 `mixed` 仍走原算法，`mixed` 不拆分固液。`lastIntakeAt` 目前没有消费者（`producer only / not consumed`）；`emptiedMl` 只作观察与重放读数，`emptiedKcal` 由十二指肠读取并滤波成营养暴露代理；`brain/interoception.ts` 经胃充盈与十二指肠营养暴露间接取得信号，不直接读通量字段。设计见 [固／液餐小改设计](../../../docs/superpowers/specs/2026-11-21-solid-meal-emptying-design.md)。
+取舍说明：`mealKind` 只在 `eat` 的 `solid` 上改变排空路径；`drink`、`liquid` 与 `mixed` 仍走原算法，`mixed` 不拆分固液。`lastIntakeAt` 供内感受核对饮水观测的轮次；`emptiedMl` 只作观察与重放读数，`emptiedKcal` 由十二指肠读取并滤波成营养暴露代理；`brain/interoception.ts` 间接读取胃充盈与营养暴露，同时直接读取已提交的入胃饮水观测。设计见 [固／液餐小改设计](../../../docs/superpowers/specs/2026-11-21-solid-meal-emptying-design.md)。
 
 ### 水子集（`hydration.ts`，`design`）
 
@@ -50,6 +51,7 @@
 ```text
 emptiedWaterMl = E_nonSolid × (N > 0 ? W / N : 0)
 write.waterVolumeMl = W + D
+write.deliveredWaterMl = D
 transfer stomach → smallIntestine: emptiedWaterMl
 ```
 
@@ -59,6 +61,7 @@ transfer stomach → smallIntestine: emptiedWaterMl
 - 多轮 `drink` 在 `mealQueue` 里保留水余量与每轮水切片；旧切片缺 `remainingWaterMl` / `rateWaterMl` 时按 0，不猜历史饮品。
 - **legacy 往返不保留待释放水**：旧 `motility.ts` 以 `trackWater: false` 推进既有 `mealQueue` 时会剥离切片的 `remainingWaterMl` / `rateWaterMl`，并按历史形状写回不含水字段的胃状态。因此“水链清单 → legacy 清单 → 水链清单”不是待释放水的无损迁移：切回 `hydration.ts` 时队列水按 0 计，不反推。正常旧档（从未运行过水链）升级到水链只补 0，不受这条往返边界影响。
 - 旧存档缺 `waterVolumeMl` 时按 0；旧胃总量、能量与固餐小计不重置。
+- `deliveredWaterMl` 是 `advanceStomach` 已结算的 D，包含当轮实际释放的队列切片及新动作首片；没有新水写 0，旧档缺字段初始为 0，不从胃总量、动作总量或旧队列推测。它不进入水守恒求和，不另做 transfer。`brain/interoception.ts` 在下一轮把它当作吞水的快速解渴代理，只用原有 `lastIntakeAt` 与轮初仿真秒核对新鲜度，避免换清单后重复读取已冻结的观察值。
 - `emptiedWaterMl` 只作胃→小肠的转移量，不是十二指肠或体感的直接输入；`emptiedMl` 仍只作观察与重放读数。
 
 ### 碳水记账（`hydration.ts`，`design`）

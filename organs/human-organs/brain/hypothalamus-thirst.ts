@@ -1,7 +1,8 @@
 /*
  * 部位 `hypothalamusThirst`：下丘脑口渴脚本，把 `bodyFluid` 纯水池的累计失水量转换为等效
- * 高渗（`Posm`）代理并映射到 0–100 mm VAS 口渴评分 `thirst`。
- * 无自身动态，只写自己的部位，不读 ADH 部位，也不产出动作、通知或饮水行为。
+ * 高渗（`Posm`）代理并映射到 0–100 mm VAS 的慢口渴驱动 `thirst`。
+ * 只读轮初水账，不读自身历史、快速口咽信号或 ADH。主观减渴在 `interoception` 独立合成，
+ * 不影响此读数或水账。本部位不产出动作、通知或饮水行为。
  *
  * 来源（笔记路径、原文定位、支撑什么、不能推出什么）
  * - SRC-HUGHES-2018 / hughes-2018：`organs/human-organs/brain/references/notes/hughes-2018.md`，
@@ -10,14 +11,14 @@
  * - SRC-CHEUVRONT-2013 / cheuvront-2013：`organs/human-organs/brain/references/notes/cheuvront-2013.md`，
  *   轻中度热汗失水期（0.5%–2.0% 体重下降）主要通过高渗升高激活口渴。
  * - SRC-FIGARO-1997 / figaro-1997：`organs/human-organs/brain/references/notes/figaro-1997.md`，
- *   吸收前口咽反射可快速缓解主观渴感（本脚本尚未建口咽快缓分支）。
+ *   摘要 Results 的前 5 min 抑制只支持吸收前渴感下降的方向；快路在 `interoception`，不参与本脚本。
  *
  * 简化边界与未建模（design）：
  * - `bodyFluid` 为纯水账本，未单独追踪细胞内外钠离子与溶质；因此将
  *   `lossMl = referenceFluidVolumeMl - waterVolumeMl`（随体重同步 `bodyFluid.referenceVolumeMl`，
  *   缺 `waterVolumeMl` 时按 `waterDeficit × fluidDeficitScaleMl` 回退）经体重缩放的等效渗透容积
  *   `osmoticPoolReferenceMl` 折算为等效 `Posm = Posm0 × V_osm / max(1000, V_osm − lossMl)`。
- *   此代理不建模等渗失水、高渗盐摄入或口咽快速饱渴反射。
+ *   此代理不建模等渗失水、高渗盐摄入，也不会用口咽缓解修正慢驱动。
  */
 import {
   getNumericParameterOverride,

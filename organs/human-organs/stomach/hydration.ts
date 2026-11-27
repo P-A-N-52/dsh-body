@@ -18,7 +18,8 @@
  *   emptiedWaterMl = E_nonSolid × W / N（N = 0 时为 0）。固餐排空不带水，胃总 volumeMl 仍由
  *   核心只扣一次原排空量，waterVolumeMl 是其子集，不能加回总量。
  * - 先 write 后 transfer：write 的是转出前基准 W + D（D 为本轮入胃水），transfer 只转
- *   emptiedWaterMl；Gateway 在轮末一起提交，水不会双扣，D 本轮不再排出。
+ *   emptiedWaterMl；Gateway 在轮末一起提交，水不会双扣，D 本轮不再排出。`deliveredWaterMl`
+ *   原样发布 D（mL/轮），内感受下一轮读取；它不是新库存或转移。
  * - 旧存档缺 waterVolumeMl 按 0，旧 mealQueue 切片缺 remainingWaterMl / rateWaterMl 按 0，
  *   不猜历史饮品；旧胃总量、能量与固餐小计不重置。
  * - 13 min 只是白水排空的工程截距（含能非固餐的半时更长），不是小肠吸收半时；本脚本按水量
@@ -53,6 +54,7 @@ export const initialState = {
   ...stomachInitialState,
   waterVolumeMl: 0,
   emptiedWaterMl: 0,
+  deliveredWaterMl: 0,
   carbohydrateG: 0,
   solidCarbohydrateG: 0,
   emptiedCarbohydrateG: 0,
@@ -62,6 +64,7 @@ export const fields = {
   ...stomachFields,
   waterVolumeMl: { unit: 'mL', mode: 'absolute', transferOut: ['smallIntestine.waterVolumeMl'] },
   emptiedWaterMl: { unit: 'mL', mode: 'absolute' },
+  deliveredWaterMl: { unit: 'mL', mode: 'absolute' },
   carbohydrateG: { unit: 'g', mode: 'absolute', transferOut: ['smallIntestine.carbohydrateG'] },
   solidCarbohydrateG: { unit: 'g', mode: 'absolute' },
   emptiedCarbohydrateG: { unit: 'g', mode: 'absolute' },
@@ -111,6 +114,7 @@ export function heartbeat(io: IO): void {
     ...state,
     waterVolumeMl: waterVolumeMl + deliveredWaterMl,
     emptiedWaterMl,
+    deliveredWaterMl,
     ...carbohydrate,
   });
   if (emptiedWaterMl > 0) {
