@@ -112,6 +112,79 @@ test('--write 按 JSON 实数、单位和状态生成，只修改 README 标记�
   assert.equal(get(readme), updated);
 });
 
+test('首次同步不把 shell 围栏里的 ## 注释当成目录插入点', (t) => {
+  const { get, put, run } = fixture(t);
+  const original = '\n```sh\n## 运行检查\nnode --test test/organs.heart.test.mjs\n```\n\n';
+  const i = manual.indexOf('## 保留小节');
+  const prefix = manual.slice(0, i) + original;
+  const suffix = manual.slice(i);
+  put(readme, prefix + suffix);
+  const result = run('--write');
+  assert.equal(result.status, 0, result.stderr);
+  const updated = get(readme);
+  assert.equal(updated.slice(0, prefix.length + begin.length), prefix + begin);
+  assert.ok(updated.startsWith(`${prefix}${begin}\n## 个体可自定义参数与默认值\n`));
+  assert.ok(updated.endsWith(`${end}\n\n${suffix}`));
+  assert.equal(run('--check').status, 0);
+});
+
+test('Markdown 围栏内的同名标题和示例标记不是生成块边界', (t) => {
+  const { get, put, run } = fixture(t);
+  const prefix = [
+    '# 测试器官', '', '~~~~markdown', begin, '## 个体可自定义参数与默认值',
+    '保留这段手写 Markdown 示例。', '~~~sh', '## 内部示例', '~~~', end, '~~~~~', '', '',
+  ].join('\r\n');
+  const suffix = '## 保留小节\r\n\r\n手写的正文。\r\n';
+  put(readme, prefix + suffix);
+  const result = run('--write');
+  assert.equal(result.status, 0, result.stderr);
+  const updated = get(readme);
+  assert.equal(updated.slice(0, prefix.length + begin.length), prefix + begin);
+  assert.ok(updated.startsWith(`${prefix}${begin}\r\n## 个体可自定义参数与默认值\r\n`));
+  assert.ok(updated.endsWith(`${end}\r\n\r\n${suffix}`));
+
+  const preset = 'organs/presets/demo/README.md';
+  put(preset, prefix + suffix);
+  const check = run('--check');
+  assert.equal(check.status, 0, check.stderr);
+  assert.match(run('--write').stdout, /更新 0 份/);
+  assert.equal(get(readme), updated);
+  assert.equal(get(preset), prefix + suffix);
+});
+
+test('围栏未闭合或处在未解析的列表上下文时，整批拒写', (t) => {
+  const { get, put, run } = fixture(t);
+  const region = `${dir}/regions/README.md`;
+  const cases = [
+    '# 手部\n\n```sh\n## 这仍属于 shell 示例\n',
+    '# 手部\n\n- ```sh\n  ## 列表内的示例\n  ```\n',
+  ];
+  for (const original of cases) {
+    put(region, original);
+    for (const mode of ['--write', '--check']) {
+      const result = run(mode);
+      assert.equal(result.status, 1, result.stderr || result.stdout);
+      assert.match(result.stderr, /regions\/README\.md.*围栏/);
+      assert.equal(get(readme), manual);
+      assert.equal(get(region), original);
+    }
+  }
+});
+
+test('真实起始标记不能与围栏内的结束示例配对', (t) => {
+  const { get, put, run } = fixture(t);
+  const region = `${dir}/regions/README.md`;
+  const original = ['# 手部', '', begin, '```markdown', '保留这段示例。', end, '```', ''].join('\n');
+  put(region, original);
+  for (const mode of ['--write', '--check']) {
+    const result = run(mode);
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    assert.match(result.stderr, /regions\/README\.md.*标记/);
+    assert.equal(get(readme), manual);
+    assert.equal(get(region), original);
+  }
+});
+
 test('共享 core 和无独立参数的可选部位均有本地目录，清单说明不被写入', (t) => {
   const { get, run } = fixture(t);
   const result = run('--write');

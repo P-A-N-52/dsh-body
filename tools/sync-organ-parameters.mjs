@@ -203,7 +203,9 @@ function inventory() {
   }
   for (const path of files.filter((f) => f.endsWith('/README.md') && !readmes.has(dirname(f)))) {
     const text = read(path);
-    if (text.includes(start) || text.includes(end)) throw new Error(`${path}：已无清单入口或参数文件，请人工核对并移除旧标记块。`);
+    if (!text.includes(start) && !text.includes(end)) continue;
+    const visible = maskFencedCode(path, text);
+    if (visible.includes(start) || visible.includes(end)) throw new Error(`${path}：已无清单入口或参数文件，请人工核对并移除旧标记块。`);
   }
   return { readmes, params, ids, active, entries };
 }
@@ -273,25 +275,45 @@ function render(dir, doc, { params, entries, ids }) {
   return [...out, end].join('\n');
 }
 
+function maskFencedCode(path, text) {
+  let opening = '';
+  const visible = text.replace(/^[^\r\n]+/gm, (line) => {
+    const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (opening) {
+      if (match && match[1][0] === opening[0] && match[1].length >= opening.length && /^[ \t]*$/.test(match[2])) opening = '';
+    } else {
+      if (/^(?:[ \t]|>|(?:[-+*]|\d{1,9}[.)])[ \t])+(?:`{3,}|~{3,})/.test(line)) {
+        throw new Error(`${path}：缩进或容器中的代码围栏无法安全判定目录边界；请先手工核对。`);
+      }
+      if (!match || (match[1][0] === '`' && match[2].includes('`'))) return line;
+      opening = match[1];
+    }
+    return ' '.repeat(line.length);
+  });
+  if (opening) throw new Error(`${path}：代码围栏未闭合，无法安全同步目录；请先手工核对。`);
+  return visible;
+}
+
 function replaceBlock(path, text, block) {
   const newline = text.includes('\r\n') ? '\r\n' : '\n';
   block = block.replaceAll('\n', newline);
-  const first = text.indexOf(start);
-  const last = text.indexOf(end);
+  const visible = maskFencedCode(path, text);
+  const first = visible.indexOf(start);
+  const last = visible.indexOf(end);
   const hasMarkers = first !== -1 || last !== -1;
-  if (hasMarkers && (first < 0 || last < first || text.indexOf(start, first + start.length) !== -1 || text.indexOf(end, last + end.length) !== -1
+  if (hasMarkers && (first < 0 || last < first || visible.indexOf(start, first + start.length) !== -1 || visible.indexOf(end, last + end.length) !== -1
     || (first > 0 && text[first - 1] !== '\n') || text[last - 1] !== '\n'
     || !text.startsWith(newline, first + start.length)
     || (last + end.length < text.length && !text.startsWith(newline, last + end.length)))) {
     throw new Error(`${path}：标记块不成对、重复或不在独立行；请先手工核对。`);
   }
-  const before = hasMarkers ? text.slice(0, first) : text;
-  const after = hasMarkers ? text.slice(last + end.length) : '';
+  const before = hasMarkers ? visible.slice(0, first) : visible;
+  const after = hasMarkers ? visible.slice(last + end.length) : '';
   if (sectionHeading.test(before) || sectionHeading.test(after)) {
     throw new Error(`${path}：成对标记之外已有同名节「${sectionTitle}」。请人工核对：只为确认的旧生成块恢复标记并确保仅一份；同名手写节保留正文并改名。`);
   }
-  if (hasMarkers) return before + block + after;
-  const heading = text.search(/^## /m);
+  if (hasMarkers) return text.slice(0, first) + block + text.slice(last + end.length);
+  const heading = visible.search(/^## /m);
   if (heading >= 0) return text.slice(0, heading) + block + newline + newline + text.slice(heading);
   const gap = text.endsWith(newline + newline) ? '' : text.endsWith(newline) ? newline : newline + newline;
   return text + gap + block + newline;
