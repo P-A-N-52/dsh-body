@@ -33,8 +33,8 @@
  * 正常入口声明三个区域；缺区域变体只声明存在的区域，因此份额自动按剩余区域归一（例如
  * 只有头和躯干时约 0.1/0.9）。`transferOut` 只列本变体声明的目标，缺区域不会因未声明的
  * transferOut 目标拒绝启动；同一清单不能同时加载两个聚合器入口（id 相同）。一个区域都
- * 没有时保留 `uptakeG` 作为在途余额，等区域加载后再分配，不凭空丢失质量。最后一笔取剩余
- * 量，保证各笔之和恰为轮初 `uptakeG`，Gateway 转账不会因浮点尾差透支。
+ * 没有时保留 `uptakeG` 作为在途余额。按 Gateway 的完整 transfer 键排序逐笔扣减轮初预算
+ * （正常入口：头颈 → 四肢 → 躯干），末笔支付该顺序下的余额，避免浮点尾差导致透支。
  *
  * 旧档迁移由区域侧完成：旧档只有 `muscleGlucose.glycogenG`（总量）时，各区域在自己的
  * heartbeat 里按存在区域归一后的份额迁移；默认种子状态用迁移份额取代 300 g 的份额初值，
@@ -225,6 +225,13 @@ export function createMuscleGlucose(regionShares: readonly MuscleRegionShare[]) 
     io.write({ uptakeG, uptakeRequestG });
 
     if (totalShare === 0) return;
+
+    // Match the full payment key in gateway/operations.js before forming the remainder.
+    presentRegions.sort((a, b) => {
+      const left = `muscleGlucose.uptakeG->${a.id}.uptakeG`;
+      const right = `muscleGlucose.uptakeG->${b.id}.uptakeG`;
+      return left < right ? -1 : left > right ? 1 : 0;
+    });
 
     let remainingG = uptakeG;
     for (let index = 0; index < presentRegions.length; index++) {

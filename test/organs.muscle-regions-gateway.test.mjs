@@ -94,6 +94,32 @@ function writeNoLimbsManifest(t, dir) {
   return manifestPath;
 }
 
+test('the captured M12 muscle uptake settles without overdrawing the source', async (t) => {
+  const uptakeG = 0.00003279008046144091;
+  const { gateway } = await startBody(t, {
+    parts: {
+      ...seededRegions(0),
+      muscleGlucose: { uptakeG, uptakeRequestG: 0 },
+    },
+  });
+
+  const outcome = await gateway.tick();
+  assert.deepEqual(outcome, { ran: true, failed: false }, gateway.getHealth().heartbeat.lastError ?? undefined);
+  const { simulatedSeconds, parts } = gateway.getState();
+  assert.equal(simulatedSeconds, 60);
+  assert.equal(parts.muscleGlucose.uptakeG, 0);
+  assert.equal(parts.muscleHead.uptakeG, 0.0000016395040230720457);
+  assert.equal(parts.muscleLimbs.uptakeG, 0.000016395040230720456);
+  assert.equal(parts.muscleTrunk.uptakeG, 0.000014755536207648409);
+  assert.equal(regionSum(parts, 'uptakeG'), uptakeG);
+  assert.equal(regionSum(parts, 'glycogenG'), 0, 'regions book the incoming uptake next round');
+
+  await gateway.tick();
+  const booked = gateway.getState().parts;
+  assert.equal(regionSum(booked, 'uptakeG'), 0);
+  assert.equal(regionSum(booked, 'glycogenG'), uptakeG);
+});
+
 test('a carb meal fills the three regions by share and exercise consumes each region', async (t) => {
   const { gateway } = await startBody(t, { parts: seededRegions(10) });
   const queued = gateway.submitAction({
