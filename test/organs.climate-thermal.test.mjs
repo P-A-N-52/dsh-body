@@ -33,7 +33,7 @@ async function start(t, {
   const startupScripts = dir ? [relative(dir, fileURLToPath(new URL('../startup/reset-parts.js', import.meta.url)))] : [];
   const body = await launch(t, {
     dir, startupScripts, modules, statePath, catchUpMinutes, heartbeatIntervalMs: roundMs,
-    seed: statePath ? null : (seed ?? {
+    seed: statePath || seed === null ? null : (seed ?? {
       ...checkpoint({ wallTimeMs: now, parts, profile: { timezoneOffsetMin: 0 } }), parameters,
     }),
     gatewayOptions: { now: () => clock, ...(useRealManifest && { manifestPath: fileURLToPath(manifestUrl) }) },
@@ -84,6 +84,72 @@ function verifyHeatRound(before, after) {
   close(coreOf(after), coreOf(before) + balance.netHeatKcal / balance.heatCapacityKcalPerC, 'temperature integration');
   return balance;
 }
+
+test('legacy catch-up uses compatibility defaults instead of the new body scene preset', async (t) => {
+  const extras = Object.fromEntries(Object.entries({
+    './organs/body-inputs/climate.ts': climate(16, 80),
+    './organs/body-inputs/clothing.ts': { wornLayerIds: ['jacket'] },
+  }).map(([entry, initialState]) => [
+    `real-${engineScripts.indexOf(entry)}.ts`,
+    `export * from '${new URL(entry, manifestUrl)}';\nexport const initialState = ${JSON.stringify(initialState)};`,
+  ]));
+
+  await t.test('no checkpoint keeps both new body presets', async (t) => {
+    const fresh = await start(t, { extras, seed: null });
+    assert.equal(fresh.state().startup.hasSavedState, false);
+    assert.deepEqual(fresh.parts().climate, climate(16, 80));
+    assert.deepEqual(fresh.parts().clothing.wornLayerIds, ['jacket']);
+  });
+
+  for (const fixture of [
+    { name: 'no saved climate or clothing', parts: {}, expected: climate(25, 50), layers: [] },
+    { name: 'air only, with an interrupted batch', parts: { climate: { airTemperatureC: 21 } },
+      expected: climate(21, 50), layers: [], retry: true },
+    { name: 'saved zero humidity and empty layers', parts: { climate: climate(21, 0), clothing: { wornLayerIds: [] } },
+      expected: climate(21, 0), layers: [] },
+    { name: 'saved zero humidity, shirt, and conflicting old temperatures',
+      parts: { climate: { relativeHumidityPct: 0 }, clothing: shirt },
+      parameters: { 'skin.sweat.ambientTemperatureC': 31, 'thermoregulation.ambientTemperatureC': 18 },
+      expected: climate(18, 0), layers: ['tshirt'] },
+  ]) {
+    await t.test(fixture.name, async (t) => {
+      const wallTimeMs = fixedStart - roundMs;
+      const seed = {
+        ...checkpoint({
+          wallTimeMs,
+          simulatedSeconds: 360,
+          parts: fixture.parts,
+          profile: { timezoneOffsetMin: 0 },
+          activeBatch: fixture.retry ? {
+            id: 420, targetSimulatedSeconds: 420, targetWallTimeMs: fixedStart,
+            actionIds: [], attempts: 1, lastError: 'ordinary failure', startedAtWallTimeMs: wallTimeMs,
+          } : null,
+        }),
+        parameters: { ...flatSetpoint, ...fixture.parameters },
+      };
+      const stock = await start(t, { seed, catchUpMinutes: 1 });
+      const preset = await start(t, { extras, seed, catchUpMinutes: 1 });
+      for (const body of [stock, preset]) {
+        assert.equal(body.state().startup.caughtUpSeconds, 60);
+        assert.equal(body.gateway.getState().simulatedSeconds, 420);
+        assert.equal(body.state().activeBatch, null);
+      }
+      const actual = preset.parts();
+      const balance = balanceOf(actual);
+      const stockDryHeatLossKcal = balanceOf(stock.parts()).dryHeatLossKcal;
+      t.diagnostic(JSON.stringify({ climate: actual.climate, layers: actual.clothing.wornLayerIds,
+        dryMultiplier: balance.dryExchangeMultiplier, evaporationMultiplier: balance.evaporationMultiplier,
+        dryHeatLossKcal: balance.dryHeatLossKcal, stockDryHeatLossKcal }));
+      assert.deepEqual(actual.climate, fixture.expected);
+      assert.deepEqual(actual.clothing.wornLayerIds, fixture.layers);
+      assert.equal(balance.airTemperatureC, fixture.expected.airTemperatureC);
+      assert.equal(balance.relativeHumidityPct, fixture.expected.relativeHumidityPct);
+      assert.equal(balance.dryExchangeMultiplier, fixture.layers.length ? 0.85 : 1);
+      assert.equal(balance.evaporationMultiplier, fixture.layers.length ? 0.8 : 1);
+      assert.equal(balance.dryHeatLossKcal, stockDryHeatLossKcal);
+    });
+  }
+});
 
 test('32 °C / 90% RH strictly caps the same paid sweat that fully evaporates at 35% RH', async (t) => {
   const parts = { skin: { sweatRequestMl: 2 }, physicalActivity: { intensity: 0.4, remainingExerciseMin: 6 } };

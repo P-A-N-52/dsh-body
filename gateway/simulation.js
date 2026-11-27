@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { isPlainObject as isRecord } from '../json-safe.js';
-import { legacyAirTemperature } from '../organs/body-inputs/climate-state.js';
+import { defaultClimate, legacyAirTemperature } from '../organs/body-inputs/climate-state.js';
 import { setAction } from './actions.js';
 import { emptyCheckpoint } from './checkpoint.js';
 import { heartbeatSeconds } from './config.js';
@@ -278,12 +278,20 @@ export function createBodySimulation({
       id, withDefaults(initialState, reconciled.snapshot.parts[id], `Body part ${id}`),
     ]));
     let climateTemperatureMigration = null;
-    if (saved !== null
-      && Object.hasOwn(initialParts.climate ?? {}, 'airTemperatureC')
-      && !Object.hasOwn(reconciled.snapshot.parts.climate ?? {}, 'airTemperatureC')) {
-      const { airTemperatureC, conflict } = legacyAirTemperature(reconciled.parameters);
-      loadedParts.climate.airTemperatureC = airTemperatureC;
-      climateTemperatureMigration = conflict;
+    if (saved !== null) {
+      const savedClimate = saved.snapshot.parts.climate ?? {};
+      const savedClothing = saved.snapshot.parts.clothing ?? {};
+      if (Object.hasOwn(initialParts.climate ?? {}, 'airTemperatureC') && !Object.hasOwn(savedClimate, 'airTemperatureC')) {
+        const { airTemperatureC, conflict } = legacyAirTemperature(reconciled.parameters);
+        loadedParts.climate.airTemperatureC = airTemperatureC;
+        climateTemperatureMigration = conflict;
+      }
+      if (registry.get('climate')?.has('relativeHumidityPct') && !Object.hasOwn(savedClimate, 'relativeHumidityPct')) {
+        loadedParts.climate.relativeHumidityPct = defaultClimate.relativeHumidityPct;
+      }
+      if (registry.get('clothing')?.has('wornLayerIds') && !Object.hasOwn(savedClothing, 'wornLayerIds')) {
+        loadedParts.clothing.wornLayerIds = [];
+      }
     }
     const thermo = loadedParts.thermoregulation;
     if (Object.hasOwn(initialParts.thermoregulation ?? {}, 'effectiveSetpointC')) {
