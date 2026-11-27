@@ -13,7 +13,7 @@ import { loadParameters, setWorkerParameterConfig } from '../lib/parameters.js';
 const BASELINE = {
   hunger: 50,
   fullness: 0,
-  thirst: 50,
+  thirst: 0,
   urinaryUrgency: 0,
   discomfort: 0,
   sexualArousalMm: 0,
@@ -131,9 +131,9 @@ test('the thirst fallback is a design parameter and drives the fallback output',
   const entry = parameterFile.parameters.find(
     (parameter) => parameter.id === 'interoception.thirst.fallbackMm',
   );
-  assert.equal(fallback, 50);
+  assert.equal(fallback, 0);
   assert.equal(entry?.status, 'design');
-  assert.equal(entry?.source, null);
+  assert.equal(entry?.source, 'SRC-HUGHES-2018');
   assert.equal(initialState.thirst, fallback);
   assert.equal(round().thirst, fallback);
   assert.equal(round({ thirst: { thirst: Number.NaN } }).thirst, fallback);
@@ -581,9 +581,9 @@ test('memoryless readouts stay independent of previous interoception while sweat
     simulatedSeconds: 60,
     write: (next) => { written = next; },
   });
-  const expectedSweat = 80 * Math.pow(0.5, 1 / 20);
+  const expectedSweat = 80 * Math.pow(0.5, 1 / 5);
   const expectedFatigue = 80 * Math.pow(0.5, 1 / 30);
-  assertClose(written.sweatDampMm, expectedSweat, 'sweatDampMm 20-min half-time decay');
+  assertClose(written.sweatDampMm, expectedSweat, 'sweatDampMm 5-min half-time decay');
   assertClose(written.muscleFatigueMm, expectedFatigue, 'muscleFatigueMm 30-min half-time decay');
   assert.deepEqual(
     { ...written, sweatDampMm: 0, muscleFatigueMm: 0 },
@@ -1006,35 +1006,43 @@ test('palpitationMm suppresses exercise tachycardia while preserving resting tac
   );
 });
 
-test('sweatDampMm builds up from sweat volume and decays with a 20-minute half-time', () => {
+test('sweatDampMm relaxes toward Gagge wettedness equilibrium and decays without overshoot', () => {
   assert.deepEqual(fields.sweatDampMm, { unit: 'mm', mode: 'absolute' });
   assert.equal(initialState.sweatDampMm, 0);
 
-  // Buildup: rate * 4 * dtMin = 4 * sweatVolumeMl
-  assert.equal(round({ skin: { sweatVolumeMl: 5 }, dt: 60 }).sweatDampMm, 20);
-  assert.equal(round({ skin: { sweatVolumeMl: 5 }, dt: 300 }).sweatDampMm, 20);
-  assert.equal(round({ skin: { sweatVolumeMl: 40 }, dt: 60 }).sweatDampMm, 100);
+  // target = 100 * (4.5 / 4.5) = 100, half-time = 5 min -> at 5 min reaches 50
+  assertClose(
+    round({ skin: { sweatVolumeMl: 4.5 * 5 }, dt: 5 * 60 }).sweatDampMm,
+    50,
+    '5-min half-time buildup toward max evap target',
+  );
+  // Small resting sweat (0.74 mL/min -> target 16.44 mm) stays mild, never overshoots to 86 mm
+  let mild = 0;
+  for (let i = 0; i < 30; i += 1) {
+    mild = round({ interoception: { sweatDampMm: mild }, skin: { sweatVolumeMl: 0.74 }, dt: 60 }).sweatDampMm;
+  }
+  assert.ok(mild > 15 && mild < 17, `mild sweat converges near 16.4 mm, got ${mild}`);
 
-  // 20-minute half-time decay with zero new sweat
+  // 5-minute half-time decay with zero new sweat
   assertClose(
     round({
       interoception: { sweatDampMm: 80 },
       skin: { sweatVolumeMl: 0 },
-      dt: 20 * 60,
+      dt: 5 * 60,
     }).sweatDampMm,
     40,
-    '20-min half-time decay',
+    '5-min half-time decay',
   );
 
-  // Combined decay + new sweat
+  // Equilibrium under constant half-capacity sweat rate (2.25 mL/min -> target 50)
   assertClose(
     round({
-      interoception: { sweatDampMm: 40 },
-      skin: { sweatVolumeMl: 5 },
-      dt: 20 * 60,
+      interoception: { sweatDampMm: 50 },
+      skin: { sweatVolumeMl: 2.25 * 5 },
+      dt: 5 * 60,
     }).sweatDampMm,
-    40,
-    '20 + 20 combined',
+    50,
+    'steady equilibrium holds at target 50',
   );
 });
 

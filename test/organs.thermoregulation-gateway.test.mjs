@@ -72,8 +72,8 @@ test('resting body stays at ~37 C without hyperthermia runaway or sweating', asy
   }
   const parts = gateway.getState().parts;
   assert.ok(
-    Math.abs(parts.thermoregulation.coreTemperatureC - 37) < 0.01,
-    `resting core temp should stay near 37 C, got ${parts.thermoregulation.coreTemperatureC}`,
+    Math.abs(parts.thermoregulation.coreTemperatureC - parts.thermoregulation.setpointC) < 0.15,
+    `resting core temp should track setpoint (${parts.thermoregulation.setpointC}), got ${parts.thermoregulation.coreTemperatureC}`,
   );
   assert.equal(parts.skin.sweatRequestMl, 0);
   assert.equal(parts.skin.sweatVolumeMl, 0);
@@ -105,7 +105,10 @@ test('exercise raises core temperature, stabilizes below 39.5 C, and sweating da
       `round ${round}: core temperature must rise`,
     );
   }
-  assert.ok(temperatures[10] > 37.5, 'exercise must warm the core well above the setpoint');
+  assert.ok(
+    temperatures[10] > gateway.getState().parts.thermoregulation.setpointC + 0.5,
+    'exercise must warm the core well above the setpoint',
+  );
   assert.ok(
     sweatRequests[4] > sweatRequests[3],
     `sweat request ${sweatRequests[4]} must exceed ${sweatRequests[3]}`,

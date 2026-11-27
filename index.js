@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { startGateway } from './gateway.js';
+import { createBodyFacade, resolveBodySpecs } from './multibody.js';
 import { createNotificationPump } from './notifications.js';
 import { formatBodyFeelingsContext, registerBodyTools } from './tools.js';
 
@@ -8,6 +9,7 @@ export const name = 'dsh-body';
 export const inject = ['tools', 'agents'];
 
 const notificationIntervalMs = 1000;
+const defaultBootTimeoutMs = 30_000;
 
 function buildBodyCognitionPrompt({ nsfwEnabled = false } = {}) {
   const lines = [
@@ -102,81 +104,194 @@ function resolveBodyHome(ctx) {
   throw new Error('dsh-body requires statePath or either profileContext.home or dshHomePath');
 }
 
+function resolveBootTimeoutMs(value) {
+  if (value === undefined || value === null || value === '') return defaultBootTimeoutMs;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new TypeError('bootTimeoutMs must be a positive integer');
+  }
+  return parsed;
+}
+
+async function awaitBodyReady(entry, timeoutMs) {
+  let timer;
+  try {
+    const info = await Promise.race([
+      Promise.resolve(entry.gateway.ready),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`Body "${entry.id}" boot timed out after ${timeoutMs} ms`));
+        }, timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+    if (!info) {
+      throw new Error(`Body "${entry.id}" stopped before becoming ready`);
+    }
+    return { ok: true, entry, info };
+  } catch (error) {
+    try {
+      await entry.gateway.stop?.();
+    } catch {
+      // 忽略启动失败身体自身的退出清理异常
+    }
+    return { ok: false, entry, error };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function apply(ctx, config = {}) {
-  const { manifestPath, statePath, port, nsfw, translator } = config ?? {};
+  const { manifestPath, statePath, port, nsfw, translator, bootTimeoutMs } = config ?? {};
   const resolvedStatePath = statePath ?? join(resolveBodyHome(ctx), 'dsh-body', 'body-state.json');
   const resolvedPort = port === undefined || port === '' ? undefined : Number(port);
-  const gateway = startGateway({
+  const resolvedBootTimeoutMs = resolveBootTimeoutMs(bootTimeoutMs);
+  const { defaultId, sessions, specs } = resolveBodySpecs({
+    resolvedStatePath,
+    resolvedPort,
     manifestPath,
-    statePath: resolvedStatePath,
-    port: resolvedPort,
-    requireBinding: true,
-    defaultNsfw: Boolean(nsfw),
+    nsfw,
   });
-  ctx.effect(() => gateway.stop);
-  await gateway.ready;
+
+  const startedEntries = [];
+  const startFailures = [];
+  for (const spec of specs) {
+    try {
+      startedEntries.push({
+        id: spec.id,
+        gateway: startGateway({
+          manifestPath: spec.manifestPath,
+          statePath: spec.statePath,
+          port: spec.port,
+          requireBinding: true,
+          defaultNsfw: spec.nsfw,
+        }),
+      });
+    } catch (error) {
+      startFailures.push({ id: spec.id, error });
+      console.warn('[dsh-body] 身体启动失败', spec.id, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (startedEntries.length > 0) {
+    // 必须返回清理函数：Cordis 会在注册 ctx.effect 时同步执行外层回调。
+    ctx.effect(() => () => Promise.allSettled(startedEntries.map((entry) => entry.gateway.stop?.())));
+  }
+
+  const readinessResults = await Promise.all(
+    startedEntries.map((entry) => awaitBodyReady(entry, resolvedBootTimeoutMs)),
+  );
+  const readyEntries = [];
+  for (const result of readinessResults) {
+    if (result.ok) {
+      readyEntries.push(result.entry);
+    } else {
+      startFailures.push({ id: result.entry.id, error: result.error });
+      console.warn(
+        '[dsh-body] 身体就绪失败',
+        result.entry.id,
+        result.error instanceof Error ? result.error.message : String(result.error),
+      );
+    }
+  }
+  if (readyEntries.length === 0) {
+    throw startFailures[0]?.error ?? new Error('No body gateways became ready');
+  }
+
+  const gateway = createBodyFacade({
+    entries: readyEntries,
+    defaultId,
+    sessions,
+  });
 
   const agents = tryGetService(ctx, 'agents');
-  const initialBoundId = gateway.getBoundSessionId?.();
-  if (initialBoundId && typeof agents?.get === 'function' && !agents.get(initialBoundId)) {
-    await gateway.unbindSession();
+  for (const entry of readyEntries) {
+    const initialBoundId = entry.gateway.getBoundSessionId?.();
+    if (initialBoundId && typeof agents?.get === 'function' && !agents.get(initialBoundId)) {
+      await entry.gateway.unbindSession();
+    }
   }
 
   registerBodyTools(ctx, gateway, { translator });
 
-  function isBoundSleepingSession(sessionId) {
-    if (typeof sessionId !== 'string' || !sessionId) return false;
-    const health = gateway.getHealth?.();
-    const boundSessionId = gateway.getBoundSessionId?.() ?? health?.boundSessionId ?? null;
-    if (!health?.active || gateway.isDormant?.() || !boundSessionId || sessionId !== boundSessionId) {
-      return false;
-    }
-    return gateway.getState?.()?.parts?.sleep?.sleeping === true;
+  function findBoundGateway(sessionId) {
+    if (typeof sessionId !== 'string' || !sessionId) return null;
+    return gateway.findBoundGateway?.(sessionId) ?? null;
   }
 
-  let wakeSubmissionInFlight = false;
-  let lastWakeActionId = null;
-  let lastWakeSessionId = null;
-  let lastWakeSimSec = null;
+  function isBoundSleepingSession(sessionId) {
+    const scoped = findBoundGateway(sessionId);
+    if (!scoped) return false;
+    const health = scoped.getHealth?.();
+    const boundSessionId = scoped.getBoundSessionId?.() ?? health?.boundSessionId ?? null;
+    if (!health?.active || scoped.isDormant?.() || !boundSessionId || sessionId !== boundSessionId) {
+      return false;
+    }
+    return scoped.getState?.()?.parts?.sleep?.sleeping === true;
+  }
+
+  const wakeStateByGateway = new WeakMap();
+  function getWakeState(scoped) {
+    let state = wakeStateByGateway.get(scoped);
+    if (!state) {
+      state = { inFlight: false, lastActionId: null, lastSessionId: null, lastSimSec: null };
+      wakeStateByGateway.set(scoped, state);
+    }
+    return state;
+  }
+
   async function wakeBoundSession(sessionId, reason) {
-    if (!isBoundSleepingSession(sessionId) || wakeSubmissionInFlight) return;
-    if (typeof gateway.submitAction !== 'function') return;
-    if (lastWakeActionId && typeof gateway.getAction === 'function') {
-      const existing = gateway.getAction(lastWakeActionId);
+    if (!isBoundSleepingSession(sessionId)) return;
+    const scoped = findBoundGateway(sessionId);
+    if (!scoped || typeof scoped.submitAction !== 'function') return;
+    const state = getWakeState(scoped);
+    if (state.inFlight) return;
+    if (state.lastActionId && typeof scoped.getAction === 'function') {
+      const existing = scoped.getAction(state.lastActionId);
       if (existing?.status === 'queued') return;
     } else {
-      const currentSimSec = gateway.getState?.()?.simulatedSeconds ?? null;
-      if (lastWakeSessionId === sessionId && currentSimSec !== null && currentSimSec === lastWakeSimSec) {
+      const currentSimSec = scoped.getState?.()?.simulatedSeconds ?? null;
+      if (state.lastSessionId === sessionId && currentSimSec !== null && currentSimSec === state.lastSimSec) {
         return;
       }
     }
-    wakeSubmissionInFlight = true;
+    state.inFlight = true;
     try {
       const actionId = randomUUID();
-      const simSec = gateway.getState?.()?.simulatedSeconds ?? null;
-      const receipt = await gateway.submitAction({
+      const simSec = scoped.getState?.()?.simulatedSeconds ?? null;
+      const receipt = await scoped.submitAction({
         id: actionId,
         type: 'wake_up',
         sessionId,
         reason,
       });
       if (receipt?.statusCode === 202 || receipt?.body?.status === 'queued') {
-        lastWakeActionId = actionId;
-        lastWakeSessionId = sessionId;
-        lastWakeSimSec = simSec;
+        state.lastActionId = actionId;
+        state.lastSessionId = sessionId;
+        state.lastSimSec = simSec;
       }
     } finally {
-      wakeSubmissionInFlight = false;
+      state.inFlight = false;
     }
+  }
+
+  const pumps = readyEntries.map((entry) => createNotificationPump({
+    gateway: entry.gateway,
+    agentFor: (sessionId) => agents?.get?.(sessionId),
+  }));
+  async function runAllPumps() {
+    await Promise.allSettled(pumps.map((pump) => pump.run().catch(reportDeliveryError)));
   }
 
   if (typeof ctx.on === 'function') {
     const disposers = [];
     disposers.push(ctx.on('agent/disposed', (event) => {
       const disposedSessionId = extractSessionId(event);
-      const boundSessionId = gateway.getBoundSessionId?.();
-      if (disposedSessionId && boundSessionId && disposedSessionId === boundSessionId) {
-        gateway.unbindSession().catch(reportUnbindError);
+      if (!disposedSessionId) return;
+      for (const entry of readyEntries) {
+        if (entry.gateway.getBoundSessionId?.() === disposedSessionId) {
+          entry.gateway.unbindSession().catch(reportUnbindError);
+        }
       }
     }));
 
@@ -202,9 +317,13 @@ export async function apply(ctx, config = {}) {
     disposers.push(ctx.on('agent/inbox/inserted', (eventOrSession, maybeEvent) => {
       const payload = maybeEvent ?? eventOrSession;
       try {
-        const result = pump.handleInboxInserted?.(payload);
-        if (result && typeof result.then === 'function') {
-          result.catch(reportDeliveryError);
+        for (const pump of pumps) {
+          const result = pump.handleInboxInserted?.(payload);
+          if (result && typeof result.then === 'function') {
+            result.catch(reportDeliveryError);
+          } else if (result?.matched) {
+            break;
+          }
         }
       } catch (error) {
         reportDeliveryError(error);
@@ -232,21 +351,22 @@ export async function apply(ctx, config = {}) {
       order: 120,
       text: (ctxArg) => {
         try {
-          const health = gateway.getHealth?.();
-          const boundSessionId = gateway.getBoundSessionId?.() ?? health?.boundSessionId ?? null;
-          if (!health?.active || gateway.isDormant?.() || !boundSessionId) {
-            return '';
-          }
           const requestSessionId = ctxArg?.agent?.session?.id
             ?? ctxArg?.agent?.id
             ?? ctxArg?.sessionId
             ?? null;
-          if (typeof requestSessionId !== 'string' || requestSessionId !== boundSessionId) {
+          if (typeof requestSessionId !== 'string' || !requestSessionId) {
             return '';
           }
-          const snapshot = gateway.getState();
+          const scoped = findBoundGateway(requestSessionId);
+          const health = scoped?.getHealth?.();
+          const boundSessionId = scoped?.getBoundSessionId?.() ?? health?.boundSessionId ?? null;
+          if (!health?.active || scoped?.isDormant?.() || !boundSessionId || requestSessionId !== boundSessionId) {
+            return '';
+          }
+          const snapshot = scoped.getState();
           const base = formatBodyFeelingsContext(snapshot, {
-            nsfw: Boolean(gateway.getNsfw?.() ?? health?.nsfw),
+            nsfw: Boolean(scoped.getNsfw?.() ?? health?.nsfw),
             dormant: false,
             active: true,
           });
@@ -261,15 +381,11 @@ export async function apply(ctx, config = {}) {
     }));
   }
 
-  const pump = createNotificationPump({
-    gateway,
-    agentFor: (sessionId) => agents?.get?.(sessionId),
-  });
   const timer = setInterval(() => {
-    pump.run().catch(reportDeliveryError);
+    runAllPumps().catch(reportDeliveryError);
   }, notificationIntervalMs);
   timer.unref?.();
   ctx.effect(() => () => clearInterval(timer));
 
-  await pump.run().catch(reportDeliveryError);
+  await runAllPumps();
 }

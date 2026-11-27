@@ -606,3 +606,45 @@ test('body_act returns digit-free tasteFeedback on intake without storing it, dr
   assert.equal(enumTypes.includes('express_milk'), true);
   assert.equal(enumTypes.includes('breastfeed'), true);
 });
+
+test('body_act exposes sex.exertion in translator schema/prompt and supports orgasm.continueStimulation', async (t) => {
+  const calls = [];
+  const llm = {
+    stream(options) {
+      calls.push(options);
+      return toolCallStream({
+        actions: [{ type: 'sex', intensity: 0.35, exertion: 0.05, durationMin: 12 }],
+      }, { callId: 'tc-sex-exertion' });
+    },
+  };
+
+  const { gateway, tools } = await startBodyEnv(t, {
+    manifestPath: join(root, 'body-modules.female.json'),
+    llm,
+    defaultNsfw: true,
+  });
+
+  const translated = await tools.body_act.execute(
+    { type: 'sex', description: '躺着轻柔地自己抚摸十来分钟' },
+    makeAgentExec({ sessionId: 'sex-sess', callId: 'sex-solo' }),
+  );
+  assert.equal(translated.ok, true);
+  assert.equal(translated.statusCode, 202);
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].system.includes('exertion'));
+  assert.ok(Object.hasOwn(calls[0].tools[0].parameters.properties.actions.items.properties, 'exertion'));
+
+  await gateway.tick();
+  const stateAfterSex = gateway.getState().parts;
+  assert.equal(stateAfterSex.sexualResponse.sexIntensity, 0.35);
+  assert.equal(stateAfterSex.physicalActivity.intensity, 0.05);
+
+  const orgasmToolSchema = tools.body_act.parameters;
+  assert.ok(Object.hasOwn(orgasmToolSchema.properties, 'continueStimulation'));
+  const badOrgasm = await tools.body_act.execute(
+    { type: 'orgasm', continueStimulation: 'yes' },
+    makeAgentExec({ sessionId: 'sex-sess', callId: 'bad-orgasm' }),
+  );
+  assert.equal(badOrgasm.ok, false);
+  assert.equal(badOrgasm.statusCode, 400);
+});

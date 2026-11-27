@@ -5,20 +5,47 @@
     {
       "id": "hypothalamusThirst.baselineMm",
       "unit": "mm",
-      "value": 50,
+      "value": 0,
       "status": "design",
       "range": [0, 100],
-      "source": null,
-      "note": "零亏缺时的口渴基线；设计值，不是人体 VAS 测量"
+      "source": "SRC-HUGHES-2018",
+      "note": "正常水合状态（低于渗透压阈值）下的主观口渴基线归零（参考 Hughes 2018 荟萃阈值下界），不再虚高至 50 mm"
     },
     {
-      "id": "hypothalamusThirst.deficitGainMm",
-      "unit": "mm/1",
-      "value": 50,
+      "id": "hypothalamusThirst.referenceOsmolalityMOsmKg",
+      "unit": "mOsm/kg",
+      "value": 285.23,
       "status": "design",
-      "range": [0, 100],
-      "source": null,
-      "note": "waterDeficit 每变化 1 个单位的口渴斜率；设计值"
+      "range": [275, 295],
+      "source": "SRC-HUGHES-2018",
+      "note": "工程假定/占位（锚定于 Hughes 2018 口渴起始渗透压阈值 285.23 mOsm/kg 起点）：bodyFluid 无亏损时保持 0 mm，出现正向失水后平滑单调攀升"
+    },
+    {
+      "id": "hypothalamusThirst.osmolalityThresholdMOsmKg",
+      "unit": "mOsm/kg",
+      "value": 285.23,
+      "status": "prior",
+      "range": [260, 305],
+      "source": "SRC-HUGHES-2018",
+      "note": "Hughes et al. 2018 (PMID: 29344350, n=167) 荟萃成人渗透压口渴触发阈值 285.23 ± 1.29 mOsm/kg"
+    },
+    {
+      "id": "hypothalamusThirst.osmolalitySlopeMmPerMOsmKg",
+      "unit": "mm/(mOsm/kg)",
+      "value": 5.4,
+      "status": "prior",
+      "range": [0, 20],
+      "source": "SRC-HUGHES-2018",
+      "note": "Hughes et al. 2018 (PMID: 29344350, n=167) 越阈后 0–100 mm 等效口渴 VAS 线性斜率 0.54 ± 0.07 cm/(mOsm/kg) = 5.4 mm/(mOsm/kg)"
+    },
+    {
+      "id": "hypothalamusThirst.osmoticPoolReferenceMl",
+      "unit": "mL",
+      "value": 30000,
+      "status": "design",
+      "range": [5000, 80000],
+      "source": "SRC-CHEUVRONT-2013",
+      "note": "工程简化纯水丢失渗透转换容积参考（按体重缩放，锚定于 bodyFluid.referenceVolumeMl=30000 mL @ 75kg）；借以在不改动 bodyFluid 纯水池账本的前提下近似轻中度低渗出汗与纯水丢失引发的等效高渗升高"
     }
   ]
 }

@@ -1144,8 +1144,8 @@ test('missing or non-finite thirst stays below the marked tier without notifying
       simulatedSeconds: 60 + 25 * MINUTE,
     });
     assert.deepEqual(notifications, [], `${label}: must not notify`);
-    assert.deepEqual(written.sessions[sessionId].levels, levels({ thirst: 3 }));
-    assert.equal(written.sessions[sessionId].lastLevel, 1);
+    assert.deepEqual(written.sessions[sessionId].levels, levels({ thirst: 0 }));
+    assert.equal(written.sessions[sessionId].lastLevel, 0);
     assertJsonSafe(written);
   }
 });

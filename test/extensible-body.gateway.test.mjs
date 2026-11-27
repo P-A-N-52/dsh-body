@@ -83,9 +83,14 @@ test('two bodies sharing body-modules.json run independent profile weight scalin
   const lightParts = light.gateway.getState().parts;
   const heavyParts = heavy.gateway.getState().parts;
 
-  // Different body sizes still sit in thermal equilibrium around 37 C and resting ~120/80 BP.
-  assert.ok(Math.abs(lightParts.thermoregulation.coreTemperatureC - 37) < 1e-4);
-  assert.ok(Math.abs(heavyParts.thermoregulation.coreTemperatureC - 37) < 1e-4);
+  // Different body sizes track identical scaled thermal equilibrium near 37 C and resting ~120/80 BP.
+  assert.ok(
+    lightParts.thermoregulation.coreTemperatureC >= 36.5
+    && lightParts.thermoregulation.coreTemperatureC <= 37.5,
+  );
+  assert.ok(
+    Math.abs(lightParts.thermoregulation.coreTemperatureC - heavyParts.thermoregulation.coreTemperatureC) < 1e-9,
+  );
   assert.ok(Math.abs(lightParts.blood.systolicMmHg - 120) < 1.5);
   assert.ok(Math.abs(lightParts.blood.diastolicMmHg - 80) < 1.5);
   assert.ok(Math.abs(heavyParts.blood.systolicMmHg - 120) < 1.5);

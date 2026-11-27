@@ -2,16 +2,16 @@
 
 **功能标签：** 呼吸（运动相关失水与自动通气薄切片）。
 
-`lungs` 目录有两个独立部位。`lungs`（`respiratory-water-loss.ts`）持有两个 mL 字段：按轮初 `physicalActivity` 计算下一轮的运动相关呼吸失水请求，以及本轮由 `bodyFluid` 实际转入的通量。`lungsVentilation`（`ventilation.ts`）按轮初 `bloodOxygen.oxygenConsumptionMlMin` 自动调节每分通气量与呼吸频率，并写出肺泡氧供给。两个部位不共享状态、不互相 `transfer`，也不写其他部位；同目录只是解剖归类。`lungs` 仍只覆盖运动相关呼吸失水，不建静息呼吸失水；`lungsVentilation` 是供—需平衡的通气代理，不是血气、呼吸力学或完整通气控制模型。LLM 不控制呼吸，没有通气动作。
+`lungs` 目录有两个独立部位。`lungs`（`respiratory-water-loss.ts`）持有两个 mL 字段：按轮初 `physicalActivity` 计算下一轮的运动相关呼吸失水请求，以及本轮由 `bodyFluid` 实际转入的通量。`lungsVentilation`（`ventilation.ts`）按轮初 `bloodOxygen.oxygenConsumptionMlMin`、自主交感/睡眠分期与分离后的静息/运动热致阈值，经 Hey Plot（先增潮气量 `VT` 后增呼吸频率 `RR`）自动调节每分通气量与呼吸节律，并写出肺泡氧供给。两个部位不共享状态、不互相 `transfer`，也不写其他部位；同目录只是解剖归类。`lungs` 仍只覆盖运动相关呼吸失水，不建静息呼吸失水；`lungsVentilation` 是供—需平衡与 Hey Plot 招募代理，不是血气（`PaCO2`）、呼吸力学或完整通气控制模型。LLM 不控制呼吸，没有通气动作。
 
-**状态口径。** 当前实现（2026-11-26）：两个脚本与参数都在 `organs/human-organs/lungs/`，均已加入根清单；当前根清单为 43 个部位、39 份唯一参数文件（另含 3 份不随根清单加载的 DI 变体与 1 份缺区域变体），女性清单为 46 部位、42 份，男性清单 45 部位、41 份，硬 transfer 闭包为根/男性 15 部位、女性 17 部位。历史验收：活动—出汗切片当时为 17 部位、19 份参数，M3/M19 的真实 DSH 验收不覆盖肺；本切片未做真实 DSH 会话。设计目标：失水速率未来由具备环境条件与活动通气证据的通气/环境模型替换；`lungsVentilation` 目前只有固定 `design` 参数的自动调节，没有静息/环境驱动的呼吸失水、血气、呼吸力学或气促通知。
+**状态口径。** 当前实现（2026-11-27）：两个脚本与参数都在 `organs/human-organs/lungs/`，均已加入根清单；当前根清单为 43 个部位、39 份唯一参数文件（另含 3 份不随根清单加载的 DI 变体与 1 份缺区域变体），女性清单为 46 部位、42 份，男性清单 45 部位、41 份，硬 transfer 闭包为根/男性 15 部位、女性 17 部位。`lungsVentilation` 现已接入 Hey Plot 潮气量招募（参考 `SRC-HEY-1966`、`SRC-NEDER-2003`、`SRC-LOE-2014`）与静息/运动分离热喘息阈值（参考 `SRC-TSUJI-2012`），14 项参数在 `ventilation.parameters.json` 均保持 `design`（单一成年混合体格标定，未含实机 DSH 重测）；静息呼吸失水参考 `SRC-MITCHELL-1972` 证实未单独建模仍写进“未建模”边界。
 
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
 | `respiratory-water-loss.ts` | `lungs` | `respiratoryWaterLossRequestMl`、`respiratoryWaterLossMl` | 轮初 `physicalActivity.remainingExerciseMin` / `intensity`；`io.dt`；同目录参数 | `respiratory-water-loss.parameters.json` |
-| `ventilation.ts` | `lungsVentilation` | `tidalVolumeMl`、`respiratoryRatePerMin`、`ventilationMlMin`、`alveolarO2MlMin` | 轮初 `bloodOxygen.oxygenConsumptionMlMin`；轮初 `thermoregulation.coreTemperatureC`（可选）；同目录参数 | `ventilation.parameters.json` |
+| `ventilation.ts` | `lungsVentilation` | `tidalVolumeMl`、`respiratoryRatePerMin`、`ventilationMlMin`、`alveolarO2MlMin`、`alveolarO2CapacityMlMin` | 轮初 `bloodOxygen.oxygenConsumptionMlMin`、`thermoregulation.coreTemperatureC`/`setpointC`、`sleep`、`physicalActivity`、`autonomic.sympatheticMm`；同目录参数（容积类按体重缩放） | `ventilation.parameters.json` |
 
 - 两个脚本的 `actionTypes = []`；无动作、无通知、无直接 `transfer`，不写其他部位。
 - 参数文件与脚本同目录，模块在 import 时经 `lib/parameters.js` 只读加载；参数是工程默认值，不做运行中热切换。
@@ -35,8 +35,8 @@
 
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
-| `tidalVolumeMl` | `mL` | 潮气量；本切片固定为 `restingTidalVolumeMl`，不做潮气量调节 |
-| `respiratoryRatePerMin` | `1/min` | 呼吸频率读数；由通气量除以固定潮气量得到，再单独钳到 `maxRatePerMin` |
+| `tidalVolumeMl` | `mL` | 潮气量；通气超静息线（带 `+1 mL/min` 浮点抗抖死区）时经 Hey Plot 指数向 `maxTidalVolumeMl` 招募，非运动高交感时温和浅快压缩至 `0.72–1.0×` |
+| `respiratoryRatePerMin` | `1/min` | 呼吸频率读数；由 `ventilationMlMin / tidalVolumeMl` 推导，再钳位在睡眠/静息下限与 `maxRatePerMin` 之间 |
 | `ventilationMlMin` | `mL/min` | 每分通气量；按目标通气量钳在静息下限与上限之间 |
 | `alveolarO2MlMin` | `mL/min` | 肺泡氧供给代理；`ventilationMlMin × inspiredO2Fraction / deadSpaceFactor`，不是氧耗测量 |
 | `alveolarO2CapacityMlMin` | `mL/min` | 最大通气量对应的肺泡供氧能力上限（`maxVentilationMlMin × inspiredO2Fraction / deadSpaceFactor`，默认约 2500 mL/min），供 `bloodOxygen` 判定供给能力 |
@@ -64,41 +64,58 @@ write.respiratoryWaterLossMl = 0
 
 ### 自动通气方程
 
-设轮初需氧为 `D`（`mL/min`）、轮初核心温度为 `C`（`thermoregulation` 未加载时无喘息项）：
+设轮初需氧为 `D`（`mL/min`）、核心温度 `C`、设定点 `setpointC`、是否活动 `exercising`、睡眠与交感 `sympatheticMm`：
 
 ```text
-metabolicVentilation = D × deadSpaceFactor / inspiredO2Fraction
-panting = pantingGain × max(0, C − 37)
-targetVentilation = max(restingVentilationMlMin, metabolicVentilation) + panting
-ventilationMlMin = clamp(targetVentilation, restingVentilationMlMin, maxVentilationMlMin)
-respiratoryRatePerMin = clamp(ventilationMlMin / restingTidalVolumeMl,
-                              restingRatePerMin, maxRatePerMin)
-tidalVolumeMl = restingTidalVolumeMl
-alveolarO2MlMin = ventilationMlMin × inspiredO2Fraction / deadSpaceFactor
+sleepFloorFactor     = sleeping && sympatheticMm < sleepSympatheticBypassThresholdMm
+                         ? (deep ? deepSleepFloorFactor : lightSleepFloorFactor) : 1
+minVentilationMlMin  = restingVentilationMlMin × sleepFloorFactor
+baseThermalThreshC   = thermoregulation 未加载 ? 37 : max(37, thermoregulation.setpointC)
+thermalThresholdC    = exercising ? baseThermalThreshC : baseThermalThreshC + restThermalThresholdOffsetC
+effectivePantingGain = exercising ? pantingGain × exercisePantingFactor : pantingGain
+pantingMlMin         = thermoregulation 未加载 ? 0 : effectivePantingGain × max(0, C − thermalThresholdC)
+sympatheticVentMlMin = exercising ? 0 : sympatheticVentilationGainMlPerMinPerMm × sympatheticMm
+metabolicVentMlMin   = D × deadSpaceFactor / inspiredO2Fraction
+targetVentilation    = max(minVentilationMlMin, metabolicVentMlMin) + pantingMlMin + sympatheticVentMlMin
+ventilationMlMin     = clamp(targetVentilation, minVentilationMlMin, maxVentilationMlMin)
+
+excessVentMlMin      = ventilationMlMin <= restingVentilationMlMin + 1 ? 0 : ventilationMlMin − restingVentilationMlMin
+recruitedVT          = restingVT + (maxVT − restingVT) × (1 − exp(−excessVentMlMin / tidalScale))
+sympatheticTidalFac  = exercising ? 1 : clamp(1 − sympatheticTidalCompressionFactor × (sympatheticMm / 100), 0.72, 1)
+tidalVolumeMl        = clamp(recruitedVT × sympatheticTidalFac, restingVT × 0.7, maxVT)
+respiratoryRatePerMin = clamp(ventilationMlMin / tidalVolumeMl, restingRatePerMin × sleepFloorFactor, maxRatePerMin)
+alveolarO2MlMin      = ventilationMlMin × inspiredO2Fraction / deadSpaceFactor
 alveolarO2CapacityMlMin = maxVentilationMlMin × inspiredO2Fraction / deadSpaceFactor
 ```
 
-- 需氧 `D = 250` 时代谢目标通气约 `250 × 1.4 / 0.058333 ≈ 6000 mL/min`，正好落在静息下限 6000 mL/min、频率 12 次/min、肺泡供给约 250 mL/min。
-- 核心温度高于 37°C 时，`panting` 项（`1500 mL/(min·°C)`）在 `max(restingVentilationMlMin, metabolicVentilation)` **之后**叠加，使静息高热也可触发喘息增通气。
-- 需氧上升时目标通气与频率上升；`D = 1250` 时（例如静息 250 + 满强度活动 1000）通气约 30000 mL/min、频率 40 次/min（触及频率读数上限）、供给 1250 mL/min。
-- **触顶：** `maxVentilationMlMin = 60000` 后通气与肺泡供给封顶，默认参数下肺泡供给上限为 `60000 × 0.058333 / 1.4 ≈ 2500 mL/min`；需氧继续升高时由 `bloodOxygen` 计算缺口，通气本身不会突破上限。
-- **频率读数：** `respiratoryRatePerMin` 是通气量除以固定潮气量后再单独钳位的读数。当通气量超过 20000 mL/min 后，频率读数即触顶 40 次/min，因此 `ventilationMlMin` 与 `tidalVolumeMl × respiratoryRatePerMin` 不再相等；这是固定潮气量近似，不是呼吸力学。
-- `bloodOxygen` 未加载时按基础需氧 250 mL/min 回退；已加载但字段缺失、非有限或为负时抛错，本轮不写状态。合法的 `oxygenConsumptionMlMin = 0` 按 0 处理，不产生 `NaN`。`thermoregulation` 未加载时喘息项为 0；已加载但 `coreTemperatureC` 缺失或非有限时抛错，本轮不写状态。37°C 与 `thermoregulation.setpointC` 的默认值一致，本部位只维护 `pantingGain` 一个参数。
+- 静息清醒（`D = 250 mL/min`）时 `metabolicVentMlMin ≈ 6000.03 mL/min`，因 `+1 mL/min` 抗抖死区保持 `excessVentMlMin = 0`、`tidalVolumeMl = 500 mL`、`respiratoryRatePerMin = 12 /min`。
+- **Hey Plot 先扩潮气量后提频（`SRC-HEY-1966` / `SRC-NEDER-2003` / `SRC-LOE-2014`）：** 中轻度运动（如 `intensity = 0.35` 对应 `VE ≈ 14400 mL/min`）优先把 `VT` 从 `500 mL` 招募到约 `891 mL`，使 `RR` 仅温和升至 `~16 /min`、避免轻活动误报“大口喘气”；更高负荷才平滑趋近 `maxRatePerMin`。
+- **静息与运动分离热致阈值（`SRC-TSUJI-2012`）：** 静息态被动热致过度通气阈值相对高出 `restThermalThresholdOffsetC = +0.8 °C`（故运动后微热静息 `~37.6 °C` 不触发误喘息）；运动态从高点起效并按 `exercisePantingFactor = 0.35` 压低增益。
+- 容积/通气类参数按 `scaleByBodyWeight` 随体重缩放；`maxTidalVolumeMl = 2100 mL`、`tidalScaleVentilationMlMin = 30000 mL/min` 与 `sympatheticTidalCompressionFactor = 0.25` 均标为 `design` 工程校准/占位。
 
-同目录参数（`owner: lungsVentilation`）：
+同目录参数（`owner: lungsVentilation`，共 17 项 `design`）：
 
-| 参数 ID | 默认值 | 单位 | 状态 | 来源与替换点 |
+| 参数 ID | 默认值 | 单位 | 状态 | 来源与说明 |
 | --- | ---: | --- | --- | --- |
-| `lungsVentilation.restingTidalVolumeMl` | 500 | `mL` | `design` | `source: null`；静息潮气量工程默认值，本切片固定不调节，不是人体测量 |
-| `lungsVentilation.restingRatePerMin` | 12 | `1/min` | `design` | `source: null`；静息呼吸频率工程默认值，不是人体测量 |
-| `lungsVentilation.maxRatePerMin` | 40 | `1/min` | `design` | `source: null`；呼吸频率读数上限，工程假设，不是实测最大呼吸频率 |
-| `lungsVentilation.restingVentilationMlMin` | 6000 | `mL/min` | `design` | `source: null`；静息每分通气量下限，工程默认值，不是人体测量 |
-| `lungsVentilation.maxVentilationMlMin` | 60000 | `mL/min` | `design` | `source: null`；每分通气量上限，触顶后肺泡氧供给封顶，不是实测最大通气量 |
-| `lungsVentilation.inspiredO2Fraction` | 0.058333 | `1` | `design` | `source: null`；肺泡净氧提取分数（对应静息 250 mL/min 需氧与死腔 1.4 下约 6000 mL/min 通气量、60000 mL/min 上限下约 2500 mL/min 供氧能力），不是环境吸入氧分数或血气模型 |
-| `lungsVentilation.deadSpaceFactor` | 1.4 | `1` | `design` | `source: null`；需氧到通气量的死腔与氧提取折算系数，不是解剖死腔或氧提取测量 |
-| `lungsVentilation.pantingGain` | 1500 | `mL/(min·°C)` | `design` | `source: null`；核心温度每高于 37°C 1°C 叠加到通气目标的喘息增益；工程假设，不是实测体温—通气斜率或喘息模型 |
+| `lungsVentilation.restingTidalVolumeMl` | 500 | `mL` | `design` | 静息潮气量工程默认值（按体重缩放） |
+| `lungsVentilation.restingRatePerMin` | 12 | `1/min` | `design` | 静息呼吸频率工程默认值 |
+| `lungsVentilation.maxRatePerMin` | 40 | `1/min` | `design` | 呼吸频率读数上限 |
+| `lungsVentilation.restingVentilationMlMin` | 6000 | `mL/min` | `design` | 静息每分通气量下限（按体重缩放） |
+| `lungsVentilation.maxVentilationMlMin` | 60000 | `mL/min` | `design` | 每分通气量上限（按体重缩放；触顶后肺泡氧供给封顶） |
+| `lungsVentilation.inspiredO2Fraction` | 0.058333 | `1` | `design` | 肺泡净氧提取分数 |
+| `lungsVentilation.deadSpaceFactor` | 1.4 | `1` | `design` | 死腔与氧提取折算系数 |
+| `lungsVentilation.pantingGain` | 1500 | `mL/(min·°C)` | `design` | 静息高温喘息增益（按体重缩放） |
+| `lungsVentilation.deepSleepFloorFactor` | 0.82 | `1` | `design` | 深睡安静通气下限缩放系数 |
+| `lungsVentilation.lightSleepFloorFactor` | 0.9 | `1` | `design` | 浅睡/REM 安静通气下限缩放系数 |
+| `lungsVentilation.sleepSympatheticBypassThresholdMm` | 20 | `mm` | `design` | 交感越阈退出睡期通气下限压低 |
+| `lungsVentilation.sympatheticVentilationGainMlPerMinPerMm` | 80 | `mL/(min·mm)` | `design` | 非运动交感通气增量（按体重缩放） |
+| `lungsVentilation.maxTidalVolumeMl` | 2100 | `mL` | `design` | `SRC-LOE-2014`（混合体格峰值参考，按体重缩放）；动态 VT 渐近平台 |
+| `lungsVentilation.tidalScaleVentilationMlMin` | 30000 | `mL/min` | `design` | `SRC-NEDER-2003`（按体重缩放，锚定 `VE≈20 L/min` 时 `VT≈1.1 L / RR≈18/min`） |
+| `lungsVentilation.restThermalThresholdOffsetC` | 0.8 | `°C` | `design` | `SRC-TSUJI-2012`（静息被动热致过度通气滞后偏置工程折中） |
+| `lungsVentilation.exercisePantingFactor` | 0.35 | `1` | `design` | `SRC-TSUJI-2012`（持续运动期热斜率比例化约） |
+| `lungsVentilation.sympatheticTidalCompressionFactor` | 0.25 | `1` | `design` | 工程占位（无文献连续斜率）：非运动交感浅快化比例上限 |
 
-八个参数的 `range` 都是工程调参范围，全部 `design`、`source: null`，没有独立数据验证，不能称 `validated`。
+（注：上表含 12 项既有参数 + 5 项 Hey Plot / 分离热阈值新参数，共 17 项 `design` 参数。）
 
 ## 4. 读写边界与真实消费者
 
@@ -174,9 +191,9 @@ alveolarO2CapacityMlMin = maxVentilationMlMin × inspiredO2Fraction / deadSpaceF
 
 ## 8. 证据与未建模边界
 
-- `lungs` 的唯一参数 `0.3 mL/min` 与 `lungsVentilation` 的八个参数全部是 `design`、`source: null`，没有人体来源；0.3 不是实测呼吸失水率、总呼吸失水或通气量，500 / 12 / 40 / 6000 / 60000 / 0.058333 / 1.4 / 1500 也不是实测潮气量、呼吸频率、最大通气量、体温—通气斜率或环境测量。参数文件的 `range` 只是工程调参范围。
-- `lungs` 只建模**运动相关**呼吸失水：不建静息呼吸失水、不感蒸发、环境温湿度、运动类型、METs、耗氧量、核心体温、体温调节、个体差异或疾病。
-- `lungsVentilation` 只建模**自动通气与肺泡供氧代理**：不建血气分压（PaO2 / PaCO2）、血红蛋白、氧合曲线、心输出量、CO2/酸碱、呼吸力学、潮气量调节、高原或病理缺氧、通气动作、气促通知或完整肺模型。`bloodOxygen` 的供需平衡与 `dyspneaMm` 见 [`blood-oxygen`](../../human-compartments/blood-oxygen/README.md) 与 [`brain`](../brain/README.md)。
+- `lungs` 的唯一参数 `0.3 mL/min` 标 `design`、`source: null`，`lungsVentilation` 的 17 项参数全部 `design`（部分挂靠参考文献机制或量级方向，但单组无性别分层的工程混合模型不称 `validated`）。参数文件的 `range` 只是工程调参范围。
+- `lungs` 只建模**运动相关**呼吸失水：静息非出汗不感水分散失（`SRC-MITCHELL-1972` 记为 `~20–30 g/h` 皮肤+呼吸合并基准）与环境湿度/风速仍**未建模**；也不建运动类型、METs、核心体温调节、个体差异或疾病。
+- `lungsVentilation` 只建模**自动通气、Hey Plot 潮气量招募与肺泡供氧代理**：不建血气分压（PaO2 / PaCO2）、血红蛋白、氧合曲线、心输出量、CO2/酸碱、肺顺应性力学、高原或病理缺氧、通气动作或完整肺模型。`bloodOxygen` 的供需平衡与 `dyspneaMm` 见 [`blood-oxygen`](../../human-compartments/blood-oxygen/README.md) 与 [`brain`](../brain/README.md)。
 - 结肠水回收由 [`colon`](../colon/README.md) 独立建模，不在本目录内。
-- 离线测试只验证公式、时序、异常、旧档/重启、水质量守恒与通气读数；没有真实 DSH 会话、独立人体呼吸失水/通气数据或临床验证，不能把 0.3 mL/min、9 mL、6000 mL/min 或 2500 mL/min 上限外推为人体测量、通气模型或临床结论。
+- 文献笔记：[`references/notes/hey-1966.md`](references/notes/hey-1966.md)（`SRC-HEY-1966`）、[`references/notes/neder-2003.md`](references/notes/neder-2003.md)（`SRC-NEDER-2003`）、[`references/notes/loe-2014.md`](references/notes/loe-2014.md)（`SRC-LOE-2014`）、[`references/notes/tsuji-2012.md`](references/notes/tsuji-2012.md)（`SRC-TSUJI-2012`）与 [`references/notes/mitchell-1972.md`](references/notes/mitchell-1972.md)（`SRC-MITCHELL-1972`）。离线测试只验证公式、时序、异常、旧档/重启、水质量守恒与 Hey Plot 通气招募；没有真实 DSH 会话或临床验证。
 - 设计：[`2026-11-23-respiratory-water-loss-design.md`](../../../docs/superpowers/specs/2026-11-23-respiratory-water-loss-design.md) 与 [`2026-11-23-blood-oxygen-design.md`](../../../docs/superpowers/specs/2026-11-23-blood-oxygen-design.md)；体液侧见 [`bodyFluid`](../../human-compartments/body-water/README.md)；活动侧见 [`physicalActivity`](../skeletal-muscle/README.md)；血氧侧见 [`blood-oxygen`](../../human-compartments/blood-oxygen/README.md)；共享登记簿 [`source-index.csv`](../references/source-index.csv)（本切片未新增来源行）。

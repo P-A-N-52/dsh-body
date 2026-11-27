@@ -80,6 +80,7 @@ type SessionState = {
   urgentBackoffStep: number;
   lastInvoluntaryVoidedMl: number;
   lastOrgasmAtSimMin?: number | null;
+  lastAttemptedOrgasmAtSimMin?: number | null;
   lastLevel: Level;
   lastKind: CoreKind | null;
   lastSeenAt: number;
@@ -166,6 +167,8 @@ type MammaryGlandsReading = {
 type SexualResponseReading = {
   phase?: unknown;
   lastOrgasmAtSimMin?: unknown;
+  lastAttemptedOrgasmAtSimMin?: unknown;
+  lastOrgasmBlockReason?: unknown;
 };
 
 type Action = {
@@ -221,7 +224,7 @@ const MAX_SLEEP_BACKLOG_ENTRIES = 24;
 const HUNGER_FALLBACK = 50;
 const FULLNESS_FALLBACK = 0;
 const URINARY_FALLBACK = 0;
-const THIRST_FALLBACK = 50;
+const THIRST_FALLBACK = 0;
 
 const CORE_ORDER: readonly CoreKind[] = ['urinary', 'thirst', 'fullness', 'hunger'];
 
@@ -407,6 +410,7 @@ const SIGNAL_PRIORITY: Readonly<Record<string, number>> = {
   sleepiness: 16,
   mammaryFullness: 17,
   sexualOrgasm: 17.5,
+  sexualOrgasmBlocked: 17.8,
   sexualArousal: 18,
   libido: 19,
 };
@@ -594,6 +598,7 @@ function normalizeSession(raw: Readonly<StoredSessionState> | undefined, now: nu
   const sensationLevels = normalizeWatermarkMap(raw?.sensationLevels);
   const sleepBacklog = normalizeSleepBacklog(raw?.sleepBacklog);
   const lastOrgasmAtSimMin = finiteOrNull(raw?.lastOrgasmAtSimMin);
+  const lastAttemptedOrgasmAtSimMin = finiteOrNull(raw?.lastAttemptedOrgasmAtSimMin);
   return {
     lastSentAt: finiteOrNull(raw?.lastSentAt),
     backoffStep: stepOrZero(raw?.backoffStep),
@@ -601,6 +606,7 @@ function normalizeSession(raw: Readonly<StoredSessionState> | undefined, now: nu
     urgentBackoffStep: stepOrZero(raw?.urgentBackoffStep),
     lastInvoluntaryVoidedMl: nonNegativeOrZero(raw?.lastInvoluntaryVoidedMl),
     ...(lastOrgasmAtSimMin !== null ? { lastOrgasmAtSimMin } : {}),
+    ...(lastAttemptedOrgasmAtSimMin !== null ? { lastAttemptedOrgasmAtSimMin } : {}),
     lastLevel: normalizedLevel,
     lastKind,
     lastSeenAt: finiteOr(raw?.lastSeenAt, now),
@@ -1183,12 +1189,17 @@ function applyCandidateWatermark(
   },
   involuntaryVoidedMl: number,
   curLastOrgasmAtSimMin: number | null,
+  curLastAttemptedAtSimMin: number | null = null,
 ): void {
   if (candidate.id === 'involuntaryVoid') {
     session.lastInvoluntaryVoidedMl = involuntaryVoidedMl;
   } else if (candidate.id === 'sexualOrgasm') {
     if (curLastOrgasmAtSimMin !== null) {
       session.lastOrgasmAtSimMin = curLastOrgasmAtSimMin;
+    }
+  } else if (candidate.id === 'sexualOrgasmBlocked') {
+    if (curLastAttemptedAtSimMin !== null) {
+      session.lastAttemptedOrgasmAtSimMin = curLastAttemptedAtSimMin;
     }
   } else if (candidate.coreKind !== undefined) {
     session.levels[candidate.coreKind] = candidate.level;
@@ -1354,6 +1365,44 @@ export function heartbeat(io: IO): void {
     && curLastOrgasmAtSimMin !== null
     && curLastOrgasmAtSimMin !== (session.lastOrgasmAtSimMin ?? null);
 
+  if (orgasmEventTriggered && actionTypesInRound.has('orgasm')) {
+    const hadPostActivitySensation = (prevSensations.sexualArousal ?? 0) > 0
+      || (prevSensations.sweatDamp ?? 0) > 0
+      || (prevSensations.palpitation ?? 0) > 0
+      || (prevSensations.dyspnea ?? 0) > 0;
+    if (hadPostActivitySensation) {
+      resetNormalBackoff(session);
+      if (
+        (prevSensations.sexualArousal ?? 0) >= wakeAtLevel
+        || (prevSensations.sweatDamp ?? 0) >= wakeAtLevel
+        || (prevSensations.palpitation ?? 0) >= wakeAtLevel
+        || (prevSensations.dyspnea ?? 0) >= wakeAtLevel
+      ) {
+        resetUrgentBackoff(session);
+      }
+    }
+  }
+
+  const curLastAttemptedAt = nsfwEnabled
+    ? finiteOrNull(sexualResponse?.lastAttemptedOrgasmAtSimMin)
+    : null;
+  if (
+    curLastAttemptedAt !== null
+    && (now / 60) - curLastAttemptedAt > 5
+    && session.lastAttemptedOrgasmAtSimMin !== curLastAttemptedAt
+  ) {
+    session.lastAttemptedOrgasmAtSimMin = curLastAttemptedAt;
+  }
+  const curBlockReason = sexualResponse?.lastOrgasmBlockReason;
+  const blockedOrgasmReason: 'below_threshold' | 'refractory' | null = nsfwEnabled
+    && !stillSleeping
+    && curLastAttemptedAt !== null
+    && curLastAttemptedAt !== (session.lastAttemptedOrgasmAtSimMin ?? null)
+    && (curLastOrgasmAtSimMin === null || curLastAttemptedAt > curLastOrgasmAtSimMin)
+    && (curBlockReason === 'below_threshold' || curBlockReason === 'refractory')
+    ? curBlockReason
+    : null;
+
   const candidates = buildCandidates(
     session,
     nextSensationLevels,
@@ -1364,6 +1413,22 @@ export function heartbeat(io: IO): void {
     sexualOrgasmPhase,
     orgasmEventTriggered,
   );
+  if (blockedOrgasmReason !== null) {
+    candidates.push({
+      id: 'sexualOrgasmBlocked',
+      source: 'expanded',
+      level: 2,
+      rawMm: 50,
+      isCrisis: false,
+      isUrgent: false,
+      tier: 'normal',
+      order: SIGNAL_PRIORITY.sexualOrgasmBlocked,
+      clause: blockedOrgasmReason === 'refractory'
+        ? '刚才尝试再次推进高潮，但身体仍处在不应余缓期，没能跨过去'
+        : '刚才试着推向高潮，但当前唤起蓄积还不够深，没能跨过释放门槛',
+      resolvedClause: '刚才试图高潮未果，情绪与唤起已渐平复',
+    });
+  }
 
   const backlog: Record<string, SleepBacklogEntry> = { ...(session.sleepBacklog ?? {}) };
   const observedLevelById = new Map<string, Level>();
@@ -1542,6 +1607,7 @@ export function heartbeat(io: IO): void {
           candidate,
           involuntaryVoidedMl,
           curLastOrgasmAtSimMin,
+          curLastAttemptedAt,
         );
       }
       session.lastLevel = maxSentLevel;
@@ -1594,6 +1660,7 @@ export function heartbeat(io: IO): void {
             candidate,
             involuntaryVoidedMl,
             curLastOrgasmAtSimMin,
+            curLastAttemptedAt,
           );
         }
         for (const key of Object.keys(backlog)) delete backlog[key];
@@ -1607,6 +1674,7 @@ export function heartbeat(io: IO): void {
             candidate,
             involuntaryVoidedMl,
             curLastOrgasmAtSimMin,
+            curLastAttemptedAt,
           );
         }
       }
@@ -1620,6 +1688,24 @@ export function heartbeat(io: IO): void {
         maxBackoffStep(baseIntervalMin, maxIntervalMin),
         session.backoffStep + 1,
       );
+    } else if (blockedOrgasmReason !== null && curLastAttemptedAt !== null) {
+      const blockedCandidate = normalCandidates.find((c) => c.id === 'sexualOrgasmBlocked');
+      if (blockedCandidate) {
+        io.notify({
+          mode: 'context',
+          sessionId,
+          text: formatNotificationText([blockedCandidate], 'context'),
+        });
+        applyCandidateWatermark(
+          session,
+          nextSensationLevels,
+          blockedCandidate,
+          involuntaryVoidedMl,
+          curLastOrgasmAtSimMin,
+          curLastAttemptedAt,
+        );
+        sent = true;
+      }
     }
   }
 

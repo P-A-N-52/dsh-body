@@ -91,6 +91,24 @@
       "range": [0, 1],
       "source": null,
       "note": "睡眠状态期间核心体温调定点下调幅度；工程假设，design，不是人体测量"
+    },
+    {
+      "id": "thermoregulation.vasodilationGain",
+      "unit": "kcal/(min·°C)",
+      "value": 0.5,
+      "status": "design",
+      "range": [0, 3],
+      "source": "SRC-KRAUCHI-1994",
+      "note": "工程假定/占位（机制源自 SRC-KRAUCHI-1994 / SRC-WENGER-1976；量级受 25°C 干散热体表升温上限约束并使恢复半衰期 ~68 min 接近 Vargas 2020）：核心温度高于动态调定点时开放外周远端血管舒张的额外散热斜率（按体重缩放）"
+    },
+    {
+      "id": "thermoregulation.maxVasodilationKcalMin",
+      "unit": "kcal/min",
+      "value": 0.55,
+      "status": "design",
+      "range": [0, 2],
+      "source": "SRC-CRAMER-2019",
+      "note": "工程假定/占位（参照 de Dear 1997 静风干传热 ~7.9 W/(m²·°C) 在 1.85 m² 体表温升 +2–3°C 对应约 +30–40 W ≈ 0.43–0.55 kcal/min 物理上限）：外周血管舒张最大额外干散热上限（按体重缩放）"
     }
   ]
 }

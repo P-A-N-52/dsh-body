@@ -64,6 +64,8 @@ test('sexualResponse exports the organ module contract', () => {
     sexIntensity: { unit: '1', mode: 'absolute' },
     lastOrgasmAtSimMin: { unit: 'min', mode: 'absolute' },
     afterglowMm: { unit: 'mm', mode: 'absolute' },
+    lastAttemptedOrgasmAtSimMin: { unit: 'min', mode: 'absolute' },
+    lastOrgasmBlockReason: { unit: '-', mode: 'absolute' },
   });
   assert.deepEqual(initialState, {
     arousalMm: 0,
@@ -72,6 +74,8 @@ test('sexualResponse exports the organ module contract', () => {
     sexIntensity: 0,
     lastOrgasmAtSimMin: null,
     afterglowMm: 0,
+    lastAttemptedOrgasmAtSimMin: null,
+    lastOrgasmBlockReason: 'none',
   });
 
   const { written, writes } = round();
@@ -79,7 +83,7 @@ test('sexualResponse exports the organ module contract', () => {
   assert.deepEqual(written, initialState);
 });
 
-test('the eight response parameters are design defaults with no source', () => {
+test('the response parameters are design defaults with no source', () => {
   assert.equal(parameterFile.schemaVersion, 1);
   assert.equal(parameterFile.owner, 'sexualResponse');
 
@@ -92,6 +96,8 @@ test('the eight response parameters are design defaults with no source', () => {
     'sexualResponse.refractoryMin': { unit: 'min', value: 20 },
     'sexualResponse.femalePostOrgasmPauseMin': { unit: 'min', value: 2 },
     'sexualResponse.afterglowHalfTimeMin': { unit: 'min', value: 22 },
+    'sexualResponse.stimulusHalfSaturation': { unit: '1', value: 0.022 },
+    'sexualResponse.stimulusFloorWeight': { unit: '1', value: 0.77 },
   };
   const byId = Object.fromEntries(
     parameterFile.parameters.map((parameter) => [parameter.id, parameter]),
@@ -115,6 +121,8 @@ test('the eight response parameters are design defaults with no source', () => {
     'sexualResponse.refractoryMin': 20,
     'sexualResponse.femalePostOrgasmPauseMin': 2,
     'sexualResponse.afterglowHalfTimeMin': 22,
+    'sexualResponse.stimulusHalfSaturation': 0.022,
+    'sexualResponse.stimulusFloorWeight': 0.77,
   });
 });
 
@@ -125,15 +133,16 @@ test('a valid sex action replaces the remaining minutes and raises arousal into 
   assert.equal(written.sexIntensity, 0.8);
   assert.equal(written.phase, 'excitement');
   assert.equal(written.lastOrgasmAtSimMin, null);
-  // 目标 100 × 0.8 = 80 mm，唤醒半时 5 min，轮末 1 min。
-  assertClose(written.arousalMm, 80 * (1 - 2 ** (-1 / 5)), 'first minute');
+  const expectedTarget08 = 100 * (0.77 + 0.23 * 0.8) * ((1.022 * 0.8) / 0.822);
+  const speed08 = 0.95 + 0.05 * 0.8;
+  assertClose(written.arousalMm, expectedTarget08 * (1 - 2 ** (-speed08 / 5)), 'first minute');
   assert.ok(written.arousalMm > 0);
 
   let state = written;
   for (let minute = 2; minute <= 6; minute++) {
     const next = round({ state, simulatedSeconds: minute * 60 }).written;
     assert.ok(next.arousalMm > state.arousalMm, `minute ${minute}: arousal rises`);
-    assert.ok(next.arousalMm < 80, `minute ${minute}: arousal stays below target`);
+    assert.ok(next.arousalMm < expectedTarget08, `minute ${minute}: arousal stays below target`);
     assert.equal(next.remainingSexMin, 31 - minute, `minute ${minute}: remaining`);
     state = next;
   }
@@ -142,14 +151,15 @@ test('a valid sex action replaces the remaining minutes and raises arousal into 
 test('round-start testosterone scales the arousal target with clamped [0, 100] and neutral fallback', () => {
   const action = [sex(0.8, 30)];
   const withoutTestes = round({ actions: action }).written;
+  const expectedTarget08 = 100 * (0.77 + 0.23 * 0.8) * ((1.022 * 0.8) / 0.822);
+  const speed08 = 0.95 + 0.05 * 0.8;
 
   const atOne = round({ actions: action, testes: { testosteroneRelative: 1 } }).written;
   assert.deepEqual(atOne, withoutTestes);
-  assertClose(atOne.arousalMm, 80 * (1 - 2 ** (-1 / 5)), 'testosterone 1 target 80');
+  assertClose(atOne.arousalMm, expectedTarget08 * (1 - 2 ** (-speed08 / 5)), 'testosterone 1 target');
 
   const atTwo = round({ actions: action, testes: { testosteroneRelative: 2 } }).written;
-  // 目标 clamp(100 × 0.8 × 1.5, 0, 100) = 100 mm，唤醒半时 5 / 1.5 min，轮末 1 min。
-  assertClose(atTwo.arousalMm, 100 * (1 - 2 ** (-1.5 / 5)), 'testosterone 2 clamped target 100');
+  assertClose(atTwo.arousalMm, 100 * (1 - 2 ** (-(1.5 * speed08) / 5)), 'testosterone 2 clamped target 100');
   assert.ok(atTwo.arousalMm > withoutTestes.arousalMm, 'higher testosterone raises arousal');
 
   const maxIntensityHighT = round({ actions: [sex(1, 30)], testes: { testosteroneRelative: 2 } }).written;
@@ -158,7 +168,11 @@ test('round-start testosterone scales the arousal target with clamped [0, 100] a
   assert.ok(maxIntensityHighT.arousalMm <= 100, 'arousal stays within [0, 100]');
 
   const negativeT = round({ actions: action, testes: { testosteroneRelative: -5 } }).written;
-  assertClose(negativeT.arousalMm, 40 * (1 - 2 ** (-1 / 5)), 'negative testosterone clamped to 0');
+  assertClose(
+    negativeT.arousalMm,
+    0.5 * expectedTarget08 * (1 - 2 ** (-speed08 / 5)),
+    'negative testosterone clamped to 0',
+  );
 
   for (const testes of [
     undefined,
@@ -265,7 +279,7 @@ test('voluntary release is judged on round-start arousal, not the end-of-round v
   assert.equal(atThreshold.phase, 'orgasm');
 });
 
-test('an orgasm action below orgasmAllowedMm is ignored and changes nothing', () => {
+test('an orgasm action below orgasmAllowedMm records blocked attempt without releasing', () => {
   const state = {
     arousalMm: 60,
     phase: 'plateau',
@@ -273,15 +287,15 @@ test('an orgasm action below orgasmAllowedMm is ignored and changes nothing', ()
     sexIntensity: 0,
     lastOrgasmAtSimMin: null,
   };
-  const baseline = round({ state, simulatedSeconds: 60 }).written;
   const ignored = round({
     state,
     actions: [{ type: 'orgasm', intensity: 99, durationMin: 99 }],
     simulatedSeconds: 60,
   }).written;
 
-  assert.deepEqual(ignored, baseline);
   assert.equal(ignored.lastOrgasmAtSimMin, null);
+  assert.equal(ignored.lastAttemptedOrgasmAtSimMin, 1);
+  assert.equal(ignored.lastOrgasmBlockReason, 'below_threshold');
   assert.equal(ignored.phase, 'resolution');
   assertClose(ignored.arousalMm, 60 * 2 ** (-1 / 15), 'one minute of resolution');
 });
@@ -441,7 +455,6 @@ test('invalid sex actions are ignored and leave the state evolution unchanged', 
     ['positive infinite duration', sex(0.8, Number.POSITIVE_INFINITY)],
     ['string duration', sex(0.8, '30')],
     ['missing fields', { type: 'sex' }],
-    ['orgasm below threshold', { type: 'orgasm' }],
   ];
 
   for (const [label, action] of invalid) {
@@ -449,6 +462,13 @@ test('invalid sex actions are ignored and leave the state evolution unchanged', 
     assert.equal(writes.length, 1, label);
     assert.deepEqual(written, baseline, label);
   }
+
+  const blockedOrgasm = round({ state, actions: [{ type: 'orgasm' }], simulatedSeconds: 120 }).written;
+  assert.equal(blockedOrgasm.arousalMm, baseline.arousalMm);
+  assert.equal(blockedOrgasm.remainingSexMin, baseline.remainingSexMin);
+  assert.equal(blockedOrgasm.lastOrgasmAtSimMin, null);
+  assert.equal(blockedOrgasm.lastAttemptedOrgasmAtSimMin, 2);
+  assert.equal(blockedOrgasm.lastOrgasmBlockReason, 'below_threshold');
 
   const nonSex = round({
     state,

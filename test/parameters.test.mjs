@@ -279,6 +279,8 @@ test('heart, blood and thermoregulation parameters are design defaults with no s
       'thermoregulation.circadianAmplitudeC': [0.25, '°C'],
       'thermoregulation.circadianPeakHour': [17, 'h'],
       'thermoregulation.sleepSetpointOffsetC': [0.2, '°C'],
+      'thermoregulation.vasodilationGain': [0.5, 'kcal/(min·°C)'],
+      'thermoregulation.maxVasodilationKcalMin': [0.55, 'kcal/min'],
     },
   };
 
@@ -295,6 +297,10 @@ test('heart, blood and thermoregulation parameters are design defaults with no s
       assert.equal(parameter.status, 'design', `${parameterId}: status`);
       if (parameterId.startsWith('heart.')) {
         assert.ok(parameter.source === null || parameter.source === 'SRC-SOMERS-1993', `${parameterId}: source`);
+      } else if (parameterId === 'thermoregulation.vasodilationGain') {
+        assert.equal(parameter.source, 'SRC-KRAUCHI-1994', `${parameterId}: source`);
+      } else if (parameterId === 'thermoregulation.maxVasodilationKcalMin') {
+        assert.equal(parameter.source, 'SRC-CRAMER-2019', `${parameterId}: source`);
       } else {
         assert.equal(parameter.source, null, `${parameterId}: source`);
       }
@@ -391,6 +397,7 @@ test('endocrine and reward parameters keep expected values, units, statuses and 
     'pituitary.prolactinBasalNgMl',
     'pituitary.prolactinCircadianAmplitudeNgMl',
     'pituitary.prolactinOrgasmBoostNgMl',
+    'pituitary.prolactinHalfTimeMin',
     'pituitary.oxytocinBasalPgMl',
     'pituitary.oxytocinSucklingBoostPgMl',
     'pituitary.oxytocinOrgasmBoostPgMl',
@@ -442,6 +449,8 @@ test('sexualResponse keeps eight design defaults for arousal, pause, afterglow a
     'sexualResponse.orgasmForcedMm',
     'sexualResponse.refractoryMin',
     'sexualResponse.resolutionHalfTimeMin',
+    'sexualResponse.stimulusFloorWeight',
+    'sexualResponse.stimulusHalfSaturation',
   ]);
 
   const expected = {
@@ -453,6 +462,8 @@ test('sexualResponse keeps eight design defaults for arousal, pause, afterglow a
     'sexualResponse.refractoryMin': 20,
     'sexualResponse.femalePostOrgasmPauseMin': 2,
     'sexualResponse.afterglowHalfTimeMin': 22,
+    'sexualResponse.stimulusHalfSaturation': 0.022,
+    'sexualResponse.stimulusFloorWeight': 0.77,
   };
   for (const [parameterId, value] of Object.entries(expected)) {
     assert.equal(byId[parameterId].value, value, `${parameterId}: value`);
@@ -540,6 +551,8 @@ test('skin sweat parameters keep the design defaults and units', () => {
   const byId = Object.fromEntries(data.parameters.map((parameter) => [parameter.id, parameter]));
   assert.deepEqual(Object.keys(byId).sort(), [
     'skin.heatGain',
+    'skin.interthresholdOffsetC',
+    'skin.nocturnalDeadbandOffsetC',
     'skin.sweat.ambientGainPerC',
     'skin.sweat.ambientTemperatureC',
     'skin.sweat.maxRateMlPerMin',
@@ -547,6 +560,10 @@ test('skin sweat parameters keep the design defaults and units', () => {
   ]);
   assert.equal(byId['skin.heatGain'].value, 5);
   assert.equal(byId['skin.heatGain'].unit, 'mL/(min·°C)');
+  assert.equal(byId['skin.interthresholdOffsetC'].value, 0.25);
+  assert.equal(byId['skin.interthresholdOffsetC'].unit, '°C');
+  assert.equal(byId['skin.nocturnalDeadbandOffsetC'].value, 0.45);
+  assert.equal(byId['skin.nocturnalDeadbandOffsetC'].unit, '°C');
   assert.equal(byId['skin.sweat.ambientTemperatureC'].value, 25);
   assert.equal(byId['skin.sweat.ambientTemperatureC'].unit, '°C');
   assert.equal(byId['skin.sweat.referenceRateMlPerMin'].value, 0.6);
@@ -557,7 +574,12 @@ test('skin sweat parameters keep the design defaults and units', () => {
   assert.equal(byId['skin.sweat.maxRateMlPerMin'].unit, 'mL/min');
   for (const parameter of data.parameters) {
     assert.equal(parameter.status, 'design', `${parameter.id}: status`);
-    assert.equal(parameter.source, null, `${parameter.id}: source`);
+    const expectedSource = (
+      parameter.id === 'skin.interthresholdOffsetC' || parameter.id === 'skin.nocturnalDeadbandOffsetC'
+    )
+      ? 'SRC-WENGER-1976'
+      : null;
+    assert.equal(parameter.source, expectedSource, `${parameter.id}: source`);
   }
 });
 
@@ -613,16 +635,21 @@ test('blood oxygen and lung ventilation parameters keep the design defaults', ()
   assert.deepEqual(Object.keys(ventilationById).sort(), [
     'lungsVentilation.deadSpaceFactor',
     'lungsVentilation.deepSleepFloorFactor',
+    'lungsVentilation.exercisePantingFactor',
     'lungsVentilation.inspiredO2Fraction',
     'lungsVentilation.lightSleepFloorFactor',
     'lungsVentilation.maxRatePerMin',
+    'lungsVentilation.maxTidalVolumeMl',
     'lungsVentilation.maxVentilationMlMin',
     'lungsVentilation.pantingGain',
+    'lungsVentilation.restThermalThresholdOffsetC',
     'lungsVentilation.restingRatePerMin',
     'lungsVentilation.restingTidalVolumeMl',
     'lungsVentilation.restingVentilationMlMin',
     'lungsVentilation.sleepSympatheticBypassThresholdMm',
+    'lungsVentilation.sympatheticTidalCompressionFactor',
     'lungsVentilation.sympatheticVentilationGainMlPerMinPerMm',
+    'lungsVentilation.tidalScaleVentilationMlMin',
   ]);
   for (const [parameterId, value, unit] of [
     ['lungsVentilation.restingTidalVolumeMl', 500, 'mL'],
@@ -637,12 +664,23 @@ test('blood oxygen and lung ventilation parameters keep the design defaults', ()
     ['lungsVentilation.lightSleepFloorFactor', 0.9, '1'],
     ['lungsVentilation.sleepSympatheticBypassThresholdMm', 20, 'mm'],
     ['lungsVentilation.sympatheticVentilationGainMlPerMinPerMm', 80, 'mL/(min·mm)'],
+    ['lungsVentilation.maxTidalVolumeMl', 2100, 'mL'],
+    ['lungsVentilation.tidalScaleVentilationMlMin', 30000, 'mL/min'],
+    ['lungsVentilation.restThermalThresholdOffsetC', 0.8, '°C'],
+    ['lungsVentilation.exercisePantingFactor', 0.35, '1'],
+    ['lungsVentilation.sympatheticTidalCompressionFactor', 0.25, '1'],
   ]) {
     const parameter = ventilationById[parameterId];
     assert.equal(parameter.value, value, `${parameterId}: value`);
     assert.equal(parameter.unit, unit, `${parameterId}: unit`);
     assert.equal(parameter.status, 'design', `${parameterId}: status`);
-    assert.equal(parameter.source, null, `${parameterId}: source`);
+    const expectedSource = {
+      'lungsVentilation.maxTidalVolumeMl': 'SRC-LOE-2014',
+      'lungsVentilation.tidalScaleVentilationMlMin': 'SRC-NEDER-2003',
+      'lungsVentilation.restThermalThresholdOffsetC': 'SRC-TSUJI-2012',
+      'lungsVentilation.exercisePantingFactor': 'SRC-TSUJI-2012',
+    }[parameterId] ?? null;
+    assert.equal(parameter.source, expectedSource, `${parameterId}: source`);
   }
 });
 

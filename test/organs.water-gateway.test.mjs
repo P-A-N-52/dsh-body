@@ -214,7 +214,7 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
   });
   assert.deepEqual(loaded.bodyFluid, { waterVolumeMl: 30000, waterDeficit: 0 });
   assert.deepEqual(loaded.hypothalamusAdh, { relativeConcentration: 1 });
-  assert.deepEqual(loaded.hypothalamusThirst, { thirst: 50 });
+  assert.deepEqual(loaded.hypothalamusThirst, { thirst: 0 });
   assert.deepEqual(loaded.kidney, { urineProductionRequestMl: 0 });
   assert.deepEqual(loaded.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
   assert.deepEqual(loaded.pancreasEndocrine, { insulinPmolL: 60, glucagonRelative: 1 });
@@ -251,6 +251,8 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
     sexIntensity: 0,
     lastOrgasmAtSimMin: null,
     afterglowMm: 0,
+    lastAttemptedOrgasmAtSimMin: null,
+    lastOrgasmBlockReason: 'none',
   });
   assert.deepEqual(loaded.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });
   assert.deepEqual(loaded.lungs, { respiratoryWaterLossRequestMl: 0, respiratoryWaterLossMl: 0 });

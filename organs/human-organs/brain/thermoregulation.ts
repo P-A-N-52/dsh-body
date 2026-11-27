@@ -100,6 +100,14 @@ const sleepSetpointOffsetC = requireParameter(
   parameters,
   'thermoregulation.sleepSetpointOffsetC',
 );
+const vasodilationGain = scaleByBodyWeight(
+  requireParameter(parameters, 'thermoregulation.vasodilationGain'),
+  'thermoregulation.vasodilationGain',
+);
+const maxVasodilationKcalMin = scaleByBodyWeight(
+  requireParameter(parameters, 'thermoregulation.maxVasodilationKcalMin'),
+  'thermoregulation.maxVasodilationKcalMin',
+);
 
 const fallbackBasalOxygenConsumptionMlMin =
   getNumericParameterOverride('bloodOxygen.basalMlMin') ?? scaleByBodyWeight(250);
@@ -145,10 +153,17 @@ export function heatLossKcalMin(
   sweatVolumeMl: number,
   coreTemperatureC: number,
   dtMin = 1,
+  targetSetpointC = coreTemperatureC,
 ): number {
   const sweatRateMlMin = dtMin > 0 ? sweatVolumeMl / dtMin : 0;
+  const vasodilationKcalMin = clamp(
+    vasodilationGain * Math.max(0, coreTemperatureC - targetSetpointC),
+    0,
+    maxVasodilationKcalMin,
+  );
   return evaporationKcalPerMl * sweatRateMlMin
-    + lossGain * (coreTemperatureC - ambientTemperatureC);
+    + lossGain * (coreTemperatureC - ambientTemperatureC)
+    + vasodilationKcalMin;
 }
 
 function readOxygenConsumptionMlMin(io: IO): number {
@@ -205,7 +220,12 @@ export function heartbeat(io: IO): void {
     previousTemperatureC,
     targetSetpointC,
   );
-  const lossKcalMin = heatLossKcalMin(sweatVolumeMl, previousTemperatureC, dtMin);
+  const lossKcalMin = heatLossKcalMin(
+    sweatVolumeMl,
+    previousTemperatureC,
+    dtMin,
+    targetSetpointC,
+  );
   const coreTemperatureC = clamp(
     previousTemperatureC + (dtMin * (productionKcalMin - lossKcalMin)) / heatCapacityKcalPerC,
     minCoreTemperatureC,

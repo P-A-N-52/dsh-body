@@ -47,6 +47,7 @@ const QUANTITATIVE_OVERRIDE_KEYS = [
   'mealKind',
   'durationMin',
   'intensity',
+  'exertion',
   'bilateral',
 ];
 
@@ -73,6 +74,13 @@ export function validateExercise(args) {
   if (!isFiniteNumber(args.durationMin) || args.durationMin <= 0) {
     return 'durationMin must be a finite number greater than 0';
   }
+  if (
+    args.type === 'sex'
+    && args.exertion !== undefined
+    && (!isFiniteNumber(args.exertion) || args.exertion < 0 || args.exertion > 1)
+  ) {
+    return 'exertion must be a finite number between 0 and 1';
+  }
   return null;
 }
 
@@ -90,6 +98,12 @@ export function validateStructuredAction(args, extraActionTypes = [], nsfwEnable
   if (!isRecord(args)) return 'action must be a plain object';
   if (NSFW_ACTION_TYPES.includes(args.type) && !nsfwEnabled) {
     return 'NSFW actions are disabled for this body';
+  }
+  if (args.type === 'orgasm') {
+    if (args.continueStimulation !== undefined && typeof args.continueStimulation !== 'boolean') {
+      return 'continueStimulation must be a boolean';
+    }
+    return null;
   }
   if (ZERO_PAYLOAD_ACTION_TYPES.includes(args.type)) {
     return null;
@@ -161,6 +175,12 @@ export function validateOptionalNumericOverrides(args) {
   }
   if (args.intensity !== undefined && (!isFiniteNumber(args.intensity) || args.intensity <= 0 || args.intensity > 1)) {
     return 'intensity must be a finite number greater than 0 and at most 1';
+  }
+  if (args.exertion !== undefined && (!isFiniteNumber(args.exertion) || args.exertion < 0 || args.exertion > 1)) {
+    return 'exertion must be a finite number between 0 and 1';
+  }
+  if (args.continueStimulation !== undefined && typeof args.continueStimulation !== 'boolean') {
+    return 'continueStimulation must be a boolean';
   }
   if (args.bilateral !== undefined && typeof args.bilateral !== 'boolean') {
     return 'bilateral must be a boolean';
@@ -464,7 +484,11 @@ export function buildTranslatorToolSchema(allowedQuantitativeTypes) {
               },
               intensity: {
                 type: 'number',
-                description: 'Relative intensity in (0, 1] (required for exercise/sex).',
+                description: 'Relative intensity in (0, 1] (required for exercise/sex; for sex this represents arousal/sensory stimulation intensity).',
+              },
+              exertion: {
+                type: 'number',
+                description: 'Optional whole-body skeletal-muscle exertion in [0, 1] for sex (0–0.08 for lying/solo stimulation or foreplay, 0.30–0.65 for active partnered intercourse).',
               },
               bilateral: {
                 type: 'boolean',
@@ -497,7 +521,7 @@ export function buildTranslatorSystemPrompt({ nsfwEnabled = false } = {}) {
     '- exercise：必填 intensity（0 < intensity <= 1）与 durationMin（> 0，min）。强度参考：散步慢走 0.15–0.25，快走/家务 0.30–0.45，慢跑/中速骑行 0.50–0.65，高强度跑/HIIT 0.75–0.90，极限冲刺 0.95–1.0。',
   ];
   if (nsfwEnabled) {
-    lines.push('- sex：必填 intensity（0 < intensity <= 1：温和 0.25–0.40、中等 0.45–0.65、剧烈 0.70–0.85）与 durationMin（> 0，min）。');
+    lines.push('- sex：必填 intensity（0 < intensity <= 1，代表局部/感官性刺激强度：温和 0.25–0.40、中等 0.45–0.65、剧烈 0.70–0.85）、durationMin（> 0，min）与 exertion（0 <= exertion <= 1，代表全身骨骼肌体力负荷：躺卧轻抚或单人轻柔自慰设 0–0.08，非插入伴侣爱抚设 0.08–0.20，主动伴侣性交设 0.30–0.65）。');
     lines.push('- express_milk / breastfeed：可选 durationMin（0 < durationMin <= 120，单次吸奶/哺乳耗时 min，如简短 8–10、常规 15–20）与 bilateral（boolean，是否双侧）。');
   }
   lines.push(
@@ -708,18 +732,22 @@ function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explici
     delete clean.carbohydrateG;
     delete clean.mealKind;
     delete clean.bilateral;
+    if (type === 'exercise') delete clean.exertion;
   } else if (type === 'express_milk' || type === 'breastfeed') {
     delete clean.volumeMl;
     delete clean.energyKcal;
     delete clean.carbohydrateG;
     delete clean.mealKind;
     delete clean.intensity;
+    delete clean.exertion;
   } else if (type === 'drink') {
     delete clean.intensity;
+    delete clean.exertion;
     delete clean.mealKind;
     delete clean.bilateral;
   } else if (type === 'eat') {
     delete clean.intensity;
+    delete clean.exertion;
     delete clean.bilateral;
   }
 

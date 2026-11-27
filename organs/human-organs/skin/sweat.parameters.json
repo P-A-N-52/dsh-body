@@ -45,7 +45,25 @@
       "status": "design",
       "range": [0, 20],
       "source": null,
-      "note": "核心温度每高于设定点 37°C 1°C 时叠加的热致出汗率增益（mL/(min·°C)），静息与运动均生效；工程假设，不是实测体温—出汗斜率，设定点 37°C 为模型常量"
+      "note": "核心温度越过热汗阈值后每升高 1°C 叠加的热致出汗率增益（按体重缩放）；工程假设，不是实测体温—出汗斜率"
+    },
+    {
+      "id": "skin.interthresholdOffsetC",
+      "unit": "°C",
+      "value": 0.25,
+      "status": "design",
+      "range": [0, 1],
+      "source": "SRC-WENGER-1976",
+      "note": "工程假定/占位（参考 Tayefeh 1998 日间 0.2 °C 阈间带与 Kenny 2008 停运后压力反射非热抑汗）：非运动静息态相对动态设定点增加的热汗死区偏置"
+    },
+    {
+      "id": "skin.nocturnalDeadbandOffsetC",
+      "unit": "°C",
+      "value": 0.45,
+      "status": "design",
+      "range": [0, 1.5],
+      "source": "SRC-WENGER-1976",
+      "note": "工程假定/占位（参考 Tayefeh 1998 凌晨 03:00 阈间带加宽 2 倍）：夜间低设定点（setpointC < 37°C）时静息出汗死区展宽"
     }
   ]
 }

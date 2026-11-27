@@ -98,8 +98,8 @@
       "value": 34.6,
       "status": "design",
       "range": [5, 180],
-      "source": null,
-      "note": "内源 PRL 慢相清除时间尺度（取健康成人 34.6 min 清除尺度代理，因该 2012 摘录缺第一作者故标 design）"
+      "source": "SRC-ROELFSEMA-2012",
+      "note": "内源 PRL 消除时间尺度近似：取 Roelfsema 2012 (n=74) 固定快相 3.5 min（占 37% 振幅）后的慢相半衰期中位数 34.6 min（范围 20–45 min）；因本模型仍为单室一阶清除近似而非双指数去卷积核故维持 design"
     },
     {
       "id": "pituitary.oxytocinBasalPgMl",

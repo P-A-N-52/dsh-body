@@ -101,6 +101,8 @@ test('skin sweat parameters are design defaults with no measurements', () => {
   );
   assert.deepEqual(Object.keys(byId).sort(), [
     'skin.heatGain',
+    'skin.interthresholdOffsetC',
+    'skin.nocturnalDeadbandOffsetC',
     'skin.sweat.ambientGainPerC',
     'skin.sweat.ambientTemperatureC',
     'skin.sweat.maxRateMlPerMin',
@@ -108,17 +110,19 @@ test('skin sweat parameters are design defaults with no measurements', () => {
   ]);
 
   const expected = [
-    ['skin.sweat.ambientTemperatureC', 25, '°C'],
-    ['skin.sweat.referenceRateMlPerMin', 0.6, 'mL/min'],
-    ['skin.sweat.ambientGainPerC', 0.04, '1/°C'],
-    ['skin.sweat.maxRateMlPerMin', 15, 'mL/min'],
-    ['skin.heatGain', 5, 'mL/(min·°C)'],
+    ['skin.sweat.ambientTemperatureC', 25, '°C', null],
+    ['skin.sweat.referenceRateMlPerMin', 0.6, 'mL/min', null],
+    ['skin.sweat.ambientGainPerC', 0.04, '1/°C', null],
+    ['skin.sweat.maxRateMlPerMin', 15, 'mL/min', null],
+    ['skin.heatGain', 5, 'mL/(min·°C)', null],
+    ['skin.interthresholdOffsetC', 0.25, '°C', 'SRC-WENGER-1976'],
+    ['skin.nocturnalDeadbandOffsetC', 0.45, '°C', 'SRC-WENGER-1976'],
   ];
-  for (const [parameterId, value, unit] of expected) {
+  for (const [parameterId, value, unit, expectedSource] of expected) {
     assert.equal(byId[parameterId].value, value, parameterId);
     assert.equal(byId[parameterId].unit, unit, parameterId);
     assert.equal(byId[parameterId].status, 'design', parameterId);
-    assert.equal(byId[parameterId].source, null, parameterId);
+    assert.equal(byId[parameterId].source, expectedSource, parameterId);
   }
 
   assert.deepEqual(loadParameters(parametersUrl), {
@@ -127,6 +131,8 @@ test('skin sweat parameters are design defaults with no measurements', () => {
     'skin.sweat.ambientGainPerC': 0.04,
     'skin.sweat.maxRateMlPerMin': 15,
     'skin.heatGain': 5,
+    'skin.interthresholdOffsetC': 0.25,
+    'skin.nocturnalDeadbandOffsetC': 0.45,
   });
 });
 
@@ -180,7 +186,7 @@ test('the request follows the design intensity, temperature, cap and dt', () => 
       expected: 0,
     },
     {
-      label: 'zero remaining minutes at 38 C triggers thermal sweating',
+      label: 'zero remaining minutes at 38 C triggers thermal sweating above interthreshold deadband',
       input: {
         remainingExerciseMin: 0,
         intensity: 0,
@@ -188,7 +194,7 @@ test('the request follows the design intensity, temperature, cap and dt', () => 
         ambientTemperatureC: 25,
         coreTemperatureC: 38,
       },
-      expected: 5,
+      expected: 3.75,
     },
     {
       label: 'zero intensity at 37 C requests nothing',
@@ -242,7 +248,7 @@ test('a missing physicalActivity requests no sweat at 37 C, but sweats when core
   const hyperthermicRest = round({
     thermoregulation: { coreTemperatureC: 38.5 },
   }).written;
-  assertClose(hyperthermicRest.sweatRequestMl, 7.5, 'resting hyperthermia sweats');
+  assertClose(hyperthermicRest.sweatRequestMl, 6.25, 'resting hyperthermia sweats above 37.25 C threshold');
   assert.equal(hyperthermicRest.sweatVolumeMl, 0);
 });
 

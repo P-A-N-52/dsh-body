@@ -79,6 +79,8 @@ test('thermoregulation parameters are design defaults with no source', () => {
     'thermoregulation.circadianAmplitudeC': { value: 0.25, unit: '°C' },
     'thermoregulation.circadianPeakHour': { value: 17, unit: 'h' },
     'thermoregulation.sleepSetpointOffsetC': { value: 0.2, unit: '°C' },
+    'thermoregulation.vasodilationGain': { value: 0.5, unit: 'kcal/(min·°C)' },
+    'thermoregulation.maxVasodilationKcalMin': { value: 0.55, unit: 'kcal/min' },
   };
   assert.deepEqual(
     parameterFile.parameters.map((parameter) => parameter.id),
@@ -91,7 +93,12 @@ test('thermoregulation parameters are design defaults with no source', () => {
     assert.equal(parameter.value, value, `${parameterId}: value`);
     assert.equal(parameter.unit, unit, `${parameterId}: unit`);
     assert.equal(parameter.status, 'design', `${parameterId}: status`);
-    assert.equal(parameter.source, null, `${parameterId}: source`);
+    const expectedSource = parameterId === 'thermoregulation.vasodilationGain'
+      ? 'SRC-KRAUCHI-1994'
+      : parameterId === 'thermoregulation.maxVasodilationKcalMin'
+        ? 'SRC-CRAMER-2019'
+        : null;
+    assert.equal(parameter.source, expectedSource, `${parameterId}: source`);
   }
 
   assert.deepEqual(
@@ -139,7 +146,7 @@ test('sweat evaporation and the temperature gradient remove heat', () => {
 });
 
 test('the core temperature integrates production minus loss over dt', () => {
-  const gradientLoss = 0.104167 * (38 - 25);
+  const gradientLoss = 0.104167 * (38 - 25) + 0.5 * (38 - 37);
   const oneMinute = round({
     state: { coreTemperatureC: 38 },
     bloodOxygen: consumption(250),
@@ -188,7 +195,11 @@ test('cold temperatures add shivering heat and hot temperatures do not', () => {
     bloodOxygen: consumption(0),
     skin: sweat(0),
   }).written;
-  assertClose(warm.coreTemperatureC, 38 - (0.104167 * 13) / 60, 'no shivering above the setpoint');
+  assertClose(
+    warm.coreTemperatureC,
+    38 - (0.104167 * 13 + 0.5 * (38 - 37)) / 60,
+    'no shivering above the setpoint',
+  );
 });
 
 test('extreme inputs clamp coreTemperatureC within [25, 45] C', () => {

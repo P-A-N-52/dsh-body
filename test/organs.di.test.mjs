@@ -65,16 +65,16 @@ const partIds = [
 ];
 
 const normalGolden = [
-  [60, 1, 1, 30000, 0, 50, 0],
-  [120, 1, 1, 29999, 0, 50, 1],
-  [180, 1, 1, 29998, 0.002, 50, 2],
-  [240, 1.0001919112069608, 0.9999666666666666, 29997, 0.004, 50.1, 3],
-  [300, 1.0005574708549203, 0.999741434920453, 29996.000033333334, 0.006, 50.2, 3.9999666666666664],
-  [360, 1.0010801541098788, 0.9993425848921651, 29995.000291898414, 0.007999933333332591, 50.3, 4.999708101587119],
-  [420, 1.0017450022866667, 0.9987866576872466, 29994.000949313522, 0.009999416203172587, 50.39999666666663, 5.9990506864792845],
-  [480, 1.0025384433797615, 0.9980886315933493, 29993.002162655834, 0.011998101372955716, 50.49997081015863, 6.997837344166531],
-  [540, 1.003448163611435, 0.9972620958723727, 29992.00407402424, 0.013995674688332656, 50.599905068647786, 7.995925975759881],
-  [600, 1.0044629908699707, 0.9963193794666958, 29991.006811928368, 0.015991851951519493, 50.699783734416634, 8.993188071632254],
+  [60, 1, 1, 30000, 0, 0, 0],
+  [120, 1, 1, 29999, 0, 0, 1],
+  [180, 1, 1, 29998, 0.002, 0.05134311143679043, 2],
+  [240, 1.0001919112069608, 0.9999666666666666, 29997, 0.004, 0.1026896459763293, 3],
+  [300, 1.0005574708549203, 0.999741434920453, 29996.000033333334, 0.006, 0.15403960396025695, 3.9999666666666664],
+  [360, 1.0010801541098788, 0.9993425848921651, 29995.000291898414, 0.007999933333332591, 0.2053912738949066, 4.999708101587119],
+  [420, 1.0017450022866667, 0.9987866576872466, 29994.000949313522, 0.009999416203172587, 0.256734800161928, 5.9990506864792845],
+  [480, 1.0025384433797615, 0.9980886315933493, 29993.002162655834, 0.011998101372955716, 0.3080612634191539, 6.997837344166531],
+  [540, 1.003448163611435, 0.9972620958723727, 29992.00407402424, 0.013995674688332656, 0.3593625915871826, 7.995925975759881],
+  [600, 1.0044629908699707, 0.9963193794666958, 29991.006811928368, 0.015991851951519493, 0.4106314798558174, 8.993188071632254],
 ];
 
 function fakeExec({ sessionId = 'di-session', callId = 'call-1' } = {}) {
@@ -264,7 +264,7 @@ test('a central DI manifest zeroes ADH and produces four mL per minute of urine'
   assert.equal(parts.kidney.urineProductionRequestMl * 1440, 5760);
   assert.ok(parts.kidney.urineProductionRequestMl * 1440 > 3 * 1000, 'DI-like proxy must exceed 3 L/day');
   assert.ok(parts.bodyFluid.waterDeficit > 0, 'polyuria should raise the water deficit proxy');
-  assert.ok(parts.hypothalamusThirst.thirst > 50, 'polyuria should raise thirst after the round offset');
+  assert.ok(parts.hypothalamusThirst.thirst > 0, 'polyuria should raise thirst after the round offset');
 });
 
 test('a central DI manifest keeps the water ledger over 121 rounds with a drink', async (t) => {
@@ -309,7 +309,7 @@ test('a nephrogenic DI manifest keeps ADH driven by body water and fixes the kid
   const parts = gateway.getState().parts;
   assert.ok(parts.bodyFluid.waterDeficit > 0, 'fixed polyuria should raise the water deficit proxy');
   assert.ok(parts.hypothalamusAdh.relativeConcentration > 1, 'ADH should rise with the deficit');
-  assert.ok(parts.hypothalamusThirst.thirst > 50, 'thirst should rise with the deficit');
+  assert.ok(parts.hypothalamusThirst.thirst > 0, 'thirst should rise with the deficit');
 });
 
 test('the nephrogenic kidney requests four mL even from different ADH states', async (t) => {

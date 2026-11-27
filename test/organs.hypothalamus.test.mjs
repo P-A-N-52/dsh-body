@@ -69,25 +69,33 @@ test('hypothalamus ADH exports the organ module contract', () => {
   assert.deepEqual(adhInitialState, { relativeConcentration: 1 });
 });
 
+function expectedThirst(deficit) {
+  const lossMl = deficit * 500;
+  if (lossMl <= 0) return 0;
+  const posm = 285.23 * (30000 / Math.max(1000, 30000 - lossMl));
+  return Math.min(100, Math.max(0, 5.4 * (posm - 285.23)));
+}
+
 test('hypothalamus thirst exports the organ module contract', () => {
   assert.equal(thirstId, 'hypothalamusThirst');
   assert.deepEqual(thirstActionTypes, []);
   assert.deepEqual(thirstFields, {
     thirst: { unit: 'mm', mode: 'absolute' },
   });
-  assert.deepEqual(thirstInitialState, { thirst: 50 });
+  assert.deepEqual(thirstInitialState, { thirst: 0 });
 });
 
-test('deficit -0.6 moves ADH toward 0.4 and thirst to 20 mm', () => {
+test('deficit -0.6 moves ADH toward 0.4 and keeps thirst at 0 mm', () => {
   const next = adhRound(adhInitialState, -0.6);
   assert.ok(Math.abs(next.relativeConcentration - (1 + APPROACH * (0.4 - 1))) < 1e-12);
-  assert.deepEqual(thirstRound(-0.6), { thirst: 20 });
+  assert.deepEqual(thirstRound(-0.6), { thirst: 0 });
 });
 
-test('deficit 1 moves ADH toward 2 and thirst to 100 mm', () => {
+test('deficit 1 moves ADH toward 2 and thirst along Hughes 2018 osmotic curve', () => {
   const next = adhRound(adhInitialState, 1);
   assert.ok(Math.abs(next.relativeConcentration - (1 + APPROACH * (2 - 1))) < 1e-12);
-  assert.deepEqual(thirstRound(1), { thirst: 100 });
+  assert.ok(Math.abs(thirstRound(1).thirst - expectedThirst(1)) < 1e-9);
+  assert.deepEqual(thirstRound(4), { thirst: 100 });
 });
 
 test('ADH eases from its previous value instead of jumping to the target', () => {
@@ -132,13 +140,18 @@ test('missing or non-finite water deficit defaults to 0', () => {
       write: (next) => { thirstWritten = next; },
       notify: () => { throw new Error('thirst must not notify'); },
     });
-    assert.deepEqual(thirstWritten, { thirst: 50 });
+    assert.deepEqual(thirstWritten, { thirst: 0 });
   }
 });
 
 test('more body water lowers ADH and thirst monotonically', () => {
-  const deficits = [1, 0.5, 0, -0.5, -1];
-  assert.deepEqual(deficits.map((deficit) => thirstRound(deficit).thirst), [100, 75, 50, 25, 0]);
+  const deficits = [4, 1, 0.5, 0, -0.5];
+  const thirsts = deficits.map((deficit) => thirstRound(deficit).thirst);
+  assert.equal(thirsts[0], 100);
+  assert.ok(Math.abs(thirsts[1] - expectedThirst(1)) < 1e-9);
+  assert.ok(Math.abs(thirsts[2] - expectedThirst(0.5)) < 1e-9);
+  assert.equal(thirsts[3], 0);
+  assert.equal(thirsts[4], 0);
   const adh = deficits.map((deficit) => adhRound(adhInitialState, deficit).relativeConcentration);
   for (let index = 1; index < adh.length; index++) {
     assert.ok(adh[index] < adh[index - 1], `ADH should fall as water deficit falls: ${adh}`);

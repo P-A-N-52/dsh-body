@@ -109,6 +109,51 @@
       "range": [0, 300],
       "source": null,
       "note": "非运动状态下自主交感张力每 1 mm 对应的通气增量（按体重缩放）；design"
+    },
+    {
+      "id": "lungsVentilation.maxTidalVolumeMl",
+      "unit": "mL",
+      "value": 2100,
+      "status": "design",
+      "range": [800, 4500],
+      "source": "SRC-LOE-2014",
+      "note": "递增通气招募下的成人动态潮气量渐近平台（按体重缩放；参考 Loe 2014 HUNT 3 女性峰值 2.06 L / 男性 2.94 L 标定，单组混合模型仍标 design）"
+    },
+    {
+      "id": "lungsVentilation.tidalScaleVentilationMlMin",
+      "unit": "mL/min",
+      "value": 30000,
+      "status": "design",
+      "range": [5000, 100000],
+      "source": "SRC-NEDER-2003",
+      "note": "Hey Plot 指数潮气量招募特征通气尺度（按体重缩放；校准至 VE ≈ 20 L/min 时 VT ≈ 1.1 L、RR ≈ 18/min 吻合 Neder 2003 实测，且保持呼吸频率随通气单调递增；标 design）"
+    },
+    {
+      "id": "lungsVentilation.restThermalThresholdOffsetC",
+      "unit": "°C",
+      "value": 0.8,
+      "status": "design",
+      "range": [0, 2.5],
+      "source": "SRC-TSUJI-2012",
+      "note": "静息被动升温相对核心调定点的热致过度通气滞后偏置（Tsuji 2012 静息阈值 38.3±0.6 °C / Fujii 2008 37.8±0.5 °C vs 运动 36.9–37.1 °C；工程折中取 +0.8 °C 防止轻度恢复期误喘气）"
+    },
+    {
+      "id": "lungsVentilation.exercisePantingFactor",
+      "unit": "1",
+      "value": 0.35,
+      "status": "design",
+      "range": [0, 1],
+      "source": "SRC-TSUJI-2012",
+      "note": "持续运动期热致通气敏感度相对于静息被动加热斜率的比例（Tsuji 2012 实测 8.7–10.4 vs 32.5 L/(min·°C)）；工程化约因子"
+    },
+    {
+      "id": "lungsVentilation.sympatheticTidalCompressionFactor",
+      "unit": "1",
+      "value": 0.25,
+      "status": "design",
+      "range": [0, 0.5],
+      "source": null,
+      "note": "工程假定/占位（无连续大样本斜率）：非运动交感激活时潮气量浅快化收窄上限比例"
     }
   ]
 }

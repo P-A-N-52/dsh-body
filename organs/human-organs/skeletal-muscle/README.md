@@ -2,7 +2,7 @@
 
 **功能标签：** 活动、糖代谢（骨骼肌活动状态与肌糖原代理）。
 
-骨骼肌目录是一组独立部位：`physicalActivity`（`activity.ts`）保存一次 `exercise` 或 `sex` 动作留下的活动剩余分钟和相对强度，供皮肤出汗、肺运动相关呼吸失水、区域糖原消耗与血氧需氧按轮初快照读取；`sex` 按体力活动计入，走同一字段、同一校验与同一替换策略，不另建性活动状态。`muscleGlucose`（`glucose-uptake.ts`）是摄糖聚合器：按轮初 `glucose.excessMassG` 与 `pancreasEndocrine.insulinPmolL` 计算摄糖请求，写 `uptakeRequestG`；下一轮 `glucose` 按请求结算，实际支付经 transfer 进入 `uptakeG`；再下一轮聚合器按区域份额转给已加载的区域。`muscleHead` / `muscleTrunk` / `muscleLimbs`（`regions/head.ts`、`trunk.ts`、`limbs.ts`，共享 `regions/region-core.ts`）各自持有区域糖原并按轮初活动消耗。这些脚本都不模拟肌肉收缩、运动类型、代谢产热、疲劳或能量代谢，也不消耗能量、产热、调节体温或自动运动；血氧隔室只把活动强度按 `design` 系数折算成需氧，不由肌糖原或能量代谢推导。从未 `exercise` / `sex` 时活动为 0、糖原消耗为 0，进行中的活动在没有新动作时仍按 `io.dt` 递减并保留强度，既有水账与口渴轨迹不变。
+骨骼肌目录是一组独立部位：`physicalActivity`（`activity.ts`）保存一次 `exercise` 或 `sex` 动作留下的活动剩余分钟和相对强度，供皮肤出汗、肺运动相关呼吸失水、区域糖原消耗与血氧需氧按轮初快照读取；其中 `sex` 现支持可选 `exertion`（`0 <= exertion <= 1`，缺省向后兼容沿用 `intensity`）以解耦“感官/局部性刺激强度”与“全身骨骼肌体力负荷”（`SRC-BOHLEN-1984`, `SRC-FRAPPIER-2013`），并在达成释放型 `orgasm`（非 `continueStimulation: true`）时同步终止配对性活动计时。`muscleGlucose`（`glucose-uptake.ts`）是摄糖聚合器：按轮初 `glucose.excessMassG` 与 `pancreasEndocrine.insulinPmolL` 计算摄糖请求，写 `uptakeRequestG`；下一轮 `glucose` 按请求结算，实际支付经 transfer 进入 `uptakeG`；再下一轮聚合器按区域份额转给已加载的区域。`muscleHead` / `muscleTrunk` / `muscleLimbs`（`regions/head.ts`、`trunk.ts`、`limbs.ts`，共享 `regions/region-core.ts`）各自持有区域糖原并按轮初活动消耗。这些脚本都不模拟肌肉收缩、运动类型、代谢产热、疲劳或能量代谢，也不消耗能量、产热、调节体温或自动运动；血氧隔室只把活动强度按 `design` 系数折算成需氧，不由肌糖原或能量代谢推导。从未 `exercise` / `sex` 时活动为 0、糖原消耗为 0，进行中的活动在没有新动作时仍按 `io.dt` 递减并保留强度，既有水账与口渴轨迹不变。
 
 实现状态：`activity.ts`、`glucose-uptake.ts`（正常聚合器入口）、`glucose-uptake.no-limbs.ts`（缺四肢变体）与 `regions/{head,trunk,limbs}.ts` 均在 `organs/human-organs/skeletal-muscle/`；活动脚本无参数文件，模块定向测试见 [`test/organs.activity.test.mjs`](../../../test/organs.activity.test.mjs)；摄糖与区域脚本使用 `glucose-uptake.parameters.json`，测试见 [`test/organs.muscle-glucose.test.mjs`](../../../test/organs.muscle-glucose.test.mjs)、[`test/organs.muscle-regions.test.mjs`](../../../test/organs.muscle-regions.test.mjs) 与 [`test/organs.muscle-regions-gateway.test.mjs`](../../../test/organs.muscle-regions-gateway.test.mjs)。`exercise` / `sex` / `stop_exercise` 工具入口、皮肤/肺请求链、血氧需氧、根清单、体液出口、`glucose → muscleGlucose` 的实际支付 transfer 与 `muscleGlucose → 区域` 的分配 transfer 均已接入；当前根清单为 43 个部位、39 份唯一参数文件（女性清单 46 部位、42 份；男性清单 45 部位、41 份）。区域份额与消耗速率仍是 `design`，本文不把历史计数当作当前结果。完整契约见本文、[`regions/README.md`](regions/README.md)、[`skin`](../skin/README.md)、[`lungs`](../lungs/README.md) 与 [`sexual-response`](../sexual-response/README.md)。尚未做真实 DSH 会话、独立运动生理数据或临床验证。
 
@@ -10,7 +10,7 @@
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
 | --- | --- | --- | --- | --- |
-| `activity.ts` | `physicalActivity` | `remainingExerciseMin`、`intensity` | 自己的轮初状态；`io.actions` 中的 `exercise` / `sex` / `stop_exercise` / `sleep`；`io.dt` | 无 |
+| `activity.ts` | `physicalActivity` | `remainingExerciseMin`、`intensity` | 自己的轮初状态；轮初 `sexualResponse` / `ovaries` / `testes` / `pituitary`（经 `evaluateSexualRelease`）；`io.actions` 中的 `exercise` / `sex` / `stop_exercise` / `sleep` / `orgasm`；`io.dt`、`io.simulatedSeconds` | 无 |
 | `glucose-uptake.ts` / `glucose-uptake.no-limbs.ts` | `muscleGlucose` | `uptakeRequestG`、`uptakeG` | 自己的轮初状态；轮初 `glucose.excessMassG` / `concentrationMgDl`（未加载 glucose 时按 0）、`pancreasEndocrine.insulinPmolL / 60`（未加载胰腺时归一化因子按 1）、`physicalActivity.remainingExerciseMin` / `intensity`（可选）；各区域是否存在；`io.dt` | `glucose-uptake.parameters.json` |
 | `regions/head.ts` | `muscleHead` | `uptakeG`、`glycogenG`、`glycogenConsumedG` | 自己的轮初状态；`muscleGlucose.glycogenG`（仅旧档迁移）、`physicalActivity`；`io.dt` | `glucose-uptake.parameters.json` |
 | `regions/trunk.ts` | `muscleTrunk` | 同上 | 同上 | 同上 |
@@ -60,11 +60,15 @@ intensity = remainingExerciseMin > 0 ? prev.intensity : 0
 
 for action in 本轮 io.actions（按到达顺序）:
   若 action.type === 'stop_exercise' 或 action.type === 'sleep':
-    remainingExerciseMin = 0
-    intensity = 0
-  否则若 action 是合法 exercise 或 sex:
-    remainingExerciseMin = action.durationMin
-    intensity = action.intensity
+    remainingExerciseMin = 0, intensity = 0
+  否则若 action.type === 'orgasm' && releaseInfo.released && action.continueStimulation !== true && hasSexContext:
+    remainingExerciseMin = 0, intensity = 0
+  否则若 action 是合法 exercise:
+    remainingExerciseMin = action.durationMin, intensity = action.intensity
+  否则若 action 是合法 sex:
+    effIntensity = action.exertion ?? action.intensity
+    remainingExerciseMin = effIntensity === 0 ? 0 : action.durationMin
+    intensity = effIntensity
 write({ remainingExerciseMin, intensity })
 ```
 
@@ -72,13 +76,14 @@ write({ remainingExerciseMin, intensity })
 
 - `type === 'exercise'` 或 `type === 'sex'`；
 - `intensity` 是有限数且 `0 < intensity <= 1`；
-- `durationMin` 是有限数且 `> 0`。
+- `durationMin` 是有限数且 `> 0`；
+- 若为 `sex` 且提供可选 `exertion`，则 `exertion` 须有限且 `0 <= exertion <= 1`（`action-translator.js` 提示单人躺卧轻抚设为 `0–0.08`，伴侣爱抚 `0.08–0.20`，主动插入伴侣性交 `0.30–0.65`）。
 
-此外，`stop_exercise` 与 `sleep`（均无载荷）会在动作处理顺序中立即把 `remainingExerciseMin` 与 `intensity` 归零，用于提前中止当前运动或入睡停动；若同轮其后又出现新的合法 `exercise` / `sex`，则按到达顺序继续被后续合法动作替换。同一轮只有**最后一个合法** `exercise` / `sex`（且未被随后的 `stop_exercise` / `sleep` 清零）生效；它用新的 `durationMin`/`intensity` 整体替换剩余活动，不与旧剩余时间相加。两类动作共用这两个字段，也可以互相替换：同轮先 `exercise` 后 `sex` 时按 `sex` 的时长与强度，反向亦然。后面的非法 `exercise` / `sex` 被跳过，不会把此前合法动作替换掉；`drink`、`eat`、`urinate` 等其他动作对活动无影响。非法动作不改变活动状态，也不产生错误写入。
+此外，`stop_exercise` 与 `sleep`（均无载荷）会在动作处理顺序中立即把 `remainingExerciseMin` 与 `intensity` 归零，用于提前中止当前运动或入睡停动；当 `orgasm` 达成释放（且未显式传入 `continueStimulation: true`、配对性活动仍活跃）时，也会同步清零配对的性活动体力负荷，防止高潮结束后仍虚挂“四肢发力”。若同轮其后又出现新的合法 `exercise` / `sex`，则按到达顺序继续替换；`sex.exertion = 0` 会使体力活动保持归零而不覆盖已有性反应刺激。
 
 “先按 `io.dt` 递减，再处理本轮动作”是轮初快照策略：本轮新动作从自己的完整 `durationMin` 开始，不从被本轮 `dt` 扣过的余量开始。这是动作策略（`design`/`policy`），不是运动生理规律。
 
-`body_act` 的载荷是 `{ type: "exercise", intensity, durationMin }` 或 `{ type: "sex", intensity, durationMin }`，不需要 `volumeMl`、`energyKcal`、`mealKind` 或 `carbohydrateG`。两类动作使用同一校验；工具层对非法强度/时长直接拒绝，不进入动作队列，模块层对已到达的原始动作再按同一规则校验，非法值不改变状态。`sex` 计入体力活动是 `design`：不区分行为类型、姿势、伴侣或性别差异，也不表示已测能量消耗。动作 ID、会话和重试幂等沿用既有 `body_act`，本模块不改变它们。
+`body_act` 的载荷是 `{ type: "exercise", intensity, durationMin }` 或 `{ type: "sex", intensity, durationMin, exertion? }`，不需要 `volumeMl`、`energyKcal`、`mealKind` 或 `carbohydrateG`。两类动作共用核心范围校验；文献参考 `SRC-BOHLEN-1984`（实验室性行为代谢负荷约 1.7–3.3 MET）与 `SRC-FRAPPIER-2013`（年轻成人约 3.2–4.2 kcal/min ≈ 中低等步行），但具体 `exertion` 映射区间仍属 `design` 近似，不按姿势或心率实时反推能耗。
 
 ## 4. 活动模块的读写边界与旧档
 

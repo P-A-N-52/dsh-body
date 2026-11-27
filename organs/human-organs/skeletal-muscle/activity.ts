@@ -11,10 +11,15 @@
  *   不是运动生理规律；同轮多条动作的取舍不影响幂等语义，只决定本轮终值。
  * - `sex` 计入体力活动是 design：不区分动作类型、姿势、伴侣或性别差异，也不代表已测能量
  *   消耗；`intensity` 仍是模型内相对强度，不是 MET、心率、耗氧量或能量消耗。
+ * - `sex` 支持可选 `exertion`（`[0, 1]`）以区分局部/温和性刺激（如单人躺卧自慰可设 `0–0.08`）
+ *   与伴侣全身性体力负荷（`SRC-BOHLEN-1984`, `SRC-FRAPPIER-2013`）；缺省 `exertion` 时沿用
+ *   `intensity` 保持结构化调用向后兼容。高潮达成且未指定 `continueStimulation: true`（或后续无
+ *   新 `sex`/`exercise`）时同步收尾配对的性活动体力计时，防止高潮后仍虚挂发力状态。
  * - 不建模运动类型、姿势、肌糖原、疲劳、心肺反应、核心/皮肤温度、体温调节或个体差异。
  * - 旧存档缺字段按 0，不反推过去活动；剩余时间与强度随存档保留，重启可续用。
- * - 未登记来源：本切片不引入实测代谢或体温数据，字段、阈值与行为均无人体测量支撑。
  */
+import { evaluateSexualRelease } from '../sexual-response/response.ts';
+
 export const id = 'physicalActivity';
 export const actionTypes = ['exercise', 'sex', 'stop_exercise'];
 
@@ -31,13 +36,20 @@ type SavedActivityState = {
 type Action = {
   readonly type?: unknown;
   readonly intensity?: unknown;
+  readonly exertion?: unknown;
   readonly durationMin?: unknown;
+  readonly continueStimulation?: unknown;
 };
 
 type IO = {
   read(id: 'physicalActivity'): Readonly<SavedActivityState> | undefined;
+  read(id: 'sexualResponse'): Readonly<Record<string, unknown>> | undefined;
+  read(id: 'ovaries'): Readonly<Record<string, unknown>> | undefined;
+  read(id: 'testes'): Readonly<Record<string, unknown>> | undefined;
+  read(id: 'pituitary'): Readonly<{ prolactinNgMl?: unknown }> | undefined;
   readonly actions: readonly Action[];
   readonly dt: number;
+  readonly simulatedSeconds?: number;
   write(next: ActivityState): void;
 };
 
@@ -55,10 +67,12 @@ function finiteOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
-function activityReplacement(action: Action): ActivityState | undefined {
+function activityReplacement(
+  action: Action,
+): { state: ActivityState; isSex: boolean } | undefined {
   if (action.type !== 'exercise' && action.type !== 'sex') return undefined;
 
-  const { intensity, durationMin } = action;
+  const { intensity, exertion, durationMin } = action;
   if (typeof intensity !== 'number'
     || !Number.isFinite(intensity)
     || intensity <= 0
@@ -69,11 +83,24 @@ function activityReplacement(action: Action): ActivityState | undefined {
     return undefined;
   }
 
-  return { remainingExerciseMin: durationMin, intensity };
+  if (action.type === 'sex' && exertion !== undefined) {
+    if (typeof exertion !== 'number' || !Number.isFinite(exertion) || exertion < 0 || exertion > 1) {
+      return undefined;
+    }
+    return exertion === 0
+      ? { state: { remainingExerciseMin: 0, intensity: 0 }, isSex: false }
+      : { state: { remainingExerciseMin: durationMin, intensity: exertion }, isSex: true };
+  }
+
+  return {
+    state: { remainingExerciseMin: durationMin, intensity },
+    isSex: action.type === 'sex',
+  };
 }
 
 export function heartbeat(io: IO): void {
   const prev = io.read(id) ?? initialState;
+  const prevSexual = io.read('sexualResponse');
   const dtMin = Math.max(0, finiteOr(io.dt, 0) / 60);
   const remainingExerciseMin = Math.max(0, finiteOr(prev.remainingExerciseMin, 0) - dtMin);
 
@@ -81,14 +108,35 @@ export function heartbeat(io: IO): void {
     remainingExerciseMin,
     intensity: remainingExerciseMin > 0 ? finiteOr(prev.intensity, 0) : 0,
   };
+  let hasSexContext = finiteOr(prevSexual?.remainingSexMin, 0) > 0;
+
+  const releaseInfo = evaluateSexualRelease({
+    prevSexual,
+    ovaries: io.read('ovaries'),
+    testes: io.read('testes'),
+    pituitary: io.read('pituitary'),
+    actions: io.actions,
+    simulatedSeconds: finiteOr(io.simulatedSeconds, 0),
+  });
 
   for (const action of io.actions) {
     if (action.type === 'stop_exercise' || action.type === 'sleep') {
       next = { remainingExerciseMin: 0, intensity: 0 };
+      hasSexContext = false;
+      continue;
+    }
+    if (action.type === 'orgasm') {
+      if (releaseInfo.released && action.continueStimulation !== true && hasSexContext) {
+        next = { remainingExerciseMin: 0, intensity: 0 };
+        hasSexContext = false;
+      }
       continue;
     }
     const replacement = activityReplacement(action);
-    if (replacement !== undefined) next = replacement;
+    if (replacement !== undefined) {
+      next = replacement.state;
+      hasSexContext = replacement.isSex;
+    }
   }
 
   io.write(next);

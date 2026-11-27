@@ -11,8 +11,8 @@ import { createBodyTools } from '../tools.js';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rootManifestPath = join(root, 'body-modules.json');
 const sessionId = 'thirst-session';
-const initialBodyWaterMl = 29650;
-const initialWaterDeficit = 0.7;
+const initialBodyWaterMl = 28400;
+const initialWaterDeficit = 1;
 const drinkMl = 2000;
 const thirstMarkedMm = 65;
 const thirstStrongMm = 85;
@@ -97,16 +97,16 @@ test('thirst needs three rounds to wake and the body never drinks on its own', a
   const initial = gateway.getState().parts;
   assert.equal(initial.bodyFluid.waterVolumeMl, initialBodyWaterMl);
   assert.equal(initial.bodyFluid.waterDeficit, initialWaterDeficit);
-  assert.equal(initial.hypothalamusThirst.thirst, 50);
-  assert.equal(initial.interoception.thirst, 50);
+  assert.equal(initial.hypothalamusThirst.thirst, 0);
+  assert.equal(initial.interoception.thirst, 0);
   assert.equal(initial.brainNotify.lastSessionId, sessionId);
   assert.equal(initial.stomach.lastIntakeAt, null);
   assert.deepEqual(gateway.getNotifications(), []);
 
   await gateway.tick();
   const afterFirstRound = gateway.getState().parts;
-  assert.equal(afterFirstRound.hypothalamusThirst.thirst, 85);
-  assert.equal(afterFirstRound.interoception.thirst, 50);
+  assert.ok(afterFirstRound.hypothalamusThirst.thirst >= thirstStrongMm);
+  assert.equal(afterFirstRound.interoception.thirst, 0);
   assert.equal(afterFirstRound.stomach.volumeMl, 0);
   assert.equal(afterFirstRound.stomach.waterVolumeMl, 0);
   assert.equal(afterFirstRound.stomach.lastIntakeAt, null);
@@ -114,8 +114,8 @@ test('thirst needs three rounds to wake and the body never drinks on its own', a
 
   await gateway.tick();
   const afterSecondRound = gateway.getState().parts;
-  assert.equal(afterSecondRound.hypothalamusThirst.thirst, 85);
-  assert.equal(afterSecondRound.interoception.thirst, 85);
+  assert.ok(afterSecondRound.hypothalamusThirst.thirst >= thirstStrongMm);
+  assert.ok(afterSecondRound.interoception.thirst >= thirstStrongMm);
   assert.equal(afterSecondRound.stomach.volumeMl, 0);
   assert.equal(afterSecondRound.stomach.waterVolumeMl, 0);
   assert.equal(afterSecondRound.stomach.lastIntakeAt, null);

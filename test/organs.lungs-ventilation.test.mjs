@@ -65,7 +65,7 @@ test('lungsVentilation exports the automatic ventilation contract without action
   const { written, writes } = round(demand(250));
   assert.equal(writes.length, 1);
   assert.deepEqual(Object.keys(written).sort(), Object.keys(fields).sort());
-  assert.equal(written.tidalVolumeMl, 500);
+  assertClose(written.tidalVolumeMl, 500, 'resting tidal volume ~500', 1e-2);
   assertClose(written.respiratoryRatePerMin, 12, 'resting rate ~12', 1e-3);
   assertClose(written.ventilationMlMin, 6000, 'resting ventilation ~6000', 0.1);
   assertClose(written.alveolarO2MlMin, 250, 'resting alveolar oxygen');
@@ -84,41 +84,46 @@ test('alveolar oxygen capacity is ~2500 mL/min independent of demand', () => {
   for (const [label, reading] of cases) {
     const { written } = round(reading);
     assertClose(written.alveolarO2CapacityMlMin, capacityO2, label);
-    assert.equal(written.tidalVolumeMl, 500, label);
+    assert.ok(written.tidalVolumeMl >= 500 && written.tidalVolumeMl <= 2100, label);
   }
 });
 
-test('the ventilation parameters are design defaults with no source', () => {
+test('the ventilation parameters keep expected design defaults and sources', () => {
   const data = JSON.parse(readFileSync(parametersUrl, 'utf8'));
   assert.equal(data.schemaVersion, 1);
   assert.equal(data.owner, 'lungsVentilation');
 
   const expected = {
-    'lungsVentilation.restingTidalVolumeMl': { value: 500, unit: 'mL' },
-    'lungsVentilation.restingRatePerMin': { value: 12, unit: '1/min' },
-    'lungsVentilation.maxRatePerMin': { value: 40, unit: '1/min' },
-    'lungsVentilation.restingVentilationMlMin': { value: 6000, unit: 'mL/min' },
-    'lungsVentilation.maxVentilationMlMin': { value: 60000, unit: 'mL/min' },
-    'lungsVentilation.inspiredO2Fraction': { value: 0.058333, unit: '1' },
-    'lungsVentilation.deadSpaceFactor': { value: 1.4, unit: '1' },
-    'lungsVentilation.pantingGain': { value: 1500, unit: 'mL/(min·°C)' },
-    'lungsVentilation.deepSleepFloorFactor': { value: 0.82, unit: '1' },
-    'lungsVentilation.lightSleepFloorFactor': { value: 0.9, unit: '1' },
-    'lungsVentilation.sleepSympatheticBypassThresholdMm': { value: 20, unit: 'mm' },
-    'lungsVentilation.sympatheticVentilationGainMlPerMinPerMm': { value: 80, unit: 'mL/(min·mm)' },
+    'lungsVentilation.restingTidalVolumeMl': { value: 500, unit: 'mL', source: null },
+    'lungsVentilation.restingRatePerMin': { value: 12, unit: '1/min', source: null },
+    'lungsVentilation.maxRatePerMin': { value: 40, unit: '1/min', source: null },
+    'lungsVentilation.restingVentilationMlMin': { value: 6000, unit: 'mL/min', source: null },
+    'lungsVentilation.maxVentilationMlMin': { value: 60000, unit: 'mL/min', source: null },
+    'lungsVentilation.inspiredO2Fraction': { value: 0.058333, unit: '1', source: null },
+    'lungsVentilation.deadSpaceFactor': { value: 1.4, unit: '1', source: null },
+    'lungsVentilation.pantingGain': { value: 1500, unit: 'mL/(min·°C)', source: null },
+    'lungsVentilation.deepSleepFloorFactor': { value: 0.82, unit: '1', source: null },
+    'lungsVentilation.lightSleepFloorFactor': { value: 0.9, unit: '1', source: null },
+    'lungsVentilation.sleepSympatheticBypassThresholdMm': { value: 20, unit: 'mm', source: null },
+    'lungsVentilation.sympatheticVentilationGainMlPerMinPerMm': { value: 80, unit: 'mL/(min·mm)', source: null },
+    'lungsVentilation.maxTidalVolumeMl': { value: 2100, unit: 'mL', source: 'SRC-LOE-2014' },
+    'lungsVentilation.tidalScaleVentilationMlMin': { value: 30000, unit: 'mL/min', source: 'SRC-NEDER-2003' },
+    'lungsVentilation.restThermalThresholdOffsetC': { value: 0.8, unit: '°C', source: 'SRC-TSUJI-2012' },
+    'lungsVentilation.exercisePantingFactor': { value: 0.35, unit: '1', source: 'SRC-TSUJI-2012' },
+    'lungsVentilation.sympatheticTidalCompressionFactor': { value: 0.25, unit: '1', source: null },
   };
   assert.deepEqual(
     data.parameters.map((parameter) => parameter.id),
     Object.keys(expected),
   );
 
-  for (const [parameterId, { value, unit }] of Object.entries(expected)) {
+  for (const [parameterId, { value, unit, source }] of Object.entries(expected)) {
     const parameter = data.parameters.find((entry) => entry.id === parameterId);
     assert.ok(parameter, `${parameterId} must be declared`);
     assert.equal(parameter.value, value, `${parameterId}: value`);
     assert.equal(parameter.unit, unit, `${parameterId}: unit`);
     assert.equal(parameter.status, 'design', `${parameterId}: status`);
-    assert.equal(parameter.source, null, `${parameterId}: source`);
+    assert.equal(parameter.source, source, `${parameterId}: source`);
   }
 
   assert.deepEqual(
@@ -136,7 +141,7 @@ test('a missing bloodOxygen part falls back to basal demand and resting ventilat
   ]) {
     const { written, writes } = round(reading);
     assert.equal(writes.length, 1, label);
-    assert.equal(written.tidalVolumeMl, 500, label);
+    assertClose(written.tidalVolumeMl, 500, label, 1e-2);
     assertClose(written.respiratoryRatePerMin, 12, label, 1e-3);
     assertClose(written.ventilationMlMin, 6000, label, 0.1);
     assertClose(written.alveolarO2MlMin, 250, `${label}: alveolar oxygen`);
@@ -148,56 +153,75 @@ test('a missing bloodOxygen part falls back to basal demand and resting ventilat
   assertClose(belowResting.alveolarO2MlMin, restingO2, 'below resting clamps to 6000');
 });
 
-test('rising demand raises ventilation and respiratory rate above resting without a dead-zone', () => {
+test('rising demand raises both tidal volume and respiratory rate along Hey plot curve', () => {
   const moderate = round(demand(750)).written;
   const hard = round(demand(1250)).written;
 
-  assert.equal(moderate.tidalVolumeMl, 500);
+  assert.ok(moderate.tidalVolumeMl > 900 && moderate.tidalVolumeMl < 1200, 'VT recruits first');
   assertClose(moderate.ventilationMlMin, 18000, 'moderate demand ventilation', 0.2);
-  assertClose(moderate.respiratoryRatePerMin, 36, 'moderate demand rate', 1e-3);
+  assertClose(
+    moderate.respiratoryRatePerMin,
+    moderate.ventilationMlMin / moderate.tidalVolumeMl,
+    'moderate demand rate follows VE / VT',
+    1e-6,
+  );
   assertClose(moderate.alveolarO2MlMin, 750, 'moderate demand alveolar oxygen');
 
-  assert.equal(hard.tidalVolumeMl, 500);
+  assert.ok(hard.tidalVolumeMl > moderate.tidalVolumeMl && hard.tidalVolumeMl < 2100);
   assertClose(hard.ventilationMlMin, 30000, 'hard demand ventilation', 0.3);
-  assert.equal(hard.respiratoryRatePerMin, 40, 'hard demand clamps RR at 40');
+  assertClose(
+    hard.respiratoryRatePerMin,
+    hard.ventilationMlMin / hard.tidalVolumeMl,
+    'hard demand rate follows VE / VT',
+    1e-6,
+  );
   assertClose(hard.alveolarO2MlMin, 1250, 'hard demand alveolar oxygen');
 
   assert.ok(hard.ventilationMlMin > moderate.ventilationMlMin);
+  assert.ok(hard.respiratoryRatePerMin > moderate.respiratoryRatePerMin);
   assert.ok(hard.alveolarO2MlMin > moderate.alveolarO2MlMin);
 });
 
-test('a hot core temperature adds the panting term on top of max(resting, metabolic) ventilation', () => {
+test('a hot core temperature adds exercise-attenuated or rest thermal panting above threshold', () => {
   const atSetpoint = round(demand(750), { coreTemperatureC: 37 }).written;
-  const hot = round(demand(750), { coreTemperatureC: 38 }).written;
-  const hotter = round(demand(750), { coreTemperatureC: 40 }).written;
+  const hotRest = round(demand(750), { coreTemperatureC: 38 }).written;
+  const hotterRest = round(demand(750), { coreTemperatureC: 40 }).written;
   const cold = round(demand(750), { coreTemperatureC: 36 }).written;
 
   const base750 = (750 * deadSpace) / extraction;
   assertClose(atSetpoint.ventilationMlMin, base750, 'at the setpoint');
-  assertClose(hot.ventilationMlMin, base750 + 1500, 'one degree above the setpoint');
-  assertClose(hot.respiratoryRatePerMin, (base750 + 1500) / 500, 'rate follows the panting target');
+  assertClose(hotRest.ventilationMlMin, base750 + 300, 'rest threshold 37.8 C gives 0.2 * 1500');
   assertClose(
-    hot.alveolarO2MlMin,
-    (base750 + 1500) * (extraction / deadSpace),
+    hotRest.respiratoryRatePerMin,
+    hotRest.ventilationMlMin / hotRest.tidalVolumeMl,
+    'rate follows dynamic VE / VT',
+  );
+  assertClose(
+    hotRest.alveolarO2MlMin,
+    (base750 + 300) * (extraction / deadSpace),
     'alveolar oxygen follows ventilation',
   );
-  assertClose(hotter.ventilationMlMin, base750 + 4500, 'three degrees above the setpoint');
+  assertClose(hotterRest.ventilationMlMin, base750 + 3300, '2.2 degrees above 37.8 C threshold');
   assertClose(cold.ventilationMlMin, base750, 'below the setpoint adds no panting');
 });
 
-test('resting hyperthermia immediately raises ventilation and respiratory rate above resting', () => {
+test('resting hyperthermia crosses passive threshold above +0.8 C without false panting at +0.5 C', () => {
+  const mildPostExercise = round(demand(250), { coreTemperatureC: 37.5 }).written;
+  assertClose(mildPostExercise.ventilationMlMin, 6000, '37.5 C at rest does not falsely pant', 0.1);
+  assertClose(mildPostExercise.respiratoryRatePerMin, 12, 'resting RR stays calm at 37.5 C', 1e-3);
+
   const restingHot = round(demand(250), { coreTemperatureC: 38 }).written;
-  const expectedRest = (250 * deadSpace) / extraction + 1500;
-  assertClose(restingHot.ventilationMlMin, expectedRest, 'resting hyperthermia adds 1500 mL/min');
-  assertClose(restingHot.respiratoryRatePerMin, expectedRest / 500, 'resting hyperthermia raises RR to ~15');
+  const expectedRest = (250 * deadSpace) / extraction + 300;
+  assertClose(restingHot.ventilationMlMin, expectedRest, 'resting hyperthermia above 37.8 C adds 300 mL/min');
+  assertClose(restingHot.respiratoryRatePerMin, restingHot.ventilationMlMin / restingHot.tidalVolumeMl, 'rate follows VE/VT');
 
   const lowDemandHot = round(demand(100), { coreTemperatureC: 40 }).written;
-  assert.equal(lowDemandHot.ventilationMlMin, 6000 + 4500, 'panting adds on top of resting floor');
-  assert.equal(lowDemandHot.respiratoryRatePerMin, (6000 + 4500) / 500);
+  assertClose(lowDemandHot.ventilationMlMin, 6000 + 3300, 'panting adds on top of resting floor');
+  assertClose(lowDemandHot.respiratoryRatePerMin, lowDemandHot.ventilationMlMin / lowDemandHot.tidalVolumeMl);
 
   const capped = round(demand(2499), { coreTemperatureC: 200 }).written;
   assert.equal(capped.ventilationMlMin, 60000);
-  assert.equal(capped.respiratoryRatePerMin, 40);
+  assertClose(capped.respiratoryRatePerMin, 60000 / capped.tidalVolumeMl);
 });
 
 test('missing thermoregulation adds no panting term', () => {
@@ -239,12 +263,12 @@ test('a loaded thermoregulation with an invalid core temperature fails without w
 test('hitting maxVentilationMlMin caps alveolar oxygen supply', () => {
   const atCap = round(demand(capacityO2)).written;
   assert.equal(atCap.ventilationMlMin, 60000);
-  assert.equal(atCap.respiratoryRatePerMin, 40);
+  assertClose(atCap.respiratoryRatePerMin, 60000 / atCap.tidalVolumeMl);
   assertClose(atCap.alveolarO2MlMin, capacityO2, 'oxygen at the ventilation cap');
 
   const aboveCap = round(demand(4000)).written;
   assert.equal(aboveCap.ventilationMlMin, 60000);
-  assert.equal(aboveCap.respiratoryRatePerMin, 40);
+  assertClose(aboveCap.respiratoryRatePerMin, 60000 / aboveCap.tidalVolumeMl);
   assertClose(aboveCap.alveolarO2MlMin, capacityO2, 'oxygen above the ventilation cap');
   assert.ok(aboveCap.alveolarO2MlMin < 4000, 'supply stays below the unmet demand');
 });

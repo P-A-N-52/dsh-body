@@ -16,6 +16,7 @@ export const id = 'sexualResponse';
 export const actionTypes = ['sex', 'orgasm'];
 
 type Phase = 'rest' | 'excitement' | 'plateau' | 'orgasm' | 'refractory' | 'resolution';
+type OrgasmBlockReason = 'none' | 'below_threshold' | 'refractory';
 
 type SexualResponseState = {
   arousalMm: number;
@@ -24,6 +25,8 @@ type SexualResponseState = {
   sexIntensity: number;
   lastOrgasmAtSimMin: number | null;
   afterglowMm: number;
+  lastAttemptedOrgasmAtSimMin: number | null;
+  lastOrgasmBlockReason: OrgasmBlockReason;
 };
 
 type SavedSexualResponseState = {
@@ -32,12 +35,15 @@ type SavedSexualResponseState = {
   readonly sexIntensity?: unknown;
   readonly lastOrgasmAtSimMin?: unknown;
   readonly afterglowMm?: unknown;
+  readonly lastAttemptedOrgasmAtSimMin?: unknown;
+  readonly lastOrgasmBlockReason?: unknown;
 };
 
 type Action = {
   readonly type?: unknown;
   readonly durationMin?: unknown;
   readonly intensity?: unknown;
+  readonly continueStimulation?: unknown;
 };
 
 type OvariesReading = {
@@ -77,6 +83,11 @@ const femalePostOrgasmPauseMin = requireParameter(
   'sexualResponse.femalePostOrgasmPauseMin',
 );
 const afterglowHalfTimeMin = requireParameter(parameters, 'sexualResponse.afterglowHalfTimeMin');
+const stimulusHalfSaturation = requireParameter(
+  parameters,
+  'sexualResponse.stimulusHalfSaturation',
+);
+const stimulusFloorWeight = requireParameter(parameters, 'sexualResponse.stimulusFloorWeight');
 
 const AFTERGLOW_PEAK_MM = 80;
 
@@ -87,6 +98,8 @@ export const initialState: SexualResponseState = {
   sexIntensity: 0,
   lastOrgasmAtSimMin: null,
   afterglowMm: 0,
+  lastAttemptedOrgasmAtSimMin: null,
+  lastOrgasmBlockReason: 'none',
 };
 
 export const fields = {
@@ -96,6 +109,8 @@ export const fields = {
   sexIntensity: { unit: '1', mode: 'absolute' },
   lastOrgasmAtSimMin: { unit: 'min', mode: 'absolute' },
   afterglowMm: { unit: 'mm', mode: 'absolute' },
+  lastAttemptedOrgasmAtSimMin: { unit: 'min', mode: 'absolute' },
+  lastOrgasmBlockReason: { unit: '-', mode: 'absolute' },
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -108,6 +123,10 @@ function finiteOr(value: unknown, fallback: number): number {
 
 function savedOrgasmMinute(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function savedBlockReason(value: unknown): OrgasmBlockReason {
+  return value === 'below_threshold' || value === 'refractory' ? value : 'none';
 }
 
 function hasOrgasmAction(actions: readonly Action[]): boolean {
@@ -200,21 +219,11 @@ export function heartbeat(io: IO): void {
   const prev = io.read(id) ?? initialState;
   const dtMin = Math.max(0, finiteOr(io.dt, 0) / 60);
   const simMin = finiteOr(io.simulatedSeconds, 0) / 60;
-
-  let remainingSexMin = Math.max(0, finiteOr(prev.remainingSexMin, 0) - dtMin);
-  let sexIntensity = finiteOr(prev.sexIntensity, 0);
-
-  for (const action of io.actions) {
-    const replacement = sexReplacement(action);
-    if (replacement !== undefined) {
-      remainingSexMin = replacement.remainingSexMin;
-      sexIntensity = replacement.sexIntensity;
-    }
-  }
-
   const prevArousal = clamp(finiteOr(prev.arousalMm, 0), 0, 100);
   const prevAfterglow = clamp(finiteOr(prev.afterglowMm, 0), 0, 100);
   let lastOrgasmAtSimMin = savedOrgasmMinute(prev.lastOrgasmAtSimMin);
+  let lastAttemptedOrgasmAtSimMin = savedOrgasmMinute(prev.lastAttemptedOrgasmAtSimMin);
+  let lastOrgasmBlockReason: OrgasmBlockReason = savedBlockReason(prev.lastOrgasmBlockReason);
 
   const ovaries = io.read('ovaries');
   const testes = io.read('testes');
@@ -228,8 +237,39 @@ export function heartbeat(io: IO): void {
     simulatedSeconds: io.simulatedSeconds,
   });
 
+  let remainingSexMin = Math.max(0, finiteOr(prev.remainingSexMin, 0) - dtMin);
+  let sexIntensity = remainingSexMin > 0 ? clamp(finiteOr(prev.sexIntensity, 0), 0, 1) : 0;
+
+  for (const action of io.actions) {
+    if (action?.type === 'orgasm') {
+      if (releaseInfo.released && action.continueStimulation !== true) {
+        remainingSexMin = 0;
+        sexIntensity = 0;
+      }
+      continue;
+    }
+    const replacement = sexReplacement(action);
+    if (replacement !== undefined) {
+      remainingSexMin = replacement.remainingSexMin;
+      sexIntensity = replacement.sexIntensity;
+    }
+  }
+
+  const nsfwEnabled = getNsfwSetting() !== false;
+  const attemptedOrgasm = hasOrgasmAction(io.actions);
   if (releaseInfo.released) {
     lastOrgasmAtSimMin = simMin;
+    lastOrgasmBlockReason = 'none';
+    if (attemptedOrgasm) lastAttemptedOrgasmAtSimMin = simMin;
+  } else if (attemptedOrgasm) {
+    lastAttemptedOrgasmAtSimMin = simMin;
+    lastOrgasmBlockReason = !nsfwEnabled
+      ? 'none'
+      : releaseInfo.refractory
+        ? 'refractory'
+        : 'below_threshold';
+  } else if (prevArousal >= orgasmAllowedMm && !releaseInfo.refractory) {
+    lastOrgasmBlockReason = 'none';
   }
 
   const active = remainingSexMin > 0 && sexIntensity > 0;
@@ -242,14 +282,20 @@ export function heartbeat(io: IO): void {
   } else if (ovaries !== undefined && ovaries !== null) {
     const e2 = finiteOr(ovaries.estradiolPmolL, 140);
     const p4 = finiteOr(ovaries.progesteroneNmolL, 1.3);
-    hormoneFactor = clamp(0.85 + 0.3 * ((e2 - 140) / 800) - 0.15 * (p4 / 42), 0.65, 1.25);
+    hormoneFactor = clamp(1 + 0.12 * ((e2 - 140) / 800) - 0.08 * (p4 / 42), 0.9, 1.15);
     riseSpeedFactor = hormoneFactor > 1 ? hormoneFactor : 1;
   }
 
-  const target = active && !releaseInfo.refractory && !releaseInfo.released
-    ? clamp(100 * sexIntensity * hormoneFactor, 0, 100)
+  // 工程假定/占位（design，无文献强度分档斜率；潜伏期量级参照 SRC-LEVIN-1985）：持续低中强度刺激经饱和曲线可越过 70 mm，微弱试探性接触则受限
+  const stimulusTargetFraction = sexIntensity > 0
+    ? (stimulusFloorWeight + (1 - stimulusFloorWeight) * sexIntensity)
+      * (((1 + stimulusHalfSaturation) * sexIntensity) / (sexIntensity + stimulusHalfSaturation))
     : 0;
-  const riseHalfTimeMin = arousalHalfTimeMin / Math.max(0.5, riseSpeedFactor);
+  const target = active && !releaseInfo.refractory && !releaseInfo.released
+    ? clamp(100 * stimulusTargetFraction * hormoneFactor, 0, 100)
+    : 0;
+  const stimulusSpeedFactor = 0.95 + 0.05 * sexIntensity;
+  const riseHalfTimeMin = arousalHalfTimeMin / Math.max(0.5, riseSpeedFactor * stimulusSpeedFactor);
   const halfTimeMin = target > prevArousal ? riseHalfTimeMin : resolutionHalfTimeMin;
   const arousalMm = clamp(
     target + (prevArousal - target) * 2 ** (-dtMin / halfTimeMin),
@@ -271,6 +317,9 @@ export function heartbeat(io: IO): void {
       : active
         ? (arousalMm < 60 ? 'excitement' : 'plateau')
         : arousalMm >= 10 ? 'resolution' : 'rest';
+  if (phase === 'rest' && !attemptedOrgasm) {
+    lastOrgasmBlockReason = 'none';
+  }
 
   io.write({
     arousalMm,
@@ -279,5 +328,7 @@ export function heartbeat(io: IO): void {
     sexIntensity,
     lastOrgasmAtSimMin,
     afterglowMm,
+    lastAttemptedOrgasmAtSimMin,
+    lastOrgasmBlockReason,
   });
 }

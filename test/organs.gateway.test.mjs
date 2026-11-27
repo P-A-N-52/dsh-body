@@ -131,7 +131,7 @@ test('the root manifest loads all forty-three body parts', async (t) => {
   assert.ok(first.parts.duodenum.nutrientExposure >= 0);
   assert.ok(Number.isFinite(first.parts.interoception.hunger));
   assert.ok(Number.isFinite(first.parts.interoception.fullness));
-  assert.equal(first.parts.interoception.thirst, 50);
+  assert.equal(first.parts.interoception.thirst, 0);
   assert.ok(Number.isFinite(first.parts.interoception.urinaryUrgency));
   assert.deepEqual(first.parts.heart, {
     heartRatePerMin: 70,
@@ -148,10 +148,13 @@ test('the root manifest loads all forty-three body parts', async (t) => {
     maxOxygenDeliveryMlPerMin: 3177.72,
     gfrMlMin: 100,
   });
+  const thermoSetpointC = first.parts.thermoregulation.setpointC;
+  const expectedProd = 0.005 * 250 + 0.1 * Math.max(0, thermoSetpointC - 37);
+  const expectedLoss = 0.104167 * 12 + Math.min(0.55, 0.5 * Math.max(0, 37 - thermoSetpointC));
   assert.ok(
     Math.abs(
       first.parts.thermoregulation.coreTemperatureC
-        - (37 + (0.005 * 250 - 0.104167 * 12) / 60),
+        - (37 + (expectedProd - expectedLoss) / 60),
     ) < 1e-12,
   );
   assert.equal(first.parts.interoception.heatMm, 0);
@@ -159,7 +162,7 @@ test('the root manifest loads all forty-three body parts', async (t) => {
   assert.equal(first.parts.bodyFluid.waterVolumeMl, 30000);
   assert.equal(first.parts.bodyFluid.waterDeficit, 0);
   assert.equal(first.parts.hypothalamusAdh.relativeConcentration, 1);
-  assert.equal(first.parts.hypothalamusThirst.thirst, 50);
+  assert.equal(first.parts.hypothalamusThirst.thirst, 0);
   assert.equal(first.parts.kidney.urineProductionRequestMl, 1);
   assert.deepEqual(first.parts.kidneyGlucose, { excretionRequestG: 0, excretedGlucoseG: 0 });
   assert.deepEqual(first.parts.kidneyGluconeogenesis, { glucoseOutputG: 0 });
@@ -229,6 +232,8 @@ test('the root manifest loads all forty-three body parts', async (t) => {
     sexIntensity: 0,
     lastOrgasmAtSimMin: null,
     afterglowMm: 0,
+    lastAttemptedOrgasmAtSimMin: null,
+    lastOrgasmBlockReason: 'none',
   });
   assert.equal(first.parts.interoception.sexualArousalMm, 0);
   assert.equal(first.parts.interoception.libidoMm, 0, 'root manifest has no testes, so libido falls back to 0');
@@ -271,7 +276,7 @@ test('the root manifest loads all forty-three body parts', async (t) => {
   });
   assert.ok(second.parts.bodyFluid.waterVolumeMl < 30000);
   assert.equal(second.parts.bladder.volumeMl, 1);
-  assert.equal(second.parts.hypothalamusThirst.thirst, 50);
+  assert.equal(second.parts.hypothalamusThirst.thirst, 0);
   assert.ok(second.parts.interoception.fullness > 0);
   assert.ok(second.parts.interoception.hunger < 50);
   assert.deepEqual(second.parts.skin, { sweatRequestMl: 0, sweatVolumeMl: 0 });

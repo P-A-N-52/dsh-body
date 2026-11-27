@@ -440,6 +440,8 @@ test('gateway.getState returns all raw numeric parts while body_state returns ze
     sexIntensity: 0,
     lastOrgasmAtSimMin: null,
     afterglowMm: 0,
+    lastAttemptedOrgasmAtSimMin: null,
+    lastOrgasmBlockReason: 'none',
   });
   assert.equal(all.parts.interoception.sexualArousalMm, 0);
   assert.equal(all.parts.interoception.libidoMm, 0);
@@ -460,10 +462,13 @@ test('gateway.getState returns all raw numeric parts while body_state returns ze
     maxOxygenDeliveryMlPerMin: 3177.72,
     gfrMlMin: 100,
   });
+  const setpointC = all.parts.thermoregulation.setpointC;
+  const expectedProd = 0.005 * 250 + 0.1 * Math.max(0, setpointC - 37);
+  const expectedLoss = 0.104167 * 12 + Math.min(0.55, 0.5 * Math.max(0, 37 - setpointC));
   assert.ok(
     Math.abs(
       all.parts.thermoregulation.coreTemperatureC
-        - (37 + (0.005 * 250 - 0.104167 * 12) / 60),
+        - (37 + (expectedProd - expectedLoss) / 60),
     ) < 1e-12,
     'basal heat production balances resting heat loss near 37 °C in the first model round',
   );

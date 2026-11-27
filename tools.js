@@ -492,7 +492,9 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
       ? '正在进行高强度体力活动，身体热起来、呼吸与心跳都在加快。'
       : exerciseIntensity >= 0.4
         ? '正在进行中等强度体力活动，身体微微发力发热。'
-        : '正在进行轻度活动，四肢在持续发力。';
+        : exerciseIntensity >= 0.15
+          ? '正在进行轻度活动，四肢在轻微发力。'
+          : '正在轻轻活动身体，整体体力负担很轻。';
     push('activity', 'steady', activityFeeling);
   }
 
@@ -506,7 +508,7 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
   else if (fullnessBand === 2) push('hunger', 'marked', '胃里有些满，饱足感比较明显。');
   else if (fullnessBand === 1) push('hunger', 'mild', '胃里有一定充实感，不太需要再进食。');
 
-  const thirstBand = bandOf(thirstMm, 65, 85, 55);
+  const thirstBand = bandOf(thirstMm, 40, 65, 15);
   if (thirstBand === 3) push('thirst', 'strong', '非常口渴，急切想要喝水。');
   else if (thirstBand === 2) push('thirst', 'marked', '有些口渴了，需要补充水分。');
   else if (thirstBand === 1) push('thirst', 'mild', '隐约有一点微渴。');
@@ -579,10 +581,35 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
   else if (coldBand === 2) push('temperature', 'marked', '身上觉得有些发凉起鸡皮疙瘩。');
   else if (coldBand === 1) push('temperature', 'mild', '皮肤隐约有一点凉意。');
 
+  const skinPart = readPart(parts, 'skin');
+  const activelySweating = (readNum(skinPart, 'sweatVolumeMl') ?? 0) >= 0.5
+    || (readNum(skinPart, 'sweatRequestMl') ?? 0) >= 0.5;
   const sweatBand = bandOf(sweatDampMm);
-  if (sweatBand === 3) push('temperature', 'strong', '浑身被汗水浸湿粘腻，汗流个不停。');
-  else if (sweatBand === 2) push('temperature', 'marked', '后背和皮肤明显出汗潮湿黏腻。');
-  else if (sweatBand === 1) push('temperature', 'mild', '皮肤微微泛潮，有些许薄汗。');
+  if (sweatBand === 3) {
+    push(
+      'temperature',
+      'strong',
+      activelySweating
+        ? '浑身被汗水浸湿粘腻，汗流个不停。'
+        : '身上还是汗津津、湿漉漉的，潮意还没散透。',
+    );
+  } else if (sweatBand === 2) {
+    push(
+      'temperature',
+      'marked',
+      activelySweating
+        ? '后背和皮肤明显在出汗，有些潮湿黏腻。'
+        : '皮肤上还带着刚才出汗留下的潮意，正在慢慢退去。',
+    );
+  } else if (sweatBand === 1) {
+    push(
+      'temperature',
+      'mild',
+      activelySweating
+        ? '皮肤微微泛潮，渗出些许薄汗。'
+        : '皮肤还残留一点微凉的湿意。',
+    );
+  }
 
   const fatigueBand = bandOf(muscleFatigueMm);
   if (fatigueBand === 3) push('fatigue', 'strong', '肌肉酸痛发软，四肢沉重疲乏得使不上力。');
@@ -672,6 +699,18 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
     const mammaryLactating = mammaryPart?.lactating === true;
     const galactorrhea = mammaryPart?.galactorrhea === true;
 
+    const lastOrgasmMin = readNum(sexualPart, 'lastOrgasmAtSimMin');
+    const lastAttemptMin = readNum(sexualPart, 'lastAttemptedOrgasmAtSimMin');
+    const blockReason = typeof sexualPart?.lastOrgasmBlockReason === 'string'
+      ? sexualPart.lastOrgasmBlockReason
+      : 'none';
+    const currentSimSeconds = readNum(snapshot, 'simulatedSeconds');
+    const recentBlockedOrgasm = lastAttemptMin !== undefined
+      && currentSimSeconds !== undefined
+      && (currentSimSeconds / 60) - lastAttemptMin <= 3
+      && (lastOrgasmMin === undefined || lastAttemptMin > lastOrgasmMin)
+      && (blockReason === 'below_threshold' || blockReason === 'refractory');
+
     if (ejaculatedMl > 0) {
       push('sexual', 'strong', '刚经历过强烈的射精排出，下身阵阵抽动后随之松弛下来。');
     }
@@ -684,11 +723,23 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
         push('sexual', 'mild', '兴奋退潮后温热余韵尚存，呼吸渐缓、周身松软舒适。');
       } else if ((arousalMm ?? 0) >= 65) {
         push('sexual', 'mild', '方才的燥热余波尚未完全平息，感官仍有些敏锐。');
+      } else if ((arousalMm ?? 0) >= 25) {
+        push('sexual', 'mild', '刚才积起的温热敏感正在慢慢回落散去。');
       }
     } else if (phase === 'plateau' || (arousalMm ?? 0) >= 85) {
-      push('sexual', 'strong', '体内翻涌着强烈的燥热与冲动，敏感而悸动。');
+      if ((arousalMm ?? 0) >= 75) {
+        push('sexual', 'strong', '体内翻涌着炽热而饱满的冲动，敏感得仿佛临近顶点，随时可能推过去。');
+      } else {
+        push('sexual', 'marked', '兴奋已积蓄成饱满紧绷的高台，局部阵阵发麻发紧。');
+      }
     } else if (phase === 'excitement' || (arousalMm ?? 0) >= 65) {
-      push('sexual', 'marked', '体内泛起明显的燥热与悸动，感官变得敏锐。');
+      if ((arousalMm ?? 0) >= 45) {
+        push('sexual', 'marked', '明显的燥热与悸动在蔓延，感官变得相当敏锐。');
+      } else if ((arousalMm ?? 0) >= 25) {
+        push('sexual', 'mild', '体内的温热和躁动感正在稳步爬升，敏感度逐渐加深。');
+      } else {
+        push('sexual', 'mild', '身体刚刚泛起一点轻热与敏感的悸动，唤起才刚开始蓄积。');
+      }
     } else if ((arousalMm ?? 0) >= 40) {
       push('sexual', 'mild', '隐约有一点温热悸动的感觉。');
     } else if ((libidoMm ?? 0) >= 85) {
@@ -697,6 +748,16 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
       push('sexual', 'marked', '隐约有些欲念浮动。');
     } else if ((libidoMm ?? 0) >= 45) {
       push('sexual', 'mild', '心底隐约浮现温热渴望。');
+    }
+
+    if (recentBlockedOrgasm) {
+      push(
+        'sexual',
+        'mild',
+        blockReason === 'refractory'
+          ? '刚才试图再推一次高潮，但身体仍处在不应余缓期里，没能立刻叠上去。'
+          : '刚才试着往顶点推了一下，但目前的唤起火候还不够深，没能跨过释放门槛。',
+      );
     }
 
     const mammaryBand = bandOf(mammaryFullnessMm);
@@ -1019,17 +1080,31 @@ function rememberCallCache(cache, key, value, maxSize = 200) {
   }
 }
 
+function resolveScopedGateway(gateway, sessionId) {
+  if (typeof gateway?.gatewayForSession === 'function') {
+    return gateway.gatewayForSession(sessionId);
+  }
+  return gateway;
+}
+
 export function createBodyTools(gateway, options = {}) {
-  const translator = typeof options?.translator?.translate === 'function'
-    ? options.translator
-    : createBodyActionTranslator({
-      ctx: options?.ctx ?? null,
-      gateway,
-      config: isPlainRecord(options?.translatorConfig)
-        ? options.translatorConfig
-        : (isPlainRecord(options?.translator) ? options.translator : {}),
-      historyPath: options?.historyPath ?? null,
-    });
+  const translatorsByGateway = new Map();
+  function getTranslator(targetGateway) {
+    if (typeof options?.translator?.translate === 'function') {
+      return options.translator;
+    }
+    if (!translatorsByGateway.has(targetGateway)) {
+      translatorsByGateway.set(targetGateway, createBodyActionTranslator({
+        ctx: options?.ctx ?? null,
+        gateway: targetGateway,
+        config: isPlainRecord(options?.translatorConfig)
+          ? options.translatorConfig
+          : (isPlainRecord(options?.translator) ? options.translator : {}),
+        historyPath: options?.historyPath ?? null,
+      }));
+    }
+    return translatorsByGateway.get(targetGateway);
+  }
   const translatedCallCache = new Map();
 
   const typeProperty = { type: 'string' };
@@ -1094,6 +1169,14 @@ export function createBodyTools(gateway, options = {}) {
         },
         durationMin: durationMinProperty,
         intensity: intensityProperty,
+        exertion: {
+          type: 'number',
+          description: 'Optional explicit override for sex: whole-body skeletal-muscle exertion in [0, 1]. Omit when passing description.',
+        },
+        continueStimulation: {
+          type: 'boolean',
+          description: 'Optional boolean for orgasm: true to keep ongoing sex stimulation running after climax instead of ending it.',
+        },
         bilateral: {
           type: 'boolean',
           description: 'Optional explicit override for express_milk or breastfeed: true when both breasts are stimulated; omit when passing description.',
@@ -1122,8 +1205,13 @@ export function createBodyTools(gateway, options = {}) {
       if (sessionId === null) {
         return { ok: false, statusCode: 400, receipt: { error: 'body_act requires an agent session id' } };
       }
-      const nsfwEnabled = isNsfwEnabled(gateway);
-      const extraActionTypes = getExtraActionTypes(gateway);
+      gateway?.useSession?.(sessionId);
+      const target = resolveScopedGateway(gateway, sessionId);
+      if (!target) {
+        return { ok: false, statusCode: 503, receipt: { error: 'Target body gateway is unavailable' } };
+      }
+      const nsfwEnabled = isNsfwEnabled(target);
+      const extraActionTypes = getExtraActionTypes(target);
       if (NSFW_ACTION_TYPES.includes(input.type) && !nsfwEnabled) {
         return { ok: false, statusCode: 400, receipt: { error: 'NSFW actions are disabled for this body' } };
       }
@@ -1138,7 +1226,7 @@ export function createBodyTools(gateway, options = {}) {
         if (overrideInvalid !== null) {
           return { ok: false, statusCode: 400, receipt: { error: overrideInvalid } };
         }
-        const gateError = buildGateErrorResponse(gateway);
+        const gateError = buildGateErrorResponse(target);
         if (gateError) return gateError;
 
         const explicitConstraints = extractExplicitOverrides(input);
@@ -1147,14 +1235,14 @@ export function createBodyTools(gateway, options = {}) {
         if (cacheKey && translatedCallCache.has(cacheKey)) {
           const cached = translatedCallCache.get(cacheKey);
           if (cached.requestDigest !== requestDigest) {
-            const existingReceipt = gateway?.getReceipt?.(cached.primaryId) ?? cached.primaryReceipt;
+            const existingReceipt = target?.getReceipt?.(cached.primaryId) ?? cached.primaryReceipt;
             return {
               ok: false,
               statusCode: 409,
               receipt: { error: 'Action id already used with a different payload', existing: existingReceipt },
             };
           }
-          const replayResults = cached.payloads.map((payload) => gateway.submitAction(payload));
+          const replayResults = cached.payloads.map((payload) => target.submitAction(payload));
           const replayFailed = replayResults.find((res) => res.statusCode < 200 || res.statusCode >= 300);
           if (replayFailed) {
             return { ok: false, statusCode: replayFailed.statusCode, receipt: replayFailed.body };
@@ -1170,7 +1258,8 @@ export function createBodyTools(gateway, options = {}) {
           };
         }
 
-        const translation = await translator.translate({
+        const bodyTranslator = getTranslator(target);
+        const translation = await bodyTranslator.translate({
           type: input.type,
           description: rawDescription,
           explicitConstraints,
@@ -1190,7 +1279,7 @@ export function createBodyTools(gateway, options = {}) {
         ));
         const submitResults = [];
         for (const payload of payloads) {
-          const submitted = gateway.submitAction(payload);
+          const submitted = target.submitAction(payload);
           if (submitted.statusCode < 200 || submitted.statusCode >= 300) {
             if (cacheKey && submitResults.length > 0) {
               rememberCallCache(translatedCallCache, cacheKey, {
@@ -1222,14 +1311,14 @@ export function createBodyTools(gateway, options = {}) {
           });
         }
 
-        if (submitResults.some((res) => res.statusCode === 202) && typeof translator.recordHistory === 'function') {
+        if (submitResults.some((res) => res.statusCode === 202) && typeof bodyTranslator.recordHistory === 'function') {
           let simulatedSeconds;
           try {
-            simulatedSeconds = gateway.getState?.()?.simulatedSeconds;
+            simulatedSeconds = target.getState?.()?.simulatedSeconds;
           } catch {
             simulatedSeconds = undefined;
           }
-          await translator.recordHistory({
+          await bodyTranslator.recordHistory({
             type: input.type,
             description: rawDescription,
             actions: translation.actions,
@@ -1255,7 +1344,7 @@ export function createBodyTools(gateway, options = {}) {
       }
       const directInput = stripTranslatorInputFields(input);
       const payload = buildActionPayload(directInput, { sessionId, callId });
-      const { statusCode, body } = gateway.submitAction(payload);
+      const { statusCode, body } = target.submitAction(payload);
       const receipt = statusCode === 409 && body?.dormant === true
         ? {
           ...body,
@@ -1264,26 +1353,24 @@ export function createBodyTools(gateway, options = {}) {
         }
         : body;
 
-      if (
-        statusCode === 202
-        && isTranslatable
-        && rawDescription !== ''
-        && typeof translator.recordHistory === 'function'
-      ) {
-        let simulatedSeconds;
-        try {
-          simulatedSeconds = gateway.getState?.()?.simulatedSeconds;
-        } catch {
-          simulatedSeconds = undefined;
+      if (statusCode === 202 && isTranslatable && rawDescription !== '') {
+        const bodyTranslator = getTranslator(target);
+        if (typeof bodyTranslator.recordHistory === 'function') {
+          let simulatedSeconds;
+          try {
+            simulatedSeconds = target.getState?.()?.simulatedSeconds;
+          } catch {
+            simulatedSeconds = undefined;
+          }
+          const recordedAction = { type: directInput.type, ...extractExplicitOverrides(directInput) };
+          await bodyTranslator.recordHistory({
+            type: directInput.type,
+            description: rawDescription,
+            actions: [recordedAction],
+            ...(typeof simulatedSeconds === 'number' && Number.isFinite(simulatedSeconds) ? { simulatedSeconds } : {}),
+            wallTimeMs: Date.now(),
+          });
         }
-        const recordedAction = { type: directInput.type, ...extractExplicitOverrides(directInput) };
-        await translator.recordHistory({
-          type: directInput.type,
-          description: rawDescription,
-          actions: [recordedAction],
-          ...(typeof simulatedSeconds === 'number' && Number.isFinite(simulatedSeconds) ? { simulatedSeconds } : {}),
-          wallTimeMs: Date.now(),
-        });
       }
 
       return {
@@ -1362,13 +1449,32 @@ export function createBodyTools(gateway, options = {}) {
       },
       render: renderJson,
     },
-    async execute(args = {}) {
+    async execute(args = {}, exec) {
       const input = isPlainRecord(args) ? args : {};
-      const health = getGatewayHealthSafe(gateway);
+      const sessionId = resolveSessionId(input, exec);
+      if (sessionId !== null) gateway?.useSession?.(sessionId);
+      const target = resolveScopedGateway(gateway, sessionId);
+      if (!target) {
+        return {
+          status: 'paused',
+          focus: sanitizeFocusLabel(input.focus ?? input.part),
+          feelings: null,
+          summary: '当前身体网关暂不可用。',
+        };
+      }
+      const health = getGatewayHealthSafe(target);
+      if (health?.fatal) {
+        return {
+          status: 'paused',
+          focus: sanitizeFocusLabel(input.focus ?? input.part),
+          feelings: [],
+          summary: '身体因内部脚本异常已停机，当前无法读取实时体感。',
+        };
+      }
       const active = health?.active !== false;
-      const dormant = Boolean(gateway?.isDormant?.() ?? health?.dormant ?? false);
-      const nsfw = Boolean(gateway?.getNsfw?.() ?? health?.nsfw ?? false);
-      const snapshot = dormant || !active ? null : gateway.getState();
+      const dormant = Boolean(target?.isDormant?.() ?? health?.dormant ?? false);
+      const nsfw = Boolean(target?.getNsfw?.() ?? health?.nsfw ?? false);
+      const snapshot = dormant || !active ? null : target.getState();
       return buildBodyFeelingsSummary(snapshot, {
         focus: input.focus,
         part: input.part,
@@ -1419,38 +1525,52 @@ export function createBodyTools(gateway, options = {}) {
     async execute(args = {}, exec) {
       const input = isPlainRecord(args) ? args : {};
       const action = input.action ?? 'bind';
-      const status = currentBindStatus(gateway);
+      const sessionId = resolveSessionId(input, exec);
+      if (sessionId !== null) gateway?.useSession?.(sessionId);
+      const target = resolveScopedGateway(gateway, sessionId);
+      if (!target) {
+        return {
+          ok: false,
+          bound: false,
+          dormant: true,
+          active: false,
+          nsfw: false,
+          boundSessionId: null,
+          error: 'Target body gateway is unavailable',
+        };
+      }
+      const status = currentBindStatus(target);
 
       if (action === 'status') {
         return { ok: true, ...status };
       }
 
       if (action === 'unbind') {
-        if (typeof gateway?.unbindSession !== 'function') {
+        if (typeof target?.unbindSession !== 'function') {
           return { ok: false, ...status, error: 'Binding is not supported by this Gateway' };
         }
         try {
-          const updated = await gateway.unbindSession();
+          const updated = await target.unbindSession();
           const boundSessionId = updated?.boundSessionId ?? null;
           return {
             ok: true,
             bound: typeof boundSessionId === 'string' && boundSessionId !== '',
-            dormant: Boolean(updated?.dormant ?? gateway?.isDormant?.() ?? true),
+            dormant: Boolean(updated?.dormant ?? target?.isDormant?.() ?? true),
             active: updated?.active !== false,
-            nsfw: Boolean(updated?.nsfw ?? isNsfwEnabled(gateway)),
+            nsfw: Boolean(updated?.nsfw ?? isNsfwEnabled(target)),
             boundSessionId,
           };
         } catch (error) {
           return {
             ok: false,
-            ...currentBindStatus(gateway),
+            ...currentBindStatus(target),
             error: error instanceof Error ? error.message : String(error),
           };
         }
       }
 
       if (action === 'bind') {
-        if (typeof gateway?.bindSession !== 'function') {
+        if (typeof target?.bindSession !== 'function') {
           return { ok: false, ...status, error: 'Binding is not supported by this Gateway' };
         }
         if (!status.active) {
@@ -1460,7 +1580,6 @@ export function createBodyTools(gateway, options = {}) {
             error: 'Body Gateway is paused (active=false)',
           };
         }
-        const sessionId = resolveSessionId(input, exec);
         if (sessionId === null) {
           return {
             ok: false,
@@ -1469,15 +1588,15 @@ export function createBodyTools(gateway, options = {}) {
           };
         }
         try {
-          const updated = await gateway.bindSession(sessionId);
+          const updated = await target.bindSession(sessionId);
           const boundSessionId = updated?.boundSessionId ?? sessionId;
           const active = updated?.active !== false;
-          const dormant = Boolean(updated?.dormant ?? gateway?.isDormant?.() ?? false);
-          const nsfw = Boolean(updated?.nsfw ?? isNsfwEnabled(gateway));
+          const dormant = Boolean(updated?.dormant ?? target?.isDormant?.() ?? false);
+          const nsfw = Boolean(updated?.nsfw ?? isNsfwEnabled(target));
           let feeling;
-          if (active && !dormant && typeof gateway?.getState === 'function') {
+          if (active && !dormant && typeof target?.getState === 'function') {
             try {
-              const summary = formatBodyFeelingsContext(gateway.getState(), { nsfw, dormant, active });
+              const summary = formatBodyFeelingsContext(target.getState(), { nsfw, dormant, active });
               if (summary) feeling = summary;
             } catch {
               feeling = undefined;
@@ -1495,7 +1614,7 @@ export function createBodyTools(gateway, options = {}) {
         } catch (error) {
           return {
             ok: false,
-            ...currentBindStatus(gateway),
+            ...currentBindStatus(target),
             error: error instanceof Error ? error.message : String(error),
           };
         }

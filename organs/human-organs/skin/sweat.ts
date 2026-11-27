@@ -22,7 +22,7 @@
  * 只用 `heatGain` 一个参数，不复制设定点参数。活动部位存在但字段缺失、非有限、为负，或
  * intensity > 1 时抛错，不写状态。不建皮肤分区、温度、湿润度或蒸发残余。
  */
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import { loadParameters, requireParameter, scaleByBodyWeight } from '../../../lib/parameters.js';
 
 export const id = 'skin';
 export const actionTypes: string[] = [];
@@ -65,11 +65,22 @@ type IO = {
 };
 
 const parameters = loadParameters(new URL('./sweat.parameters.json', import.meta.url));
-const referenceRateMlPerMin = requireParameter(parameters, 'skin.sweat.referenceRateMlPerMin');
+const referenceRateMlPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'skin.sweat.referenceRateMlPerMin'),
+  'skin.sweat.referenceRateMlPerMin',
+);
 const ambientGainPerC = requireParameter(parameters, 'skin.sweat.ambientGainPerC');
-const maxRateMlPerMin = requireParameter(parameters, 'skin.sweat.maxRateMlPerMin');
+const maxRateMlPerMin = scaleByBodyWeight(
+  requireParameter(parameters, 'skin.sweat.maxRateMlPerMin'),
+  'skin.sweat.maxRateMlPerMin',
+);
 const ambientTemperatureC = requireParameter(parameters, 'skin.sweat.ambientTemperatureC');
-const heatGain = requireParameter(parameters, 'skin.heatGain');
+const heatGain = scaleByBodyWeight(
+  requireParameter(parameters, 'skin.heatGain'),
+  'skin.heatGain',
+);
+const interthresholdOffsetC = requireParameter(parameters, 'skin.interthresholdOffsetC');
+const nocturnalDeadbandOffsetC = requireParameter(parameters, 'skin.nocturnalDeadbandOffsetC');
 
 const referenceTemperatureC = 25;
 const thermoregulationSetpointC = 37;
@@ -92,10 +103,17 @@ export function sweatRequestMl({
   setpointC = thermoregulationSetpointC,
 }: SweatRequestInput): number {
   const temperatureFactor = Math.max(0, 1 + ambientGainPerC * (temperatureC - referenceTemperatureC));
-  const exerciseRateMlPerMin = remainingExerciseMin > 0
+  const exercising = remainingExerciseMin > 0 && intensity > 0;
+  const exerciseRateMlPerMin = exercising
     ? referenceRateMlPerMin * intensity * temperatureFactor
     : 0;
-  const thermalThresholdC = Math.max(thermoregulationSetpointC, setpointC);
+  // 非运动静息（含刚停运动压力反射卸载期）保留阈间带死区，避免轻度微热或夜间昼夜谷值时误出汗
+  const deadbandC = exercising
+    ? 0
+    : (setpointC < thermoregulationSetpointC ? nocturnalDeadbandOffsetC : interthresholdOffsetC);
+  const thermalThresholdC = exercising
+    ? Math.max(thermoregulationSetpointC, setpointC)
+    : setpointC + deadbandC;
   const thermalRateMlPerMin = heatGain * Math.max(0, coreTemperatureC - thermalThresholdC);
   const rateMlPerMin = Math.min(maxRateMlPerMin, exerciseRateMlPerMin + thermalRateMlPerMin);
   return dtMin > 0 ? rateMlPerMin * dtMin : 0;

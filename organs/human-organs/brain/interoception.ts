@@ -474,9 +474,9 @@ const stressSympatheticWeight = requireParameter(
   'interoception.stress.sympatheticWeight',
 );
 const sweatDampHalfTimeMin = requireParameter(parameters, 'interoception.sweatDamp.halfTimeMin');
-const sweatDampRateGainMmPerMl = requireParameter(
-  parameters,
-  'interoception.sweatDamp.rateGainMmPerMl',
+const sweatDampReferenceEvapRateMlMin = scaleByBodyWeight(
+  requireParameter(parameters, 'interoception.sweatDamp.referenceEvapRateMlMin'),
+  'interoception.sweatDamp.referenceEvapRateMlMin',
 );
 const muscleFatigueHalfTimeMin = requireParameter(
   parameters,
@@ -854,12 +854,20 @@ export function heartbeat(io: IO): void {
   const skin = io.read('skin');
   const sweatVolumeMl = Math.max(0, finiteOr(skin?.sweatVolumeMl, 0));
   const sweatRateMlMin = skin !== undefined && dtMin > 0 ? sweatVolumeMl / dtMin : 0;
-  const sweatDampMm = clamp(
-    prevSweatDamp * Math.pow(0.5, dtMin / sweatDampHalfTimeMin)
-      + sweatRateMlMin * sweatDampRateGainMmPerMl * dtMin,
+  // 按体重缩放室内最大有效蒸发参考上限，将实时汗率折算为 Gagge 皮肤湿润度稳态平衡目标，防止停活动后过冲
+  const targetSweatDampMm = clamp(
+    100 * (sweatRateMlMin / Math.max(0.1, sweatDampReferenceEvapRateMlMin)),
     0,
     100,
   );
+  const sweatDampMm = dtMin > 0
+    ? clamp(
+      targetSweatDampMm
+        + (prevSweatDamp - targetSweatDampMm) * Math.pow(0.5, dtMin / sweatDampHalfTimeMin),
+      0,
+      100,
+    )
+    : prevSweatDamp;
 
   const prevMuscleFatigue = clamp(finiteOr(prevInteroception?.muscleFatigueMm, 0), 0, 100);
   const acuteFatigue = prevMuscleFatigue * Math.pow(0.5, dtMin / muscleFatigueHalfTimeMin)

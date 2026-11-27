@@ -18,6 +18,8 @@ const sexualInitial = {
   sexIntensity: 0,
   lastOrgasmAtSimMin: null,
   afterglowMm: 0,
+  lastAttemptedOrgasmAtSimMin: null,
+  lastOrgasmBlockReason: 'none',
 };
 
 function silence(t) {

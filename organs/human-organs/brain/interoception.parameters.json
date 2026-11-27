@@ -77,11 +77,11 @@
     {
       "id": "interoception.thirst.fallbackMm",
       "unit": "mm",
-      "value": 50,
+      "value": 0,
       "status": "design",
       "range": [0, 100],
-      "source": null,
-      "note": "缺失或非有限 hypothalamusThirst.thirst 时的回落值；与口渴脚本 baselineMm 的 design 基线一致，不是人体 VAS 测量"
+      "source": "SRC-HUGHES-2018",
+      "note": "缺失或非有限 hypothalamusThirst.thirst 时的回落值；与 Hughes 2018 正常水合近零口渴基线一致"
     },
     {
       "id": "interoception.urinaryUrgency.referenceVolumeMl",
@@ -239,20 +239,20 @@
     {
       "id": "interoception.sweatDamp.halfTimeMin",
       "unit": "min",
-      "value": 20,
+      "value": 5,
       "status": "design",
-      "range": [1, 120],
-      "source": null,
-      "note": "出汗停下后体表黏腻感回落半衰期；design"
+      "range": [1, 60],
+      "source": "SRC-KENNY-2008",
+      "note": "工程假定/占位（无裸皮/衣物分钟级指数干燥实测常数）：体表湿润潮湿感向当前蒸发稳态目标趋近的平衡时间尺度"
     },
     {
-      "id": "interoception.sweatDamp.rateGainMmPerMl",
-      "unit": "mm/(mL/min)",
-      "value": 4,
+      "id": "interoception.sweatDamp.referenceEvapRateMlMin",
+      "unit": "mL/min",
+      "value": 4.5,
       "status": "design",
-      "range": [0, 20],
-      "source": null,
-      "note": "每 mL/min 出汗速率对应的黏腻目标涨幅；design"
+      "range": [0.5, 20],
+      "source": "SRC-CRAMER-2019",
+      "note": "工程标定（按体重缩放，锚定室内轻着衣 Emax 与 Cramer 2019 w_max ≈ 0.72 对应约 4.5 mL/min 蒸发饱和速率；低于该上限按 Gagge 皮肤湿润度稳态平衡映射 0–100 mm，消除旧 117× 累加过冲）"
     },
     {
       "id": "interoception.muscleFatigue.halfTimeMin",

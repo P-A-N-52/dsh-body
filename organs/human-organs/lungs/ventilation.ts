@@ -11,12 +11,14 @@
  *
  * 公式（demand 为轮初需氧，mL/min；coreTemperatureC 为轮初核心温度，未加载按缺失）：
  *   metabolicVentilation = demand × deadSpaceFactor / inspiredO2Fraction
- *   pantingMlMin = pantingGain × max(0, coreTemperatureC − 37)
- *   targetVentilation = max(restingVentilationMlMin, metabolicVentilation) + pantingMlMin
- *   ventilationMlMin = clamp(targetVentilation, restingVentilationMlMin, maxVentilationMlMin)
- *   respiratoryRatePerMin = clamp(ventilationMlMin / restingTidalVolumeMl,
- *                                 restingRatePerMin, maxRatePerMin)
- *   tidalVolumeMl = restingTidalVolumeMl（本切片固定，不做潮气量调节）
+ *   thermalThresholdC = exercising ? max(37, setpointC) : max(37, setpointC) + restThermalThresholdOffsetC
+ *   pantingMlMin = (exercising ? pantingGain × exercisePantingFactor : pantingGain)
+ *                  × max(0, coreTemperatureC − thermalThresholdC)
+ *   targetVentilation = max(minVentilationMlMin, metabolicVentilation) + pantingMlMin + sympatheticVentilationMlMin
+ *   ventilationMlMin = clamp(targetVentilation, minVentilationMlMin, maxVentilationMlMin)
+ *   // Hey Plot 先扩 VT 后升 RR（SRC-HEY-1966 / SRC-NEDER-2003 / SRC-LOE-2014）：
+ *   tidalVolumeMl = restingVT + (maxVT − restingVT) × (1 − exp(−max(0, VE − restingVE) / tidalScale))
+ *   respiratoryRatePerMin = clamp(ventilationMlMin / tidalVolumeMl, minRatePerMin, maxRatePerMin)
  *   alveolarO2MlMin = ventilationMlMin × inspiredO2Fraction / deadSpaceFactor
  *   alveolarO2CapacityMlMin = maxVentilationMlMin × inspiredO2Fraction / deadSpaceFactor
  * `metabolicVentilation` 是满足该需氧所需的通气量；低于静息通气时先回到静息基线，核心温度
@@ -108,6 +110,26 @@ const sympatheticVentilationGainMlPerMinPerMm = scaleByBodyWeight(
   requireParameter(parameters, 'lungsVentilation.sympatheticVentilationGainMlPerMinPerMm'),
   'lungsVentilation.sympatheticVentilationGainMlPerMinPerMm',
 );
+const maxTidalVolumeMl = scaleByBodyWeight(
+  requireParameter(parameters, 'lungsVentilation.maxTidalVolumeMl'),
+  'lungsVentilation.maxTidalVolumeMl',
+);
+const tidalScaleVentilationMlMin = scaleByBodyWeight(
+  requireParameter(parameters, 'lungsVentilation.tidalScaleVentilationMlMin'),
+  'lungsVentilation.tidalScaleVentilationMlMin',
+);
+const restThermalThresholdOffsetC = requireParameter(
+  parameters,
+  'lungsVentilation.restThermalThresholdOffsetC',
+);
+const exercisePantingFactor = requireParameter(
+  parameters,
+  'lungsVentilation.exercisePantingFactor',
+);
+const sympatheticTidalCompressionFactor = requireParameter(
+  parameters,
+  'lungsVentilation.sympatheticTidalCompressionFactor',
+);
 
 const fallbackBasalDemandMlMin =
   getNumericParameterOverride('bloodOxygen.basalMlMin') ?? scaleByBodyWeight(250);
@@ -185,12 +207,16 @@ export function heartbeat(io: IO): void {
   const minVentilationMlMin = restingVentilationMlMin * sleepFloorFactor;
   const minRatePerMin = restingRatePerMin * sleepFloorFactor;
 
-  const thermalThresholdC = thermoregulation === undefined
+  const baseThermalThresholdC = thermoregulation === undefined
     ? thermoregulationSetpointC
     : Math.max(thermoregulationSetpointC, thermoregulation.setpointC);
+  const thermalThresholdC = exercising
+    ? baseThermalThresholdC
+    : baseThermalThresholdC + restThermalThresholdOffsetC;
+  const effectivePantingGain = exercising ? pantingGain * exercisePantingFactor : pantingGain;
   const pantingMlMin = thermoregulation === undefined
     ? 0
-    : pantingGain * Math.max(0, thermoregulation.coreTemperatureC - thermalThresholdC);
+    : effectivePantingGain * Math.max(0, thermoregulation.coreTemperatureC - thermalThresholdC);
   const sympatheticVentilationMlMin = exercising
     ? 0
     : sympatheticVentilationGainMlPerMinPerMm * sympatheticMm;
@@ -203,15 +229,29 @@ export function heartbeat(io: IO): void {
     minVentilationMlMin,
     maxVentilationMlMin,
   );
+  const sympatheticTidalFactor = exercising
+    ? 1
+    : clamp(1 - sympatheticTidalCompressionFactor * (sympatheticMm / 100), 0.72, 1);
+  const excessVentilationMlMin = ventilationMlMin <= restingVentilationMlMin + 1
+    ? 0
+    : ventilationMlMin - restingVentilationMlMin;
+  const recruitedTidalVolumeMl = restingTidalVolumeMl
+    + (maxTidalVolumeMl - restingTidalVolumeMl)
+      * (1 - Math.exp(-excessVentilationMlMin / Math.max(1, tidalScaleVentilationMlMin)));
+  const tidalVolumeMl = clamp(
+    recruitedTidalVolumeMl * sympatheticTidalFactor,
+    restingTidalVolumeMl * 0.7,
+    maxTidalVolumeMl,
+  );
   const respiratoryRatePerMin = clamp(
-    ventilationMlMin / restingTidalVolumeMl,
+    ventilationMlMin / tidalVolumeMl,
     minRatePerMin,
     maxRatePerMin,
   );
   const alveolarO2MlMin = ventilationMlMin * (inspiredO2Fraction / deadSpaceFactor);
 
   io.write({
-    tidalVolumeMl: restingTidalVolumeMl,
+    tidalVolumeMl,
     respiratoryRatePerMin,
     ventilationMlMin,
     alveolarO2MlMin,

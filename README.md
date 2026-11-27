@@ -1,6 +1,6 @@
 # dsh-body
 
-> 版本：`v0.2.0-beta.1`（内测版）
+> 版本：`v0.2.0`（正式版）
 
 `dsh-body` 是 [DSH](https://github.com/deepseek-ai/deepseek-harness) 的虚拟身体插件。核心是一个**按固定步长结算、可从存档恢复的仿真 Gateway**：会话提交动作，器官脚本计算下一状态，Gateway 决定时间何时前进、哪些结果一起生效。身体启用时，即使会话空闲，仿真也会继续。
 
@@ -53,15 +53,15 @@
 | 十二指肠 | 近期营养暴露代理（与唾液产率联动放大碳水餐暴露增益） |
 | 唾液腺 | 进食/饮水后 5 min 刺激窗口内的唾液产率、脱水时产率下降与湿润度/口干读数（水合静息 100 mm / `dryMouthMm = 0`）；有碳水到达十二指肠时按唾液产率放大淀粉酶增益；唾液不进水账 |
 | 小肠 | 水与碳水一阶吸收（脱水时微调水吸收，高血糖经梯度负反馈减慢碳水吸收）；离开通量按 95% 吸收 / 5% 残渣分流转入结肠 |
-| 皮肤 | 活动相关汗液请求与实际汗量，高核心温度时叠加加性热致出汗（总上限 15 mL/min） |
-| 肺 | 运动相关呼吸失水、自动通气，核心温度高时叠加喘息 |
+| 皮肤 | 活动相关汗液请求与实际汗量（含体重缩放、静息/夜间阈间死区），高核心温度时叠加加性热致出汗 |
+| 肺 | 运动相关呼吸失水、Hey Plot（先扩潮气量后提频）自动通气与静息/运动分离热喘息 |
 | 胰腺 | 血糖驱动的血浆胰岛素绝对浓度（`insulinPmolL`，Michaelis–Menten 可饱和清除 ODE）与胰高血糖素相对信号 |
 | 肝 | 肝糖原储存（上限 100 g）与平滑比例 + 低血糖/胰高血糖素/皮质醇（`cortisolNmolL / 180`）/交感神经驱动的释放（静息基线 0.096 g/min） |
-| 骨骼肌 | 活动状态（`exercise` / `sex` 及清零进行中活动的 `stop_exercise`，`sleep` 亦可清零活动）、胰岛素与运动收缩摄糖聚合器、头/躯干/四肢三个区域糖原（初值合计 300 g、总消耗 0.5 g/min） |
+| 骨骼肌 | 活动状态（`exercise`、`exertion` 解耦后的 `sex`、释放高潮/清零 `stop_exercise` 与 `sleep`）、胰岛素与运动收缩摄糖聚合器、头/躯干/四肢三个区域糖原（初值合计 300 g、总消耗 0.5 g/min） |
 | 肾 | ADH 驱动产尿（受 GFR 缩放）、肾糖质量排泄；肾糖异生按平滑比例在空腹/低血糖或胰高血糖素高于基线时向葡萄糖隔室产糖（静息基线 0.024 g/min）；可选中枢/肾性 DI 变体（独立清单） |
 | 膀胱 | 储尿、主动排尿、过度充盈非自主排空（`involuntaryVoidedMl` 触发一次高危漏尿通知） |
 | 结肠 | 残渣水指数回收（`0.01 /min`）回流体液、粪便储存、`defecate` 排出与便意读数 |
-| 脑 | 下丘脑 ADH（含血容量驱动）、口渴与内分泌轴（TRH/CRH 含低温/低血糖/高强度运动驱动与觉醒皮质醇脉冲 CAR；垂体输出 `tshRelative`、`acthPgMl`、`prolactinNgMl`、`oxytocinPgMl`）、自主神经（`sympatheticMm`/`parasympatheticMm`/`startleActive`）、中枢奖赏（`wantingMm`/`hedonicMm`/`satietyMm`）、体温调节（昼夜设定点与睡中下调，24 h 空腹静息核心体温保持在 36.5–37.5°C 代理区间）、睡眠节律（`sleep`/`wake_up`、`light`/`deep`/`rem` 分期、睡眠惯性与 `wakeEvent`）、体感读出（23 项 0–100 mm 读数与可扩展 `sensations`）、全感受三档无数字通知策略与 `wake-evaluation.ts` 共享唤醒/惊醒判定 |
+| 脑 | 下丘脑 ADH（含血容量驱动）、基于 `Hughes 2018` 高渗拟合与 0 mm 水合基线的口渴驱动、内分泌轴（TRH/CRH 与垂体 `tshRelative`/`acthPgMl`/`prolactinNgMl`/`oxytocinPgMl`）、自主神经、中枢奖赏、体温调节（昼夜/睡眠设定点 + 外周血管舒张散热）、睡眠节律、体感读出（23 项 0–100 mm 读数与 Gagge 平衡潮湿感 `sweatDampMm`）、全感受与高潮/受阻无数字通知策略及 `wake-evaluation.ts` 共享睡醒判定 |
 | 甲状腺 | TSH 驱动的 T4 相对信号（1440 min 代谢池时间尺度），缩放基础氧耗并负反馈抑制 TRH/TSH |
 | 肾上腺 | ACTH Hill 驱动与 49 min 实证消除的总皮质醇浓度（`cortisolNmolL`，基线 `180 nmol/L`），缩放肝糖释放、产生 `stressMm` 并负反馈抑制 CRH/ACTH |
 | 甲状旁腺 | 血钙负反馈调控的血浆 PTH 物理浓度代理（`pthPgMl`，`pg/mL`，参考基线 `30`、上限 `90`、`15 min` 半时） |
@@ -96,13 +96,13 @@ Gateway 现同时在 `<bodyDir>/logs/` 维护滚动历史（均设有界保留�
 
 ### Agent 行为
 
-- `body_bind` 显式管理当前会话与身体的绑定/解绑或状态查询（`action: 'bind' | 'unbind' | 'status'`）；DSH 插件默认以 `requireBinding: true` 启动，未绑定时身体保持 `dormant` 休眠（时钟冻结且唤醒不补算休眠时间），`agent/disposed` 时自动解绑。
-- `body_act` 提交身体动作：支持 `eat`、`drink`、`exercise` 及 `nsfw: true` 时的 `sex` / `express_milk` / `breastfeed`，以及无载荷的 `urinate`、`defecate`、`stop_exercise`、`sleep`、`wake_up`（与 `nsfw: true` 时的 `orgasm`）。主对话 Agent 可优先传自然语言 `description`（由 [action-translator.js](action-translator.js) 经 `ctx.llm.stream()` 单工具调用翻为生理数值，并从当前身体 `<bodyDir>/logs/action-translations.json` 同类型最近 100 条里匹配相似与连续参考；`ctx.llm` 不可用/多次失败时直接报错，不胡编数值；`eat`/`drink` 时在顶层顺手返回纯定性零数字味觉文本 `tasteFeedback`），也兼容直传定量字段；动作进入队列下一轮结算，同 ID 同输入重试复用回执。
+- `body_bind` 显式管理当前会话与身体的绑定/解绑或状态查询（`action: 'bind' | 'unbind' | 'status'`）；DSH 插件默认以 `requireBinding: true` 启动，未绑定时身体保持 `dormant` 休眠（时钟冻结且唤醒不补算休眠时间），`agent/disposed` 时自动解绑；多身体场景由 [multibody.js](multibody.js) 按 `bodies.json` 路由各会话独立身体。
+- `body_act` 提交身体动作：支持 `eat`、`drink`、`exercise` 及 `nsfw: true` 时的 `sex`（可选 `exertion` 解耦全身负荷与感官刺激）/ `express_milk` / `breastfeed`，以及无载荷的 `urinate`、`defecate`、`stop_exercise`、`sleep`、`wake_up`（与 `nsfw: true` 时的 `orgasm`，可选 `continueStimulation`）。主对话 Agent 可优先传自然语言 `description`（由 [action-translator.js](action-translator.js) 经 `ctx.llm.stream()` 单工具调用翻为生理数值，并从当前身体 `<bodyDir>/logs/action-translations.json` 同类型最近 100 条里匹配相似与连续参考；`ctx.llm` 不可用/多次失败时直接报错，不胡编数值；`eat`/`drink` 时在顶层顺手返回纯定性零数字味觉文本 `tasteFeedback`），也兼容直传定量字段；动作进入队列下一轮结算，同 ID 同输入重试复用回执。
 - `body_state` 把已提交的身体快照转为**纯定性、零数值**的主观感受摘要（不包含任何数字、单位或生理测定值；`nsfw: false` 时屏蔽性/泌乳感受）；原始精确数值仅保留在调试/测试通道 `GET /state` 与 `gateway.getState()`。
 - `index.js` 在宿主存在 `systemPrompt` 服务时注册静态纯感觉准则（`systemPrompt.section`）与已绑定激活态的轻度背景体感（`systemPrompt.context`，均零数值）；无该服务时安全旁路；存在 `ctx.on` 时监听 `agent/inbox/inserted` 并回写通知阅读回执到 `logs/notification-history.json`。
-- `brainNotify` 覆盖除食管呛咳与 `discomfort` 外的核心、扩展体感（含低钙/高钙）、漏尿边沿、高潮边沿与非标 `sensations`，采用普通（20–240 min）/高危（5–60 min）双轨指数退避、滞回与缓解重置、睡眠门控、NSFW 门控与多感受零数字聚合。
+- `brainNotify` 覆盖除食管呛咳与 `discomfort` 外的核心、扩展体感（含低钙/高钙）、漏尿边沿、高潮/受阻边沿与非标 `sensations`，采用普通（20–240 min）/高危（5–60 min）双轨指数退避、滞回与缓解重置、睡眠门控、NSFW 门控与多感受零数字聚合。
 - LLM 通过提交动作驱动身体，状态由器官脚本计算并整轮提交。
-- 参数全库共 47 份 `.parameters.json`、370 条参数：分 `prior`（17 项，有登记文献支撑）、`fitted_dev`（1 项，开发集拟合，不是独立验证）、`design`（332 项，工程假设）与 `policy`（20 项，提醒策略）四类，目前 `validated` 为 0。历史真实 DSH 会话验收（M1、Task 10、M19）均早于当前睡眠/休眠/无数字/双轨通知改造与本次日志、回执和血钙物理统一；后续功能目前有离线单元测试与真实 Gateway 集成测试，尚未声称新的真实 DSH 会话或独立人体验证。
+- 参数全库共 47 份 `.parameters.json`、384 条参数：分 `prior`（19 项，有登记文献支撑）、`fitted_dev`（1 项，开发集拟合，不是独立验证）、`design`（344 项，工程假设）与 `policy`（20 项，提醒策略）四类，目前 `validated` 为 0。新增生理校准、解耦与多身体逻辑已覆盖于离线单元测试、真实 Gateway 集成测试与容器内 DSH 实机挂接观察，尚未声称独立人体临床验证。
 
 ## 开发与验证
 
