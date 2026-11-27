@@ -44,6 +44,7 @@ const QUANTITATIVE_OVERRIDE_KEYS = [
   'volumeMl',
   'energyKcal',
   'carbohydrateG',
+  'fatG',
   'mealKind',
   'durationMin',
   'intensity',
@@ -128,6 +129,9 @@ export function validateStructuredAction(args, extraActionTypes = [], nsfwEnable
   if (args.carbohydrateG !== undefined && (!isFiniteNumber(args.carbohydrateG) || args.carbohydrateG < 0)) {
     return 'carbohydrateG must be a finite number greater than or equal to 0';
   }
+  if (args.fatG !== undefined && (!isFiniteNumber(args.fatG) || args.fatG < 0)) {
+    return 'fatG must be a finite number greater than or equal to 0';
+  }
   if (args.type === 'drink') {
     if (args.energyKcal !== undefined && (!isFiniteNumber(args.energyKcal) || args.energyKcal < 0)) {
       return 'energyKcal must be a finite number greater than or equal to 0';
@@ -153,6 +157,9 @@ export function validateOptionalNumericOverrides(args) {
   }
   if (args.carbohydrateG !== undefined && (!isFiniteNumber(args.carbohydrateG) || args.carbohydrateG < 0)) {
     return 'carbohydrateG must be a finite number greater than or equal to 0';
+  }
+  if (args.fatG !== undefined && (!isFiniteNumber(args.fatG) || args.fatG < 0)) {
+    return 'fatG must be a finite number greater than or equal to 0';
   }
   if (args.mealKind !== undefined && !mealKinds.includes(args.mealKind)) {
     return 'eat requires mealKind liquid, solid, or mixed';
@@ -473,6 +480,10 @@ export function buildTranslatorToolSchema(allowedQuantitativeTypes) {
                 type: 'number',
                 description: 'Digestible carbohydrate in grams as glucose equivalents (>= 0; omit only if unknown).',
               },
+              fatG: {
+                type: 'number',
+                description: 'Optional dietary long-chain fat in grams (>= 0; omit if unknown, zero only if known fat-free; never derive from kcal).',
+              },
               mealKind: {
                 type: 'string',
                 enum: mealKinds,
@@ -518,6 +529,7 @@ export function buildTranslatorSystemPrompt({ nsfwEnabled = false } = {}) {
     '各动作类型与单位约定（全部仅填客观数值与枚举）：',
     '- eat：必填 volumeMl（> 0，食团总体积 mL）、energyKcal（>= 0，kcal）、mealKind（solid | liquid | mixed）；推荐填 carbohydrateG（>= 0，可消化葡萄糖当量克数 g）；可选 durationMin（>= 0，进食耗时 min，如一口约 0.5、加餐约 5、正餐约 15）。',
     '- drink：必填 volumeMl（> 0，mL）；纯水/无糖茶/黑咖啡等可设 energyKcal = 0 或省略，含糖/奶/酒饮品给出 energyKcal（>= 0）与 carbohydrateG（>= 0）；可选 durationMin（>= 0）。',
+    '- eat / drink 可选 fatG（食物中膳食长链脂肪当量克数，>= 0）：只用明确成分或食物和份量足够可信的估值；不明就省略，确认不含脂肪才填 0。不从 kcal 反推，不额外增加 energyKcal。',
     '- exercise：必填 intensity（0 < intensity <= 1）与 durationMin（> 0，min）。强度参考：散步慢走 0.15–0.25，快走/家务 0.30–0.45，慢跑/中速骑行 0.50–0.65，高强度跑/HIIT 0.75–0.90，极限冲刺 0.95–1.0。',
   ];
   if (nsfwEnabled) {
@@ -536,7 +548,7 @@ export function buildTranslatorSystemPrompt({ nsfwEnabled = false } = {}) {
     '一致性与拆分原则：',
     '1. 若提供了同身体“相似历史参考”或“近期连续参考”，在相同食物/习惯和连续指代（如“又吃了一口”“把剩下的喝完”）上保持量级与比例严格一致。',
     '2. 若单条吃喝描述里明显同时包含固体餐食和伴随饮品（如“吃了半碗饭，喝了两口可乐”），可拆为有序多条（如 eat + drink，最多 4 条）；单一动作不要无故拆分。',
-    '3. 若调用方给出了 explicitConstraints（如指定了 durationMin），输出须严格遵循。',
+    '3. 若调用方给出了 explicitConstraints（如指定了 durationMin），输出须严格遵循。指定 fatG 时，唯一一条摄入可在 eat / drink 间改类；若拆分，必须恰有一条与请求类型相同来承接该克数，不要把这笔克数重复分给配餐。无法明确归属时不要拆分。',
     '4. 仅当动作包含 eat 或 drink 时，顺手在顶层 tasteFeedback 给出一句简短纯定性、严禁包含任何阿拉伯或全角数字的中文味道与口感反馈（风味、酸甜苦辣咸鲜、冷热温度感、脆嫩滑腻与余味）；非吃喝动作不要填 tasteFeedback，也不要因味觉追加不存在的生理字段。',
   );
   return lines.join('\n');
@@ -697,7 +709,7 @@ async function collectStreamBlocks(stream, signal) {
   return { finish, blocks };
 }
 
-function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explicitConstraints, applyExplicit) {
+function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explicitOverrides) {
   if (!isRecord(rawAction)) {
     return { error: 'Each translated action must be an object' };
   }
@@ -720,16 +732,15 @@ function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explici
   for (const key of QUANTITATIVE_OVERRIDE_KEYS) {
     if (rawAction[key] !== undefined) clean[key] = rawAction[key];
   }
-  if (applyExplicit) {
-    for (const [key, value] of Object.entries(explicitConstraints)) {
-      if (value !== undefined) clean[key] = value;
-    }
+  for (const [key, value] of Object.entries(explicitOverrides)) {
+    if (value !== undefined) clean[key] = value;
   }
 
   if (type === 'exercise' || type === 'sex') {
     delete clean.volumeMl;
     delete clean.energyKcal;
     delete clean.carbohydrateG;
+    delete clean.fatG;
     delete clean.mealKind;
     delete clean.bilateral;
     if (type === 'exercise') delete clean.exertion;
@@ -737,6 +748,7 @@ function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explici
     delete clean.volumeMl;
     delete clean.energyKcal;
     delete clean.carbohydrateG;
+    delete clean.fatG;
     delete clean.mealKind;
     delete clean.intensity;
     delete clean.exertion;
@@ -754,6 +766,9 @@ function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explici
   const invalid = validateStructuredAction(clean, [], nsfwEnabled);
   if (invalid !== null) {
     return { error: invalid };
+  }
+  if (clean.fatG !== undefined && explicitOverrides.fatG === undefined) {
+    clean.fatGSource = 'estimate';
   }
   return { action: clean };
 }
@@ -794,6 +809,13 @@ function parseTranslatedResult({ blocks, finish }, requestedType, nsfwEnabled, e
     return { error: `${TRANSLATOR_TOOL_NAME} returned too many actions (${rawActions.length} > 4)` };
   }
 
+  const hasExplicitIntakeFat = (requestedType === 'eat' || requestedType === 'drink')
+    && explicitConstraints.fatG !== undefined;
+  if (hasExplicitIntakeFat && rawActions.length > 1
+    && rawActions.filter((action) => action?.type === requestedType).length !== 1) {
+    return { error: `Explicit fatG needs one intake action, or exactly one ${requestedType} when splitting intake` };
+  }
+
   const applyExplicitOnSingle = rawActions.length === 1 && rawActions[0]?.type === requestedType;
   const hasExplicitConstraints = Object.keys(explicitConstraints).length > 0;
   let appliedExplicitToMatchingType = false;
@@ -802,13 +824,9 @@ function parseTranslatedResult({ blocks, finish }, requestedType, nsfwEnabled, e
     const applyExplicitHere = applyExplicitOnSingle
       || (!appliedExplicitToMatchingType && hasExplicitConstraints && rawActions[i]?.type === requestedType);
     if (applyExplicitHere) appliedExplicitToMatchingType = true;
-    const checked = sanitizeTranslatedAction(
-      rawActions[i],
-      requestedType,
-      nsfwEnabled,
-      explicitConstraints,
-      applyExplicitHere,
-    );
+    const explicitOverrides = applyExplicitHere ? explicitConstraints
+      : (hasExplicitIntakeFat && rawActions.length === 1 ? { fatG: explicitConstraints.fatG } : {});
+    const checked = sanitizeTranslatedAction(rawActions[i], requestedType, nsfwEnabled, explicitOverrides);
     if (checked.error) {
       return { error: `actions[${i}]: ${checked.error}` };
     }

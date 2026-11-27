@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "owner": "lipidCirculation",
+  "parameters": [
+    { "id": "lipidCirculation.mealTgClearancePerMin", "value": 0.06, "unit": "1/min", "range": [0, 5], "status": "design", "source": null, "note": "餐源 TG 竞争储存及其他摄取的合计清除率，满库拒付仍留循环。" },
+    { "id": "lipidCirculation.nefaClearancePerMin", "value": 0.12, "unit": "1/min", "range": [0, 5], "status": "design", "source": null, "note": "循环 NEFA 当量摄取离账的一阶率，不代表氧化量。" }
+  ]
+}

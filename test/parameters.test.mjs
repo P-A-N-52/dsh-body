@@ -64,6 +64,15 @@ const parametersFiles = [
   { label: 'organs/human-organs/sexual-response/response.parameters.json', url: new URL('../organs/human-organs/sexual-response/response.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/testes/testosterone.parameters.json', url: new URL('../organs/human-organs/testes/testosterone.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/epididymis/storage.parameters.json', url: new URL('../organs/human-organs/epididymis/storage.parameters.json', import.meta.url) },
+  ...[
+    'organs/human-organs/liver/bile.parameters.json',
+    'organs/human-organs/gallbladder/bile-reserve.parameters.json',
+    'organs/human-organs/pancreas/exocrine.parameters.json',
+    'organs/human-organs/small-intestine/lipid-absorption.parameters.json',
+    'organs/human-compartments/intestinal-lymph/meal-transit.parameters.json',
+    'organs/human-compartments/lipid-circulation/meal-lipids.parameters.json',
+    'organs/human-compartments/adipose/meal-storage.parameters.json',
+  ].map((label) => ({ label, url: new URL(`../${label}`, import.meta.url) })),
 ];
 
 const allowedStatuses = new Set(['design', 'policy', 'prior', 'fitted_dev', 'validated', 'unset']);
@@ -203,8 +212,8 @@ test('glucose parameters keep the fixed design defaults', () => {
   assert.deepEqual(byId['glucose.residualDisposalHalfTimeMin'].range, [10, 300]);
 });
 
-test('the parameter inventory covers forty-seven files including sleep, autonomic, reward, circulation, thermoregulation, blood oxygen, the endocrine axes, salivary glands, mammary glands, renal gluconeogenesis and the male organs', () => {
-  assert.equal(parametersFiles.length, 47);
+test('the parameter inventory covers the 54 files across the adult manifests and optional chains', () => {
+  assert.equal(parametersFiles.length, 54);
   const labels = parametersFiles.map(({ label }) => label);
   assert.equal(
     labels.some((label) => label.includes('/skeletal-muscle/regions/')),

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "owner": "gallbladder",
+  "parameters": [
+    { "id": "gallbladder.capacityActivityU", "value": 3, "unit": "BAU", "status": "design", "source": null, "note": "最高补入容量和新档轮初库存；不是胆囊体积。" },
+    { "id": "gallbladder.directFraction", "value": 0.25, "unit": "1", "range": [0, 1], "status": "design", "source": null, "note": "肝供给绕过储库的最低比例；未能存入的余额也经胆道。" },
+    { "id": "gallbladder.releaseMaxPerMin", "value": 0.16, "unit": "1/min", "range": [0, 5], "status": "design", "source": null, "note": "有肠腔脂质刺激时库存排出的一阶最高率。" },
+    { "id": "gallbladder.mealHalfG", "value": 1, "unit": "g", "status": "design", "source": null, "note": "半刺激肠腔脂质总量（未水解+水解产物 TG 当量），须大于 0。" }
+  ]
+}

@@ -258,6 +258,122 @@ test('body_act translates qualitative eat description via ctx.llm.stream with si
   assert.match(calls[1].messages[0].content[0].text, /"energyKcal":32/);
 });
 
+test('body_act keeps translated fat estimates distinct from explicit zero and unknown intake', async (t) => {
+  const calls = [];
+  const estimates = [6.5, 6.5, undefined];
+  const llm = {
+    stream(options) {
+      const fatG = estimates[calls.length];
+      calls.push(options);
+      return toolCallStream({ actions: [{
+        type: 'drink', volumeMl: 180, energyKcal: 150,
+        ...(fatG === undefined ? {} : { fatG }),
+      }] });
+    },
+  };
+  const { tools, statePath } = await startBodyEnv(t, { llm });
+  const inputs = [
+    { description: '喝了一小杯全脂奶' },
+    { description: '喝了一小杯无脂饮料', fatG: 0 },
+    { description: '喝了一杯配方不明的饮料' },
+  ];
+  const ids = [];
+  for (const [i, input] of inputs.entries()) {
+    const result = await tools.body_act.execute({ type: 'drink', ...input }, makeAgentExec({ callId: `fat-${i}` }));
+    assert.equal(result.statusCode, 202);
+    ids.push(result.receipt.id);
+  }
+  const queued = JSON.parse(readFileSync(statePath, 'utf8')).actions;
+  assert.equal(queued[ids[0]].action.fatG, 6.5);
+  assert.equal(queued[ids[0]].action.fatGSource, 'estimate');
+  assert.equal(queued[ids[1]].action.fatG, 0);
+  assert.equal(Object.hasOwn(queued[ids[1]].action, 'fatGSource'), false);
+  assert.equal(Object.hasOwn(queued[ids[2]].action, 'fatG'), false);
+  assert.ok(Object.hasOwn(calls[0].tools[0].parameters.properties.actions.items.properties, 'fatG'));
+  assert.match(calls[0].system, /不从.*kcal.*反推/);
+
+  const invalid = await tools.body_act.execute(
+    { type: 'drink', description: '喝一杯奶', fatG: -1 },
+    makeAgentExec({ callId: 'invalid-fat' }),
+  );
+  assert.equal(invalid.statusCode, 400);
+  assert.match(invalid.receipt.error, /fatG/);
+  assert.equal(calls.length, 3, 'invalid explicit fat stops before translation');
+});
+
+test('a single eat/drink reclassification preserves explicit fatG and records it as explicit in the lipid Gateway', async (t) => {
+  const drink = { type: 'drink', volumeMl: 140, energyKcal: 120, fatG: 8 };
+  const eat = { type: 'eat', volumeMl: 160, energyKcal: 180, mealKind: 'liquid', fatG: 10 };
+  const cases = [
+    [{ type: 'eat', description: '吃了一杯奶昔', fatG: 0 }, drink],
+    [{ type: 'drink', description: '喝了一碗浓汤', fatG: 7.5 }, eat],
+  ];
+  let calls = 0;
+  const llm = { stream: () => toolCallStream({ actions: [cases[calls++][1]] }) };
+  const { tools, gateway, statePath } = await startBodyEnv(t, {
+    llm, manifestPath: join(root, 'organs/presets/human-lipid/body-modules.json'),
+  });
+  for (const [i, [input, translated]] of cases.entries()) {
+    const result = await tools.body_act.execute(input, makeAgentExec({ callId: `cross-fat-${i}` }));
+    assert.equal(result.statusCode, 202);
+    assert.equal(result.receipt.type, translated.type);
+    const action = JSON.parse(readFileSync(statePath, 'utf8')).actions[result.receipt.id].action;
+    assert.equal(action.fatG, input.fatG);
+    assert.equal(Object.hasOwn(action, 'fatGSource'), false, 'explicit amount must not be marked as estimated');
+    await gateway.tick();
+    const { stomach } = gateway.getState().parts;
+    assert.equal(gateway.getReceipt(result.receipt.id).status, 'applied');
+    assert.equal(stomach.explicitFatIntakeG, input.fatG);
+    assert.equal(stomach.estimatedFatIntakeG, null);
+  }
+});
+
+test('ambiguous multi-intake fatG translation retries without enqueuing; only a unique matching action can receive it', async (t) => {
+  const drink = { type: 'drink', volumeMl: 140, energyKcal: 120, fatG: 3 };
+  const eat = { type: 'eat', volumeMl: 160, energyKcal: 180, mealKind: 'solid', fatG: 8 };
+  const replies = [[drink, drink], [drink, drink], [eat, eat], [drink, eat], [drink, drink]];
+  const prompts = [];
+  const llm = {
+    stream(options) {
+      prompts.push(options.messages[0].content[0].text);
+      return toolCallStream({ actions: replies[prompts.length - 1] });
+    },
+  };
+  const { tools, gateway, statePath } = await startBodyEnv(t, {
+    llm, manifestPath: join(root, 'organs/presets/human-lipid/body-modules.json'),
+  });
+  const description = '吃喝了一份带饮品的点心';
+  const explicit = { type: 'eat', description, fatG: 12 };
+  const rejected = await tools.body_act.execute(explicit, makeAgentExec({ callId: 'ambiguous-fat' }));
+  assert.equal(rejected.statusCode, 502);
+  assert.match(rejected.receipt.error, /fatG/);
+  assert.equal(prompts.length, 2);
+  assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).pendingActionIds, []);
+  await gateway.tick();
+  assert.equal(gateway.getState().parts.stomach.explicitFatIntakeG, null);
+  assert.equal(gateway.getState().parts.stomach.estimatedFatIntakeG, null);
+
+  const retried = await tools.body_act.execute(explicit, makeAgentExec({ callId: 'disambiguated-fat' }));
+  assert.equal(retried.statusCode, 202);
+  assert.equal(prompts.length, 4, 'two matching eats must retry before the clear eat/drink pair');
+  assert.match(prompts[3], /fatG/);
+  assert.deepEqual(retried.receipt.receipts.map(({ type }) => type), ['drink', 'eat']);
+  const queued = JSON.parse(readFileSync(statePath, 'utf8'));
+  const ids = retried.receipt.receipts.map(({ id }) => id);
+  assert.deepEqual(queued.pendingActionIds, ids);
+  assert.equal(queued.actions[ids[0]].action.fatG, 3);
+  assert.equal(queued.actions[ids[0]].action.fatGSource, 'estimate');
+  assert.equal(queued.actions[ids[1]].action.fatG, 12);
+  assert.equal(Object.hasOwn(queued.actions[ids[1]].action, 'fatGSource'), false);
+  await gateway.tick();
+  assert.equal(gateway.getState().parts.stomach.explicitFatIntakeG, 12);
+  assert.equal(gateway.getState().parts.stomach.estimatedFatIntakeG, 3);
+
+  const legacy = await tools.body_act.execute({ type: 'eat', description }, makeAgentExec({ callId: 'no-override' }));
+  assert.equal(legacy.statusCode, 202);
+  assert.deepEqual(legacy.receipt.receipts.map(({ type }) => type), ['drink', 'drink']);
+});
+
 test('body_act supports compound eat+drink translation splits, explicit numeric overrides, zero-arg passthrough, and omits unsupported reasoningEffort', async (t) => {
   const calls = [];
   const llm = {

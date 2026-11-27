@@ -337,6 +337,7 @@ for (const { file, scriptCount, parameterCount, transferPartCount } of [
   { file: 'body-modules.json', scriptCount: 43, parameterCount: 39, transferPartCount: 15 },
   { file: 'body-modules.female.json', scriptCount: 46, parameterCount: 42, transferPartCount: 17 },
   { file: 'body-modules.male.json', scriptCount: 45, parameterCount: 41, transferPartCount: 15 },
+  { file: 'organs/presets/human-lipid/body-modules.json', scriptCount: 50, parameterCount: 46, transferPartCount: 19 },
 ]) {
   test(`${file} passes createFieldRegistry, parameter inventory, and transfer closure checks`, async () => {
     const manifestPath = join(root, file);
@@ -367,9 +368,29 @@ for (const { file, scriptCount, parameterCount, transferPartCount } of [
   });
 }
 
+test('human-lipid preset preserves every root script except the stomach entry it extends', () => {
+  const defaultBody = readManifest(join(root, 'body-modules.json'));
+  const lipidBody = readManifest(join(root, 'organs/presets/human-lipid/body-modules.json'));
+  const scriptUrl = (path) => new URL(`../organs/${path}`, import.meta.url).href;
+  const stomach = scriptUrl('human-organs/stomach/hydration.ts');
+  assert.equal(defaultBody.scripts.filter(({ url }) => url === stomach).length, 1);
+  const preserved = defaultBody.scripts.map((entry) => entry.url === stomach
+    ? { ...entry, url: scriptUrl('human-organs/stomach/hydration-lipid.ts') } : entry);
+  const lipidScripts = [
+    'human-organs/liver/bile.ts',
+    'human-organs/gallbladder/bile-reserve.ts',
+    'human-organs/pancreas/exocrine.ts',
+    'human-organs/small-intestine/lipid-absorption.ts',
+    'human-compartments/intestinal-lymph/meal-transit.ts',
+    'human-compartments/lipid-circulation/meal-lipids.ts',
+    'human-compartments/adipose/meal-storage.ts',
+  ].map((path) => ({ url: scriptUrl(path), inject: null }));
+  assert.deepEqual(lipidBody, { ...defaultBody, scripts: [...preserved, ...lipidScripts] });
+});
+
 test('organs directory contains exact total parameter inventory', () => {
   const allParameters = collectAllParameterFiles(join(root, 'organs'));
-  assert.equal(allParameters.length, 47);
+  assert.equal(allParameters.length, 54);
 });
 
 test('every organ and compartment directory has a non-empty README.md', () => {

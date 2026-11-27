@@ -96,6 +96,9 @@ export type StomachMeal = {
   rateWaterMl?: number;
   remainingCarbohydrateG?: number;
   rateCarbohydrateGPerRound?: number;
+  remainingFatG?: number;
+  rateFatGPerRound?: number;
+  fatGSource?: 'estimate';
 };
 
 export type StomachState = {
@@ -118,7 +121,18 @@ export type StomachStateInput = {
   readonly waterVolumeMl?: unknown;
   readonly carbohydrateG?: unknown;
   readonly solidCarbohydrateG?: unknown;
+  readonly solidFatG?: number;
+  readonly nonSolidFatG?: number;
   readonly mealQueue: readonly StomachMeal[];
+};
+
+export const stomachLipidInitialState = {
+  solidFatG: 0,
+  nonSolidFatG: 0,
+  emptiedFatG: 0,
+  explicitFatIntakeG: null as number | null,
+  estimatedFatIntakeG: null as number | null,
+  unknownFatIntakeSlices: 0,
 };
 
 export type StomachAdvance = {
@@ -129,6 +143,11 @@ export type StomachAdvance = {
     carbohydrateG: number;
     solidCarbohydrateG: number;
     emptiedCarbohydrateG: number;
+  };
+  fat: {
+    state: typeof stomachLipidInitialState;
+    emptiedSolidFatG: number;
+    emptiedNonSolidFatG: number;
   };
 };
 
@@ -163,6 +182,8 @@ type Action = {
   readonly mealKind?: unknown;
   readonly durationMin?: unknown;
   readonly carbohydrateG?: unknown;
+  readonly fatG?: unknown;
+  readonly fatGSource?: unknown;
 };
 
 export type DuodenumReading = {
@@ -223,6 +244,8 @@ type Intake = {
   volumeMl: number;
   energyKcal: number;
   carbohydrateG: number;
+  fatG: number | null;
+  estimatedFat: boolean;
   rounds: number;
   mealKind: MealKind;
   isDrink: boolean;
@@ -249,6 +272,12 @@ export function parseIntake(action: Action, dt: number): Intake | null {
     }
     carbohydrateG = action.carbohydrateG;
   }
+  let fatG: number | null = null;
+  if (action.fatG !== undefined) {
+    if (typeof action.fatG !== 'number' || !Number.isFinite(action.fatG) || action.fatG < 0) return null;
+    fatG = action.fatG;
+  }
+  const estimatedFat = action.fatGSource === 'estimate';
 
   if (action.type === 'drink') {
     let energyKcal = 0;
@@ -258,7 +287,7 @@ export function parseIntake(action: Action, dt: number): Intake | null {
       }
       energyKcal = action.energyKcal;
     }
-    return { volumeMl: action.volumeMl, energyKcal, carbohydrateG, rounds, mealKind: 'liquid', isDrink: true };
+    return { volumeMl: action.volumeMl, energyKcal, carbohydrateG, fatG, estimatedFat, rounds, mealKind: 'liquid', isDrink: true };
   }
   if (typeof action.energyKcal !== 'number' || !Number.isFinite(action.energyKcal) || action.energyKcal < 0) {
     return null;
@@ -268,25 +297,37 @@ export function parseIntake(action: Action, dt: number): Intake | null {
     volumeMl: action.volumeMl,
     energyKcal: action.energyKcal,
     carbohydrateG,
+    fatG,
+    estimatedFat,
     rounds,
     mealKind: action.mealKind,
     isDrink: false,
   };
 }
 
-type Slice = { ml: number; kcal: number; waterMl: number; carbohydrateG: number };
+type Slice = {
+  ml: number;
+  kcal: number;
+  waterMl: number;
+  carbohydrateG: number;
+  fatG: number | null;
+  estimatedFat: boolean;
+};
 
-function takeSlice(meal: StomachMeal, trackWater: boolean, trackCarbohydrate: boolean): Slice {
+function takeSlice(meal: StomachMeal, trackWater: boolean, trackCarbohydrate: boolean, trackFat: boolean): Slice {
   const lastRound = meal.remainingRounds <= 1;
   const remainingWaterMl = trackWater ? (meal.remainingWaterMl ?? 0) : 0;
   const rateWaterMl = trackWater ? (meal.rateWaterMl ?? 0) : 0;
   const remainingCarbohydrateG = trackCarbohydrate ? (meal.remainingCarbohydrateG ?? 0) : 0;
   const rateCarbohydrateG = trackCarbohydrate ? (meal.rateCarbohydrateGPerRound ?? 0) : 0;
+  const remainingFatG = trackFat ? (meal.remainingFatG ?? null) : null;
   return {
     ml: lastRound ? meal.remainingMl : Math.min(meal.rateMlPerRound, meal.remainingMl),
     kcal: lastRound ? meal.remainingKcal : Math.min(meal.rateKcalPerRound, meal.remainingKcal),
     waterMl: lastRound ? remainingWaterMl : Math.min(rateWaterMl, remainingWaterMl),
     carbohydrateG: lastRound ? remainingCarbohydrateG : Math.min(rateCarbohydrateG, remainingCarbohydrateG),
+    fatG: lastRound || remainingFatG === null ? remainingFatG : Math.min(meal.rateFatGPerRound ?? 0, remainingFatG),
+    estimatedFat: meal.fatGSource === 'estimate',
   };
 }
 
@@ -299,9 +340,11 @@ function advanceMeal(
   const remainingMl = meal.remainingMl - slice.ml;
   const remainingKcal = meal.remainingKcal - slice.kcal;
   const remainingCarbohydrateG = (meal.remainingCarbohydrateG ?? 0) - slice.carbohydrateG;
+  const remainingFatG = (meal.remainingFatG ?? 0) - (slice.fatG ?? 0);
   const remainingRounds = meal.remainingRounds - 1;
   const carbohydrateEmpty = !trackCarbohydrate || remainingCarbohydrateG <= 0;
-  if (remainingRounds <= 0 || (remainingMl <= 0 && remainingKcal <= 0 && carbohydrateEmpty)) return null;
+  const fatEmpty = slice.fatG === null || remainingFatG <= 0;
+  if (remainingRounds <= 0 || (remainingMl <= 0 && remainingKcal <= 0 && carbohydrateEmpty && fatEmpty)) return null;
   const advanced: StomachMeal = {
     remainingMl,
     remainingKcal,
@@ -318,6 +361,11 @@ function advanceMeal(
     advanced.remainingCarbohydrateG = remainingCarbohydrateG;
     advanced.rateCarbohydrateGPerRound = meal.rateCarbohydrateGPerRound ?? 0;
   }
+  if (slice.fatG !== null) {
+    advanced.remainingFatG = remainingFatG;
+    advanced.rateFatGPerRound = meal.rateFatGPerRound ?? 0;
+    if (slice.estimatedFat) advanced.fatGSource = 'estimate';
+  }
   return advanced;
 }
 
@@ -325,11 +373,16 @@ function startIntake(
   intake: Intake,
   trackWater: boolean,
   trackCarbohydrate: boolean,
+  trackFat: boolean,
 ): { slice: Slice; meal: StomachMeal | null } {
   const ml = intake.volumeMl / intake.rounds;
   const kcal = intake.energyKcal / intake.rounds;
   const carbohydrateG = trackCarbohydrate ? intake.carbohydrateG / intake.rounds : 0;
-  const slice = { ml, kcal, waterMl: trackWater && intake.isDrink ? ml : 0, carbohydrateG };
+  const fatG = trackFat && intake.fatG !== null ? intake.fatG / intake.rounds : null;
+  const slice = {
+    ml, kcal, waterMl: trackWater && intake.isDrink ? ml : 0, carbohydrateG,
+    fatG, estimatedFat: intake.estimatedFat,
+  };
   if (intake.rounds <= 1) return { slice, meal: null };
   const meal: StomachMeal = {
     remainingMl: intake.volumeMl - ml,
@@ -347,6 +400,11 @@ function startIntake(
     meal.remainingCarbohydrateG = intake.carbohydrateG - carbohydrateG;
     meal.rateCarbohydrateGPerRound = carbohydrateG;
   }
+  if (intake.fatG !== null && fatG !== null) {
+    meal.remainingFatG = intake.fatG - fatG;
+    meal.rateFatGPerRound = fatG;
+    if (intake.estimatedFat) meal.fatGSource = 'estimate';
+  }
   return { slice, meal };
 }
 
@@ -355,9 +413,10 @@ export function advanceStomach(
   actions: readonly Action[],
   dt: number,
   simulatedSeconds: number,
-  { trackWater = false, trackCarbohydrate = false, nutrientExposure = 0 }: {
+  { trackWater = false, trackCarbohydrate = false, trackFat = false, nutrientExposure = 0 }: {
     trackWater?: boolean;
     trackCarbohydrate?: boolean;
+    trackFat?: boolean;
     nutrientExposure?: number;
   } = {},
 ): StomachAdvance {
@@ -383,6 +442,20 @@ export function advanceStomach(
   const emptiedSolidCarbohydrateG = base.solidCarbohydrateG * solidFraction;
   const emptiedCarbohydrateG = emptiedNonSolidCarbohydrateG + emptiedSolidCarbohydrateG;
 
+  const fatState = { ...stomachLipidInitialState };
+  if (trackFat) {
+    fatState.solidFatG = prev.solidFatG ?? 0;
+    fatState.nonSolidFatG = prev.nonSolidFatG ?? 0;
+    if (![fatState.solidFatG, fatState.nonSolidFatG].every((g) => Number.isFinite(g) && g >= 0)) {
+      throw new Error('stomach fat inventories must be finite and non-negative');
+    }
+  }
+  const emptiedSolidFatG = fatState.solidFatG * solidFraction;
+  const emptiedNonSolidFatG = base.nonSolidVolumeMl > 0
+    ? fatState.nonSolidFatG * (emptiedNonSolidMl / base.nonSolidVolumeMl)
+    : 0;
+  fatState.emptiedFatG = emptiedSolidFatG + emptiedNonSolidFatG;
+
   const emptiedMl = emptiedNonSolidMl + emptiedSolidMl;
   const emptiedKcal = emptiedNonSolidKcal + emptiedSolidKcal;
 
@@ -396,7 +469,17 @@ export function advanceStomach(
   let deliveredSolidCarbohydrateG = 0;
 
   function deliver(slice: Slice, mealKind: MealKind): void {
-    if (slice.ml <= 0 && slice.kcal <= 0 && slice.carbohydrateG <= 0) return;
+    if (slice.ml <= 0 && slice.kcal <= 0 && slice.carbohydrateG <= 0 && (slice.fatG ?? 0) <= 0) return;
+    if (trackFat) {
+      if (slice.fatG === null) {
+        fatState.unknownFatIntakeSlices += 1;
+      } else {
+        const source = slice.estimatedFat ? 'estimatedFatIntakeG' : 'explicitFatIntakeG';
+        fatState[source] = (fatState[source] ?? 0) + slice.fatG;
+        const stock = mealKind === 'solid' ? 'solidFatG' : 'nonSolidFatG';
+        fatState[stock] += slice.fatG;
+      }
+    }
     if (mealKind === 'solid') {
       nextSolidVolumeMl += slice.ml;
       nextSolidEnergyKcal += slice.kcal;
@@ -412,7 +495,7 @@ export function advanceStomach(
 
   const mealQueue: StomachMeal[] = [];
   for (const meal of prev.mealQueue.map((entry) => ({ ...entry }))) {
-    const slice = takeSlice(meal, trackWater, trackCarbohydrate);
+    const slice = takeSlice(meal, trackWater, trackCarbohydrate, trackFat);
     deliver(slice, meal.mealKind);
     const advanced = advanceMeal(meal, slice, trackWater, trackCarbohydrate);
     if (advanced) mealQueue.push(advanced);
@@ -421,7 +504,7 @@ export function advanceStomach(
   for (const action of actions) {
     const intake = parseIntake(action, dt);
     if (intake === null) continue;
-    const started = startIntake(intake, trackWater, trackCarbohydrate);
+    const started = startIntake(intake, trackWater, trackCarbohydrate, trackFat);
     deliver(started.slice, intake.mealKind);
     if (started.meal) mealQueue.push(started.meal);
   }
@@ -445,5 +528,6 @@ export function advanceStomach(
       solidCarbohydrateG: base.solidCarbohydrateG - emptiedSolidCarbohydrateG + deliveredSolidCarbohydrateG,
       emptiedCarbohydrateG,
     },
+    fat: { state: fatState, emptiedSolidFatG, emptiedNonSolidFatG },
   };
 }
