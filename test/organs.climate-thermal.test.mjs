@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync } from 'node:fs';
 import { relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createBodyTools } from '../tools.js';
 import { checkpoint, launch, makeTempDir } from '../test-support/harness.mjs';
 
 const manifestUrl = new URL('../body-modules.json', import.meta.url);
+const lipidManifestUrl = new URL('../organs/presets/human-lipid/body-modules.json', import.meta.url);
 const engineScripts = JSON.parse(readFileSync(manifestUrl, 'utf8')).scripts;
 const fixedStart = Date.UTC(2026, 0, 1, 12);
 const roundMs = 60_000;
@@ -18,7 +20,7 @@ const evaporationFixture = {
 
 async function start(t, {
   parts = {}, parameters = flatSetpoint, extras = {}, statePath, seed, now = fixedStart,
-  catchUpMinutes = 0, withStartupReset = false,
+  catchUpMinutes = 0, withStartupReset = false, manifest = manifestUrl,
 } = {}) {
   let clock = now;
   const useRealManifest = !withStartupReset && Object.keys(extras).length === 0;
@@ -36,7 +38,7 @@ async function start(t, {
     seed: statePath || seed === null ? null : (seed ?? {
       ...checkpoint({ wallTimeMs: now, parts, profile: { timezoneOffsetMin: 0 } }), parameters,
     }),
-    gatewayOptions: { now: () => clock, ...(useRealManifest && { manifestPath: fileURLToPath(manifestUrl) }) },
+    gatewayOptions: { now: () => clock, ...(useRealManifest && { manifestPath: fileURLToPath(manifest) }) },
   });
   return {
     ...body,
@@ -425,6 +427,61 @@ function waterLedger(parts, outflow) {
     + parts.smallIntestine.waterVolumeMl + parts.colon.residueWaterMl
     + parts.bodyFluid.waterVolumeMl + parts.bladder.volumeMl + outflow;
 }
+
+test('human-lipid preset settles a paced fat drink alongside the climate, clothing and heat ledger', async (t) => {
+  const body = await start(t, {
+    manifest: lipidManifestUrl,
+    parameters: evaporationFixture,
+    parts: {
+      bodyFluid: { waterVolumeMl: 29000 }, skin: { sweatRequestMl: 2 }, kidney: { urineProductionRequestMl: 0 },
+    },
+  });
+  const initial = body.parts();
+  const drink = { type: 'drink', volumeMl: 240, energyKcal: 220, carbohydrateG: 6, fatG: 18, durationMin: 3 };
+  await scene(body, 'humid', 32, 90);
+  await action(body, { id: 'shirt', type: 'wear_layer', layerId: 'tshirt' });
+  await action(body, { id: 'coat', type: 'wear_layer', layerId: 'jacket' });
+  const { body_act } = createBodyTools(body.gateway);
+  const result = await body_act.execute(drink, { agent: { session: { id: 'lipid-thermal' } }, callId: 'fat-drink' });
+  assert.equal(result.statusCode, 202);
+
+  const first = await body.advance();
+  const firstHeat = verifyHeatRound(initial, first);
+  assert.deepEqual([firstHeat.airTemperatureC, firstHeat.relativeHumidityPct, firstHeat.dryExchangeMultiplier], [25, 50, 1]);
+  assert.equal(firstHeat.paidSweatMl, 0);
+  assert.deepEqual(first.climate, climate(32, 90));
+  assert.deepEqual(first.clothing.wornLayerIds, ['tshirt', 'jacket']);
+  assert.equal(first.skin.sweatVolumeMl, 2);
+  assert.equal(first.bodyFluid.waterVolumeMl, 28998);
+  assert.equal(first.stomach.deliveredWaterMl, 80);
+  assert.equal(first.stomach.explicitFatIntakeG, 6);
+  assert.equal(first.stomach.lastIntakeAt, 60);
+  assert.equal(first.stomach.mealQueue[0].remainingWaterMl, 160);
+  assert.equal(first.stomach.mealQueue[0].remainingFatG, 12);
+  assert.equal(first.interoception.oralThirstReliefFraction, 0);
+
+  const second = await body.advance();
+  const heat = verifyHeatRound(first, second);
+  assert.equal(heat.paidSweatMl, 2);
+  close(heat.dryExchangeMultiplier, 0.4675, 'layered dry exchange');
+  close(heat.evaporationMultiplier, 0.36, 'layered evaporation');
+  close(heat.evaporatedSweatMl, 0.170950, 'humid evaporation with two layers', 1e-6);
+  assert.ok(second.intestinalLipid.lumenTgG > 0);
+  close(second.intestinalLipid.lumenTgG, second.stomach.emptiedFatG, 'stomach-to-intestine TG transfer');
+  const relief = second.interoception.oralThirstReliefFraction;
+  assert.ok(relief > 0 && first.hypothalamusThirst.thirst > 0);
+  close(second.interoception.thirst, first.hypothalamusThirst.thirst * (1 - relief), 'projected thirst');
+  assert.equal(second.interoception.thirstProjectionAtSimulatedSeconds, 120);
+
+  let outflow = 0;
+  for (const parts of [first, second]) {
+    outflow += parts.skin.sweatVolumeMl + parts.lungs.respiratoryWaterLossMl + parts.bladder.voidedMl;
+    close(waterLedger(parts, outflow), waterLedger(initial, 0) + drink.volumeMl, 'water ledger including queued slices');
+  }
+  t.diagnostic(JSON.stringify({ deliveredWaterMl: first.stomach.deliveredWaterMl, fatG: first.stomach.explicitFatIntakeG,
+    paidSweatMl: heat.paidSweatMl, evaporatedSweatMl: heat.evaporatedSweatMl, intestinalTgG: second.intestinalLipid.lumenTgG,
+    oralThirstReliefFraction: relief, waterResidualMl: waterLedger(second, outflow) - waterLedger(initial, 0) - drink.volumeMl }));
+});
 
 test('real sweat and the water ledger close while core deviation shrinks within 90 min of withdrawal', async (t) => {
   const control = await start(t);

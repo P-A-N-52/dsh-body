@@ -9,7 +9,7 @@ import { checkpoint } from '../test-support/harness.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('the root manifest loads all forty-three body parts', async (t) => {
+test('the root manifest loads all forty-five body parts', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-organ-'));
   const statePath = join(dir, 'body-state.json');
   writeFileSync(statePath, JSON.stringify({

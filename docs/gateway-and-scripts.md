@@ -18,9 +18,11 @@
 | --- | --- | --- |
 | [`body-modules.json`](../body-modules.json)（`manifestPath`） | 开发者改，Gateway 启动时读 | 根清单：声明要加载的脚本、每个脚本读取的状态字段、补算上限和脚本超时（当前 45 部位、40 份唯一参数文件）。 |
 | [`body-modules.female.json`](../body-modules.female.json) | 开发者改，作为另一份 `manifestPath` 在启动时读 | 女性独立清单：根清单 + `ovaries` + `uterus` + `mammary-glands/milk.ts`，`body-water/water.ts` 换成 `water.female.ts`，`glucose.ts` 换成 `glucose.female.ts`，共 48 部位、43 份唯一参数文件（硬 transfer 闭包 17 部位）；必须配独立 `statePath`。 |
-| `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active`、`profile`、`parameters` 或 `nsfw` | **一具身体一份存档**：所有部位的值、时钟、动作、通知，以及可选个体 `profile`（支持 `weightKg`、`heightCm`、`timezoneOffsetMin` 与女性静息泌乳预设 `lactating?: boolean`）、稀疏参数差异 `parameters`、`nsfw` 开关与 `boundSessionId` 都在一起。根清单与女性/男性清单各用一份存档，不要为每个器官或每个脚本再建存档，也不要在同一份存档上切换清单。 |
-| [`package.json`](../package.json) | 项目维护者改，由 Node/npm 使用 | 声明 ESM、Node 版本、测试命令和发布文件，不登记心跳脚本，也不存身体数据。`files` 收录根清单、女性清单与男性清单；[`cordis.patch.yml`](../cordis.patch.yml) 是 DSH 插件装载描述，不是身体 JSON。 |
-| `organs/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官、隔室与衣层的默认值、单位、证据状态、范围及来源。全库共 48 份：根清单 45 部位加载 40 份（`climate` 无参数文件，`clothing` 有 1 份）；女性清单 48 部位加载 43 份，男性清单 47 部位加载 42 份；另有 3 份不随主清单加载的 DI 变体。共享参数只计一次。 |
+| [`body-modules.male.json`](../body-modules.male.json) | 开发者改，作为另一份 `manifestPath` 在启动时读 | 男性独立清单：根清单 + `testes` + `epididymis`，共 47 部位、42 份唯一参数文件；必须配独立 `statePath`。 |
+| [`organs/presets/human-lipid/body-modules.json`](../organs/presets/human-lipid/body-modules.json) | 调用方选配，由 `manifestPath` 指定 | 根清单的胃入口换为 `hydration-lipid.ts`，其余部位（含气候与衣层）保持，再加七个脂质部位。共 52 部位、47 份唯一参数文件（硬 transfer 闭包 19 部位）；必须配独立 `statePath`。 |
+| `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active`、`profile`、`parameters` 或 `nsfw` | **一具身体一份存档**：所有部位的值、时钟、动作、通知，以及可选个体 `profile`（支持 `weightKg`、`heightCm`、`timezoneOffsetMin` 与女性静息泌乳预设 `lactating?: boolean`）、稀疏参数差异 `parameters`、`nsfw` 开关与 `boundSessionId` 都在一起。每份清单配独立存档，不要为每个器官或每个脚本再建存档，也不要在同一份存档上切换清单。 |
+| [`package.json`](../package.json) | 项目维护者改，由 Node/npm 使用 | 声明 ESM、Node 版本、测试命令和发布文件，不登记心跳脚本，也不存身体数据。`files` 收录三份主清单，选配脂质清单随 `organs/` 一起打包；[`cordis.patch.yml`](../cordis.patch.yml) 是 DSH 插件装载描述，不是身体 JSON。 |
+| `organs/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官、隔室与衣层的默认值、单位、证据状态、范围及来源。全库共 55 份，含 3 份仅供 DI 变体使用的参数。各清单的参数文件数见上表；共享参数只计一次，`climate` 无参数文件，`clothing` 有 1 份。 |
 
 **清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径。`startupScripts`、`catchUpMinutes`（720）与 `scriptTimeoutMs`（10000）含义不变。三份主清单的硬 transfer 闭包仍为根/男性 15 部位、女性 17 部位。
 
@@ -336,8 +338,9 @@ mouthMoistureMm    = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100
 - **当前实现。** 合法摄入对齐胃/食管契约：`drink` 需正有限 `volumeMl`（`energyKcal` 可选且非负有限）；`eat` 另需合法 `mealKind`（`liquid`/`solid`/`mixed`）与非负有限 `energyKcal`；同轮多条合法动作只重置一次刺激窗口。水合静息时 `salivaRateMlPerMin = 0.5`、`mouthMoistureMm = 100`（`dryMouthMm = 0`）；最大脱水（`waterDeficit = 1`）时 `mouthMoistureMm = 50`（`dryMouthMm = 50`）；一次 `eat` / `drink` 后产率在 5 个 60 s 轮次保持 `×3`（`mouthMoistureMm` 钳到 100），第 6 轮回到基线。旧档缺该部位时补 `{ salivaRateMlPerMin: 0.5, mealStimulusMin: 0, mouthMoistureMm: 100 }`，不反推历史进食；重启保留已提交的窗口与产率，没有 `resetOnStart`。
 - **消费者。** `duodenum` 只在轮初 `stomach.emptiedCarbohydrateG > 0` 时把到达速率乘 `1 + salivaryAmylaseGain × salivaRateMlPerMin / duodenum.referenceSalivaRateMlPerMin`（不再读取 `saliva.parameters.json`），`salivaryGlands` 未加载时增益按 0；已加载但产率非法时抛错，本轮不写。`interoception` 写 `dryMouthMm = clamp(100 − mouthMoistureMm, 0, 100)`，未加载或字段非法时按 0；口干不入 `discomfort`，也不改变口渴或饮水。
 - **时序。** 两个消费者都读轮初快照。摄入轮本脚本写出刺激状态；`interoception` 下一轮才读到新湿润度，`duodenum` 还要等胃把该餐排入下一轮快照，最早再下一轮才把淀粉酶增益计入暴露。
+- **快速解渴与口干独立。** [内感受的工程快路](../organs/human-organs/brain/README.md#interoception) 只用轮初新鲜的、已经提交的 `stomach.deliveredWaterMl` 产生短暂的主观口渴缓解；唾液和口干不参与。这条快路不增加体液，也不抑制 ADH，不是实测的口咽或激素响应模型。
 - **参数。** `salivaryGlands.basalRateMlPerMin = 0.5`、`mealGain = 3`、`mealWindowMin = 5`、`dehydrationFactor = 0.5` 都在 `saliva.parameters.json`；`duodenum.salivaryAmylaseGain = 0.05` 与 `duodenum.referenceSalivaRateMlPerMin = 0.5` 在 `duodenum/nutrient-exposure.parameters.json`（唾液腺参数文件的 `consumerParameters` 另保留 `duodenum.salivaryAmylaseGain` 供对照，两模块不再跨器官直读参数文件）。全部 `design`、`source: null`，没有唾液流率、刺激时长、脱水缩减或淀粉酶活性证据。
-- **未建模。** 唾液水账（唾液不进出 `bodyFluid`）、淀粉酶浓度/活性/pH、完整吞咽分期与食管运动（食管薄切片只建食团转运时延与呛咳读数）、口腔疾病与唾液腺结石、味觉与咀嚼、口咽解渴、个体差异与昼夜节律、免疫与口腔微生物组。
+- **未建模。** 唾液水账（唾液不进出 `bodyFluid`）、淀粉酶浓度/活性/pH、完整吞咽分期与食管运动（食管薄切片只建食团转运时延与呛咳读数）、口腔疾病与唾液腺结石、味觉与咀嚼、个体差异与昼夜节律、免疫与口腔微生物组。
 - **未验证。** 没有唾液流率、刺激窗口、脱水系数或淀粉酶增益的实测、独立人体数据、临床验证或真实 DSH 会话。详见 [`salivary-glands`](../organs/human-organs/salivary-glands/README.md)、[`duodenum`](../organs/human-organs/duodenum/README.md) 与 [`brain`](../organs/human-organs/brain/README.md) README。
 
 ### 乳腺泌乳与女性葡萄糖变体（当前模块）
@@ -367,7 +370,7 @@ mouthMoistureMm    = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100
 
 ### 身体气候与衣层（当前模块）
 
-三份主清单各自保存 `climate = { airTemperatureC, relativeHumidityPct }` 与 `clothing = { wornLayerIds }`。场景或穿着方只提交明确输入，不新增宿主工具、身份或远程场景权限，也不由系统提示、天气服务或提醒自动变化。可以在启用对应部位的初始身体预设写 `snapshot.parts`，运行中用 `POST /actions` 或现有 `body_act` 的结构化直传（工具自动填会话及动作 ID，不让翻译官猜温湿）。HTTP 例子省略会话字段：
+三份主清单及选配脂质清单各自保存 `climate = { airTemperatureC, relativeHumidityPct }` 与 `clothing = { wornLayerIds }`。场景或穿着方只提交明确输入，不新增宿主工具、身份或远程场景权限，也不由系统提示、天气服务或提醒自动变化。可以在启用对应部位的初始身体预设写 `snapshot.parts`，运行中用 `POST /actions` 或现有 `body_act` 的结构化直传（工具自动填会话及动作 ID，不让翻译官猜温湿）。HTTP 例子省略会话字段：
 
 ```jsonl
 {"id":"room","type":"set_environment","airTemperatureC":32,"relativeHumidityPct":90}
