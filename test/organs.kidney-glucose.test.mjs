@@ -8,6 +8,7 @@ import {
   initialState,
 } from '../organs/human-organs/kidney/glucose-excretion.ts';
 import { applyOperations, createFieldRegistry } from '../gateway/operations.js';
+import { checkpoint, launch } from '../test-support/harness.mjs';
 
 const thresholdConcentrationMgDl = 339 / 1.88;
 const request60sAt360MgDl = 0.0126675;
@@ -104,6 +105,36 @@ test('C=360 mg/dL converts 676.8 mg/kg over 75 kg to 0.0126675 g per 60 s', () =
   assert.equal(written.excretedGlucoseG, 0);
 });
 
+test('a concentration-only glucose producer keeps the custom legacy kidney conversion', async (t) => {
+  const kidneyScript = new URL('../organs/human-organs/kidney/glucose-excretion.ts', import.meta.url);
+  const { gateway } = await launch(t, {
+    modules: {
+      'glucose.js': `
+        export const id = 'glucose';
+        export const initialState = { glucoseMassG: 24, concentrationMgDl: 180 };
+        export const fields = {
+          glucoseMassG: { unit: 'g', mode: 'absolute', transferOut: ['kidneyGlucose.excretedGlucoseG'] },
+          concentrationMgDl: { unit: 'mg/dL', mode: 'absolute' },
+        };
+        export function heartbeat() {}
+      `,
+      'kidney-glucose.js': `export * from ${JSON.stringify(kidneyScript.href)};`,
+    },
+    seed: {
+      ...checkpoint({ wallTimeMs: 0, profile: { weightKg: 55 } }),
+      parameters: {
+        'kidneyGlucose.distributionVolumeDlPerKg': 2.1,
+        'kidneyGlucose.referenceBodyMassKg': 65,
+      },
+    },
+    gatewayOptions: { now: () => 0 },
+  });
+  await gateway.tick();
+  const kidney = gateway.getState().parts.kidneyGlucose;
+  assert.ok(Math.abs(kidney.excretionRequestG - 0.0012675) < 1e-12);
+  assert.equal(kidney.excretedGlucoseG, 0);
+});
+
 test('the request uses io.dt rather than io.simulatedSeconds', () => {
   const cases = [
     { dt: 60, simulatedSeconds: 120, expectedG: request60sAt360MgDl },
@@ -143,6 +174,15 @@ test('non-finite or negative concentrations fail the round', () => {
     assert.throws(
       () => round({ glucose: { concentrationMgDl } }),
       `C=${concentrationMgDl} must fail`,
+    );
+  }
+});
+
+test('a present glucose conversion basis must be a complete pair of positive finite numbers', () => {
+  for (const concentrationBasis of [null, [2], [2, 75, 1], [0, 75], [NaN, 75], [2, -1], [2, Infinity], [2, '75']]) {
+    assert.throws(
+      () => round({ glucose: { concentrationMgDl: 180, concentrationBasis } }),
+      /glucose\.concentrationBasis/,
     );
   }
 });

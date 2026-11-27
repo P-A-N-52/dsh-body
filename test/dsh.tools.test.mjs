@@ -516,6 +516,7 @@ test('gateway.getState returns all raw numeric parts while body_state returns ze
   assert.deepEqual(all.parts.glucose, {
     glucoseMassG: 12.69,
     concentrationMgDl: 90,
+    concentrationBasis: [1.88, 75],
     disposedGlucoseG: 0.12,
     excessMassG: 0,
   });
