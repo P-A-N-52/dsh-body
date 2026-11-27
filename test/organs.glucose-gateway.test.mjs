@@ -61,10 +61,11 @@ function boot(statePath) {
   return { gateway, tools: createBodyTools(gateway) };
 }
 
-async function startBody(t, { parts = {} } = {}) {
+async function startBody(t, { parts = {}, profile, parameters } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-glucose-'));
   const statePath = join(dir, 'body-state.json');
-  writeFileSync(statePath, JSON.stringify(checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts })));
+  const seed = checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts, profile });
+  writeFileSync(statePath, JSON.stringify({ ...seed, parameters }));
   const body = boot(statePath);
   t.after(async () => {
     await body.gateway.stop();
@@ -715,6 +716,82 @@ test('an old checkpoint without the new fields settles after the request lag and
     Math.abs(third.liver.storageG - second.liver.storageRequestG) <= 1e-12,
     'the round-2 liver request transfers in round 3',
   );
+});
+
+test('renal glucose crosses the threshold when mass falls, not when the same mass occupies more volume', async (t) => {
+  silence(t);
+  for (const [volumeDlPerKg, massG, concentrationMgDl, expectedG] of [
+    [1.88, 27, 27_000 / 141, 0.0007875],
+    [2, 27, 180, 0.0007875],
+    [2, 25.4, 25_400 / 150, 0],
+  ]) {
+    const label = `${massG} g at ${volumeDlPerKg} dL/kg`;
+    const { gateway } = await startBody(t, {
+      parts: { glucose: { glucoseMassG: massG, concentrationMgDl: 90 } },
+      parameters: { 'glucose.distributionVolumeDlPerKg': volumeDlPerKg },
+    });
+    await gateway.tick();
+    const first = gateway.getState().parts;
+    assert.ok(Math.abs(first.glucose.concentrationMgDl - concentrationMgDl) < 1e-9, label);
+    assert.notEqual(first.glucose.glucoseMassG, massG, `${label}: pool has already settled`);
+    assert.equal(first.kidneyGlucose.excretionRequestG, 0, `${label}: still reads the seed concentration`);
+
+    await gateway.tick();
+    const second = gateway.getState().parts;
+    const requestG = second.kidneyGlucose.excretionRequestG;
+    if (expectedG === 0) {
+      assert.equal(requestG, 0, label);
+    } else {
+      assert.ok(Math.abs(requestG - expectedG) < 1e-12, `${label}: request ${requestG} g, expected ${expectedG} g`);
+    }
+    assert.equal(second.kidneyGlucose.excretedGlucoseG, 0, `${label}: new request is not paid yet`);
+  }
+});
+
+test('a restored glucose concentration keeps its basis independently of the settled pool mass', async (t) => {
+  silence(t);
+  for (const { glucoseSeed, parameters, nextBasis } of [
+    {
+      glucoseSeed: {}, // Legacy save: fill only the absent conversion metadata with effective owner config.
+      parameters: { 'glucose.distributionVolumeDlPerKg': 2, 'glucose.referenceBodyMassKg': 80 },
+      nextBasis: [2, 80],
+    },
+    {
+      glucoseSeed: { concentrationBasis: [2, 80] }, // Saved basis belongs to the saved concentration, not current config.
+      parameters: {},
+      nextBasis: [1.88, 60],
+    },
+  ]) {
+    const { gateway } = await startBody(t, {
+      parts: { glucose: { glucoseMassG: 24, concentrationMgDl: 180, ...glucoseSeed } },
+      profile: { weightKg: 60 },
+      parameters: { ...parameters, 'kidneyGlucose.referenceBodyMassKg': 70 },
+    });
+    const restored = gateway.getState().parts.glucose;
+    assert.equal(restored.glucoseMassG, 24);
+    assert.equal(restored.concentrationMgDl, 180);
+
+    await gateway.tick();
+    const first = gateway.getState().parts;
+    const requestG = first.kidneyGlucose.excretionRequestG;
+    assert.ok(Math.abs(requestG - 0.00084) < 1e-12, `saved 180 mg/dL at [2, 80]: request ${requestG} g`);
+    assert.equal(first.kidneyGlucose.excretedGlucoseG, 0);
+    assert.deepEqual(restored.concentrationBasis, [2, 80]);
+    assert.deepEqual(first.glucose.concentrationBasis, nextBasis);
+    assert.ok(Math.abs(first.glucose.concentrationMgDl - 24_000 / (nextBasis[0] * nextBasis[1])) < 1e-9);
+  }
+});
+
+test('restoring half of the glucose conversion basis does not silently repair or commit it', async (t) => {
+  silence(t);
+  const { gateway } = await startBody(t, {
+    parts: { glucose: { glucoseMassG: 27, concentrationMgDl: 180, concentrationBasis: [2] } },
+  });
+  const before = gateway.getState();
+  assert.equal((await gateway.tick()).failed, true);
+  const after = gateway.getState();
+  assert.equal(after.simulatedSeconds, before.simulatedSeconds);
+  assert.deepEqual(after.parts, before.parts);
 });
 
 test('concentrations at or below the renal threshold never request or transfer kidney glucose', async (t) => {

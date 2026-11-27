@@ -209,6 +209,7 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
   assert.deepEqual(loaded.glucose, {
     glucoseMassG: 12.69,
     concentrationMgDl: 90,
+    concentrationBasis: [1.88, 75],
     disposedGlucoseG: 0,
     excessMassG: 0,
   });
@@ -270,6 +271,7 @@ test('an old root checkpoint keeps old stomach values and only fills new parts',
   assert.deepEqual(after.glucose, {
     glucoseMassG: 12.69,
     concentrationMgDl: 90,
+    concentrationBasis: [1.88, 75],
     disposedGlucoseG: 0.12,
     excessMassG: 0,
   });

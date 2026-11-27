@@ -25,13 +25,16 @@
  * 本脚本不声称复现原文的两室动力学、胰岛素依赖处置或个体预测。
  *
  * 工程假设（design）：
- * - 固定 75 kg、90 mg/dL 基线与 60 min 残余清除半时都 `source: null`
- *   （同目录 `glucose.parameters.json`）。`residualDisposalHalfTimeMin` 只描述本隔室自身
+ * - 75 kg 参考体重默认值（可按 profile 缩放或由显式参数覆盖）、90 mg/dL 基线与 60 min
+ *   残余清除半时都 `source: null`（同目录 `glucose.parameters.json`）。`residualDisposalHalfTimeMin` 只描述本隔室自身
  *   （脑/红细胞等非器官组织）的表观清除，与 `pancreasEndocrine.insulinPmolL` 无关；
  *   它不是组织摄糖效率或总清除半时。未来分别由身体预设/个体输入、个体空腹测量和更完整的
  *   非器官组织清除模型替换。分布体积参数 `source: SRC-DALLAMAN-2007` 只是定义与量级锚点。
- * - 浓度是本轮轮初质量读数：`concentrationMgDl = M_start × 1000 / V`。小肠同轮 transfer 的
- *   新吸收量在 write 之后才加入 `glucoseMassG`，因此当轮浓度仍读旧质量，下一轮才上升。
+ * - 浓度是本轮轮初质量读数：`concentrationMgDl = M_start × 1000 / V`。与它一并写出
+ *   `concentrationBasis = [有效 dL/kg, 有效 kg]`，让肾按相同的基准反算，不能读取转移后的质量。
+ *   旧档缺整个基准键时只补实际 owner 配置，不改已有浓度或质量；基准用元组避免递归补成半旧半新。
+ *   小肠同轮 transfer 的新吸收量在 write 之后才加入 `glucoseMassG`，因此当轮浓度仍读旧质量，
+ *   下一轮才上升。
  * - 本核心只持血池、计算自身基础消耗与残余清除，并按入口给出的汇顺序结算各部位上一轮写出的摄糖请求：
  *   1. `E = max(0, M_start − B)` 写成只读字段 `excessMassG`，唯一写者为本部位；肌肉与肝
  *      读取它计算自己的请求，本脚本不反向读取它们的容量或参数。
@@ -85,6 +88,7 @@ import {
 export type GlucoseState = {
   glucoseMassG: number;
   concentrationMgDl: number;
+  concentrationBasis: readonly [distributionVolumeDlPerKg: number, bodyMassKg: number];
   disposedGlucoseG: number;
   excessMassG: number;
 };
@@ -118,6 +122,7 @@ export type GlucoseFields = {
     transferOut: string[];
   };
   concentrationMgDl: { unit: string; mode: string };
+  concentrationBasis: { unit: string; mode: string };
   disposedGlucoseG: { unit: string; mode: string };
   excessMassG: { unit: string; mode: string };
 };
@@ -146,10 +151,12 @@ const basalConsumptionGPerMin = scaleByBodyWeight(
 
 const distributionVolumeDl = referenceBodyMassKg * distributionVolumeDlPerKg;
 const baselineMassG = baselineConcentrationMgDl * distributionVolumeDl / 1000;
+const concentrationBasis = [distributionVolumeDlPerKg, referenceBodyMassKg] as const;
 
 const glucoseInitialState: GlucoseState = {
   glucoseMassG: baselineMassG,
   concentrationMgDl: baselineConcentrationMgDl,
+  concentrationBasis,
   disposedGlucoseG: 0,
   excessMassG: 0,
 };
@@ -182,6 +189,7 @@ export function createGlucose(sinks: readonly GlucoseSink[]): GlucoseModule {
       transferOut: sinks.map((sink) => `${sink.toPart}.${sink.toField}`),
     },
     concentrationMgDl: { unit: 'mg/dL', mode: 'absolute' },
+    concentrationBasis: { unit: '[dL/kg, kg]', mode: 'absolute' },
     disposedGlucoseG: { unit: 'g', mode: 'absolute' },
     excessMassG: { unit: 'g', mode: 'absolute' },
   };
@@ -224,6 +232,7 @@ export function createGlucose(sinks: readonly GlucoseSink[]): GlucoseModule {
     io.write({
       glucoseMassG: afterResidualG,
       concentrationMgDl,
+      concentrationBasis,
       disposedGlucoseG,
       excessMassG,
     });

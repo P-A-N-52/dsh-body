@@ -371,13 +371,15 @@ test('glucose exports the compartment contract with the excess signal and baseli
       ],
     },
     concentrationMgDl: { unit: 'mg/dL', mode: 'absolute' },
+    concentrationBasis: { unit: '[dL/kg, kg]', mode: 'absolute' },
     disposedGlucoseG: { unit: 'g', mode: 'absolute' },
     excessMassG: { unit: 'g', mode: 'absolute' },
   });
   assert.deepEqual(
     Object.keys(initialState).sort(),
-    ['concentrationMgDl', 'disposedGlucoseG', 'excessMassG', 'glucoseMassG'],
+    ['concentrationBasis', 'concentrationMgDl', 'disposedGlucoseG', 'excessMassG', 'glucoseMassG'],
   );
+  assert.deepEqual(initialState.concentrationBasis, [1.88, 75]);
   assert.ok(Math.abs(initialState.glucoseMassG - baselineMassG) < 1e-9);
   assert.ok(Math.abs(initialState.concentrationMgDl - 90) < 1e-9);
   assert.ok(
@@ -481,6 +483,7 @@ test('the root glucose entry ignores the mammary lactose request', () => {
   assert.equal(mammaryTransferG(withMammary.transfers), 0);
   assert.equal(liverTransferG(withMammary.transfers), expected.liverPaidG);
   assert.equal(muscleTransferG(withMammary.transfers), expected.musclePaidG);
+  assert.deepEqual(withMammary.written.concentrationBasis, [1.88, 75]);
   assert.ok(
     Math.abs(withMammary.written.glucoseMassG - expected.afterResidualG) < 1e-12,
     'a mammary request must not change the root pool write',
@@ -1134,7 +1137,9 @@ test('glucose output is finite and JSON-safe', () => {
   ];
   for (const { state, options } of cases) {
     const { written } = round(state, options);
-    for (const [field, value] of Object.entries(written)) {
+    const { concentrationBasis, ...scalars } = written;
+    assert.deepEqual(concentrationBasis, [1.88, 75]);
+    for (const [field, value] of Object.entries(scalars)) {
       assert.ok(Number.isFinite(value), `${field} must be finite`);
     }
     assert.doesNotThrow(() => assertJsonValue(written));

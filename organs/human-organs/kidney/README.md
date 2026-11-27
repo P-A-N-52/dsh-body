@@ -13,7 +13,7 @@
 | `urine-production.ts`（正常） | `kidney` | `urineProductionRequestMl` | `hypothalamusAdh.relativeConcentration`；轮初 `blood.gfrMlMin`（可选）；`io.dt` | `urine-production.parameters.json` |
 | `urine-production-di-central.ts`（中枢 DI 样，可选） | `kidney` | 同上 | 同上 | `urine-production-di-central.parameters.json` |
 | `urine-production-di-nephrogenic.ts`（肾性 DI 样，可选） | `kidney` | 同上 | 只读 `io.dt`；**不读** `hypothalamusAdh` | `urine-production-di-nephrogenic.parameters.json` |
-| `glucose-excretion.ts`（独立部位） | `kidneyGlucose` | `excretionRequestG`、`excretedGlucoseG` | 轮初 `glucose.concentrationMgDl`；`io.dt` | `glucose-excretion.parameters.json` |
+| `glucose-excretion.ts`（独立部位） | `kidneyGlucose` | `excretionRequestG`、`excretedGlucoseG` | 轮初 `glucose.concentrationMgDl` 与同一读数的 `glucose.concentrationBasis`；`io.dt` | `glucose-excretion.parameters.json` |
 | `gluconeogenesis.ts`（独立部位） | `kidneyGluconeogenesis` | `glucoseOutputG` | 轮初 `glucose.concentrationMgDl`、`pancreasEndocrine.glucagonRelative`；`io.dt` | `gluconeogenesis.parameters.json` |
 
 方程在 `urine-production-core.ts`：正常入口与中枢变体共用 ADH 驱动公式；肾性变体用同一个核心的固定速率函数。变体与正常入口导出相同的 `id` / `fields` / `actionTypes`，同一清单只能出现一个 `kidney` 水入口脚本；替换是文件选择，不是运行中开关。参数文件与脚本同目录，模块在 import 时经 `lib/parameters.js` 只读加载；参数是证据默认值，不做运行中热切换。
@@ -95,10 +95,10 @@ urineProductionRequestMl = baselineRateMlPerMin × dtMin × relativeRate × (G /
 
 ## 6. 肾糖排泄（`kidneyGlucose`，独立部位）
 
-`kidneyGlucose` 是肾目录下独立的糖排泄状态与唯一写者，不复用 `kidney` 的字段，也不参与水账。整条链只传葡萄糖质量（g）：
+`kidneyGlucose` 是肾目录下独立的糖排泄状态与唯一写者，不复用 `kidney` 的字段，也不参与水账。读取同池的浓度与换算基准，实际 transfer 只传葡萄糖质量（g）：
 
 ```text
-glucose.concentrationMgDl
+glucose.concentrationMgDl + glucose.concentrationBasis
   → kidneyGlucose.excretionRequestG
   → glucose 按轮初请求转出质量
   → kidneyGlucose.excretedGlucoseG
@@ -121,7 +121,7 @@ glucose.concentrationMgDl
 
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
-| `excretionRequestG` | `g` | 按本轮轮初浓度和 `io.dt` 计算的**下一轮**请求；不是已排泄量，不进入质量账 |
+| `excretionRequestG` | `g` | 按本轮轮初的浓度、同读数换算基准和 `io.dt` 计算的**下一轮**请求；不是已排泄量，不进入质量账 |
 | `excretedGlucoseG` | `g` | 本轮实际接收的葡萄糖通量；每轮 write 先归 0，只有 transfer 才加入；初值 0 |
 
 transfer 配对：
@@ -134,33 +134,33 @@ glucose.glucoseMassG → kidneyGlucose.excretedGlucoseG  (g)
 
 ### 6.2 方程与参数
 
-设 `C = glucose.concentrationMgDl` 的轮初读数，`dtMin = io.dt / 60`：
+设 `C = glucose.concentrationMgDl`，`[Vd, K] = glucose.concentrationBasis`（有效 dL/kg 与 kg），都取自同一轮初快照。`dtMin = io.dt / 60`，不用 `io.simulatedSeconds` 或现实时间：
 
 ```text
-Gp = C × 1.88                              // mg/kg
-E  = max(0, Gp − 339) × 0.0005            // mg/kg/min
-requestG = E × 75 × dtMin / 1000           // g/下一轮
+Gp = C × Vd                               // mg/kg
+E  = max(0, Gp − 339) × 0.0005              // mg/kg/min（默认肾参数）
+requestG = E × K × dtMin / 1000             // g/下一轮
 write.excretionRequestG = requestG
-write.excretedGlucoseG = 0                 // 等待本轮实际 transfer
+write.excretedGlucoseG = 0                  // 等待本轮实际 transfer
 ```
 
-阈值对应浓度 `339 / 1.88 ≈ 180.32 mg/dL`，只是 mg/kg 与 mg/dL 的单位换算，不是临床诊断界值。低于或等于阈值时请求为 0；正常基础浓度 90 mg/dL 时请求和排泄都为 0。`C = 360 mg/dL` 时 `Gp = 676.8 mg/kg`，60 s 请求为 `(676.8 − 339) × 0.0005 × 75 / 1000 = 0.0126675 g`。`dtMin` 只来自 `io.dt`，不用 `io.simulatedSeconds` 或现实时间。
+低于或等于 `339 mg/kg` 时请求为 0；默认 `Vd = 1.88 dL/kg` 对应 `339 / 1.88 ≈ 180.32 mg/dL`，仅是单位换算，不是临床诊断界值。默认基础浓度 90 mg/dL 时请求和排泄都为 0；默认基准下 `C = 360 mg/dL` 的 60 s 请求仍为 `0.0126675 g`。例如 75 kg、采样质量 27 g，在 `Vd = 1.88` 和 `2.00 dL/kg` 时分别为约 `191.49` 和 `180 mg/dL`，但都恢复为 `360 mg/kg`，请求同为 `0.0007875 g/轮`。
 
 | 参数 ID | 默认值 | 单位 | 状态 | 来源与替换点 |
 | --- | ---: | --- | --- | --- |
 | `kidneyGlucose.filtrationRatePerMin` | 0.0005 | `min^-1` | `prior` | `SRC-DALLAMAN-2007` p.1743 Table I 正常组 `k_e1`；未来由个体肾糖滤过/重吸收模型替换 |
 | `kidneyGlucose.renalThresholdMgKg` | 339 | `mg/kg` | `prior` | 同上，正常组 `k_e2`；未来由个体肾阈替换 |
-| `kidneyGlucose.distributionVolumeDlPerKg` | 1.88 | `dL/kg` | `design` | 沿用同一可及池定义（见 Dalla Man 2007 笔记）；未来由共享身体预设替换 |
-| `kidneyGlucose.referenceBodyMassKg` | 75 | `kg` | `design` | 未建个体体重；未来由身体预设替换 |
+| `kidneyGlucose.distributionVolumeDlPerKg` | 1.88 | `dL/kg` | `design` | 仅浓度-only 旧/替代模块的兼容参考体积 |
+| `kidneyGlucose.referenceBodyMassKg` | 75 | `kg` | `design` | 同上；无显式覆盖时照旧按 `profile.weightKg / 75` 缩放 |
 
-`filtrationRatePerMin` 和 `renalThresholdMgKg` 的 `prior` 只表示已发表平均模型锚点，不是人体测量、拟合或验证。`distributionVolumeDlPerKg` 与 `referenceBodyMassKg` 暂时与 `glucose` 的参数重复配置，测试固定两者相等；不跨模块 import 参数文件，也不把重复配置本身当作独立证据。
+`filtrationRatePerMin` 和 `renalThresholdMgKg` 保持独立；`prior` 只表示已发表平均模型锚点，不是人体测量、拟合或验证。肾本地的两项兼容换算参数（含原有显式覆盖）只在没有 `concentrationBasis` 键时使用。只要上游发布该键，就必须用它的有效值，不把肾本地参数混入同池换算。
 
 ### 6.3 请求—结算与跨阈后时序
 
 所有读写都基于轮初快照；请求不是排泄，实际质量只在 transfer 后出现：
 
-1. **第 N 轮轮末：** `glucose` 根据本轮轮初质量写出浓度代理读数 `C`。它从第 N+1 轮起才对其他部位可见。
-2. **第 N+1 轮：** `kidneyGlucose` 读到 `C`，按 `C` 和 `io.dt` 写出 `excretionRequestG = R`；本轮 `excretedGlucoseG` 仍为 0。
+1. **第 N 轮：** `glucose` 根据轮初质量写出浓度代理 `C` 与用于该读数的 `[Vd, K]`，两者从第 N+1 轮起才对其他部位可见。第 N 轮末的 `glucoseMassG` 已结算清除与 transfer，不是 `C` 的分子。
+2. **第 N+1 轮：** `kidneyGlucose` 仅用配对的 `C`、`[Vd, K]` 和 `io.dt` 写出 `excretionRequestG = R`，不以此时的 `glucoseMassG` 代替采样质量。这笔新请求本轮不会到账。
 3. **第 N+2 轮：** `glucose` 从轮初快照读到 `R`，同时读到 `liver.storageRequestG` 与 `muscleGlucose.uptakeRequestG`。它先算 `E = max(0, M_start − B)` 与自身基础/残余清除 `D = min(M_start, basalDisposed + excessDisposed)`，取 `M_after = M_start − D`；再按“肾 → 肝 → 肌”结算：`X = min(max(0, R), M_after)`、`L_paid = min(liver.storageRequestG, M_after − X)`、`U_paid = min(muscleGlucose.uptakeRequestG, M_after − X − L_paid)`。它 write 转移前质量 `W = M_after`、`disposedGlucoseG = D`、`excessMassG = E`；Gateway 随后把 `X`、`L_paid`、`U_paid` 逐笔 transfer 到 `kidneyGlucose.excretedGlucoseG`、`liver.storageG` 与 `muscleGlucose.uptakeG`。余额不足时后结算者被钳位，质量守恒仍逐轮成立；总轨迹是各部位请求与自身清除的涌现结果，不再承诺与旧的中央分配模型逐位一致。`kidneyGlucose` 本轮 write 仍先把 `excretedGlucoseG` 归 0，transfer 后才为 `X`。
 
 因此，在上述时序中，请求为正且结算轮有可用质量时，从浓度 `C` 提交到首次实际排泄相隔两轮；从请求 `R` 提交到执行只隔一轮。一次自然餐的首次吸收默认发生在第 3 轮，但跨阈轮次由实际轨迹决定，不固定为第 5/6 轮，不能按固定轮次断言肾糖。
@@ -224,10 +224,11 @@ transfer 图按来源 → 目标列出；Gateway 按 transfer 对键逐笔结算
 ### 6.7 旧档、缺失与错误
 
 - **旧档：** 启动时只补 `excretionRequestG = 0`、`excretedGlucoseG = 0`、`kidneyGluconeogenesis.glucoseOutputG = 0`；缺失的 `glucose` 首轮由轮初质量现算 `excessMassG`，缺失的 `liver` 补 `storageRequestG = 0`、`glycogenG = 80`、`storageG = 0`、`glycogenCapacityG = 100`、`outputG = 0`，缺失的 `muscleGlucose` 补 `uptakeRequestG = 0`、`uptakeG = 0`、`glycogenG = 0`、`glycogenConsumedG = 0`，缺失的 `pancreasEndocrine` 按 `initialState` 补 `insulinPmolL = 60` 与 `glucagonRelative = 1`，不承诺保留旧 `insulinRelative` 偏差。第一轮 `excretedGlucoseG` 为 0，不按历史轮数补算。若轮初已有高糖，第一轮各部位只写新请求，下一轮才实际转移。已有 `glucose`、水、膀胱和 ADH 状态不被重置。
+- **换算基准兼容：** 内置 `glucose` 的旧档缺整个 `concentrationBasis` 键时，启动用当前 Worker 的实际 owner 配置补齐一对有效值，保留已有的浓度与质量。若旧档缺基准且停机期间改了参数，原来的换算量无法反推。已存基准与原浓度一起保留至下一次采样。真正只发布浓度的旧/第三方模块才使用肾本地的旧换算参数（含显式覆盖）。
 - **旧自定义清单：** 已包含 `glucose`（或完整水/碳水闭包）的旧清单升级到本切片时必须补上 `liver`、`kidneyGlucose` 与 `muscleGlucose`，否则启动时报 transfer 配对错误；不能靠省略字段或运行中兜底绕过。
 - **模块独立测试没有上游：** 未加载 `glucose` 时，`kidneyGlucose` 按 0 请求、0 实际通量处理；这是纯模块行为，不改变完整清单的硬配对要求。
 - **完整清单缺部位：** 在包含水/碳水闭包的完整清单中，缺 `glucose`、`liver`、`kidneyGlucose` 或 `muscleGlucose` 时启动失败，不用健康常量或 0 请求掩盖配对错误。
-- **已加载但异常：** 上游已加载而浓度缺失、非有限或为负数时，本轮失败；合法 0 是有效读数，不是异常。请求侧同理：已加载 `kidneyGlucose` 但请求缺失、非有限或为负时，`glucose` 不让本轮通过，不用固定参考值替代。
+- **已加载但异常：** 浓度缺失、非数值、非有限或为负时本轮失败；合法 0 浓度有效。`concentrationBasis` 键一旦存在，必须是完整的两个正有限数；半套或非法数据不是缺失，不能回退。请求侧同理：已加载 `kidneyGlucose` 但请求缺失、非有限或为负时，`glucose` 不让本轮通过，不用固定参考值替代。
 - **请求不等于结算：** `excretionRequestG` 只表示意图；只有 transfer 成功结算后 `excretedGlucoseG` 才非 0。
 
 ### 6.8 证据与验证边界

@@ -220,6 +220,7 @@ test('the root manifest loads all forty-three body parts', async (t) => {
   assert.deepEqual(first.parts.glucose, {
     glucoseMassG: 12.69,
     concentrationMgDl: 90,
+    concentrationBasis: [1.88, 75],
     disposedGlucoseG: 0.12,
     excessMassG: 0,
   });
