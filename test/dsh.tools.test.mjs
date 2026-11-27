@@ -357,7 +357,7 @@ test('body_act rejects sex and orgasm and omits them from schema when defaultNsf
   assert.equal(gateway.getNsfw(), false);
   assert.deepEqual(
     tools.body_act.parameters.properties.type.enum,
-    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'stop_exercise', 'sleep', 'wake_up'],
+    ['drink', 'eat', 'urinate', 'defecate', 'exercise', 'stop_exercise', 'sleep', 'wake_up', 'remove_layer', 'set_environment', 'wear_layer'],
   );
   assert.equal(tools.body_act.parameters.properties.type.enum.includes('sex'), false);
   assert.equal(tools.body_act.parameters.properties.type.enum.includes('orgasm'), false);
@@ -403,7 +403,7 @@ test('gateway.getState returns all raw numeric parts while body_state returns ze
 
   const all = gateway.getState();
   assert.equal(all.simulatedSeconds, 60);
-  assert.equal(Object.keys(all.parts).length, 43);
+  assert.equal(Object.keys(all.parts).length, 45);
   for (const part of [
     'esophagus',
     'stomach',

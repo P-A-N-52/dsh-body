@@ -122,10 +122,12 @@ async function heartbeat({
   wallTimeMs,
   suppressNotifications = false,
   boundSessionId = null,
+  publishedParts = {},
 }) {
   await describeModules();
   freezeJson(snapshot);
   freezeJson(actions);
+  freezeJson(publishedParts);
 
   function read(id) {
     if (id === undefined) return snapshot;
@@ -135,6 +137,9 @@ async function heartbeat({
   const contexts = new Map();
   const common = {
     read,
+    readPublished(id) {
+      return modules.has(id) && Object.hasOwn(publishedParts, id) ? publishedParts[id] : undefined;
+    },
     actions,
     dt,
     simulatedSeconds,

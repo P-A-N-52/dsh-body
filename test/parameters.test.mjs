@@ -17,6 +17,7 @@ import {
 } from '../lib/parameters.js';
 
 const parametersFiles = [
+  { label: 'organs/body-inputs/clothing.parameters.json', url: new URL('../organs/body-inputs/clothing.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/stomach/motility.parameters.json', url: new URL('../organs/human-organs/stomach/motility.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/duodenum/nutrient-exposure.parameters.json', url: new URL('../organs/human-organs/duodenum/nutrient-exposure.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/salivary-glands/saliva.parameters.json', url: new URL('../organs/human-organs/salivary-glands/saliva.parameters.json', import.meta.url) },
@@ -212,8 +213,8 @@ test('glucose parameters keep the fixed design defaults', () => {
   assert.deepEqual(byId['glucose.residualDisposalHalfTimeMin'].range, [10, 300]);
 });
 
-test('the parameter inventory covers the 54 files across the adult manifests and optional chains', () => {
-  assert.equal(parametersFiles.length, 54);
+test('the parameter inventory covers the 55 files across the adult manifests and optional chains', () => {
+  assert.equal(parametersFiles.length, 55);
   const labels = parametersFiles.map(({ label }) => label);
   assert.equal(
     labels.some((label) => label.includes('/skeletal-muscle/regions/')),
@@ -279,7 +280,8 @@ test('heart, blood and thermoregulation parameters are design defaults with no s
     },
     'organs/human-organs/brain/thermoregulation.parameters.json': {
       'thermoregulation.setpointC': [37, '°C'],
-      'thermoregulation.ambientTemperatureC': [25, '°C'],
+      'thermoregulation.evaporationReferenceTemperatureC': [32, '°C'],
+      'thermoregulation.evaporationConductanceMlMinPerKpa': [3, 'mL/(min·kPa)'],
       'thermoregulation.heatCapacityKcalPerC': [60, 'kcal/°C'],
       'thermoregulation.metabolicFactor': [0.005, 'kcal/mL'],
       'thermoregulation.shiveringGain': [2, 'kcal/(min·°C)'],
@@ -563,7 +565,6 @@ test('skin sweat parameters keep the design defaults and units', () => {
     'skin.interthresholdOffsetC',
     'skin.nocturnalDeadbandOffsetC',
     'skin.sweat.ambientGainPerC',
-    'skin.sweat.ambientTemperatureC',
     'skin.sweat.maxRateMlPerMin',
     'skin.sweat.referenceRateMlPerMin',
   ]);
@@ -573,8 +574,6 @@ test('skin sweat parameters keep the design defaults and units', () => {
   assert.equal(byId['skin.interthresholdOffsetC'].unit, '°C');
   assert.equal(byId['skin.nocturnalDeadbandOffsetC'].value, 0.45);
   assert.equal(byId['skin.nocturnalDeadbandOffsetC'].unit, '°C');
-  assert.equal(byId['skin.sweat.ambientTemperatureC'].value, 25);
-  assert.equal(byId['skin.sweat.ambientTemperatureC'].unit, '°C');
   assert.equal(byId['skin.sweat.referenceRateMlPerMin'].value, 0.6);
   assert.equal(byId['skin.sweat.referenceRateMlPerMin'].unit, 'mL/min');
   assert.equal(byId['skin.sweat.ambientGainPerC'].value, 0.04);

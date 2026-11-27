@@ -12,15 +12,6 @@
       "note": "核心温度设定点工程默认值；只作为出汗、寒战、喘息与冷热读数的参考点，不是实测体温调定点或个体测量"
     },
     {
-      "id": "thermoregulation.ambientTemperatureC",
-      "unit": "°C",
-      "value": 25,
-      "status": "design",
-      "range": [-50, 60],
-      "source": null,
-      "note": "默认环境温度工程假设，不是实测环境温度；只用于辐射对流散热项，未来由环境状态替换"
-    },
-    {
       "id": "thermoregulation.heatCapacityKcalPerC",
       "unit": "kcal/°C",
       "value": 60,
@@ -54,7 +45,7 @@
       "status": "design",
       "range": [0, 0.5],
       "source": null,
-      "note": "核心温度与环境温度每差 1°C 的辐射对流散热增益；工程假设，不建模皮肤血流、血管舒缩、湿度或风速"
+      "note": "带符号干交换的基础导度，按体重缩放；乘核心温与空气温差及衣层干交换倍率，不区分辐射和对流。"
     },
     {
       "id": "thermoregulation.evaporationKcalPerMl",
@@ -63,7 +54,25 @@
       "status": "design",
       "range": [0.1, 1],
       "source": null,
-      "note": "每 mL 汗液蒸发的潜热工程近似；只作用于轮初 skin.sweatVolumeMl，不是实测汗液蒸发效率或环境蒸发模型"
+      "note": "每 mL 汗液蒸发的潜热工程近似；只计本轮实际蒸发，不用于未蒸发的实汗"
+    },
+    {
+      "id": "thermoregulation.evaporationReferenceTemperatureC",
+      "unit": "°C",
+      "value": 32,
+      "status": "design",
+      "range": [25, 40],
+      "source": null,
+      "note": "求饱和水汽压的固定参考面温度；不是皮温读数。"
+    },
+    {
+      "id": "thermoregulation.evaporationConductanceMlMinPerKpa",
+      "unit": "mL/(min·kPa)",
+      "value": 3,
+      "status": "design",
+      "range": [0, 10],
+      "source": null,
+      "note": "75 kg 无额外模拟层时的工程导湿系数；没有移植裸体量热系数，默认按体重缩放。"
     },
     {
       "id": "thermoregulation.circadianAmplitudeC",
@@ -108,7 +117,7 @@
       "status": "design",
       "range": [0, 2],
       "source": "SRC-CRAMER-2019",
-      "note": "工程假定/占位（参照 de Dear 1997 静风干传热 ~7.9 W/(m²·°C) 在 1.85 m² 体表温升 +2–3°C 对应约 +30–40 W ≈ 0.43–0.55 kcal/min 物理上限）：外周血管舒张最大额外干散热上限（按体重缩放）"
+      "note": "沿用旧工程上限并按体重缩放；这是仅在 12°C 参考梯度、无附加衣层下的舒张干损率上限，除以 12°C 后成为导度上限。"
     }
   ]
 }

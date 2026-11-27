@@ -1,29 +1,9 @@
 /*
- * 部位 `thermoregulation`：核心温度由产热与散热的平衡决定，部位 `thermoregulation` 的唯一
- * 写者。消费者：`skin` 按核心温度放大出汗请求，`lungsVentilation` 按核心温度抬高通气目标，
- * `interoception` 写热/冷不适读数。本脚本只算温度，不直接写出汗、通气或通知，也不调用
- * `transfer`。
- *
- * 公式（dtMin = io.dt / 60，D = 轮初 bloodOxygen.oxygenConsumptionMlMin，
- * W = 轮初 skin.sweatVolumeMl）：
- *   effectiveSetpointC = setpointC
- *     + (wallTimeMs 存在 ? circadianAmplitudeC × cos(2π × (hour − circadianPeakHour) / 24) : 0)
- *     - (sleep.sleeping === true ? sleepSetpointOffsetC : 0)
- *   heatProductionKcalMin = metabolicFactor × D
- *                         + shiveringGain × max(0, effectiveSetpointC − coreTemperatureC)
- *   lossKcalMin = evaporationKcalPerMl × (dtMin > 0 ? W / dtMin : 0)
- *               + lossGain × (coreTemperatureC − ambientTemperatureC)
- *   coreTemperatureC = clamp(
- *     prev.coreTemperatureC + dtMin × (heatProductionKcalMin − lossKcalMin) / heatCapacityKcalPerC,
- *     25, 45
- *   )
- * 产热用轮初氧耗（`bloodOxygen` 已含基础代谢、睡眠下调、T4 缩放、活动与消化附加氧耗）；寒战只在
- * 低于动态设定点时加入。
- *
- * 证据：无直接人体来源。所有参数见同目录 `thermoregulation.parameters.json`，
- * 全部 `status: design`、`source: null`；昼夜调定点振幅（±0.25°C）与睡眠下调（0.2°C）均为
- * 工程假设。不建皮肤分区温度、血管扩张/收缩、寒战肌肉做功细节、发热与疾病、低温症、
- * 湿度、风速或个体差异；不能称 validated。
+ * 核心温度的唯一写者。轮初的氧耗和低于有效设定点的寒战供热，带符号的干交换和实际蒸发分账。
+ * 只读取上轮已支付的皮肤汗液，本轮不扣水；空气温湿度/衣层改变交换速率，不直接改温度。
+ * SRC-CRAMER-2019 / cramer-2019（skin/references/notes，§§2–3）支持热量分账和压差上限；
+ * SRC-ALBERWALLERSTROM-1985 / alber-wallerstrom-1985（同目录，§§2–3、原文摘要）支持湿热下
+ * 汗液实际分泌量不等于蒸发量。这不是量热法复刻：参考面温度、传导系数与衣层倍率均为 design。
  */
 import { resolveCircadianHour } from '../../../lib/circadian.js';
 import {
@@ -32,45 +12,58 @@ import {
   requireParameter,
   scaleByBodyWeight,
 } from '../../../lib/parameters.js';
+import { defaultClimate } from '../../body-inputs/climate-state.js';
+import { clothingMultipliers } from '../../body-inputs/clothing.ts';
+import { nonnegativeFeverOffsetC, type PublishedThermalInput } from './thermoregulation-fever.ts';
 
 export const id = 'thermoregulation';
 export const actionTypes: string[] = [];
 
+type HeatBalance = {
+  dtMin: number;
+  coreTemperatureStartC: number;
+  effectiveSetpointC: number;
+  heatCapacityKcalPerC: number;
+  airTemperatureC: number;
+  relativeHumidityPct: number;
+  dryExchangeMultiplier: number;
+  evaporationMultiplier: number;
+  baseConductanceKcalMinPerC: number;
+  vasodilationConductanceKcalMinPerC: number;
+  vaporPressureDeficitKpa: number;
+  paidSweatMl: number;
+  evaporationLimitMl: number;
+  evaporatedSweatMl: number;
+  metabolicHeatKcal: number;
+  shiveringHeatKcal: number;
+  dryHeatLossKcal: number;
+  evaporativeHeatLossKcal: number;
+  netHeatKcal: number;
+  clamped: boolean;
+};
+
 type ThermoregulationState = {
   coreTemperatureC: number;
   setpointC: number;
+  feverSetpointOffsetC: number;
+  effectiveSetpointC: number;
+  heatBalance: HeatBalance | null;
 };
 
-type BloodOxygenReading = {
-  oxygenConsumptionMlMin?: unknown;
-};
-
-type SkinReading = {
-  sweatVolumeMl?: unknown;
-};
-
-type SleepReading = {
-  sleeping?: unknown;
-};
-
-type IO = {
+type IO = PublishedThermalInput & {
   read(id: 'thermoregulation'): Readonly<ThermoregulationState> | undefined;
-  read(id: 'bloodOxygen'): Readonly<BloodOxygenReading> | null | undefined;
-  read(id: 'skin'): Readonly<SkinReading> | null | undefined;
-  read(id: 'sleep'): Readonly<SleepReading> | null | undefined;
+  read(id: 'bloodOxygen'): Readonly<{ oxygenConsumptionMlMin?: unknown }> | undefined;
+  read(id: 'skin'): Readonly<{ sweatVolumeMl?: unknown }> | undefined;
+  read(id: 'sleep'): Readonly<{ sleeping?: unknown }> | undefined;
+  read(id: 'climate'): Readonly<Partial<typeof defaultClimate>> | undefined;
+  read(id: 'clothing'): Readonly<{ wornLayerIds?: readonly string[] }> | undefined;
   readonly dt: number;
   readonly wallTimeMs?: number;
   write(next: ThermoregulationState): void;
 };
 
-const parameters = loadParameters(
-  new URL('./thermoregulation.parameters.json', import.meta.url),
-);
+const parameters = loadParameters(new URL('./thermoregulation.parameters.json', import.meta.url));
 const setpointC = requireParameter(parameters, 'thermoregulation.setpointC');
-const ambientTemperatureC = requireParameter(
-  parameters,
-  'thermoregulation.ambientTemperatureC',
-);
 const heatCapacityKcalPerC = scaleByBodyWeight(
   requireParameter(parameters, 'thermoregulation.heatCapacityKcalPerC'),
   'thermoregulation.heatCapacityKcalPerC',
@@ -80,37 +73,31 @@ const shiveringGain = scaleByBodyWeight(
   requireParameter(parameters, 'thermoregulation.shiveringGain'),
   'thermoregulation.shiveringGain',
 );
-const lossGain = scaleByBodyWeight(
+const baseConductanceKcalMinPerC = Math.max(0, scaleByBodyWeight(
   requireParameter(parameters, 'thermoregulation.lossGain'),
   'thermoregulation.lossGain',
-);
-const evaporationKcalPerMl = requireParameter(
-  parameters,
-  'thermoregulation.evaporationKcalPerMl',
-);
-const circadianAmplitudeC = requireParameter(
-  parameters,
-  'thermoregulation.circadianAmplitudeC',
-);
-const circadianPeakHour = requireParameter(
-  parameters,
-  'thermoregulation.circadianPeakHour',
-);
-const sleepSetpointOffsetC = requireParameter(
-  parameters,
-  'thermoregulation.sleepSetpointOffsetC',
-);
+));
+const evaporationKcalPerMl = requireParameter(parameters, 'thermoregulation.evaporationKcalPerMl');
+const evaporationReferenceTemperatureC = requireParameter(parameters, 'thermoregulation.evaporationReferenceTemperatureC');
+const evaporationConductanceMlMinPerKpa = Math.max(0, scaleByBodyWeight(
+  requireParameter(parameters, 'thermoregulation.evaporationConductanceMlMinPerKpa'),
+  'thermoregulation.evaporationConductanceMlMinPerKpa',
+));
+const circadianAmplitudeC = requireParameter(parameters, 'thermoregulation.circadianAmplitudeC');
+const circadianPeakHour = requireParameter(parameters, 'thermoregulation.circadianPeakHour');
+const sleepSetpointOffsetC = requireParameter(parameters, 'thermoregulation.sleepSetpointOffsetC');
 const vasodilationGain = scaleByBodyWeight(
   requireParameter(parameters, 'thermoregulation.vasodilationGain'),
   'thermoregulation.vasodilationGain',
 );
-const maxVasodilationKcalMin = scaleByBodyWeight(
+const maxVasodilationKcalMin = Math.max(0, scaleByBodyWeight(
   requireParameter(parameters, 'thermoregulation.maxVasodilationKcalMin'),
   'thermoregulation.maxVasodilationKcalMin',
-);
+));
 
 const fallbackBasalOxygenConsumptionMlMin =
   getNumericParameterOverride('bloodOxygen.basalMlMin') ?? scaleByBodyWeight(250);
+const vasodilationReferenceGradientC = 12;
 const minCoreTemperatureC = 25;
 const maxCoreTemperatureC = 45;
 
@@ -121,116 +108,107 @@ function clamp(value: number, min: number, max: number): number {
 export const initialState: ThermoregulationState = {
   coreTemperatureC: setpointC,
   setpointC,
+  feverSetpointOffsetC: 0,
+  effectiveSetpointC: setpointC,
+  heatBalance: null,
 };
 
 export const fields = {
   coreTemperatureC: { unit: '°C', mode: 'absolute' },
   setpointC: { unit: '°C', mode: 'absolute' },
+  feverSetpointOffsetC: { unit: '°C', mode: 'absolute' },
+  effectiveSetpointC: { unit: '°C', mode: 'absolute' },
+  heatBalance: { unit: 'record', mode: 'absolute' },
 };
 
-export function effectiveSetpointC(
-  wallTimeMs?: number,
-  sleeping = false,
-): number {
+function baselineSetpointC(wallTimeMs: number | undefined, sleeping: boolean): number {
   const circadianDelta = typeof wallTimeMs === 'number' && Number.isFinite(wallTimeMs)
     ? circadianAmplitudeC
       * Math.cos((2 * Math.PI * (resolveCircadianHour(wallTimeMs) - circadianPeakHour)) / 24)
     : 0;
-  const sleepDelta = sleeping ? sleepSetpointOffsetC : 0;
-  return setpointC + circadianDelta - sleepDelta;
+  return setpointC + circadianDelta - (sleeping ? sleepSetpointOffsetC : 0);
 }
 
-export function heatProductionKcalMin(
-  oxygenConsumptionMlMin: number,
-  coreTemperatureC: number,
-  targetSetpointC = setpointC,
-): number {
-  const shiveringKcalMin = shiveringGain * Math.max(0, targetSetpointC - coreTemperatureC);
-  return metabolicFactor * oxygenConsumptionMlMin + shiveringKcalMin;
+function shiveringKcalMin(coreTemperatureC: number, targetSetpointC: number): number {
+  return shiveringGain * Math.max(0, targetSetpointC - coreTemperatureC);
 }
 
-export function heatLossKcalMin(
-  sweatVolumeMl: number,
-  coreTemperatureC: number,
-  dtMin = 1,
-  targetSetpointC = coreTemperatureC,
-): number {
-  const sweatRateMlMin = dtMin > 0 ? sweatVolumeMl / dtMin : 0;
-  const vasodilationKcalMin = clamp(
-    vasodilationGain * Math.max(0, coreTemperatureC - targetSetpointC),
-    0,
-    maxVasodilationKcalMin,
-  );
-  return evaporationKcalPerMl * sweatRateMlMin
-    + lossGain * (coreTemperatureC - ambientTemperatureC)
-    + vasodilationKcalMin;
+// Magnus approximation for ordinary air temperatures. Below the extrapolated singularity use zero.
+function saturationPressureKpa(temperatureC: number): number {
+  if (temperatureC <= -243.04) return 0;
+  return 0.61094 * Math.exp(17.625 * (temperatureC / (243.04 + temperatureC)));
 }
 
-function readOxygenConsumptionMlMin(io: IO): number {
-  const bloodOxygen = io.read('bloodOxygen');
-  if (bloodOxygen === undefined) {
-    return fallbackBasalOxygenConsumptionMlMin;
+function requireNonnegative(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`thermoregulation: ${field} must be a finite non-negative number`);
   }
-  const oxygenConsumptionMlMin = bloodOxygen.oxygenConsumptionMlMin;
-  if (
-    typeof oxygenConsumptionMlMin !== 'number'
-    || !Number.isFinite(oxygenConsumptionMlMin)
-    || oxygenConsumptionMlMin < 0
-  ) {
-    throw new Error(
-      'thermoregulation: bloodOxygen.oxygenConsumptionMlMin must be a finite non-negative number',
-    );
-  }
-  return oxygenConsumptionMlMin;
-}
-
-function readSweatVolumeMl(io: IO): number {
-  const skin = io.read('skin');
-  if (skin === undefined) return 0;
-  const sweatVolumeMl = skin.sweatVolumeMl;
-  if (
-    typeof sweatVolumeMl !== 'number'
-    || !Number.isFinite(sweatVolumeMl)
-    || sweatVolumeMl < 0
-  ) {
-    throw new Error(
-      'thermoregulation: skin.sweatVolumeMl must be a finite non-negative number',
-    );
-  }
-  return sweatVolumeMl;
-}
-
-function readPreviousTemperatureC(io: IO): number {
-  const prev = io.read(id) ?? initialState;
-  return typeof prev.coreTemperatureC === 'number' && Number.isFinite(prev.coreTemperatureC)
-    ? prev.coreTemperatureC
-    : setpointC;
+  return value;
 }
 
 export function heartbeat(io: IO): void {
-  const oxygenConsumptionMlMin = readOxygenConsumptionMlMin(io);
-  const sweatVolumeMl = readSweatVolumeMl(io);
-  const previousTemperatureC = readPreviousTemperatureC(io);
-  const sleeping = io.read('sleep')?.sleeping === true;
-  const targetSetpointC = effectiveSetpointC(io.wallTimeMs, sleeping);
+  const bloodOxygen = io.read('bloodOxygen');
+  const oxygenConsumptionMlMin = bloodOxygen === undefined
+    ? fallbackBasalOxygenConsumptionMlMin
+    : requireNonnegative(bloodOxygen?.oxygenConsumptionMlMin, 'bloodOxygen.oxygenConsumptionMlMin');
+  const skin = io.read('skin');
+  const paidSweatMl = skin === undefined ? 0 : requireNonnegative(skin?.sweatVolumeMl, 'skin.sweatVolumeMl');
+  const previousTemperatureC = io.read(id)?.coreTemperatureC;
+  const coreTemperatureStartC = typeof previousTemperatureC === 'number' && Number.isFinite(previousTemperatureC)
+    ? previousTemperatureC : setpointC;
+  const baseline = baselineSetpointC(io.wallTimeMs, io.read('sleep')?.sleeping === true);
+  const feverSetpointOffsetC = nonnegativeFeverOffsetC(io.readPublished?.('feverDrive')?.setpointOffsetC);
+  const effectiveSetpointC = baseline + feverSetpointOffsetC;
 
-  const dtMin = io.dt / 60;
-  const productionKcalMin = heatProductionKcalMin(
-    oxygenConsumptionMlMin,
-    previousTemperatureC,
-    targetSetpointC,
+  const climate = io.read('climate');
+  const airTemperatureC = climate?.airTemperatureC ?? defaultClimate.airTemperatureC;
+  const relativeHumidityPct = climate?.relativeHumidityPct ?? defaultClimate.relativeHumidityPct;
+  const { dryExchangeMultiplier, evaporationMultiplier } = clothingMultipliers(io.read('clothing')?.wornLayerIds);
+  const dtMin = Math.max(0, io.dt / 60);
+  const vaporPressureDeficitKpa = Math.max(0,
+    saturationPressureKpa(evaporationReferenceTemperatureC)
+      - relativeHumidityPct / 100 * saturationPressureKpa(airTemperatureC),
   );
-  const lossKcalMin = heatLossKcalMin(
-    sweatVolumeMl,
-    previousTemperatureC,
-    dtMin,
-    targetSetpointC,
-  );
-  const coreTemperatureC = clamp(
-    previousTemperatureC + (dtMin * (productionKcalMin - lossKcalMin)) / heatCapacityKcalPerC,
-    minCoreTemperatureC,
-    maxCoreTemperatureC,
-  );
+  const evaporationLimitMl = vaporPressureDeficitKpa * evaporationConductanceMlMinPerKpa * evaporationMultiplier * dtMin;
+  const evaporatedSweatMl = Math.min(paidSweatMl, evaporationLimitMl);
+  const evaporativeHeatLossKcal = evaporatedSweatMl * evaporationKcalPerMl;
+  const vasodilationConductanceKcalMinPerC = clamp(
+    vasodilationGain * Math.max(0, coreTemperatureStartC - effectiveSetpointC), 0, maxVasodilationKcalMin,
+  ) / vasodilationReferenceGradientC;
+  const dryHeatLossKcal = dryExchangeMultiplier * (baseConductanceKcalMinPerC + vasodilationConductanceKcalMinPerC)
+    * (coreTemperatureStartC - airTemperatureC) * dtMin;
+  const shiveringHeatKcal = shiveringKcalMin(coreTemperatureStartC, effectiveSetpointC) * dtMin;
+  const metabolicHeatKcal = metabolicFactor * oxygenConsumptionMlMin * dtMin;
+  const netHeatKcal = metabolicHeatKcal + shiveringHeatKcal - dryHeatLossKcal - evaporativeHeatLossKcal;
+  const unboundedCoreC = coreTemperatureStartC + netHeatKcal / heatCapacityKcalPerC;
+  const coreTemperatureC = clamp(unboundedCoreC, minCoreTemperatureC, maxCoreTemperatureC);
 
-  io.write({ coreTemperatureC, setpointC: targetSetpointC });
+  io.write({
+    coreTemperatureC,
+    setpointC: baseline,
+    feverSetpointOffsetC,
+    effectiveSetpointC,
+    heatBalance: {
+      dtMin,
+      coreTemperatureStartC,
+      effectiveSetpointC,
+      heatCapacityKcalPerC,
+      airTemperatureC,
+      relativeHumidityPct,
+      dryExchangeMultiplier,
+      evaporationMultiplier,
+      baseConductanceKcalMinPerC,
+      vasodilationConductanceKcalMinPerC,
+      vaporPressureDeficitKpa,
+      paidSweatMl,
+      evaporationLimitMl,
+      evaporatedSweatMl,
+      metabolicHeatKcal,
+      shiveringHeatKcal,
+      dryHeatLossKcal,
+      evaporativeHeatLossKcal,
+      netHeatKcal,
+      clamped: coreTemperatureC !== unboundedCoreC,
+    },
+  });
 }

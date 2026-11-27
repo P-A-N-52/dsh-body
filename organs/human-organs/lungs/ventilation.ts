@@ -11,7 +11,7 @@
  *
  * 公式（demand 为轮初需氧，mL/min；coreTemperatureC 为轮初核心温度，未加载按缺失）：
  *   metabolicVentilation = demand × deadSpaceFactor / inspiredO2Fraction
- *   thermalThresholdC = exercising ? max(37, setpointC) : max(37, setpointC) + restThermalThresholdOffsetC
+ *   thermalThresholdC = max(37, setpointC) + (exercising ? 0 : restThermalThresholdOffsetC) + feverOffsetC
  *   pantingMlMin = (exercising ? pantingGain × exercisePantingFactor : pantingGain)
  *                  × max(0, coreTemperatureC − thermalThresholdC)
  *   targetVentilation = max(minVentilationMlMin, metabolicVentilation) + pantingMlMin + sympatheticVentilationMlMin
@@ -23,7 +23,7 @@
  *   alveolarO2CapacityMlMin = maxVentilationMlMin × inspiredO2Fraction / deadSpaceFactor
  * `metabolicVentilation` 是满足该需氧所需的通气量；低于静息通气时先回到静息基线，核心温度
  * 高于设定点时再在其上叠加喘息项，最后钳位到静息/上限区间；`thermoregulation` 未加载时喘息项为 0。
- * 37°C 与 `thermoregulation.setpointC` 的设计默认值一致，本部位只维护 `pantingGain` 一个参数。
+ * 只在旧静息/运动阈值算完后加轮初已采用的发热增量；未有本次运行的发布时增量为 0。
  * `alveolarO2MlMin` 是本轮实际通气量对应的供氧读数，受轮初需氧与一轮滞后影响；
  * `alveolarO2CapacityMlMin` 是通气能力上限（默认约 2500 mL/min），
  * 由参数直接决定、与需氧无关。`bloodOxygen` 用能力上限判定 SpO2
@@ -52,6 +52,7 @@ import {
   requireParameter,
   scaleByBodyWeight,
 } from '../../../lib/parameters.js';
+import type { PublishedThermalInput } from '../brain/thermoregulation-fever.ts';
 
 export const id = 'lungsVentilation';
 export const actionTypes: string[] = [];
@@ -73,7 +74,7 @@ type ThermoregulationReading = {
   setpointC?: unknown;
 };
 
-type IO = {
+type IO = PublishedThermalInput & {
   read(partId: 'bloodOxygen'): Readonly<BloodOxygenReading> | null | undefined;
   read(partId: 'thermoregulation'): Readonly<ThermoregulationReading> | null | undefined;
   write(next: LungsVentilationState): void;
@@ -210,9 +211,10 @@ export function heartbeat(io: IO): void {
   const baseThermalThresholdC = thermoregulation === undefined
     ? thermoregulationSetpointC
     : Math.max(thermoregulationSetpointC, thermoregulation.setpointC);
-  const thermalThresholdC = exercising
-    ? baseThermalThresholdC
-    : baseThermalThresholdC + restThermalThresholdOffsetC;
+  const publishedOffsetC = io.readPublished?.('thermoregulation')?.feverSetpointOffsetC;
+  const feverOffsetC = typeof publishedOffsetC === 'number' && Number.isFinite(publishedOffsetC)
+    ? Math.max(0, publishedOffsetC) : 0;
+  const thermalThresholdC = baseThermalThresholdC + (exercising ? 0 : restThermalThresholdOffsetC) + feverOffsetC;
   const effectivePantingGain = exercising ? pantingGain * exercisePantingFactor : pantingGain;
   const pantingMlMin = thermoregulation === undefined
     ? 0

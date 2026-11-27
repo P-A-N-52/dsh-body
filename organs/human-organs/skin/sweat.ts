@@ -4,25 +4,14 @@
  * 上限，Gateway 在 transfer 阶段再把实际汗液加入 `skin.sweatVolumeMl`。本脚本每轮 write 先把
  * `sweatVolumeMl` 归 0，实际汗液只由 transferIn 增加。
  *
- * 设计来源：docs/superpowers/specs/2026-11-23-activity-sweat-design.md §4。无直接人体证据，
- * 也没有实测代谢、体温调节或最大出汗率模型。同目录 `sweat.parameters.json` 的参数全部为
- * `design`、`source: null`：25°C、intensity=1 的 0.6 mL/min 是工程参考，0.04/°C 是工程温度
- * 斜率，15 mL/min 是工程上限，5 mL/(min·°C) 是热致出汗率增益，25°C 是默认环境参数。它们不是 METs、热量、心率、核心/皮肤温度
- * 或人体最大出汗率，不能称 validated。
- *
- * 请求公式（静息高热也可触发出汗）：
- *   temperatureFactor = max(0, 1 + ambientGainPerC × (T − 25))
- *   exerciseRate = R > 0 ? referenceRateMlPerMin × I × temperatureFactor : 0
- *   thermalRate = heatGain × max(0, coreTemperatureC − 37)
- *   rate = min(maxRateMlPerMin, max(0, exerciseRate + thermalRate))
- *   sweatRequestMl = rate × dtMin
- * 只读取轮初 `physicalActivity` 与轮初 `thermoregulation`；本轮新入队的活动下一轮才影响请求。
- * `thermoregulation` 未加载时 `coreTemperatureC = 37`（thermalRate = 0）；已加载但 `coreTemperatureC` 缺失、非有限或
- * 非对象时抛错，不写状态。37°C 与 `thermoregulation.setpointC` 的设计默认值一致，皮肤侧
- * 只用 `heatGain` 一个参数，不复制设定点参数。活动部位存在但字段缺失、非有限、为负，或
- * intensity > 1 时抛错，不写状态。不建皮肤分区、温度、湿润度或蒸发残余。
+ * `climate.airTemperatureC` 改变轮初活动请求的温度因子（缺省 25°C）。热致请求先依据活动与
+ * 原昼夜/睡眠设定点选阈值，再加本次运行已采用的发热增量。湿度与衣层限制的是体温脚本的
+ * 蒸发量，不改本脚本的请求曲线。不建皮温、湿润度或蒸发残余。参数见 `sweat.parameters.json`
+ * （design）；`SRC-WENGER-1976`（脑体温证据笔记）只作阈间带机制参考。
  */
 import { loadParameters, requireParameter, scaleByBodyWeight } from '../../../lib/parameters.js';
+import { defaultClimate } from '../../body-inputs/climate-state.js';
+import { appliedFeverOffsetC, type PublishedThermalInput } from '../brain/thermoregulation-fever.ts';
 
 export const id = 'skin';
 export const actionTypes: string[] = [];
@@ -56,10 +45,11 @@ export const fields = {
   },
 };
 
-type IO = {
+type IO = PublishedThermalInput & {
   read(partId: 'skin'): Readonly<SkinState> | undefined;
   read(partId: 'physicalActivity'): Readonly<ActivityReading> | undefined;
   read(partId: 'thermoregulation'): Readonly<ThermoregulationReading> | null | undefined;
+  read(partId: 'climate'): Readonly<Partial<typeof defaultClimate>> | undefined;
   readonly dt: number;
   write(next: SkinState): void;
 };
@@ -74,7 +64,6 @@ const maxRateMlPerMin = scaleByBodyWeight(
   requireParameter(parameters, 'skin.sweat.maxRateMlPerMin'),
   'skin.sweat.maxRateMlPerMin',
 );
-const ambientTemperatureC = requireParameter(parameters, 'skin.sweat.ambientTemperatureC');
 const heatGain = scaleByBodyWeight(
   requireParameter(parameters, 'skin.heatGain'),
   'skin.heatGain',
@@ -92,6 +81,7 @@ type SweatRequestInput = {
   ambientTemperatureC: number;
   coreTemperatureC?: number;
   setpointC?: number;
+  feverSetpointOffsetC?: number;
 };
 
 export function sweatRequestMl({
@@ -101,6 +91,7 @@ export function sweatRequestMl({
   ambientTemperatureC: temperatureC,
   coreTemperatureC = thermoregulationSetpointC,
   setpointC = thermoregulationSetpointC,
+  feverSetpointOffsetC = 0,
 }: SweatRequestInput): number {
   const temperatureFactor = Math.max(0, 1 + ambientGainPerC * (temperatureC - referenceTemperatureC));
   const exercising = remainingExerciseMin > 0 && intensity > 0;
@@ -111,9 +102,9 @@ export function sweatRequestMl({
   const deadbandC = exercising
     ? 0
     : (setpointC < thermoregulationSetpointC ? nocturnalDeadbandOffsetC : interthresholdOffsetC);
-  const thermalThresholdC = exercising
+  const thermalThresholdC = (exercising
     ? Math.max(thermoregulationSetpointC, setpointC)
-    : setpointC + deadbandC;
+    : setpointC + deadbandC) + feverSetpointOffsetC;
   const thermalRateMlPerMin = heatGain * Math.max(0, coreTemperatureC - thermalThresholdC);
   const rateMlPerMin = Math.min(maxRateMlPerMin, exerciseRateMlPerMin + thermalRateMlPerMin);
   return dtMin > 0 ? rateMlPerMin * dtMin : 0;
@@ -166,9 +157,10 @@ export function heartbeat(io: IO): void {
     remainingExerciseMin: activity?.remainingExerciseMin ?? 0,
     intensity: activity?.intensity ?? 0,
     dtMin: io.dt / 60,
-    ambientTemperatureC,
+    ambientTemperatureC: io.read('climate')?.airTemperatureC ?? defaultClimate.airTemperatureC,
     coreTemperatureC,
     setpointC,
+    feverSetpointOffsetC: appliedFeverOffsetC(io),
   });
 
   io.write({ sweatRequestMl: requestMl, sweatVolumeMl: 0 });

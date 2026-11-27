@@ -109,12 +109,10 @@
  *   200 g 是与 `colon.referenceStoolG` 一致的工程参考量）；`colon` 未加载、字段全缺失或非有限时
  *   按 0，负值也按 0。它只是 0–100 mm 读数，不参与 `discomfort`，也不产生动作或通知；
  *   `defecate` 由会话显式触发，没有自动排便反射。
- * - `heatMm = clamp(50 × (coreTemperatureC − 37), 0, 100)` 与
- *   `coldMm = clamp(50 × (37 − coreTemperatureC), 0, 100)` 是 `thermoregulation` 的软读
- *   （`design` 口径，不是体温测量或冷热感觉量表）：只读轮初 `coreTemperatureC`；部位未
- *   加载、字段缺失、NaN 或非有限时按 0。50 mm/°C 与 37°C 设定点是工程常量，与
- *   `thermoregulation.setpointC` 的默认值一致；两个读数不参与 `discomfort`，也不产生动作
- *   或通知。不建皮肤温度、血管舒缩、发热/低温症或体温感觉分级。
+ * - 轮初 `thermoregulation` 核心温与冷热阈值的单侧偏差 × 50 mm/°C 并钳至 [0, 100]。
+ *   热阈值取 `max(37, setpointC)`；清醒冷阈值取 37，睡眠取 `min(37, setpointC)`。
+ *   两个旧阈值随后都加轮初已采用的有效发热增量（仅本次运行发布，默认 0）。工程代理，
+ *   不是实际感觉量表。两个读数不参与 `discomfort`，本模块不产生动作或通知，不诊断发热。
  * - `hypocalcemiaMm = clamp(50 × (9.5 − bloodCalcium.mgDl), 0, 100)` 与
  *   `hypercalcemiaMm = clamp(50 × (bloodCalcium.mgDl − 9.5), 0, 100)` 是 `bloodCalcium`
  *   的软读（`design` 口径，不是麻木/痉挛/临床高钙症状量表）：只读轮初 `mgDl`；部位未
@@ -150,6 +148,7 @@ import {
   requireParameter,
   scaleByBodyWeight,
 } from '../../../lib/parameters.js';
+import { appliedFeverOffsetC, type PublishedThermalInput } from './thermoregulation-fever.ts';
 
 export const id = 'interoception';
 export const actionTypes: string[] = [];
@@ -374,7 +373,7 @@ function collectExtensibleInputs(
   return { discomfortMm, sensations };
 }
 
-type IO = {
+type IO = PublishedThermalInput & {
   readonly dt?: number;
   readonly simulatedSeconds?: number;
   read(): Readonly<SnapshotReading> | undefined;
@@ -841,13 +840,14 @@ export function heartbeat(io: IO): void {
   const coldThresholdC = sleep?.sleeping === true
     ? Math.min(thermoregulationSetpointC, thermoSetpointC)
     : thermoregulationSetpointC;
+  const feverOffsetC = appliedFeverOffsetC(io);
   const heatMm = clamp(
-    temperatureReadoutGainMmPerC * (coreTemperatureC - heatThresholdC),
+    temperatureReadoutGainMmPerC * (coreTemperatureC - (heatThresholdC + feverOffsetC)),
     0,
     100,
   );
   const coldMm = clamp(
-    temperatureReadoutGainMmPerC * (coldThresholdC - coreTemperatureC),
+    temperatureReadoutGainMmPerC * (coldThresholdC + feverOffsetC - coreTemperatureC),
     0,
     100,
   );

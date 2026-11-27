@@ -6,8 +6,6 @@ import { assertJsonValue } from '../json-safe.js';
 import {
   actionTypes,
   fields,
-  heatLossKcalMin,
-  heatProductionKcalMin,
   heartbeat,
   id,
   initialState,
@@ -19,13 +17,15 @@ const parametersUrl = new URL(
 );
 const parameterFile = JSON.parse(readFileSync(parametersUrl, 'utf8'));
 
-function round({ state, bloodOxygen, skin, sleep, wallTimeMs, dt = 60, writes = [] } = {}) {
+function round({ state, bloodOxygen, skin, sleep, climate, wallTimeMs, dt = 60, writes = [] } = {}) {
   heartbeat({
     read: (partId) => {
       if (partId === 'thermoregulation') return state;
       if (partId === 'bloodOxygen') return bloodOxygen;
       if (partId === 'skin') return skin;
       if (partId === 'sleep') return sleep;
+      if (partId === 'climate') return climate;
+      if (partId === 'clothing') return undefined;
       throw new Error(`unexpected read: ${partId}`);
     },
     actions: [],
@@ -60,8 +60,13 @@ test('thermoregulation exports the core temperature contract without actions', (
   assert.deepEqual(fields, {
     coreTemperatureC: { unit: '°C', mode: 'absolute' },
     setpointC: { unit: '°C', mode: 'absolute' },
+    feverSetpointOffsetC: { unit: '°C', mode: 'absolute' },
+    effectiveSetpointC: { unit: '°C', mode: 'absolute' },
+    heatBalance: { unit: 'record', mode: 'absolute' },
   });
-  assert.deepEqual(initialState, { coreTemperatureC: 37, setpointC: 37 });
+  assert.deepEqual(initialState, {
+    coreTemperatureC: 37, setpointC: 37, feverSetpointOffsetC: 0, effectiveSetpointC: 37, heatBalance: null,
+  });
 });
 
 test('thermoregulation parameters are design defaults with no source', () => {
@@ -70,12 +75,13 @@ test('thermoregulation parameters are design defaults with no source', () => {
 
   const expected = {
     'thermoregulation.setpointC': { value: 37, unit: '°C' },
-    'thermoregulation.ambientTemperatureC': { value: 25, unit: '°C' },
     'thermoregulation.heatCapacityKcalPerC': { value: 60, unit: 'kcal/°C' },
     'thermoregulation.metabolicFactor': { value: 0.005, unit: 'kcal/mL' },
     'thermoregulation.shiveringGain': { value: 2, unit: 'kcal/(min·°C)' },
     'thermoregulation.lossGain': { value: 0.104167, unit: 'kcal/(min·°C)' },
     'thermoregulation.evaporationKcalPerMl': { value: 0.58, unit: 'kcal/mL' },
+    'thermoregulation.evaporationReferenceTemperatureC': { value: 32, unit: '°C' },
+    'thermoregulation.evaporationConductanceMlMinPerKpa': { value: 3, unit: 'mL/(min·kPa)' },
     'thermoregulation.circadianAmplitudeC': { value: 0.25, unit: '°C' },
     'thermoregulation.circadianPeakHour': { value: 17, unit: 'h' },
     'thermoregulation.sleepSetpointOffsetC': { value: 0.2, unit: '°C' },
@@ -110,12 +116,14 @@ test('thermoregulation parameters are design defaults with no source', () => {
 });
 
 test('heat production follows oxygen consumption and shivering below the setpoint', () => {
-  assertClose(heatProductionKcalMin(250, 37), 1.25, 'basal oxygen at the setpoint');
-  assertClose(heatProductionKcalMin(1000, 37), 5, '1000 mL/min oxygen');
-  assertClose(heatProductionKcalMin(250, 36), 3.25, 'one degree below the setpoint');
-  assertClose(heatProductionKcalMin(250, 35.5), 4.25, '1.5 degrees below the setpoint');
-  assertClose(heatProductionKcalMin(250, 38), 1.25, 'no shivering above the setpoint');
-  assertClose(heatProductionKcalMin(0, 36), 2, 'shivering without oxygen demand');
+  for (const [oxygen, coreTemperatureC, metabolic, shivering] of [
+    [250, 37, 1.25, 0], [1000, 37, 5, 0], [250, 36, 1.25, 2],
+    [250, 35.5, 1.25, 3], [250, 38, 1.25, 0], [0, 36, 0, 2],
+  ]) {
+    const { heatBalance } = round({ state: { coreTemperatureC }, bloodOxygen: consumption(oxygen) }).written;
+    assertClose(heatBalance.metabolicHeatKcal, metabolic, 'metabolic heat');
+    assertClose(heatBalance.shiveringHeatKcal, shivering, 'shivering heat');
+  }
 
   const restingLoss = 0.104167 * 12;
   const basal = round({ bloodOxygen: consumption(250), skin: sweat(0) }).written;
@@ -126,44 +134,43 @@ test('heat production follows oxygen consumption and shivering below the setpoin
   assert.ok(doubled.coreTemperatureC > basal.coreTemperatureC, 'more oxygen consumes more heat');
 });
 
-test('sweat evaporation and the temperature gradient remove heat', () => {
+test('unrestricted sweat and the 12 °C reference gradient retain the old heat balance', () => {
   const restingLoss = 0.104167 * 12;
-  assertClose(heatLossKcalMin(0, 37), restingLoss, 'gradient loss at 37 C');
-  assertClose(heatLossKcalMin(10, 37), 5.8 + restingLoss, '10 mL evaporating sweat in 1 min');
-  assertClose(
-    heatLossKcalMin(10, 37, 0.5),
-    0.58 * 20 + restingLoss,
-    '10 mL evaporating sweat over 0.5 min converts to 20 mL/min',
-  );
-  assertClose(heatLossKcalMin(10, 37, 0), restingLoss, 'zero dt gives zero evaporation rate');
-  assertClose(heatLossKcalMin(0, 25), 0, 'no gradient at the ambient temperature');
-  assertClose(heatLossKcalMin(0, 20), -0.104167 * 5, 'colder ambient gains heat');
-
-  const dry = round({ bloodOxygen: consumption(250), skin: sweat(0) }).written;
-  const wet = round({ bloodOxygen: consumption(250), skin: sweat(10) }).written;
-  assertClose(wet.coreTemperatureC, 37 + (1.25 - (5.8 + restingLoss)) / 60, 'evaporative cooling');
+  const dry = round({ bloodOxygen: consumption(250) }).written;
+  const wet = round({ bloodOxygen: consumption(250), skin: sweat(2) }).written;
+  assertClose(wet.coreTemperatureC, 37 + (1.25 - (1.16 + restingLoss)) / 60, 'evaporative cooling');
   assert.ok(wet.coreTemperatureC < dry.coreTemperatureC, 'sweat cools the body');
+
+  const open = round({
+    state: { coreTemperatureC: 38 },
+    bloodOxygen: consumption(250),
+    skin: sweat(2),
+    climate: { airTemperatureC: 26, relativeHumidityPct: 50 },
+  }).written;
+  assertClose(open.heatBalance.dryHeatLossKcal, restingLoss + 0.5, 'old dilation at reference gradient');
+  assertClose(open.coreTemperatureC, 38 + (1.25 - (1.16 + restingLoss + 0.5)) / 60, 'same full budget');
 });
 
 test('the core temperature integrates production minus loss over dt', () => {
-  const gradientLoss = 0.104167 * (38 - 25) + 0.5 * (38 - 37);
+  const gradientLoss = (0.104167 + 0.5 / 12) * (38 - 25);
   const oneMinute = round({
     state: { coreTemperatureC: 38 },
     bloodOxygen: consumption(250),
-    skin: sweat(10),
+    skin: sweat(2),
   }).written;
-  assertClose(oneMinute.coreTemperatureC, 38 + (1.25 - (5.8 + gradientLoss)) / 60, 'one minute');
+  assertClose(oneMinute.coreTemperatureC, 38 + (1.25 - (1.16 + gradientLoss)) / 60, 'one minute');
 
   const halfMinute = round({
     state: { coreTemperatureC: 38 },
     bloodOxygen: consumption(250),
-    skin: sweat(10),
+    skin: sweat(2),
     dt: 30,
   }).written;
+  assertClose(halfMinute.heatBalance.evaporationLimitMl, oneMinute.heatBalance.evaporationLimitMl / 2, 'halve capacity');
   assertClose(
     halfMinute.coreTemperatureC,
-    38 + 0.5 * (1.25 - (0.58 * (10 / 0.5) + gradientLoss)) / 60,
-    'half a minute converts sweatVolumeMl by dtMin',
+    38 + (0.5 * (1.25 - gradientLoss) - 1.16) / 60,
+    'half a minute integrates rates; paid sweat is already a volume',
   );
 
   const zero = round({
@@ -197,7 +204,7 @@ test('cold temperatures add shivering heat and hot temperatures do not', () => {
   }).written;
   assertClose(
     warm.coreTemperatureC,
-    38 - (0.104167 * 13 + 0.5 * (38 - 37)) / 60,
+    38 - (0.104167 + 0.5 / 12) * 13 / 60,
     'no shivering above the setpoint',
   );
 });
@@ -210,14 +217,15 @@ test('extreme inputs clamp coreTemperatureC within [25, 45] C', () => {
     dt: 600,
   }).written;
   assert.equal(hyper.coreTemperatureC, 45, 'clamps high temperature to 45 C');
+  assert.equal(hyper.heatBalance.clamped, true);
 
   const hypo = round({
     state: { coreTemperatureC: 25.5 },
     bloodOxygen: consumption(0),
-    skin: sweat(100),
-    dt: 60,
+    climate: { airTemperatureC: -600, relativeHumidityPct: 50 },
   }).written;
   assert.equal(hypo.coreTemperatureC, 25, 'clamps low temperature to 25 C');
+  assert.equal(hypo.heatBalance.clamped, true);
 });
 
 test('missing upstream parts and old state fall back without NaN', () => {

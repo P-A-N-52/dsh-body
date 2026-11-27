@@ -2,7 +2,7 @@
 
 `brain/` 目前有十一个脚本：`interoception.ts` 把胃壁机械感受、胃饥饿素、十二指肠营养暴露、下丘脑口渴驱动、膀胱充盈、子宫痉挛、乳腺胀奶、食管呛咳与结肠便意/粪便量汇成 0–100 mm 的饥饿、饱满、口渴、尿意、不适、痛经、胀奶、便意等代理，再由七路（含子宫痉挛、乳腺胀奶与食管呛咳，外加非标扩展 `discomfortMm` / `discomfort: true`）超出舒适区的强度取最大值得到不适代理；同时软读性反应周期 `sexualResponse.arousalMm` 写 `sexualArousalMm`，结合性激素（男性 `testes.testosteroneRelative`；女性 `ovaries.estradiolPmolL` / `progesteroneNmolL`）、中枢奖赏 `reward`、`pituitary.prolactinNgMl`、躯体不适、低血糖与压力写 `libidoMm`，软读 `reward.hedonicMm`、`sexualResponse.afterglowMm` 与原始压力写 `hedonicCalmMm`（并提供轻度压力缓冲与静息安静困倦轻推），软读血氧池 `bloodOxygen.oxygenDeficit` 写 `dyspneaMm`，软读肾上腺 `adrenal.cortisolNmolL`（除以 180 归一化）与 `autonomic.sympatheticMm` 写 `stressMm`，联合松果体 `pineal.melatoninRelative` 与睡眠节律 `sleep` 写 `sleepinessMm`，软读唾液腺 `salivaryGlands.mouthMoistureMm` 写 `dryMouthMm`，软读核心温度与动态设定点写 `heatMm` / `coldMm`，软读血钙 `bloodCalcium.mgDl` 写 `hypocalcemiaMm` / `hypercalcemiaMm`，软读血糖 `glucose.concentrationMgDl` 写 `hypoglycemiaMm`，软读心率/收缩压写 `palpitationMm`，并按自身上一轮状态指数衰减叠加汗率写 `sweatDampMm`、叠加运动与三分区肌糖原亏空写 `muscleFatigueMm`。其中 `sexualArousalMm`、`libidoMm`、`mammaryFullnessMm`、`afterglowMm`（用于 `hedonicCalmMm`）与 `discomfort` 内的 `mammaryGlands.fullnessMm` 受 `getNsfwSetting()` 门控（`false` 时置 0）；`esophagus.chokingMm` 只留在 `discomfort` 内，不单独输出也不触发通知。`sleep.ts` 维护清醒/睡眠双稳态、睡眠分期、`sleepInertiaMm` 与 `wakeEvent`（`sleep` / `wake_up` 动作及主动/重要/惊醒唤醒）。`autonomic.ts` 维护交感/副交感/惊醒状态（含性释放后副交感余韵回升）。`reward.ts` 维护中枢欲望（`wantingMm`）、享乐（`hedonicMm`）与享乐饱足抑制（`satietyMm`）。`notify.ts` 读取除食管呛咳、`discomfort`、`hedonicCalmMm` 与钙读数外的主观体感（4 类核心 + 15 类扩展体感 + `bladder.involuntaryVoidedMl` 漏尿边沿 + `sexualResponse.lastOrgasmAtSimMin` 5 min 防陈旧高潮边沿 + 可扩展 `sensations`），按三档双轨指数退避、缓解重置（含泌乳挤奶/哺乳缓解）、睡眠门控、NSFW 门控与多感受零数字聚合策略调用 `io.notify`。`hypothalamus-adh.ts` 把体液亏缺与血容量亏缺映射成相对 ADH 水平；`hypothalamus-thirst.ts` 把同一水量亏缺映射成口渴驱动；`hypothalamus-endocrine.ts` 与 `pituitary.ts` 构成 HPT/HPA 轴与催乳素/催产素中枢环节；`thermoregulation.ts` 由产热与散热积分核心温度，并驱动出汗、喘息与冷热读数。十一个脚本只写自己的部位，不写其他器官。
 
-实现状态：脚本与参数已在 `organs/human-organs/brain/`，十一个大脑脚本（含中枢奖赏 `reward.ts`）均已加入三份清单；`body_bind` / `body_state`（纯定性零数值）/ `body_act` 工具（含进食/饮水翻译官顺手返回的零数字纯文本 `tasteFeedback`）、DSH `systemPrompt` 挂载与通知投递在 `index.js` / `tools.js` / `notifications.js`。当前根清单 43 部位、39 份唯一参数文件，女性清单 46 部位、42 份，男性清单 45 部位、41 份，全库共 47 份唯一参数文件；`uterus`、`ovaries` 与 `mammaryGlands` 只随女性清单 `body-modules.female.json` 加载，`testes` / `epididymis` 只随男性清单 `body-modules.male.json` 加载，`parathyroid` 与 `bloodCalcium` 已挂载进三份清单。
+实现状态：脚本与参数已在 `organs/human-organs/brain/`，十一个大脑脚本（含中枢奖赏 `reward.ts`）均随三份主清单及选配脂质清单加载；`body_bind` / `body_state`（纯定性零数值）/ `body_act` 工具（含进食/饮水翻译官顺手返回的零数字纯文本 `tasteFeedback`）、DSH `systemPrompt` 挂载与通知投递在 `index.js` / `tools.js` / `notifications.js`。当前根清单 45 部位、40 份唯一参数文件，女性清单 48 部位、43 份，男性清单 47 部位、42 份，选配脂质清单 52 部位、47 份，全库共 55 份唯一参数文件；`uterus`、`ovaries` 与 `mammaryGlands` 只随女性清单 `body-modules.female.json` 加载，`testes` / `epididymis` 只随男性清单 `body-modules.male.json` 加载，`parathyroid` 与 `bloodCalcium` 已挂载进三份主清单及选配脂质清单。
 
 ## 1. 脚本与部位
 
@@ -14,7 +14,7 @@
 | `autonomic.ts` | `autonomic` | `sympatheticMm`、`parasympatheticMm`、`startleActive` | 自己的轮初状态；`sleep`、`pineal`、`physicalActivity`、`glucose`、`bloodOxygen`、`blood`、`thermoregulation`、`interoception`、`uterus`、`sexualResponse`（含 `afterglowMm` 与经 `evaluateSexualRelease` 判定的释放）、`reward.hedonicMm`、`pituitary.oxytocinPgMl`、`ovaries`、`testes`、`io.actions`、`io.dt`、`io.simulatedSeconds`、`getNsfwSetting()` | `autonomic.parameters.json` |
 | `hypothalamus-adh.ts` | `hypothalamusAdh` | `relativeConcentration` | `bodyFluid.waterDeficit`；轮初 `blood.bloodVolumeMl`（可选） | `hypothalamus-adh.parameters.json` |
 | `hypothalamus-thirst.ts` | `hypothalamusThirst` | 慢驱动 `thirst` | `bodyFluid.waterVolumeMl`（缺失时读 `waterDeficit`） | `hypothalamus-thirst.parameters.json` |
-| `thermoregulation.ts` | `thermoregulation` | `coreTemperatureC`、`setpointC` | 自己的轮初温度；`sleep.sleeping`；轮初 `bloodOxygen.oxygenConsumptionMlMin`（可选）、`skin.sweatVolumeMl`（可选）；`io.wallTimeMs`、`io.dt` | `thermoregulation.parameters.json` |
+| `thermoregulation.ts` | `thermoregulation` | `coreTemperatureC`、`setpointC`、`feverSetpointOffsetC`、`effectiveSetpointC`、`heatBalance` | 轮初核心温、睡眠、氧耗、已付实汗、气候和衣层；本次运行已发布的可选 `feverDrive`；`io.wallTimeMs`、`io.dt` | `thermoregulation.parameters.json` |
 | `hypothalamus-endocrine.ts` | `hypothalamusEndocrine` | `trhRelative`、`crhRelative`、`carElapsedMin` | 自己的轮初状态；`thyroid`、`adrenal.cortisolNmolL`（除以 180 归一化）、`thermoregulation`、`glucose`、`physicalActivity`、`autonomic.sympatheticMm`、`sleep`（含 `carLatentMin` 10 min 潜伏起坡）、`reward.hedonicMm` 与 `pituitary.oxytocinPgMl`（非低血糖应激温和缓冲）；`io.wallTimeMs`、`io.dt` | `hypothalamus-endocrine.parameters.json` |
 | `pituitary.ts` | `pituitary` | `tshRelative`、`acthPgMl`、`prolactinNgMl`、`oxytocinPgMl` | 自己的轮初状态；`hypothalamusEndocrine`、`thyroid`、`adrenal.cortisolNmolL`、`mammaryGlands.lactating` / `stimulationMin`（与 `milkMl` 解耦）、`sleep`、`sexualResponse`、`io.actions`、`io.dt`、`io.wallTimeMs`、`io.simulatedSeconds` | `pituitary.parameters.json` |
 | `reward.ts` | `reward` | `wantingMm`、`hedonicMm`、`satietyMm` | 自己的轮初状态；`sexualResponse`（经 `evaluateSexualRelease`）、`ovaries`、`testes`、`pituitary`、`physicalActivity`、`duodenum`、`stomachGhrelin`、`adrenal.cortisolNmolL`、`interoception.discomfort`、`uterus.crampMm`、`sleep`、`io.actions`、`io.dt`、`io.simulatedSeconds` | `reward.parameters.json` |
@@ -39,8 +39,8 @@
 | `stressMm` | `mm` | 压力的 0–100 mm 代理；结合 `adrenal.cortisolNmolL / 180` 归一化皮质醇与 `autonomic.sympatheticMm`，并受 `hedonicCalmMm × 0.2` 轻度缓冲，不是应激量表、皮质醇浓度或临床压力评估 |
 | `sleepinessMm` | `mm` | 困倦的 0–100 mm 代理；未加载 `sleep` 时保留松果体公式；加载 `sleep` 时结合 `pineal.melatoninRelative`（Process C）、`sleep.sleepPressureMm`（Process S）、`sleepInertiaMm` 与清醒期交感/上行唤醒拮抗（`sympatheticMm` / 运动 / 性唤起 / 高皮质醇），非实测睡眠量表 |
 | `dryMouthMm` | `mm` | 口干的 0–100 mm 代理；`salivaryGlands.mouthMoistureMm` 有限时为 `clamp(100 − mouthMoistureMm, 0, 100)`，未加载、缺失或非有限时按 `0`；不是口干量表、口腔黏膜湿度、唾液渗透压或临床干燥症指标 |
-| `heatMm` | `mm` | 热不适的 0–100 mm 代理；`clamp(50 × (coreTemperatureC − 37), 0, 100)`，不是体温测量、热感觉量表或临床热应激分级 |
-| `coldMm` | `mm` | 冷不适的 0–100 mm 代理；`clamp(50 × (37 − coreTemperatureC), 0, 100)`，不是体温测量、冷感觉量表或临床低体温分级 |
+| `heatMm` | `mm` | 越过轮初热阈值的 0–100 mm 工程代理；热阈值为 `max(体感参考点, 基础设定点) + 发热增量` |
+| `coldMm` | `mm` | 低于轮初冷阈值的 0–100 mm 工程代理；清醒用体感参考点、睡中用 `min(体感参考点, 基础设定点)`，随后加发热增量。不是冷感觉量表或临床低体温分级 |
 | `hypocalcemiaMm` | `mm` | 低钙症状代理 0–100 mm；`clamp(50 × (9.5 − bloodCalcium.mgDl), 0, 100)`（未加载或非有限按 `9.5`，即 `0`），不是麻木/抽搐或临床低钙评分 |
 | `hypercalcemiaMm` | `mm` | 高钙症状代理 0–100 mm；`clamp(50 × (bloodCalcium.mgDl − 9.5), 0, 100)`（未加载或非有限按 `9.5`，即 `0`），不是临床高钙评估 |
 | `hypoglycemiaMm` | `mm` | 低血糖乏力心慌代理 0–100 mm；`glucose.concentrationMgDl` 有限时为 `clamp((75 − concentrationMgDl) × 4, 0, 100)`，未加载或非有限按 `0`；不是血糖测量或临床低血糖分级 |
@@ -89,8 +89,8 @@ sleepinessMm    = sleep 未加载 ? melatoninMm
 dryMouthMm     = salivaryGlands.mouthMoistureMm 有限
   ? clamp(100 − salivaryGlands.mouthMoistureMm, 0, 100)
   : 0                                                       // 未加载、缺失或非有限按 0
-heatMm         = clamp(50 × (finiteOr(thermoregulation.coreTemperatureC, 37) − 37), 0, 100)
-coldMm         = clamp(50 × (37 − finiteOr(thermoregulation.coreTemperatureC, 37)), 0, 100)
+heatMm         = clamp(50 × (轮初核心温 − (max(体感参考点, 轮初基础设定点) + 发热增量)), 0, 100)
+coldMm         = clamp(50 × (旧冷阈值 + 发热增量 − 轮初核心温), 0, 100)
 hypocalcemiaMm = clamp(50 × (9.5 − finiteOr(bloodCalcium.mgDl, 9.5)), 0, 100)
 hypercalcemiaMm = clamp(50 × (finiteOr(bloodCalcium.mgDl, 9.5) − 9.5), 0, 100)
 hypoglycemiaMm = glucose.concentrationMgDl 有限
@@ -177,27 +177,34 @@ next   = current + (1 − exp(−dtMin / timeConstantMin)) × (target − curren
 
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
-| `coreTemperatureC` | `°C` | 核心温度代理，初值 37°C，安全钳位 `[25, 45]` °C；不是实测核心体温、皮肤温度或临床分级 |
-| `setpointC` | `°C` | 结合本地时钟与睡眠状态调整后的动态调定点 °C |
+| `coreTemperatureC` | `°C` | 轮末核心温度代理，初值 37 °C，数值钳位 `[25, 45]` °C；不是皮温、实测核心体温或诊断 |
+| `setpointC` | `°C` | 原昼夜/睡眠基线（按本地钟点余弦，默认 `37 ± 0.25`，睡中再减 `0.2`） |
+| `feverSetpointOffsetC` | `°C`（温差） | 本轮采用的可选 `feverDrive.setpointOffsetC`，只读本次运行上一成功轮实际提交的非负有限值，缺省 0 |
+| `effectiveSetpointC` | `°C` | `setpointC + feverSetpointOffsetC`；寒战和舒张使用该点 |
+| `heatBalance` | 记录 | 最近一次积分的水热观测（无记录时 `null`），不回写水量或其他器官 |
+
+以轮初核心温 `C`、气候 `Ta/RH`、已付汗量 `W`、衣层干倍率 `D` 和蒸发倍率 `P` 计算（`dtMin = io.dt / 60`）：
 
 ```text
-effectiveSetpointC    = setpointC
-                      + circadianAmplitudeC × cos(2π × (localHour − circadianPeakHour) / 24)
-                      − (sleeping ? sleepSetpointOffsetC : 0)
-heatProductionKcalMin = metabolicFactor × oxygenConsumptionMlMin
-                      + shiveringGain × max(0, effectiveSetpointC − coreTemperatureC)
-sweatRateMlMin        = dtMin > 0 ? sweatVolumeMl / dtMin : 0
-vasodilationKcalMin   = clamp(vasodilationGain × max(0, coreTemperatureC − effectiveSetpointC), 0, maxVasodilationKcalMin)
-heatLossKcalMin       = evaporationKcalPerMl × sweatRateMlMin
-                      + lossGain × (coreTemperatureC − ambientTemperatureC)
-                      + vasodilationKcalMin
-coreTemperatureC      = clamp(
-  prev.coreTemperatureC + dtMin × (heatProductionKcalMin − heatLossKcalMin) / heatCapacityKcalPerC,
-  25, 45
-)
+Kvas        = clamp(vasodilationGain × (C − effectiveSetpointC), 0, maxVasodilationKcalMin) / 12
+Qdry        = dtMin × D × (max(0, lossGain) + Kvas) × (C − Ta)               # kcal/轮，向外为正
+Δp          = max(0, psat(固定参考面温度) − RH/100 × psat(Ta))                # kPa
+Wmax        = dtMin × P × 蒸发导湿系数 × Δp                                 # mL/轮
+Wevap       = min(W, Wmax)                                                  # mL/轮
+Qevap       = evaporationKcalPerMl × Wevap                                 # kcal/轮
+Qmet        = dtMin × metabolicFactor × 轮初氧耗
+Qshiv       = dtMin × shiveringGain × max(0, effectiveSetpointC − C)
+Qnet        = Qmet + Qshiv − Qdry − Qevap
+coreTemperatureC = clamp(C + Qnet / heatCapacityKcalPerC, 25, 45)
 ```
 
-产热读轮初 `bloodOxygen.oxygenConsumptionMlMin`（未加载按体重缩放 `250 mL/min`）；散热按 `dtMin` 将轮初 `skin.sweatVolumeMl`（未加载按 0）换算为汗液蒸发速率 `sweatRateMlMin`，叠加基础对流辐射散热与**高于动态设定点时开放的外周血管舒张额外干散热（`vasodilationGain = 0.50 kcal/(min·°C)`，物理上封顶 `maxVasodilationKcalMin = 0.55 kcal/min` ≈ +38 W，机制与上限对标 `SRC-KRAUCHI-1994` / `SRC-CRAMER-2019`）**，消除了旧版 38 °C 降至 37 °C 耗时长达近 10 小时的失真拖延。热容与热量斜率按体重缩放，共 12 项参数全部标 `design`。
+`psat(T)` 为 Magnus 工程近似 `0.61094 × exp(17.625 × T / (243.04 + T))` kPa（公式奇点以下回退 0，极端温度不作物理外推）。参考面不是皮温。氧耗缺省按体重缩放 `250 mL/min`，汗缺省为 0；衣层独立连乘及气候默认见[身体热平衡输入](../../body-inputs/README.md)。干项等温为 0、空气更热时为负。未受限实汗、空层且无舒张（或梯度恰为 12 °C）时沿用旧单轮热账；其余不保证轨迹逐点相等。
+
+`heatBalance` 记录 `dtMin`（min）、`coreTemperatureStartC` / `effectiveSetpointC` / `airTemperatureC`（°C）、`relativeHumidityPct`（%）、`heatCapacityKcalPerC`（kcal/°C）、`dryExchangeMultiplier` / `evaporationMultiplier`（1）、`baseConductanceKcalMinPerC` / `vasodilationConductanceKcalMinPerC`（kcal/(min·°C)）、`vaporPressureDeficitKpa`（kPa）、`paidSweatMl`（轮初，即上轮已付）、`evaporationLimitMl` / `evaporatedSweatMl`（mL/轮）、`metabolicHeatKcal` / `shiveringHeatKcal` / `dryHeatLossKcal` / `evaporativeHeatLossKcal` / `netHeatKcal`（kcal/轮）、`clamped`（是否改动积分结果）。请求和支付仍由该轮的 `skin.sweatRequestMl` / `skin.sweatVolumeMl` 分别观测：第 N 轮请求，N+1 轮扣体液，N+2 轮用其算蒸发，未蒸发不留存也不返还。
+
+体温只采用本次运行上一成功轮由已启用提供者实际提交的偏移；该轮沉默时读 0，普通失败不消耗上一轮的发布，启动补丁不能成为发布。重启首轮（含补算与在途重试）不读旧增量；已有 `heatBalance` 仍是历史记录，不回算。
+
+`skin`、`interoception`、`lungsVentilation` 读取**上一成功轮体温已采用的偏移**，在选好旧昼夜/活动阈值后才相加。源停更后体温先回到基线，下游再晚一轮；HPA 和自主冷响应仍读基线。三份主清单都不装发热提供者，没有发热动作、病原体、免疫或诊断。
 
 ### `hypothalamusThirst`
 
@@ -325,19 +332,20 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 | 参数 ID | 值 | 单位 | 状态 | 来源与说明 |
 | --- | --- | --- | --- | --- |
 | `thermoregulation.setpointC` | 37 | `°C` | `design` | — |
-| `thermoregulation.ambientTemperatureC` | 25 | `°C` | `design` | — |
 | `thermoregulation.heatCapacityKcalPerC` | 60 | `kcal/°C` | `design` | —（按体重缩放） |
 | `thermoregulation.metabolicFactor` | 0.005 | `kcal/mL` | `design` | — |
 | `thermoregulation.shiveringGain` | 2 | `kcal/(min·°C)` | `design` | —（按体重缩放） |
 | `thermoregulation.lossGain` | 0.104167 | `kcal/(min·°C)` | `design` | —（按体重缩放） |
-| `thermoregulation.evaporationKcalPerMl` | 0.58 | `kcal/mL` | `design` | — |
+| `thermoregulation.evaporationKcalPerMl` | 0.58 | `kcal/mL` | `design` | —（只作用于已蒸发量） |
+| `thermoregulation.evaporationReferenceTemperatureC` | 32 | `°C` | `design` | `source: null`（求饱和压的固定参考面，不是皮温） |
+| `thermoregulation.evaporationConductanceMlMinPerKpa` | 3 | `mL/(min·kPa)` | `design` | `source: null`（75 kg、无附加衣层的工程导湿系数；按体重缩放） |
 | `thermoregulation.circadianAmplitudeC` | 0.25 | `°C` | `design` | —（昼夜余弦调定点振幅） |
 | `thermoregulation.circadianPeakHour` | 17 | `h` | `design` | —（傍晚调定点峰值钟点） |
 | `thermoregulation.sleepSetpointOffsetC` | 0.2 | `°C` | `design` | —（睡期调定点下调） |
 | `thermoregulation.vasodilationGain` | 0.5 | `kcal/(min·°C)` | `design` | `SRC-KRAUCHI-1994`（工程占位，按体重缩放） |
-| `thermoregulation.maxVasodilationKcalMin` | 0.55 | `kcal/min` | `design` | `SRC-CRAMER-2019`（工程占位，按体重缩放；物理封顶约 +38 W 干散热） |
+| `thermoregulation.maxVasodilationKcalMin` | 0.55 | `kcal/min` | `design` | `SRC-CRAMER-2019`（沿用按体重缩放的工程上限；仅对应 12 °C 参考梯度、无附加衣层，除以 12 °C 后才作导度上限） |
 
-十二项均标 `design`，无实测间接测热或实机热量验证。
+十三项均标 `design`，可用存档 `parameters` 离线覆盖，重启读取。环境温度移入 `climate.airTemperatureC`，旧键仅作缺项迁移。热账的工程对照和论文限制另见[回放记录](../../body-inputs/thermal-replay.md)。
 
 ### `hypothalamus-endocrine.parameters.json`
 
@@ -398,7 +406,7 @@ fullness = clamp(fullnessBaseline + fullnessGhrelinGain × (G − 1)
 
 ## 5. 调节方式
 
-`interoception` 汇聚来自胃、十二指肠、下丘脑、膀胱、子宫、乳腺、食管、结肠、性反应、血氧、肾上腺、松果体、睡眠节律、唾液腺、睾丸、体温调节、血钙、血糖、心率/血压、体力活动、皮肤与三分区肌糖原及非标扩展 `sensations` 的读数（`sweatDampMm`、`muscleFatigueAcuteMm` 与 `oralThirstReliefFraction` 从自身轮初状态接续）；`sleep` 维护清醒/睡眠双稳态与 Process S 睡眠压力，`sleep` 动作同时清零 `physicalActivity`；`hypothalamusThirst` 只读轮初体液缺水；`hypothalamusAdh` 读同一水量亏缺与轮初 `blood.bloodVolumeMl`；`thermoregulation` 只读轮初氧耗与汗液写核心温度；内分泌下丘脑与垂体脚本只读轮初快照和外周激素。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
+`interoception` 汇聚来自胃、十二指肠、下丘脑、膀胱、子宫、乳腺、食管、结肠、性反应、血氧、肾上腺、松果体、睡眠节律、唾液腺、睾丸、体温调节、血钙、血糖、心率/血压、体力活动、皮肤与三分区肌糖原及非标扩展 `sensations` 的读数（`sweatDampMm`、`muscleFatigueAcuteMm` 与 `oralThirstReliefFraction` 从自身轮初状态接续）；`sleep` 维护清醒/睡眠双稳态与 Process S 睡眠压力，`sleep` 动作同时清零 `physicalActivity`；`hypothalamusThirst` 只读轮初体液缺水；`hypothalamusAdh` 读同一水量亏缺与轮初 `blood.bloodVolumeMl`；`thermoregulation` 读轮初氧耗、汗液、温湿度、衣层与设定点信号写核心温度；内分泌下丘脑与垂体脚本只读轮初快照和外周激素。以下调节方式**尚未接入**，不能按当前脚本行为推断它们已建模：
 
 - 恶心、腹胀、疼痛、过度饱满（撑感）等独立症状；`discomfort` 只是七个内置感受（含子宫痉挛、乳腺胀奶、食管呛咳）及非标扩展贡献超出 70 mm 舒适区后的最大强度代理，不是其中任何一项的独立测量或评分；`esophagus.chokingMm` 只留在 `discomfort` 内，不单独输出字段也不触发 `brainNotify`；
 - 餐食成分（脂肪 / 蛋白 / 碳水比例）、黏度、能量密度、温度、碳酸与甜味剂；
