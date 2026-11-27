@@ -258,6 +258,49 @@ test('body_act translates qualitative eat description via ctx.llm.stream with si
   assert.match(calls[1].messages[0].content[0].text, /"energyKcal":32/);
 });
 
+test('body_act keeps translated fat estimates distinct from explicit zero and unknown intake', async (t) => {
+  const calls = [];
+  const estimates = [6.5, 6.5, undefined];
+  const llm = {
+    stream(options) {
+      const fatG = estimates[calls.length];
+      calls.push(options);
+      return toolCallStream({ actions: [{
+        type: 'drink', volumeMl: 180, energyKcal: 150,
+        ...(fatG === undefined ? {} : { fatG }),
+      }] });
+    },
+  };
+  const { tools, statePath } = await startBodyEnv(t, { llm });
+  const inputs = [
+    { description: '喝了一小杯全脂奶' },
+    { description: '喝了一小杯无脂饮料', fatG: 0 },
+    { description: '喝了一杯配方不明的饮料' },
+  ];
+  const ids = [];
+  for (const [i, input] of inputs.entries()) {
+    const result = await tools.body_act.execute({ type: 'drink', ...input }, makeAgentExec({ callId: `fat-${i}` }));
+    assert.equal(result.statusCode, 202);
+    ids.push(result.receipt.id);
+  }
+  const queued = JSON.parse(readFileSync(statePath, 'utf8')).actions;
+  assert.equal(queued[ids[0]].action.fatG, 6.5);
+  assert.equal(queued[ids[0]].action.fatGSource, 'estimate');
+  assert.equal(queued[ids[1]].action.fatG, 0);
+  assert.equal(Object.hasOwn(queued[ids[1]].action, 'fatGSource'), false);
+  assert.equal(Object.hasOwn(queued[ids[2]].action, 'fatG'), false);
+  assert.ok(Object.hasOwn(calls[0].tools[0].parameters.properties.actions.items.properties, 'fatG'));
+  assert.match(calls[0].system, /不从.*kcal.*反推/);
+
+  const invalid = await tools.body_act.execute(
+    { type: 'drink', description: '喝一杯奶', fatG: -1 },
+    makeAgentExec({ callId: 'invalid-fat' }),
+  );
+  assert.equal(invalid.statusCode, 400);
+  assert.match(invalid.receipt.error, /fatG/);
+  assert.equal(calls.length, 3, 'invalid explicit fat stops before translation');
+});
+
 test('body_act supports compound eat+drink translation splits, explicit numeric overrides, zero-arg passthrough, and omits unsupported reasoningEffort', async (t) => {
   const calls = [];
   const llm = {

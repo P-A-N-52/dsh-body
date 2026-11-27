@@ -95,3 +95,19 @@ transfer smallIntestine → glucose: A_carb
 - 两个吸收字段是模型通量读数，不是门静脉实测通量、血浆容量变化或吸收分数。
 - 残渣比例 0.05 是工程假设，不建结肠转运时间、粪便水、纤维或菌群；它会让相当一部分未吸收水进入结肠，而不是全部回流体液。
 - 没有个体化吸收半时，也没有独立生理数据验证。
+
+## 选配长链脂质
+
+[膳食脂质预设](../../presets/human-lipid/README.md)额外加载 `lipid-absorption.ts`（`intestinalLipid`）。它不会替换 `smallIntestine` 或读写其水和碳水，唯一脂质入口是从同一胃的固/非固脂质库存实付到 `lumenTgG`。`hydrolyzedG` 是已水解待吸收的 TG/酰基当量。轮初有效胆盐交付饱和分数 `b = BAU/(半效BAU+BAU)` 约束水解和吸收；脂肪酶饱和分数 `e` 同理，只约束水解。对应一阶率为 `水解最高率×b×e`、`吸收最高率×b`；交付缺失或过期按 0。胆与酶不计营养 g。细分方向参见 [OpenStax A&P 2e §23.7 Lipid Digestion/Lipid Absorption](https://openstax.org/books/anatomy-and-physiology-2e/pages/23-7-chemical-digestion-and-absorption-a-closer-look)，不支持模型速率或残渣比例。
+
+两池各以轮初库存和该池出口合计率算一次实付，再分给进程和残渣：`hydrolyzedThisRoundG` 是从未水解池进入已水解池的实际量；`absorbedG` 经 transfer 转到 `intestinalLymph.tgInTransitG`；`residueG`（g/轮）计入 `residueTotalG`（累计 g）。同轮新到账不能被再水解/吸收。残渣仅表示离开所建模肠腔，不直接写 `colon`、粪重或便意。不拆肠段，不模拟载脂蛋白、临床吸收状况或中短链旁路。
+
+可在脂质身体存档顶层 `parameters` 按完整 ID 覆盖；没有覆盖取 [`lipid-absorption.parameters.json`](lipid-absorption.parameters.json)，全部 `design`、`source: null`。
+
+| ID | 默认 | 单位 | 适用条件 |
+| --- | ---: | --- | --- |
+| `intestinalLipid.hydrolysisMaxPerMin` | 0.16 | 1/min | [0, 5]，胆盐与脂肪酶充足时的水解极限率 |
+| `intestinalLipid.absorptionMaxPerMin` | 0.22 | 1/min | [0, 5]，有效胆盐充足时已水解产物的吸收极限率 |
+| `intestinalLipid.residuePerMin` | 0.0085 | 1/min | [0, 5]，两池未吸收量离开所建模肠腔的率 |
+| `intestinalLipid.bileHalfActivityU` | 0.1 | BAU | 正数，胆盐作用半效交付量 |
+| `intestinalLipid.lipaseHalfActivityU` | 0.5 | LAU | 正数，脂肪酶作用半效交付量 |

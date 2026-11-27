@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "owner": "intestinalLymph",
+  "parameters": [
+    { "id": "intestinalLymph.returnPerMin", "value": 0.1, "unit": "1/min", "range": [0, 5], "status": "design", "source": null, "note": "肠淋巴在途乳糜微粒 TG 当量入静脉的速率；0 保留在途池。" }
+  ]
+}

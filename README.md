@@ -88,11 +88,13 @@
 | 睾丸 | 睾酮相对量（基线 1、昼夜波动、60 min 半时、`sleepDebtDays` 多日睡眠债与应激/高 PRL 抑制），放大性反应唤醒并产生 `libidoMm`（受 `nsfw` 门控） |
 | 附睾 | 精液储存（上限 5 mL，按速率回补），高潮后排空为 `ejaculatedMl` |
 
-仓库共有 47 份 `.parameters.json` 文件（根清单 39 份 + 女性新增 3 份 + 男性新增 2 份 + 3 份未挂入主清单的 DI 变体；`parathyroid` 与 `calcium` 均已挂载进三份清单），各器官脚本只读取本目录参数文件（`blood.ts` / `duodenum` 已通过 `heart.maxCardiacOutputMlMin` 与各自参考参数完成跨器官参数文件解耦）。女性与男性清单不要和根清单共用同一份存档。
+**膳食长链脂质选配清单**：[`organs/presets/human-lipid/body-modules.json`](organs/presets/human-lipid/body-modules.json) 在根清单上只替换共享胃入口并增加七个部位（共 50 部位、46 份唯一参数文件、19 部位 transfer 闭包）。按[中文启用说明](organs/presets/human-lipid/README.md)设置 `manifestPath` 与独立 `statePath`，沿用 `body_act(eat/drink)`；`fatG` 可选，明确为零填 `0`、未知省略，不从热量反推。胆囊回补、胰外分泌和肠淋巴推动已知餐源脂质账，不改变默认、女性或男性清单，也不新增内脏动作。
+
+仓库共有 54 份 `.parameters.json` 文件（根清单 39 份 + 女性新增 3 份 + 男性新增 2 份 + 3 份未挂入主清单的 DI 变体 + 脂质预设新增 7 份），各器官脚本从本目录加载参数文件。各身体使用独立存档。
 
 Gateway 现同时在 `<bodyDir>/logs/` 维护滚动历史（均设有界保留上限，默认各 `500` 条）：`logs/state-history.jsonl` 仅在状态发生变化或初始/补算提交时追加变更字段，`logs/notification-history.json` 记录每条通知从 `queued` → `acked`（绑定投递 `messageId`）→ `inserted`（由 DSH `agent/inbox/inserted` 事件或 `/notifications/receipt` 确认进入会话收件箱）的状态与时间戳。
 
-完整部位与动作清单以三份 `body-modules*.json`、`tools.js` 及各器官 README 为准。
+完整部位与动作以三份基础清单、选配清单、`tools.js` 与各器官 README 为准。
 
 ### Agent 行为
 
@@ -102,7 +104,7 @@ Gateway 现同时在 `<bodyDir>/logs/` 维护滚动历史（均设有界保留�
 - `index.js` 在宿主存在 `systemPrompt` 服务时注册静态纯感觉准则（`systemPrompt.section`）与已绑定激活态的轻度背景体感（`systemPrompt.context`，均零数值）；无该服务时安全旁路；存在 `ctx.on` 时监听 `agent/inbox/inserted` 并回写通知阅读回执到 `logs/notification-history.json`。
 - `brainNotify` 覆盖除食管呛咳与 `discomfort` 外的核心、扩展体感（含低钙/高钙）、漏尿边沿、高潮/受阻边沿与非标 `sensations`，采用普通（20–240 min）/高危（5–60 min）双轨指数退避、滞回与缓解重置、睡眠门控、NSFW 门控与多感受零数字聚合。
 - LLM 通过提交动作驱动身体，状态由器官脚本计算并整轮提交。
-- 参数全库共 47 份 `.parameters.json`、384 条参数：分 `prior`（19 项，有登记文献支撑）、`fitted_dev`（1 项，开发集拟合，不是独立验证）、`design`（344 项，工程假设）与 `policy`（20 项，提醒策略）四类，目前 `validated` 为 0。新增生理校准、解耦与多身体逻辑已覆盖于离线单元测试、真实 Gateway 集成测试与容器内 DSH 实机挂接观察，尚未声称独立人体临床验证。
+- 参数全库共 54 份 `.parameters.json`、406 条参数：`prior` 19 项（有登记文献支撑）、`fitted_dev` 1 项（开发集拟合，不是独立验证）、`design` 366 项（工程假设，含选配脂链 22 项）、`policy` 20 项（提醒策略），无 `validated`。选配脂链通过真实 Gateway 端到端回放验账；未做独立人体或 DSH 宿主会话验证。
 
 ## 开发与验证
 

@@ -4,7 +4,9 @@
 
 `pancreasEndocrine` 读取轮初血浆葡萄糖浓度代理，写入血浆胰岛素绝对浓度代理 `insulinPmolL`（单位 `pmol/L`，静息基准 `60 pmol/L`）与低血糖反调节信号 `glucagonRelative`（单位 `1`）。`insulinPmolL` 在体内按 Michaelis-Menten 可饱和清除 ODE（参考 Thorsteinsson 1985 正常人可饱和半饱和尺度 `Km = 3890 pmol/L`）积分，由各下游摄糖部位（`muscleGlucose`、`liver`、`smallIntestine`）通过 `insulinPmolL / 60` 归一化消费；`glucagonRelative` 在血糖低于参考值 `90 mg/dL` 时温和升高，跌破反调节阈值 `68 mg/dL` 后叠加陡增增益，由 `liver` 与 `kidneyGluconeogenesis` 消费。
 
-实现状态：胰腺脚本、参数与模块契约测试已落地；葡萄糖浓度、肌肉/肝摄糖请求与肝糖原释放的耦合、三清单注册均已接入，当前根清单为 43 个部位、39 份唯一参数文件（女性清单 46 个部位、42 份，男性清单 45 个部位、41 份；全库共 47 份唯一参数文件）。参数标 `design`；尚未做真实 DSH 会话验收或独立人体餐后曲线验证。
+实现状态：胰腺脚本、参数与模块契约测试已落地；葡萄糖浓度、肌肉/肝摄糖请求与肝糖原释放的耦合、三清单注册均已接入，当前根清单为 43 个部位、39 份唯一参数文件（女性清单 46 个部位、42 份，男性清单 45 个部位、41 份）。本页参数均为 `design`；尚未做真实 DSH 会话验收或独立人体餐后曲线验证。
+
+[膳食脂质预设](../../presets/human-lipid/README.md)另加载独立部位 [`pancreasExocrine`](exocrine.md)，由小肠脂质负荷产生有效脂肪酶信号，其覆盖 ID、单位和参数文件默认值见外分泌说明。不会替换本页的 `pancreasEndocrine`；预设内脂肪库另消费 `insulinPmolL` 调节脂质储存与净动员。
 
 ## 1. 脚本与读写关系
 

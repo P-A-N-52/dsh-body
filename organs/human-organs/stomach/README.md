@@ -210,3 +210,13 @@ P1 的 `brain/interoception.ts` 读取 `relativeConcentration`，`brainNotify` �
 - **水比例拆分是工程近似**：`emptiedWaterMl` 按非固餐排出量中的水占比计算，不区分饮品成分、胃内分层、研磨或胃酸分泌；固餐排出不带水。
 - **13 min 不是吸收半时**：它只是白水胃排空的工程截距；真实小肠吸收时间尺度在 `small-intestine/water-absorption.ts`，20 min 也是 `design`。
 - 不做胃内混合、分层、胃酸、温度和黏膜状态；`mechanical` 与 `relativeConcentration` 由 `brain/interoception.ts` 读取，`brainNotify` 按会话水位与退避冷却决定提醒，模型已读确认仍未实现。
+
+## 选配长链脂质
+
+[膳食脂质预设](../../presets/human-lipid/README.md)用 `hydration-lipid.ts` 替换 `hydration.ts`，仍是**同一个** `stomach`，水/碳水原结算以及各只读观测沿用；不可同时挂载两个胃入口。`eat` / `drink` 额外接受可选有限非负 `fatG`（g 长链 TG 当量）。缺失为未知，不从 kcal、体积或配餐反推，也不在全餐能量上加算；零只有明确无脂才用。翻译估值随原切片保留 `fatGSource: "estimate"`。
+
+- `mealQueue` 原分轮同时推进 `remainingFatG`、`rateFatGPerRound`，末轮支付余量；无已知数值时不写这两键。旧档缺这些键不推测历史脂肪。普通清单不保存脂肪切片元数据；同一存档不能借普通清单往返保留待释放脂肪。
+- `solidFatG` / `nonSolidFatG` 是**分组实存**（g，二项相加才是胃脂质总量），跟各组既有轮初排空比例；`drink`、`liquid`、`mixed` 走非固餐组。两笔同单位 transfer 一起交给 `intestinalLipid.lumenTgG`。`emptiedFatG` 是本轮实付，不是第三个库存。
+- `explicitFatIntakeG` / `estimatedFatIntakeG` 只观测本轮已切片送入胃的克数，各自无数据为 `null`、有明确/估得的零为 `0`。`unknownFatIntakeSlices` 单独计未知成分的切片数。首轮新到不提前排空，水、碳水和热量各自既有路径无变化。
+
+脂质分组与原体积同比推进是 `design`，没有脂相排空实测校准。无新增胃参数，默认与覆盖仍来自同目录 [`motility.parameters.json`](motility.parameters.json)（见上面的原胃参数）；`fatG` 是餐的输入，不是个体参数。这里不建胃脂肪酶、分层、脂肪特异的额外胃抑制或脂解。

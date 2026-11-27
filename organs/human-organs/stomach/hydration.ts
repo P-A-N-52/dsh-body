@@ -45,6 +45,7 @@ import {
   stomachActionTypes,
   stomachFields,
   stomachInitialState,
+  stomachLipidInitialState,
 } from './motility-core.ts';
 
 export const id = 'stomach';
@@ -70,22 +71,14 @@ export const fields = {
   emptiedCarbohydrateG: { unit: 'g', mode: 'absolute' },
 };
 
-type Action = {
-  readonly type?: unknown;
-  readonly volumeMl?: unknown;
-  readonly energyKcal?: unknown;
-  readonly mealKind?: unknown;
-  readonly durationMin?: unknown;
-  readonly carbohydrateG?: unknown;
-};
-
+type State = typeof initialState & Partial<typeof stomachLipidInitialState>;
 type IO = {
-  read(id: 'stomach'): Readonly<typeof initialState> | undefined;
+  read(id: 'stomach'): Readonly<State> | undefined;
   read(id: 'duodenum'): Readonly<{ nutrientExposure?: unknown }> | undefined;
-  readonly actions: readonly Action[];
+  readonly actions: Parameters<typeof advanceStomach>[1];
   readonly dt: number;
   readonly simulatedSeconds: number;
-  write(next: typeof initialState): void;
+  write(next: State): void;
   transfer(
     fromPart: 'stomach',
     fromField: 'waterVolumeMl' | 'carbohydrateG',
@@ -93,17 +86,24 @@ type IO = {
     toField: 'waterVolumeMl' | 'carbohydrateG',
     amount: number,
   ): void;
+  transfer(
+    fromPart: 'stomach',
+    fromField: 'solidFatG' | 'nonSolidFatG',
+    toPart: 'intestinalLipid',
+    toField: 'lumenTgG',
+    amount: number,
+  ): void;
 };
 
-export function heartbeat(io: IO): void {
+export function heartbeat(io: IO, trackFat = false): void {
   const prev = io.read(id) ?? initialState;
   const nutrientExposure = readNutrientExposure(io.read('duodenum'));
-  const { state, emptiedNonSolidMl, deliveredWaterMl, carbohydrate } = advanceStomach(
+  const { state, emptiedNonSolidMl, deliveredWaterMl, carbohydrate, fat } = advanceStomach(
     prev,
     io.actions,
     io.dt,
     io.simulatedSeconds,
-    { trackWater: true, trackCarbohydrate: true, nutrientExposure },
+    { trackWater: true, trackCarbohydrate: true, nutrientExposure, trackFat },
   );
   const { nonSolidVolumeMl, waterVolumeMl } = readStomachBase(prev);
   const emptiedWaterMl = nonSolidVolumeMl > 0
@@ -116,11 +116,18 @@ export function heartbeat(io: IO): void {
     emptiedWaterMl,
     deliveredWaterMl,
     ...carbohydrate,
+    ...(trackFat ? fat.state : {}),
   });
   if (emptiedWaterMl > 0) {
     io.transfer(id, 'waterVolumeMl', 'smallIntestine', 'waterVolumeMl', emptiedWaterMl);
   }
   if (carbohydrate.emptiedCarbohydrateG > 0) {
     io.transfer(id, 'carbohydrateG', 'smallIntestine', 'carbohydrateG', carbohydrate.emptiedCarbohydrateG);
+  }
+  if (trackFat && fat.emptiedSolidFatG > 0) {
+    io.transfer(id, 'solidFatG', 'intestinalLipid', 'lumenTgG', fat.emptiedSolidFatG);
+  }
+  if (trackFat && fat.emptiedNonSolidFatG > 0) {
+    io.transfer(id, 'nonSolidFatG', 'intestinalLipid', 'lumenTgG', fat.emptiedNonSolidFatG);
   }
 }

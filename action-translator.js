@@ -44,6 +44,7 @@ const QUANTITATIVE_OVERRIDE_KEYS = [
   'volumeMl',
   'energyKcal',
   'carbohydrateG',
+  'fatG',
   'mealKind',
   'durationMin',
   'intensity',
@@ -128,6 +129,9 @@ export function validateStructuredAction(args, extraActionTypes = [], nsfwEnable
   if (args.carbohydrateG !== undefined && (!isFiniteNumber(args.carbohydrateG) || args.carbohydrateG < 0)) {
     return 'carbohydrateG must be a finite number greater than or equal to 0';
   }
+  if (args.fatG !== undefined && (!isFiniteNumber(args.fatG) || args.fatG < 0)) {
+    return 'fatG must be a finite number greater than or equal to 0';
+  }
   if (args.type === 'drink') {
     if (args.energyKcal !== undefined && (!isFiniteNumber(args.energyKcal) || args.energyKcal < 0)) {
       return 'energyKcal must be a finite number greater than or equal to 0';
@@ -153,6 +157,9 @@ export function validateOptionalNumericOverrides(args) {
   }
   if (args.carbohydrateG !== undefined && (!isFiniteNumber(args.carbohydrateG) || args.carbohydrateG < 0)) {
     return 'carbohydrateG must be a finite number greater than or equal to 0';
+  }
+  if (args.fatG !== undefined && (!isFiniteNumber(args.fatG) || args.fatG < 0)) {
+    return 'fatG must be a finite number greater than or equal to 0';
   }
   if (args.mealKind !== undefined && !mealKinds.includes(args.mealKind)) {
     return 'eat requires mealKind liquid, solid, or mixed';
@@ -473,6 +480,10 @@ export function buildTranslatorToolSchema(allowedQuantitativeTypes) {
                 type: 'number',
                 description: 'Digestible carbohydrate in grams as glucose equivalents (>= 0; omit only if unknown).',
               },
+              fatG: {
+                type: 'number',
+                description: 'Optional dietary long-chain fat in grams (>= 0; omit if unknown, zero only if known fat-free; never derive from kcal).',
+              },
               mealKind: {
                 type: 'string',
                 enum: mealKinds,
@@ -518,6 +529,7 @@ export function buildTranslatorSystemPrompt({ nsfwEnabled = false } = {}) {
     '各动作类型与单位约定（全部仅填客观数值与枚举）：',
     '- eat：必填 volumeMl（> 0，食团总体积 mL）、energyKcal（>= 0，kcal）、mealKind（solid | liquid | mixed）；推荐填 carbohydrateG（>= 0，可消化葡萄糖当量克数 g）；可选 durationMin（>= 0，进食耗时 min，如一口约 0.5、加餐约 5、正餐约 15）。',
     '- drink：必填 volumeMl（> 0，mL）；纯水/无糖茶/黑咖啡等可设 energyKcal = 0 或省略，含糖/奶/酒饮品给出 energyKcal（>= 0）与 carbohydrateG（>= 0）；可选 durationMin（>= 0）。',
+    '- eat / drink 可选 fatG（食物中膳食长链脂肪当量克数，>= 0）：只用明确成分或食物和份量足够可信的估值；不明就省略，确认不含脂肪才填 0。不从 kcal 反推，不额外增加 energyKcal。',
     '- exercise：必填 intensity（0 < intensity <= 1）与 durationMin（> 0，min）。强度参考：散步慢走 0.15–0.25，快走/家务 0.30–0.45，慢跑/中速骑行 0.50–0.65，高强度跑/HIIT 0.75–0.90，极限冲刺 0.95–1.0。',
   ];
   if (nsfwEnabled) {
@@ -730,6 +742,7 @@ function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explici
     delete clean.volumeMl;
     delete clean.energyKcal;
     delete clean.carbohydrateG;
+    delete clean.fatG;
     delete clean.mealKind;
     delete clean.bilateral;
     if (type === 'exercise') delete clean.exertion;
@@ -737,6 +750,7 @@ function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explici
     delete clean.volumeMl;
     delete clean.energyKcal;
     delete clean.carbohydrateG;
+    delete clean.fatG;
     delete clean.mealKind;
     delete clean.intensity;
     delete clean.exertion;
@@ -754,6 +768,9 @@ function sanitizeTranslatedAction(rawAction, requestedType, nsfwEnabled, explici
   const invalid = validateStructuredAction(clean, [], nsfwEnabled);
   if (invalid !== null) {
     return { error: invalid };
+  }
+  if (clean.fatG !== undefined && !(applyExplicit && explicitConstraints.fatG !== undefined)) {
+    clean.fatGSource = 'estimate';
   }
   return { action: clean };
 }

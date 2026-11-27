@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "owner": "liverBile",
+  "parameters": [
+    { "id": "liverBile.supplyActivityUPerMin", "value": 0.08, "unit": "BAU/min", "status": "design", "source": null, "note": "有效胆汁功能量供应；0 关闭新增供应，不清空胆囊。" }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "owner": "pancreasExocrine",
+  "parameters": [
+    { "id": "pancreasExocrine.maxLipaseActivityU", "value": 3, "unit": "LAU", "status": "design", "source": null, "note": "最大有效脂肪酶代理，0 关闭供应。" },
+    { "id": "pancreasExocrine.mealHalfG", "value": 1, "unit": "g", "status": "design", "source": null, "note": "半刺激未水解肠腔 TG 当量，须大于 0。" }
+  ]
+}

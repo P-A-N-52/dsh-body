@@ -1199,6 +1199,10 @@ export function createBodyTools(gateway, options = {}) {
           type: 'number',
           description: 'Optional explicit override: digestible carbohydrate intake in grams, as glucose equivalents; omit when unknown or passing description.',
         },
+        fatG: {
+          type: 'number',
+          description: 'Optional known dietary long-chain fat in grams for eat/drink. Omit if unknown; use 0 only when known fat-free. Included in, not added to, any stated total energy.',
+        },
         mealKind: {
           type: 'string',
           enum: mealKinds,

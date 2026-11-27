@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "owner": "intestinalLipid",
+  "parameters": [
+    { "id": "intestinalLipid.hydrolysisMaxPerMin", "value": 0.16, "unit": "1/min", "range": [0, 5], "status": "design", "source": null, "note": "胆盐和脂肪酶充足时的最高水解率。" },
+    { "id": "intestinalLipid.absorptionMaxPerMin", "value": 0.22, "unit": "1/min", "range": [0, 5], "status": "design", "source": null, "note": "胆盐充足时水解产物吸收和包装至肠淋巴的最高率。" },
+    { "id": "intestinalLipid.residuePerMin", "value": 0.0085, "unit": "1/min", "range": [0, 5], "status": "design", "source": null, "note": "未水解或已水解池未吸收并离账的一阶率，不写结肠粪便。" },
+    { "id": "intestinalLipid.bileHalfActivityU", "value": 0.1, "unit": "BAU", "status": "design", "source": null, "note": "胆盐作用的半效交付量，须大于 0。" },
+    { "id": "intestinalLipid.lipaseHalfActivityU", "value": 0.5, "unit": "LAU", "status": "design", "source": null, "note": "有效脂肪酶的半效活性代理，须大于 0。" }
+  ]
+}

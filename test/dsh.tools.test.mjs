@@ -130,6 +130,31 @@ test('body_act queues carbohydrateG unchanged and does not add it when omitted',
   assert.ok(queued.pendingActionIds.includes(urinate.receipt.id));
 });
 
+test('body_act accepts optional explicit fatG without changing the stated energy', async (t) => {
+  const { tools, statePath } = await startBody(t);
+  assert.deepEqual(Object.keys(tools).sort(), ['body_act', 'body_bind', 'body_state']);
+  assert.equal(tools.body_act.parameters.properties.fatG.type, 'number');
+  const inputs = [
+    { type: 'eat', volumeMl: 120, energyKcal: 250, mealKind: 'solid', fatG: 12 },
+    { type: 'drink', volumeMl: 120, energyKcal: 90, fatG: 0 },
+    { type: 'drink', volumeMl: 120, energyKcal: 90 },
+  ];
+  for (const [i, args] of inputs.entries()) {
+    const result = await tools.body_act.execute(args, fakeExec({ callId: `fat-${i}` }));
+    assert.equal(result.statusCode, 202);
+    const stored = JSON.parse(readFileSync(statePath, 'utf8')).actions[result.receipt.id].action;
+    assert.equal(stored.energyKcal, args.energyKcal);
+    assert.equal(Object.hasOwn(stored, 'fatG'), Object.hasOwn(args, 'fatG'));
+    assert.equal(stored.fatG, args.fatG);
+  }
+  for (const [i, fatG] of [-1, '5', null, Infinity, NaN].entries()) {
+    const result = await tools.body_act.execute({ ...inputs[0], fatG }, fakeExec({ callId: `invalid-fat-${i}` }));
+    assert.equal(result.statusCode, 400);
+    assert.match(result.receipt.error, /fatG/);
+  }
+  assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).pendingActionIds.length, inputs.length);
+});
+
 test('body_act rejects invalid carbohydrateG without enqueuing', async (t) => {
   const { gateway, statePath, tools } = await startBody(t);
   const invalid = [
