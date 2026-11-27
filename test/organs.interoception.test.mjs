@@ -15,6 +15,7 @@ const BASELINE = {
   fullness: 0,
   thirst: 0,
   oralThirstReliefFraction: 0,
+  thirstProjectionAtSimulatedSeconds: 60,
   urinaryUrgency: 0,
   discomfort: 0,
   sexualArousalMm: 0,
@@ -102,6 +103,7 @@ test('interoception exports the organ module contract', () => {
     fullness: { unit: 'mm', mode: 'absolute' },
     thirst: { unit: 'mm', mode: 'absolute' },
     oralThirstReliefFraction: { unit: '1', mode: 'absolute' },
+    thirstProjectionAtSimulatedSeconds: { unit: 's', mode: 'absolute' },
     urinaryUrgency: { unit: 'mm', mode: 'absolute' },
     discomfort: { unit: 'mm', mode: 'absolute' },
     sexualArousalMm: { unit: 'mm', mode: 'absolute' },
@@ -127,6 +129,7 @@ test('interoception exports the organ module contract', () => {
   assert.deepEqual(initialState, {
     ...BASELINE,
     oralThirstReliefFraction: null,
+    thirstProjectionAtSimulatedSeconds: null,
     muscleFatigueAcuteMm: null,
   });
 });

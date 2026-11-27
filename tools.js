@@ -367,8 +367,10 @@ function evaluateAllAreas(snapshot, nsfwEnabled) {
   const thirstPart = readPart(parts, 'hypothalamusThirst');
   const subjectiveThirstMm = readMm(intero, 'thirst');
   const oralRelief = readNum(intero, 'oralThirstReliefFraction');
-  const hasThirstProjection = oralRelief !== undefined && oralRelief >= 0 && oralRelief <= 1;
-  const thirstMm = (hasThirstProjection ? subjectiveThirstMm : undefined)
+  const projectedAt = readNum(intero, 'thirstProjectionAtSimulatedSeconds');
+  const hasCurrentThirstProjection = projectedAt !== undefined && projectedAt === snapshot?.simulatedSeconds
+    && oralRelief !== undefined && oralRelief >= 0 && oralRelief <= 1;
+  const thirstMm = (hasCurrentThirstProjection ? subjectiveThirstMm : undefined)
     ?? readMm(thirstPart, 'thirst') ?? subjectiveThirstMm;
   const salivaryPart = readPart(parts, 'salivaryGlands');
   const mouthMoistureMm = readMm(salivaryPart, 'mouthMoistureMm');

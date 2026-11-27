@@ -167,6 +167,7 @@ type InteroceptionState = {
   fullness: number;
   thirst: number;
   oralThirstReliefFraction: number | null;
+  thirstProjectionAtSimulatedSeconds: number | null;
   urinaryUrgency: number;
   discomfort: number;
   sexualArousalMm: number;
@@ -375,6 +376,7 @@ function collectExtensibleInputs(
 
 type IO = {
   readonly dt?: number;
+  readonly simulatedSeconds?: number;
   read(): Readonly<SnapshotReading> | undefined;
   read(id: 'interoception'): Readonly<Partial<InteroceptionState>> | null | undefined;
   read(id: 'stomach'): Readonly<StomachWaterReading> | undefined;
@@ -411,6 +413,15 @@ type IO = {
 };
 
 const parameters = loadParameters(new URL('./interoception.parameters.json', import.meta.url));
+
+function requirePositiveParameter(parameterId: string): number {
+  const value = requireParameter(parameters, parameterId);
+  if (!isFiniteNumber(value) || value <= 0) {
+    throw new Error(`Parameter ${parameterId} must be a finite positive number`);
+  }
+  return value;
+}
+
 const hungerBaseline = requireParameter(parameters, 'interoception.hunger.baselineMm');
 const fullnessBaseline = requireParameter(parameters, 'interoception.fullness.baselineMm');
 const hungerGhrelinGain = requireParameter(parameters, 'interoception.hunger.ghrelinGain');
@@ -420,8 +431,8 @@ const fullnessMechanicalGain = requireParameter(parameters, 'interoception.fulln
 const hungerNutrientGain = requireParameter(parameters, 'interoception.hunger.nutrientGain');
 const fullnessNutrientGain = requireParameter(parameters, 'interoception.fullness.nutrientGain');
 const thirstFallbackMm = requireParameter(parameters, 'interoception.thirst.fallbackMm');
-const oralReliefHalfTimeMin = requireParameter(parameters, 'interoception.thirst.oralReliefHalfTimeMin');
-const oralReliefHalfDoseMl = requireParameter(parameters, 'interoception.thirst.oralReliefHalfDoseMl');
+const oralReliefHalfTimeMin = requirePositiveParameter('interoception.thirst.oralReliefHalfTimeMin');
+const oralReliefHalfDoseMl = requirePositiveParameter('interoception.thirst.oralReliefHalfDoseMl');
 const urinaryUrgencyReferenceVolumeMl = requireParameter(
   parameters,
   'interoception.urinaryUrgency.referenceVolumeMl',
@@ -490,10 +501,7 @@ const sweatDampReferenceEvapRateMlMin = scaleByBodyWeight(
   requireParameter(parameters, 'interoception.sweatDamp.referenceEvapRateMlMin'),
   'interoception.sweatDamp.referenceEvapRateMlMin',
 );
-const muscleFatigueDecayPerMin = Math.LN2 / requireParameter(
-  parameters,
-  'interoception.muscleFatigue.halfTimeMin',
-);
+const muscleFatigueHalfTimeMin = requirePositiveParameter('interoception.muscleFatigue.halfTimeMin');
 const muscleFatigueExerciseGainMmPerMin = requireParameter(
   parameters,
   'interoception.muscleFatigue.exerciseGainMmPerMin',
@@ -543,6 +551,7 @@ export const initialState: InteroceptionState = {
   fullness: fullnessBaseline,
   thirst: thirstFallbackMm,
   oralThirstReliefFraction: null,
+  thirstProjectionAtSimulatedSeconds: null,
   urinaryUrgency: 0,
   discomfort: 0,
   sexualArousalMm: 0,
@@ -571,6 +580,7 @@ export const fields = {
   fullness: { unit: 'mm', mode: 'absolute' },
   thirst: { unit: 'mm', mode: 'absolute' },
   oralThirstReliefFraction: { unit: '1', mode: 'absolute' },
+  thirstProjectionAtSimulatedSeconds: { unit: 's', mode: 'absolute' },
   urinaryUrgency: { unit: 'mm', mode: 'absolute' },
   discomfort: { unit: 'mm', mode: 'absolute' },
   sexualArousalMm: { unit: 'mm', mode: 'absolute' },
@@ -900,10 +910,13 @@ export function heartbeat(io: IO): void {
     ? Math.max(0, savedAcuteMm)
     : Math.max(0, clampMm(finiteOr(prevInteroception?.muscleFatigueMm, 0)) - depletionMm);
   const activeMin = Math.min(dtMin, remainingExerciseMin);
-  const addedAcuteMm = (muscleFatigueExerciseGainMmPerMin * activityIntensity / muscleFatigueDecayPerMin)
-    * -Math.expm1(-muscleFatigueDecayPerMin * activeMin);
-  const muscleFatigueAcuteMm = prevAcuteMm * Math.exp(-muscleFatigueDecayPerMin * dtMin)
-    + addedAcuteMm * Math.exp(-muscleFatigueDecayPerMin * (dtMin - activeMin));
+  const activeExponent = -Math.LN2 * activeMin / muscleFatigueHalfTimeMin;
+  const effectiveActiveMin = activeExponent === 0
+    ? activeMin
+    : activeMin * (Math.expm1(activeExponent) / activeExponent);
+  const muscleFatigueAcuteMm = prevAcuteMm * Math.pow(0.5, dtMin / muscleFatigueHalfTimeMin)
+    + muscleFatigueExerciseGainMmPerMin * activityIntensity * effectiveActiveMin
+      * Math.pow(0.5, (dtMin - activeMin) / muscleFatigueHalfTimeMin);
   const muscleFatigueMm = clampMm(muscleFatigueAcuteMm + depletionMm);
 
   io.write({
@@ -911,6 +924,7 @@ export function heartbeat(io: IO): void {
     fullness,
     thirst,
     oralThirstReliefFraction,
+    thirstProjectionAtSimulatedSeconds: isFiniteNumber(io.simulatedSeconds) ? io.simulatedSeconds : null,
     urinaryUrgency,
     discomfort,
     sexualArousalMm,

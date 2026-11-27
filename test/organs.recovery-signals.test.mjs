@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkpoint, launch } from '../test-support/harness.mjs';
 import { createBodyTools } from '../tools.js';
@@ -13,11 +15,15 @@ const fatigueModules = {
   'activity.mjs': organ('human-organs/skeletal-muscle/activity.ts'),
 };
 
-function launchFatigue(t, { parts, statePath } = {}) {
+function launchFatigue(t, { parts, statePath, parameters, expectReadyReject = false } = {}) {
   return launch(t, {
     modules: fatigueModules,
-    seed: parts === undefined ? null : checkpoint({ wallTimeMs: 0, parts }),
+    seed: parts === undefined && parameters === undefined ? null : {
+      ...checkpoint({ wallTimeMs: 0, parts }),
+      ...(parameters === undefined ? {} : { parameters }),
+    },
     statePath,
+    expectReadyReject,
     gatewayOptions: { now: () => 0 },
   });
 }
@@ -74,12 +80,20 @@ const dehydrated = {
   interoception: { thirst: 0 }, // Old save: no committed subjective-thirst projection.
 };
 
-function launchThirst(t, statePath = null) {
+function launchThirst(t, { statePath = null, parts = dehydrated, manifest = manifestPath } = {}) {
   return launch(t, {
-    seed: statePath === null ? checkpoint({ wallTimeMs: 0, parts: dehydrated }) : null,
+    seed: statePath === null ? checkpoint({ wallTimeMs: 0, parts }) : null,
     statePath,
-    gatewayOptions: { manifestPath, now: () => 0 },
+    gatewayOptions: { manifestPath: manifest, now: () => 0 },
   });
+}
+
+async function thirstBand(app) {
+  const { body_state } = createBodyTools(app.gateway);
+  const { feelings } = await body_state.execute(
+    { focus: 'thirst' }, { agent: { session: { id: 'recovery' } } },
+  );
+  return feelings.find(({ feeling }) => feeling.includes('渴'))?.level;
 }
 
 function enqueue(app, action) {
@@ -89,11 +103,7 @@ function enqueue(app, action) {
 test('a committed sip is felt before hydration, and thirst returns as the quick relief fades', async (t) => {
   const drinking = await launchThirst(t);
   const control = await launchThirst(t);
-  const { body_state } = createBodyTools(drinking.gateway);
-  const focus = async () => (await body_state.execute(
-    { focus: 'thirst' }, { agent: { session: { id: 'recovery' } } },
-  )).feelings.find(({ feeling }) => feeling.includes('口渴'))?.level;
-  assert.equal(await focus(), 'strong', 'before the first new projection, use the legacy slow readout');
+  assert.equal(await thirstBand(drinking), 'strong', 'before the first new projection, use the legacy slow readout');
   await advance(drinking, 2);
   await advance(control, 2);
 
@@ -116,12 +126,12 @@ test('a committed sip is felt before hydration, and thirst returns as the quick 
     assert.deepEqual(relieved[part], plain[part], `${part} does not react to the sensation`);
   }
   assert.equal(relieved.interoception.dryMouthMm, plain.interoception.dryMouthMm);
-  assert.equal(await focus(), 'marked', 'the existing body_state shows subjective relief, not the slow drive');
+  assert.equal(await thirstBand(drinking), 'marked', 'the existing body_state shows subjective relief, not the slow drive');
 
   const rebound = await advance(drinking, 8);
   assert.ok(rebound.interoception.thirst > 95, 'a sip cannot satisfy sustained dehydration');
   assert.equal(rebound.interoception.dryMouthMm, 50, 'residual quick relief does not suppress dry mouth');
-  assert.equal(await focus(), 'strong');
+  assert.equal(await thirstBand(drinking), 'strong');
   assert.deepEqual(Object.keys(drinking.state().actions), ['intake'], 'no automatic intake or new action');
 });
 
@@ -145,7 +155,87 @@ test('equal-dose instant and paced drinks use only each settled slice, including
     if (index === 1) {
       // Save with both nonzero relief and a newly committed 10 mL slice still to be read.
       await paced.gateway.stop();
-      paced = await launchThirst(t, paced.statePath);
+      paced = await launchThirst(t, { statePath: paced.statePath });
     }
+  }
+});
+
+test('body_state prefers only the current committed thirst projection when the producer is removed', async (t) => {
+  const drinking = await launchThirst(t, { parts: {
+    bodyFluid: { waterVolumeMl: 28_400, waterDeficit: 1 },
+    hypothalamusThirst: { thirst: 30 },
+    interoception: { thirst: 100, oralThirstReliefFraction: 0 }, // Pre-stamp save.
+  } });
+  const legacyBand = await thirstBand(drinking);
+
+  const fresh = await advance(drinking);
+  assert.equal(fresh.interoception.oralThirstReliefFraction, 0);
+  assert.equal(fresh.interoception.thirst, 30);
+  assert.ok(fresh.hypothalamusThirst.thirst > 65);
+  assert.equal(await thirstBand(drinking), 'mild', 'a current projection at R=0 still wins over slow thirst');
+
+  enqueue(drinking, { type: 'drink', volumeMl: 200 });
+  const frozen = await advance(drinking, 2);
+  assert.equal(await thirstBand(drinking), 'mild');
+  const projectedAt = drinking.gateway.getState().simulatedSeconds;
+  await drinking.gateway.stop();
+
+  // Keep the actual body and water chain, changing just the manifest that supplied the projection.
+  const rootManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const withoutInteroception = join(drinking.dir, 'without-interoception.json');
+  const relocate = (script) => relative(drinking.dir, resolve(dirname(manifestPath), script));
+  writeFileSync(withoutInteroception, JSON.stringify({
+    ...rootManifest,
+    startupScripts: rootManifest.startupScripts.map(relocate),
+    scripts: rootManifest.scripts
+      .filter((script) => script !== './organs/human-organs/brain/interoception.ts')
+      .map(relocate),
+  }));
+  const restarted = await launchThirst(t, { statePath: drinking.statePath, manifest: withoutInteroception });
+  assert.equal(await thirstBand(restarted), 'mild', 'reboot has not advanced the committed clock yet');
+  await advance(restarted);
+  assert.equal(await thirstBand(restarted), 'strong', 'the projection expires on the very next commit');
+  const later = await advance(restarted, 14);
+  assert.deepEqual(later.interoception, frozen.interoception, 'the removed producer no longer writes');
+  assert.notEqual(later.hypothalamusThirst.thirst, frozen.hypothalamusThirst.thirst, 'slow drive still updates');
+  assert.ok(later.hypothalamusThirst.thirst > 65);
+  assert.equal(await thirstBand(restarted), 'strong',
+    `${projectedAt}s projection (${frozen.interoception.thirst} mm) must not mask slow thirst (${later.hypothalamusThirst.thirst} mm) at ${projectedAt + 900}s`);
+  assert.equal(legacyBand, 'mild', 'a save with numeric relief but no timestamp keeps the old fallback');
+  assert.equal(frozen.interoception.thirstProjectionAtSimulatedSeconds, projectedAt);
+});
+
+test('nonpositive recovery denominators reject Gateway startup with the owning parameter ID', async (t) => {
+  for (const parameterId of [
+    'interoception.thirst.oralReliefHalfDoseMl',
+    'interoception.thirst.oralReliefHalfTimeMin',
+    'interoception.muscleFatigue.halfTimeMin',
+  ]) {
+    for (const value of [0, -1]) {
+      await t.test(`${parameterId}=${value}`, async (t) => {
+        const app = await launchFatigue(t, { parameters: { [parameterId]: value }, expectReadyReject: true });
+        if (app.readyError === null) {
+          const first = await app.tick();
+          const second = await app.tick();
+          const { simulatedSeconds, heartbeat } = app.gateway.getHealth();
+          assert.fail(`ready accepted the save: tick failures=${first.failed}/${second.failed}, ${simulatedSeconds}s; ${heartbeat.lastError ?? 'no error'}`);
+        }
+        assert.equal(app.info, null);
+        assert.ok(app.readyError.message.includes(`Parameter ${parameterId} must be a finite positive number`),
+          app.readyError.message);
+      });
+    }
+  }
+});
+
+test('positive fatigue half-times keep a real activity round finite at both floating-point limits', async (t) => {
+  for (const [halfTimeMin, expected] of [[Number.MIN_VALUE, 0], [Number.MAX_VALUE, 2.1]]) {
+    await t.test(`half-time ${halfTimeMin}`, async (t) => {
+      const app = await launchFatigue(t, {
+        parts: { physicalActivity: { remainingExerciseMin: 2, intensity: 1 } },
+        parameters: { 'interoception.muscleFatigue.halfTimeMin': halfTimeMin },
+      });
+      closeTo((await advance(app)).interoception.muscleFatigueMm, expected);
+    });
   }
 });
