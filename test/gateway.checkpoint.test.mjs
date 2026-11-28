@@ -253,6 +253,15 @@ test('checkpoint preserves valid profile and sparse parameters across restarts a
   );
 });
 
+test('checkpoint validates bodyFatPercent even before loading an organ module', async (t) => {
+  for (const bodyFatPercent of [-0.01, 100.01, '20', true]) {
+    const seed = { ...checkpoint({ profile: { bodyFatPercent } }), active: false };
+    const app = await launch(t, { seed, expectReadyReject: true });
+    assert.match(app.readyError?.message ?? '', /Invalid profile\.bodyFatPercent/, String(bodyFatPercent));
+    assert.deepEqual(app.state(), seed, 'invalid config must not replace the save');
+  }
+});
+
 test('checkpoint preserves valid nsfw and boundSessionId across restarts and rejects invalid ones', async (t) => {
   const seed = {
     ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts: {} }),

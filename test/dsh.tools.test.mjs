@@ -28,6 +28,8 @@ function assertNoDigits(value, label = 'result') {
 async function startBody(t, {
   manifestPath = join(root, 'body-modules.json'),
   parts = {},
+  profile,
+  parameters,
   defaultNsfw = false,
   requireBinding = false,
   active,
@@ -37,7 +39,8 @@ async function startBody(t, {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-tools-'));
   const statePath = join(dir, 'body-state.json');
   const seed = {
-    ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts }),
+    ...checkpoint({ wallTimeMs: 0, simulatedSeconds: 0, parts, profile }),
+    ...(parameters !== undefined ? { parameters } : {}),
     ...(active !== undefined ? { active } : {}),
     ...(nsfw !== undefined ? { nsfw } : {}),
     ...(boundSessionId !== undefined ? { boundSessionId } : {}),
@@ -397,13 +400,25 @@ test('body_act is idempotent for the same session and callId', async (t) => {
 });
 
 test('gateway.getState returns all raw numeric parts while body_state returns zero-digit qualitative feelings', async (t) => {
-  const { gateway, tools } = await startBody(t);
+  const { gateway, tools } = await startBody(t, {
+    profile: { bodyFatPercent: 20 },
+    parameters: {
+      'breastComposition.bilateralTissueVolumeMl': 600,
+      'breastComposition.fibroglandularVolumePct': 60,
+    },
+  });
   await tools.body_act.execute({ type: 'drink', volumeMl: 250 }, fakeExec());
   await gateway.tick();
 
   const all = gateway.getState();
   assert.equal(all.simulatedSeconds, 60);
-  assert.equal(Object.keys(all.parts).length, 45);
+  assert.equal(Object.keys(all.parts).length, 47);
+  assert.deepEqual(all.parts.bodyComposition, {
+    weightKg: 75, bodyFatPercent: 20, fatMassKg: 15, fatFreeMassKg: 60,
+  });
+  assert.deepEqual(all.parts.breastComposition, {
+    bilateralTissueVolumeMl: 600, fibroglandularVolumePct: 60, fibroglandularVolumeMl: 360, fatVolumeMl: 240,
+  });
   for (const part of [
     'esophagus',
     'stomach',

@@ -201,7 +201,7 @@ test('the female manifest loads sexualResponse and releases on orgasm', async (t
     parts: { sexualResponse: arousalState(80) },
   });
 
-  assert.equal(Object.keys(gateway.getState().parts).length, 48);
+  assert.equal(Object.keys(gateway.getState().parts).length, 50);
   assert.ok(gateway.getState().parts.reward, 'reward must be loaded');
   assert.ok(gateway.getState().parts.liver, 'liver must be loaded');
   assert.ok(gateway.getState().parts.muscleHead, 'muscleHead must be loaded');

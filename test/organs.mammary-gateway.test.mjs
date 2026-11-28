@@ -265,7 +265,7 @@ test('a default-oxytocin expression survives restart and ejects once when let-do
   assert.equal(gateway.getState().parts.mammaryGlands.ejectedMilkMl, 0, 'stimulation continuation cannot eject twice');
 });
 
-test('the root manifest has no mammary part and still boots with the three-sink glucose entry', async (t) => {
+test('the root manifest has no lactation part and still boots with the three-sink glucose entry', async (t) => {
   silence(t);
   const dir = mkdtempSync(join(tmpdir(), 'dsh-mammary-root-'));
   const statePath = writeState(dir);
@@ -278,6 +278,7 @@ test('the root manifest has no mammary part and still boots with the three-sink 
 
   const parts = gateway.getState().parts;
   assert.equal(Object.keys(parts).length, JSON.parse(readFileSync(rootManifestPath, 'utf8')).scripts.length);
+  assert.ok(parts.breastComposition, 'tissue composition is available without lactation');
   assert.equal(Object.hasOwn(parts, 'mammaryGlands'), false);
   assert.ok(parts.reward);
   assert.equal(parts.pituitary.prolactinNgMl, 8);
@@ -303,7 +304,7 @@ test('a female manifest without mammaryGlands fails at startup on the undeclared
     ...femaleManifest,
     startupScripts: femaleManifest.startupScripts.map((path) => relative(dir, join(root, path))),
     scripts: femaleManifest.scripts
-      .filter((path) => !path.includes('/mammary-glands/'))
+      .filter((path) => !path.endsWith('/mammary-glands/milk.ts'))
       .map((path) => relative(dir, join(root, path))),
   }));
   const statePath = writeState(dir);

@@ -49,7 +49,7 @@ test('cola replay records energy intake and the design interoception readout', (
   );
 });
 
-test('manifest replay runs the full 45-script water scenario without fatal operation errors', () => {
+test('manifest replay runs the full 47-script water scenario without fatal operation errors', () => {
   const output = execFileSync(
     process.execPath,
     ['tools/replay.mjs', '--manifest', 'body-modules.json', 'scenarios/m1-water-240.json'],
@@ -58,7 +58,7 @@ test('manifest replay runs the full 45-script water scenario without fatal opera
   const result = JSON.parse(output);
   assert.equal(result.scenario, 'm1-water-240');
   assert.equal(result.actionLagRounds, 1);
-  assert.deepEqual(result.manifest, { path: 'body-modules.json', scriptCount: 45 });
+  assert.deepEqual(result.manifest, { path: 'body-modules.json', scriptCount: 47 });
 
   const start = result.observations.find((entry) => entry.simMin === 0);
   const atThirty = result.observations.find((entry) => entry.simMin === 30);
@@ -84,7 +84,7 @@ test('manifest replay defaults --manifest with no path to body-modules.json on t
   const result = JSON.parse(output);
   assert.equal(result.scenario, 'p1-cola-330');
   assert.equal(result.actionLagRounds, 1);
-  assert.deepEqual(result.manifest, { path: 'body-modules.json', scriptCount: 45 });
+  assert.deepEqual(result.manifest, { path: 'body-modules.json', scriptCount: 47 });
 
   const start = result.observations.find((entry) => entry.simMin === 0);
   const atNinety = result.observations.find((entry) => entry.simMin === 90);
