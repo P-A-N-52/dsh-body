@@ -226,7 +226,7 @@ test('apply starts dormant with requireBinding, activates via body_bind, deliver
   assert.equal(registeredTools.size, 0);
 });
 
-test('apply integrates optional systemPrompt, unbinds stale boundSessionId on boot, and auto-hibernates on agent/disposed', async (t) => {
+test('apply integrates optional systemPrompt, keeps a stale boundSessionId across boot, and auto-hibernates on agent/disposed', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-index-prompt-'));
   const home = join(dir, 'profile');
   const statePath = join(dir, 'state', 'body-state.json');
@@ -272,7 +272,10 @@ test('apply integrates optional systemPrompt, unbinds stale boundSessionId on bo
 
   const feelingsContext = promptMock.contexts.get('dsh-body:feelings').text;
 
-  // Stale session id was unbound on boot via agents.get('stale-session').
+  // 重启保活：绑定会话暂不存活（agents.get 取不到）时启动保留绑定，存档不清空。
+  assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).boundSessionId, 'stale-session');
+
+  // 对其他会话，陈旧持有的身体按未绑定且休眠呈现，且不泄漏持有者 ID。
   const initialStatus = await registeredTools.get('body_bind').execute(
     { action: 'status' },
     { agent: { session: { id: 'session-a' } } },
@@ -288,7 +291,7 @@ test('apply integrates optional systemPrompt, unbinds stale boundSessionId on bo
   );
   assert.equal(staleAct.statusCode, 409);
 
-  // Bind to session-a and check session-scoped feelings context.
+  // session-a 通过 body_bind 接管陈旧持有的身体：死持有者先解绑，再绑定新会话。
   const bound = await registeredTools.get('body_bind').execute(
     { action: 'bind' },
     { agent: { session: { id: 'session-a' } } },
@@ -630,4 +633,97 @@ test('apply records agent/inbox/inserted notification read receipt into logs/not
   await disposeAll();
   disposed = true;
   assert.equal(listeners.get('agent/inbox/inserted').size, 0);
+});
+
+test('apply keeps a dead-holder binding alive at boot and lets a live session take over via body_bind, while a live holder still gets 409', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-index-keepalive-'));
+  const home = join(dir, 'profile');
+  const statePath = join(dir, 'state', 'body-state.json');
+  const modulesDir = join(dir, 'modules');
+  mkdirSync(modulesDir, { recursive: true });
+  writeFileSync(join(dir, 'package.json'), '{"type":"module"}\n');
+  writeFileSync(join(modulesDir, 'counter.mjs'), counterSource());
+  const manifestPath = join(dir, 'body-modules.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    startupScripts: [],
+    scripts: ['./modules/counter.mjs'],
+    catchUpMinutes: 60,
+    scriptTimeoutMs: 2000,
+  }));
+
+  // 存档停在 35 分钟前且仍绑定 session-gone（不在 agents 中）：启动保留绑定并补算，证明身体未休眠。
+  mkdirSync(join(dir, 'state'), { recursive: true });
+  writeFileSync(statePath, JSON.stringify({
+    ...checkpoint({ wallTimeMs: Date.now() - 35 * 60_000 }),
+    boundSessionId: 'session-gone',
+  }));
+
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  const agents = new Map([
+    ['session-new', { async inject() {}, async followup() {} }],
+    ['session-new2', { async inject() {}, async followup() {} }],
+  ]);
+  const { ctx, registeredTools, disposeAll } = makeContext(home, agents);
+  t.after(async () => {
+    await disposeAll();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  await apply(ctx, { manifestPath, statePath, port: 0 });
+
+  // ① 绑定保留：session-gone 不存活也解绑存档绑定；补算照常运行（身体不休眠）。
+  const savedAtBoot = JSON.parse(readFileSync(statePath, 'utf8'));
+  assert.equal(savedAtBoot.boundSessionId, 'session-gone');
+  assert.ok(savedAtBoot.snapshot.simulatedSeconds >= 2000);
+
+  // 其他会话视角：陈旧持有的身体按未绑定且休眠呈现，不泄漏持有者 ID。
+  const staleStatus = await registeredTools.get('body_bind').execute(
+    { action: 'status' },
+    { agent: { session: { id: 'session-new' } } },
+  );
+  assert.equal(staleStatus.ok, true);
+  assert.equal(staleStatus.bound, false);
+  assert.equal(staleStatus.boundSessionId, null);
+  assert.equal(staleStatus.dormant, true);
+  assert.equal(JSON.stringify(staleStatus).includes('session-gone'), false);
+
+  const staleState = await registeredTools.get('body_state').execute(
+    { part: 'counter' },
+    { agent: { session: { id: 'session-new' } } },
+  );
+  assert.equal(staleState.status, 'dormant');
+  assert.deepEqual(staleState.feelings, []);
+
+  const staleAct = await registeredTools.get('body_act').execute(
+    { type: 'eat', volumeMl: 100, energyKcal: 50, mealKind: 'liquid' },
+    { agent: { session: { id: 'session-new' } }, callId: 'call-stale-act' },
+  );
+  assert.equal(staleAct.ok, false);
+  assert.equal(staleAct.statusCode, 409);
+
+  // ④ 死持有者接管：存活会话通过 body_bind 接管成功。
+  const takeover = await registeredTools.get('body_bind').execute(
+    { action: 'bind' },
+    { agent: { session: { id: 'session-new' } } },
+  );
+  assert.equal(takeover.ok, true);
+  assert.equal(takeover.bound, true);
+  assert.equal(takeover.boundSessionId, 'session-new');
+  assert.equal(takeover.dormant, false);
+  assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).boundSessionId, 'session-new');
+
+  // ⑤ 活持有者：其他会话仍被 409 拒绝，回执不泄漏持有者信息。
+  const hijack = await registeredTools.get('body_bind').execute(
+    { action: 'bind' },
+    { agent: { session: { id: 'session-new2' } } },
+  );
+  assert.equal(hijack.ok, false);
+  assert.equal(hijack.boundSessionId, null);
+  assert.equal(hijack.feeling, undefined);
+  assert.equal(hijack.error.includes('session-new'), false);
+  assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).boundSessionId, 'session-new');
+
+  await disposeAll();
 });

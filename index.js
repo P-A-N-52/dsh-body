@@ -212,18 +212,72 @@ export async function apply(ctx, config = {}) {
   for (const entry of readyEntries) {
     const initialBoundId = entry.gateway.getBoundSessionId?.();
     if (!initialBoundId) continue;
-    const isDead = typeof agents?.get === 'function' && !agents.get(initialBoundId);
     const mappedTarget = gateway.resolveSessionTarget?.(initialBoundId);
     const conflictsExplicitMapping = mappedTarget?.explicitlyMapped && mappedTarget.id !== entry.id;
     const duplicateOwner = claimedSessions.has(initialBoundId);
-    if (isDead || conflictsExplicitMapping || duplicateOwner) {
+    if (conflictsExplicitMapping || duplicateOwner) {
       await entry.gateway.unbindSession(initialBoundId);
     } else {
       claimedSessions.set(initialBoundId, entry.id);
     }
   }
 
-  registerBodyTools(ctx, gateway, { translator });
+  // 重启保活：启动不因绑定会话暂不存活而解绑；只有持有者会话确已死亡（agents.get 取不到）时，
+  // 才允许新会话在绑定时先解绑旧持有者再接管。
+  function isSessionDead(sessionId) {
+    return typeof agents?.get === 'function' && !agents.get(sessionId);
+  }
+
+  async function bindSessionWithTakeover(scoped, sessionId) {
+    const holder = scoped.getBoundSessionId?.();
+    if (typeof holder === 'string' && holder && holder !== sessionId && isSessionDead(holder)) {
+      await scoped.unbindSession?.(holder);
+    }
+    return scoped.bindSession(sessionId);
+  }
+
+  const toolScopedGateways = new WeakMap();
+  function resolveToolScopedGateway(sessionId) {
+    const scoped = gateway.gatewayForSession(sessionId);
+    if (!scoped || typeof scoped.bindSession !== 'function') return scoped;
+    let bySession = toolScopedGateways.get(scoped);
+    if (!bySession) {
+      bySession = new Map();
+      toolScopedGateways.set(scoped, bySession);
+    }
+    let wrapper = bySession.get(sessionId);
+    if (!wrapper) {
+      const holderIsStale = () => {
+        const holder = scoped.getBoundSessionId?.();
+        return typeof holder === 'string' && holder !== '' && holder !== sessionId && isSessionDead(holder);
+      };
+      wrapper = Object.create(scoped);
+      wrapper.getBoundSessionId = () => (holderIsStale() ? null : scoped.getBoundSessionId?.());
+      wrapper.getHealth = () => {
+        const health = scoped.getHealth?.();
+        if (!holderIsStale() || !health || typeof health !== 'object') return health;
+        return { ...health, boundSessionId: null };
+      };
+      wrapper.isDormant = () => holderIsStale() || Boolean(scoped.isDormant?.());
+      wrapper.bindSession = (target) => bindSessionWithTakeover(scoped, target);
+      bySession.set(sessionId, wrapper);
+    }
+    return wrapper;
+  }
+
+  const toolGateway = {
+    ...gateway,
+    gatewayForSession: resolveToolScopedGateway,
+    bindSession: (sessionId) => {
+      const scoped = gateway.gatewayForSession(sessionId);
+      if (!scoped || typeof scoped.bindSession !== 'function') {
+        return gateway.bindSession(sessionId);
+      }
+      return bindSessionWithTakeover(scoped, sessionId);
+    },
+  };
+
+  registerBodyTools(ctx, toolGateway, { translator });
 
   function findBoundGateway(sessionId) {
     if (typeof sessionId !== 'string' || !sessionId) return null;
