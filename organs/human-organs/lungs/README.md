@@ -128,7 +128,9 @@ sleepFloorFactor     = sleeping && sympatheticMm < sleepSympatheticBypassThresho
                          ? (deep ? deepSleepFloorFactor : lightSleepFloorFactor) : 1
 minVentilationMlMin  = restingVentilationMlMin × sleepFloorFactor
 baseThermalThreshC   = max(B, finiteOr(thermoregulation.setpointC, B))
-thermalThresholdC    = exercising ? baseThermalThreshC : baseThermalThreshC + restThermalThresholdOffsetC
+thermalThresholdC    = (exercising ? baseThermalThreshC : baseThermalThreshC + restThermalThresholdOffsetC)
+                       + feverOffsetC
+feverOffsetC         = max(0, 轮初已采用的 thermoregulation.feverSetpointOffsetC)；无新发布为 0
 effectivePantingGain = exercising ? pantingGain × exercisePantingFactor : pantingGain
 pantingMlMin         = thermoregulation 未加载 ? 0 : effectivePantingGain × max(0, C − thermalThresholdC)
 sympatheticVentMlMin = exercising ? 0 : sympatheticVentilationGainMlPerMinPerMm × sympatheticMm
@@ -147,7 +149,7 @@ alveolarO2CapacityMlMin = maxVentilationMlMin × inspiredO2Fraction / deadSpaceF
 
 - 静息清醒（`D = 250 mL/min`）时 `metabolicVentMlMin ≈ 6000.03 mL/min`，因 `+1 mL/min` 抗抖死区保持 `excessVentMlMin = 0`、`tidalVolumeMl = 500 mL`、`respiratoryRatePerMin = 12 /min`。
 - **Hey Plot 先扩潮气量后提频（`SRC-HEY-1966` / `SRC-NEDER-2003` / `SRC-LOE-2014`）：** 中轻度运动（如 `intensity = 0.35` 对应 `VE ≈ 14400 mL/min`）优先把 `VT` 从 `500 mL` 招募到约 `891 mL`，使 `RR` 仅温和升至 `~16 /min`、避免轻活动误报“大口喘气”；更高负荷才平滑趋近 `maxRatePerMin`。
-- **静息与运动分离热致阈值（`SRC-TSUJI-2012`）：** 先取 `max(37 °C, 轮初 thermoregulation.setpointC)`；静息再加 `restThermalThresholdOffsetC = 0.8 °C`，运动不加、但把热喘增益乘 `exercisePantingFactor = 0.35`。算完上述旧阈值后再加轮初由本次运行采用的 `feverSetpointOffsetC`（无新发布时为 0）。它只平移热喘阈值，不改变代谢或交感通气底盘，也不把蒸发热损混入呼吸失水。
+- **静息与运动分离热致阈值（`SRC-TSUJI-2012`）：** 先取 `max(B, 轮初 thermoregulation.setpointC)`（`B` 为本体静态基线，缺省 37 °C）；静息再加 `restThermalThresholdOffsetC = 0.8 °C`，运动不加、但把热喘增益乘 `exercisePantingFactor = 0.35`。算完上述旧阈值后再加轮初由本次运行采用的 `feverSetpointOffsetC`（无新发布时为 0）。它只平移热喘阈值，不改变代谢或交感通气底盘，也不把蒸发热损混入呼吸失水。
 - 容积/通气类参数按 `scaleByBodyWeight` 随体重缩放；`maxTidalVolumeMl = 2100 mL`、`tidalScaleVentilationMlMin = 30000 mL/min` 与 `sympatheticTidalCompressionFactor = 0.25` 均标为 `design` 工程校准/占位。
 
 同目录参数（`owner: lungsVentilation`，共 17 项 `design`）：

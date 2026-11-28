@@ -25,6 +25,10 @@ const optionalEntries = {
 const reserved = {
   'heart.catecholamineGain': '保留：读取并要求非空，但丢弃该值，不参与心率计算。',
   'ovaries.lutealLengthDays': '保留：读取并要求非空，但不参与周期或分期；不能独立调黄体期。',
+  'thermoregulation.normalCoreMinC': '经清单预设或存档覆盖进入 `io.getThermalProfile()`；缺省取本体基线。',
+  'thermoregulation.normalCoreMaxC': '经清单预设或存档覆盖进入 `io.getThermalProfile()`；缺省取本体基线。',
+  'thermoregulation.ambientComfortMinC': '经清单预设或存档覆盖进入 `io.getThermalProfile()`；与上界成对生效，缺省未知。',
+  'thermoregulation.ambientComfortMaxC': '经清单预设或存档覆盖进入 `io.getThermalProfile()`；与下界成对生效，缺省未知。',
 };
 const rowNotes = {
   'blood.referenceMaxCardiacOutputMlMin': '播种供氧上限；正常优先使用 `heart.maxCardiacOutputMlMin`。仅心脏未加载或该字段缺失时回退，字段存在但非法则报错；不设定心脏输出。',
@@ -140,6 +144,9 @@ function scanSource(file, parameters, ids) {
     record(requiredId ?? indexedId, required ?? indexed);
   }
   for (const [, bound, name] of text.matchAll(/\b(\w+)\s*\[\s*(\w+)\s*\]/g)) {
+    if (consts.has(name)) record(consts.get(name), bound);
+  }
+  for (const [, bound, name] of text.matchAll(/\brequireParameter\(\s*(\w+)\s*,\s*(\w+)\s*\)/g)) {
     if (consts.has(name)) record(consts.get(name), bound);
   }
   for (const [, bound, template] of text.matchAll(/\brequireParameter\(\s*(\w+)\s*,\s*`([^`]+)`\s*\)/g)) {

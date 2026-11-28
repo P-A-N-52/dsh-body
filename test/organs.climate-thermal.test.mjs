@@ -370,7 +370,10 @@ test('fever shifts heat and rest panting thresholds without changing the baselin
   assert.equal(b.thermoregulation.feverSetpointOffsetC, 0, 'the pulse has expired for thermoregulation');
   assert.ok(a.interoception.heatMm > 0 && a.lungsVentilation.ventilationMlMin > 6001);
   assert.ok(a.skin.sweatRequestMl > 0);
-  assert.equal(b.interoception.heatMm, 0);
+  // 每体冷热阈（M37）：热阈 = 本体基线 36.7 + 已采用偏移 1 = 37.7；轮初核心仍高于它，
+  // 低基线身体的残余偏热按原动力学保留读数，不再被固定 37 °C 参考遮蔽。
+  close(b.interoception.heatMm, Math.min(100, 50 * (adopted.thermoregulation.coreTemperatureC - 37.7)),
+    'the adopted offset shifts the per-body heat threshold for one downstream round');
   close(b.lungsVentilation.ventilationMlMin, 6000.034285910205, 'metabolic ventilation only');
   assert.equal(b.skin.sweatRequestMl, 0);
 });

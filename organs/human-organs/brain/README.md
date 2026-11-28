@@ -293,6 +293,10 @@
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
 | `thermoregulation.setpointC` | `37` | `°C` | `design` | 无 | — |
+| `thermoregulation.normalCoreMinC` | `null` | `°C` | `unset` | 无 | 经清单预设或存档覆盖进入 `io.getThermalProfile()`；缺省取本体基线。未设值，不是 0。 |
+| `thermoregulation.normalCoreMaxC` | `null` | `°C` | `unset` | 无 | 经清单预设或存档覆盖进入 `io.getThermalProfile()`；缺省取本体基线。未设值，不是 0。 |
+| `thermoregulation.ambientComfortMinC` | `null` | `°C` | `unset` | 无 | 经清单预设或存档覆盖进入 `io.getThermalProfile()`；与上界成对生效，缺省未知。未设值，不是 0。 |
+| `thermoregulation.ambientComfortMaxC` | `null` | `°C` | `unset` | 无 | 经清单预设或存档覆盖进入 `io.getThermalProfile()`；与下界成对生效，缺省未知。未设值，不是 0。 |
 | `thermoregulation.heatCapacityKcalPerC` | `60` | `kcal/°C` | `design` | `weightKg / 75` | — |
 | `thermoregulation.metabolicFactor` | `0.005` | `kcal/mL` | `design` | 无 | — |
 | `thermoregulation.shiveringGain` | `2` | `kcal/(min·°C)` | `design` | `weightKg / 75` | — |

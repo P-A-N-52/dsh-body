@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { heartbeat as endocrine } from '../organs/human-organs/brain/hypothalamus-endocrine.ts';
 import { sweatRequestMl } from '../organs/human-organs/skin/sweat.ts';
@@ -29,4 +31,21 @@ test('TRH uses the static reference as a fallback for a missing dynamic target',
   assert.equal(trh({ coreTemperatureC: 32 }), 1);
   assert.equal(trh({ coreTemperatureC: 31.4, setpointC: 31.5 }), 1);
   assert.ok(trh({ coreTemperatureC: 31.1, setpointC: 31.5 }) > 1);
+});
+
+test('the brain README catalog documents the thermal reference ids as consumed', () => {
+  const readme = readFileSync(new URL('../organs/human-organs/brain/README.md', import.meta.url), 'utf8');
+  for (const id of [
+    'thermoregulation.normalCoreMinC', 'thermoregulation.normalCoreMaxC',
+    'thermoregulation.ambientComfortMinC', 'thermoregulation.ambientComfortMaxC',
+  ]) {
+    const row = readme.split('\n').find((line) => line.includes(`\`${id}\``) && line.startsWith('| `'));
+    assert.ok(row, `${id} must have a catalog row`);
+    assert.match(row, /io\.getThermalProfile/u, `${id} row must name the consumption channel`);
+    assert.doesNotMatch(row, /只登记/u, `${id} row must not be marked unread`);
+  }
+  const localRow = readme.split('\n')
+    .find((line) => line.includes('`interoception.thermoregulation.setpointC`') && line.startsWith('| `'));
+  assert.ok(localRow, 'local sensation setpoint must have a catalog row');
+  assert.doesNotMatch(localRow, /只登记/u, 'local sensation setpoint row must not be marked unread');
 });
