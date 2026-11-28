@@ -8,6 +8,48 @@
 
 [膳食脂质预设](../../presets/human-lipid/README.md)另加载独立部位 [`pancreasExocrine`](exocrine.md)，由小肠脂质负荷产生有效脂肪酶信号，其覆盖 ID、单位和参数文件默认值见外分泌说明。不会替换本页的 `pancreasEndocrine`；预设内脂肪库另消费 `insulinPmolL` 调节脂质储存与净动员。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "pancreasEndocrine.referenceGlucoseMgDl": 92 } }
+```
+
+### exocrine.parameters.json
+
+参数文件：[`exocrine.parameters.json`](exocrine.parameters.json)。入口及清单：[`exocrine.ts`](exocrine.ts)（[可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`exocrine.ts`](exocrine.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `pancreasExocrine.maxLipaseActivityU` | `3` | `LAU` | `design` | 无 | — |
+| `pancreasExocrine.mealHalfG` | `1` | `g` | `design` | 无 | — |
+
+### insulin.parameters.json
+
+参数文件：[`insulin.parameters.json`](insulin.parameters.json)。入口及清单：[`insulin.ts`](insulin.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`insulin.ts`](insulin.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `pancreasEndocrine.referenceGlucoseMgDl` | `90` | `mg/dL` | `design` | 无 | — |
+| `pancreasEndocrine.insulin.basalPmolL` | `60` | `pmol/L` | `design` | 无 | — |
+| `pancreasEndocrine.insulin.glucoseGainPmolLPerMinPerMgDl` | `0.085` | `pmol/(L·min·mg/dL)` | `design` | 无 | — |
+| `pancreasEndocrine.insulin.clearanceKmPmolL` | `3890` | `pmol/L` | `design` | 无 | — |
+| `pancreasEndocrine.insulin.clearanceVmaxPmolLPerMin` | `274` | `pmol/(L·min)` | `design` | 无 | — |
+| `pancreasEndocrine.insulin.maxPmolL` | `900` | `pmol/L` | `design` | 无 | — |
+| `pancreasEndocrine.glucagon.hypoglycemiaThresholdMgDl` | `68` | `mg/dL` | `design` | 无 | — |
+| `pancreasEndocrine.glucagon.glucoseGainPerMgDl` | `0.02` | `1/(mg/dL)` | `design` | 无 | — |
+| `pancreasEndocrine.glucagon.counterregGainPerMgDl` | `0.06` | `1/(mg/dL)` | `design` | 无 | — |
+| `pancreasEndocrine.glucagon.responseHalfTimeMin` | `10` | `min` | `design` | 无 | — |
+| `pancreasEndocrine.glucagon.maxRelative` | `5` | `1` | `design` | 无 | — |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

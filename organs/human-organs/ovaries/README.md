@@ -6,6 +6,37 @@
 
 **状态口径。** 当前实现：脚本与参数在 `organs/human-organs/ovaries/`，只随独立女性清单 `body-modules.female.json` 加载（根清单 43 部位 / 39 份唯一参数文件；女性清单 46 / 42；男性清单 45 / 41）。`cycleLengthDays = 29.3`、`follicularLengthDays = 16.9`、`lutealLengthDays = 12.4` 标 `prior`（`SRC-BULL-2019`）；Stricker 日中位数轨迹来自 `stricker-2006.md`，`hyperprolactinemiaThresholdNgMl = 35 ng/mL`、`suppressionOnsetDays = 7 d` 与 `suppressionHalfTimeDays = 5 d` 标 `design`（参考 `SRC-HOSKOVA-2022` / `SRC-PAGEWILSON-2007`）。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "ovaries.cycleLengthDays": 30 } }
+```
+
+### menstrual-cycle.parameters.json
+
+参数文件：[`menstrual-cycle.parameters.json`](menstrual-cycle.parameters.json)。入口及清单：[`menstrual-cycle.ts`](menstrual-cycle.ts)（[女性](../../../body-modules.female.json)）。读取脚本：[`menstrual-cycle.ts`](menstrual-cycle.ts)。
+
+慢性高 PRL 与哺乳是不同抑制输入；`nsfw: false` 关哺乳支路，不关闭普通周期或慢性高 PRL 支路。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `ovaries.cycleLengthDays` | `29.3` | `d` | `prior` | 无 | — |
+| `ovaries.follicularLengthDays` | `16.9` | `d` | `prior` | 无 | — |
+| `ovaries.lutealLengthDays` | `12.4` | `d` | `prior` | 无 | 保留：读取并要求非空，但不参与周期或分期；不能独立调黄体期。 |
+| `ovaries.startCycleDay` | `5` | `d` | `design` | 无 | 补初值，不重置已有的周期日。 |
+| `ovaries.hyperprolactinemiaThresholdNgMl` | `35` | `ng/mL` | `design` | 无 | — |
+| `ovaries.suppressionOnsetDays` | `7` | `d` | `design` | 无 | — |
+| `ovaries.suppressionHalfTimeDays` | `5` | `d` | `design` | 无 | — |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本、字段与单位
 
 | 字段 | 单位 | 含义 |

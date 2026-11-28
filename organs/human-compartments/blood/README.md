@@ -6,6 +6,48 @@
 
 实现状态：脚本、参数 [`blood.parameters.json`](blood.parameters.json) 与模块测试 [`test/organs.blood.test.mjs`](../../../test/organs.blood.test.mjs) 已落地；当前根清单为 43 部位、39 份唯一参数文件，女性清单 46 部位、42 份，男性清单 45 部位、41 份。硬闭包为根与男性 15 部位、女性 17 部位，本切片不新增 `transfer`。真实 Gateway 集成测试见 [`test/organs.circulation-gateway.test.mjs`](../../../test/organs.circulation-gateway.test.mjs)。全部参数是 `design`、`source: null`，未做实测血容量/血压/心输出/氧输送/GFR、独立人体数据、真实 DSH 会话或临床验证。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "blood.referenceBloodVolumeMl": 5100 } }
+```
+
+### blood.parameters.json
+
+参数文件：[`blood.parameters.json`](blood.parameters.json)。入口及清单：[`blood.ts`](blood.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`blood.ts`](blood.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `blood.referenceBloodVolumeMl` | `5000` | `mL` | `design` | `weightKg / 75` | — |
+| `blood.baselineSystolicMmHg` | `120` | `mmHg` | `design` | 无 | — |
+| `blood.baselineDiastolicMmHg` | `80` | `mmHg` | `design` | 无 | — |
+| `blood.baselineGfrMlMin` | `100` | `mL/min` | `design` | `weightKg / 75` | — |
+| `blood.oxygenContentPerPercentMlPerL` | `2` | `mL/L/%` | `design` | 无 | — |
+| `blood.sympatheticSystolicGain` | `0.002` | `1/mm` | `design` | 无 | — |
+| `blood.sympatheticDiastolicGain` | `0.001` | `1/mm` | `design` | 无 | — |
+| `blood.referenceMaxCardiacOutputMlMin` | `16380` | `mL/min` | `design` | `weightKg / 75` | 播种供氧上限；正常优先使用 `heart.maxCardiacOutputMlMin`。仅心脏未加载或该字段缺失时回退，字段存在但非法则报错；不设定心脏输出。 |
+
+### water.parameters.json（共享）
+
+参数文件：[`water.parameters.json`](../body-water/water.parameters.json)。入口及清单：[`blood.ts`](blood.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`blood.ts`](blood.ts)。
+
+普通与女性的入口使用同一 core 和同一份参数；女性清单追加月经与乳汁水出口。
+
+直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `bodyFluid.referenceVolumeMl` | `30000` | `mL` | `design` | `weightKg / 75` | 含直接覆盖读取。 |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

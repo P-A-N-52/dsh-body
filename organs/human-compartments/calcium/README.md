@@ -6,6 +6,38 @@
 
 **实现与挂载状态：** 脚本、参数、单元测试与真实 Gateway 集成测试（[`test/organs.parathyroid-gateway.test.mjs`](../../../test/organs.parathyroid-gateway.test.mjs)）已实现（包含 `* 1000` 单位修正、骨库满容截断 `depositG = min(rawDepositG, max(0, boneCapacityG - prevBoneStoreG))` 以保证钙质量守恒，以及对纯物理 `parathyroid.pthPgMl` 的接入），并**已正式挂载进三份清单**（[`body-modules.json`](../../../body-modules.json) 43 部位 / 39 份唯一参数文件、[`body-modules.female.json`](../../../body-modules.female.json) 46 / 42 与 [`body-modules.male.json`](../../../body-modules.male.json) 45 / 41）。八项参数全部 `design`、`source: null`。本文只描述离线模块与契约，未做真实 DSH 会话、血钙实测或临床验证。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "calcium.referencePthPgMl": 32 } }
+```
+
+有有效的甲状旁腺 PTH 输入时，此示例可改变已有存档后续的钙平衡计算，不重置血钙或骨钙库。
+
+### calcium.parameters.json
+
+参数文件：[`calcium.parameters.json`](calcium.parameters.json)。入口及清单：[`calcium.ts`](calcium.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`calcium.ts`](calcium.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `calcium.referenceMgDl` | `9.5` | `mg/dL` | `design` | 无 | 血钙种子，只用于新建或 `mgDl` 缺失/非有限的回退；不覆盖已有有效值，不是运行设定点。 |
+| `calcium.boneStoreInitialG` | `100` | `g` | `design` | 无 | 骨钙库种子，只用于新建或 `boneStoreG` 缺失/非有限的回退；不覆盖已有有效量。 |
+| `calcium.boneCapacityG` | `200` | `g` | `design` | 无 | — |
+| `calcium.boneReleaseRateGPerMin` | `0.0004` | `g/min` | `design` | 无 | — |
+| `calcium.boneDepositRateGPerMin` | `0.0004` | `g/min` | `design` | 无 | — |
+| `calcium.calciumExcretionPerMlG` | `0.000001` | `g/mL` | `design` | 无 | — |
+| `calcium.distributionVolumeDl` | `140` | `dL` | `design` | 无 | — |
+| `calcium.referencePthPgMl` | `30` | `pg/mL` | `design` | 无 | 有有效 `parathyroid.pthPgMl` 时作比例分母；未加载甲状旁腺时用相对基线 1，此键不参与该回退。 |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

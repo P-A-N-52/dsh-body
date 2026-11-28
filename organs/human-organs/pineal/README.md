@@ -6,6 +6,38 @@
 
 实现状态：脚本、参数与模块契约测试已落地；根清单为 43 部位、39 份唯一参数文件，女性清单为 46 部位、42 份，男性清单为 45 部位、41 份；本切片不新增 `transfer`，硬闭包为根/男性 15 / 女性 17 个部位。10 项参数中 `pineal.responseHalfTimeMin = 39.4 min`（参考 `SRC-DIJK-1995` 清醒光照/遮蔽后褪黑素变化速率尺度）与 `pineal.photicHalfMaxLux = 100 lx`（`SRC-ZEITZER-2000` 方向锚点）均保留 `design` 口径；无历史（单元测试隔离首轮）时直接取当前目标，存在 `prev.melatoninRelative` 时无论是否加载 `sleep` 都按 `39.4 min` 半衰期一阶平滑趋近目标。本文只描述离线模型与契约，未做真实 DSH 会话、褪黑素实测或睡眠验证。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "pineal.melatoninBaseRelative": 1.1 } }
+```
+
+### melatonin.parameters.json
+
+参数文件：[`melatonin.parameters.json`](melatonin.parameters.json)。入口及清单：[`melatonin.ts`](melatonin.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`melatonin.ts`](melatonin.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `pineal.melatoninBaseRelative` | `1` | `1` | `design` | 无 | — |
+| `pineal.melatoninAmplitudeRelative` | `0.8` | `1` | `design` | 无 | — |
+| `pineal.melatoninPeakHour` | `2` | `h` | `design` | 无 | — |
+| `pineal.melatoninPeriodHours` | `24` | `h` | `design` | 无 | — |
+| `pineal.phaseShiftHours` | `0` | `h` | `design` | 无 | — |
+| `pineal.photicHalfMaxLux` | `100` | `lx` | `design` | 无 | — |
+| `pineal.awakeNightRoomLux` | `120` | `lx` | `design` | 无 | — |
+| `pineal.daylightPeakLux` | `1000` | `lx` | `design` | 无 | — |
+| `pineal.eyelidTransmittance` | `0.05` | `1` | `design` | 无 | — |
+| `pineal.responseHalfTimeMin` | `39.4` | `min` | `design` | 无 | — |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

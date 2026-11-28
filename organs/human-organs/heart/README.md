@@ -6,6 +6,50 @@
 
 实现状态：脚本、参数 [`heart.parameters.json`](heart.parameters.json) 与模块测试 [`test/organs.heart.test.mjs`](../../../test/organs.heart.test.mjs) 已落地；当前根清单为 43 部位、39 份唯一参数文件，女性清单 46 部位、42 份，男性清单 45 部位、41 份。硬闭包为根与男性 15 部位、女性 17 部位，本切片不新增 `transfer`。真实 Gateway 集成测试见 [`test/organs.circulation-gateway.test.mjs`](../../../test/organs.circulation-gateway.test.mjs)。参数均标 `design`（睡眠分期底盘借 `SRC-SOMERS-1993` 方向），未做实测心率/搏出量/心输出或临床验证。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "heart.restingHeartRatePerMin": 72 } }
+```
+
+### heart.parameters.json
+
+参数文件：[`heart.parameters.json`](heart.parameters.json)。入口及清单：[`heart.ts`](heart.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`heart.ts`](heart.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `heart.restingHeartRatePerMin` | `70` | `1/min` | `design` | 无 | — |
+| `heart.maxHeartRatePerMin` | `180` | `1/min` | `design` | 无 | — |
+| `heart.restingStrokeVolumeMl` | `70` | `mL` | `design` | `weightKg / 75` | — |
+| `heart.activityGain` | `1.5` | `1` | `design` | 无 | — |
+| `heart.catecholamineGain` | `0.5` | `1` | `design` | 无 | 保留：读取并要求非空，但丢弃该值，不参与心率计算。 |
+| `heart.sympatheticDriveGain` | `0.012` | `1/mm` | `design` | 无 | — |
+| `heart.startleFloorSympatheticMm` | `85` | `mm` | `design` | 无 | — |
+| `heart.lightSleepDriveBase` | `0.86` | `1` | `design` | 无 | — |
+| `heart.deepSleepDriveBase` | `0.78` | `1` | `design` | 无 | — |
+| `heart.remSleepDriveBase` | `0.94` | `1` | `design` | 无 | — |
+| `heart.minSleepHeartRatePerMin` | `42` | `1/min` | `design` | 无 | — |
+| `heart.strokeVolumeGain` | `0.2` | `1` | `design` | 无 | — |
+
+### blood.parameters.json（共享）
+
+参数文件：[`blood.parameters.json`](../../human-compartments/blood/blood.parameters.json)。入口及清单：[`heart.ts`](heart.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`heart.ts`](heart.ts)。
+
+直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `blood.referenceBloodVolumeMl` | `5000` | `mL` | `design` | `weightKg / 75` | 含直接覆盖读取。 |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

@@ -10,6 +10,34 @@
 
 当前三份清单中 `kidney`、`hypothalamusAdh`、`hypothalamusThirst`、`interoception`、`thermoregulation` 都是软读取，缺省时各脚本按自己的默认值处理。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "skin.sweat.maxRateMlPerMin": 12 } }
+```
+
+### sweat.parameters.json
+
+参数文件：[`sweat.parameters.json`](sweat.parameters.json)。入口及清单：[`sweat.ts`](sweat.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`sweat.ts`](sweat.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `skin.sweat.referenceRateMlPerMin` | `0.6` | `mL/min` | `design` | `weightKg / 75` | — |
+| `skin.sweat.ambientGainPerC` | `0.04` | `1/°C` | `design` | 无 | — |
+| `skin.sweat.maxRateMlPerMin` | `15` | `mL/min` | `design` | `weightKg / 75` | — |
+| `skin.heatGain` | `5` | `mL/(min·°C)` | `design` | `weightKg / 75` | — |
+| `skin.interthresholdOffsetC` | `0.25` | `°C` | `design` | 无 | — |
+| `skin.nocturnalDeadbandOffsetC` | `0.45` | `°C` | `design` | 无 | — |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

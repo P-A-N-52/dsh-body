@@ -6,6 +6,35 @@
 
 实现状态：`glucose-core.ts`、正常入口 `glucose.ts`、女性变体 `glucose.female.ts`、参数、证据笔记、单元测试和真实 Gateway 测试已落地。根清单当前为 43 个部位、39 份唯一参数文件，女性清单为 46 个部位、42 份参数文件，男性清单为 45 个部位、41 份参数文件。胰腺胰岛素绝对浓度、胰高血糖素相对信号、肾糖请求、肌摄糖、肝糖原储存/释放、肾糖异生产糖与女性乳糖汇已接入；`muscleGlucose` 的自主摄糖请求、按区域份额分配与三个区域的糖原入账/运动消耗见[骨骼肌 README](../../human-organs/skeletal-muscle/README.md)与[区域 README](../../human-organs/skeletal-muscle/regions/README.md)，肝的自主储存请求、糖原存量与释放见[肝 README](../../human-organs/liver/README.md)，乳腺请求见[乳腺 README](../../human-organs/mammary-glands/README.md)。尚未做真实 DSH 会话验收或独立生理数据验证。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "glucose.residualDisposalHalfTimeMin": 65 } }
+```
+
+### glucose.parameters.json
+
+参数文件：[`glucose.parameters.json`](glucose.parameters.json)。入口及清单：[`glucose.ts`](glucose.ts)（[默认](../../../body-modules.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`glucose.female.ts`](glucose.female.ts)（[女性](../../../body-modules.female.json)）。读取脚本：[`glucose-core.ts`](glucose-core.ts)。
+
+普通与女性的入口使用同一 core 和同一份参数；女性清单追加乳糖结算，不独立覆盖葡萄糖参数。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `glucose.referenceBodyMassKg` | `75` | `kg` | `design` | `weightKg / 75` | — |
+| `glucose.distributionVolumeDlPerKg` | `1.88` | `dL/kg` | `design` | 无 | 是每 kg 的系数；与模型参考质量相乘，形成分布容积。 |
+| `glucose.baselineConcentrationMgDl` | `90` | `mg/dL` | `design` | 无 | — |
+| `glucose.residualDisposalHalfTimeMin` | `60` | `min` | `design` | 无 | — |
+| `glucose.basalConsumptionGPerMin` | `0.12` | `g/min` | `design` | `weightKg / 75` | — |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

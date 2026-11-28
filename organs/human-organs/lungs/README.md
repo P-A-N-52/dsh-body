@@ -6,6 +6,63 @@
 
 **状态口径。** 当前实现（2026-11-27）：两个脚本与参数都在 `organs/human-organs/lungs/`，均已加入根清单；当前根清单为 45 个部位、40 份唯一参数文件（另含 3 份不随根清单加载的 DI 变体与 1 份缺区域变体），女性清单为 48 部位、43 份，男性清单 47 部位、42 份，硬 transfer 闭包为根/男性 15 部位、女性 17 部位。`lungsVentilation` 现已接入 Hey Plot 潮气量招募（参考 `SRC-HEY-1966`、`SRC-NEDER-2003`、`SRC-LOE-2014`）与静息/运动分离热喘息阈值（参考 `SRC-TSUJI-2012`），17 项参数在 `ventilation.parameters.json` 均保持 `design`（单一成年混合体格标定，未含实机 DSH 重测）；静息呼吸失水参考 `SRC-MITCHELL-1972` 证实未单独建模仍写进“未建模”边界。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "lungsVentilation.restingTidalVolumeMl": 510 } }
+```
+
+### respiratory-water-loss.parameters.json
+
+参数文件：[`respiratory-water-loss.parameters.json`](respiratory-water-loss.parameters.json)。入口及清单：[`respiratory-water-loss.ts`](respiratory-water-loss.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`respiratory-water-loss.ts`](respiratory-water-loss.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `lungs.respiratoryWaterLoss.exerciseReferenceRateMlPerMin` | `0.3` | `mL/min` | `design` | 无 | — |
+
+### ventilation.parameters.json
+
+参数文件：[`ventilation.parameters.json`](ventilation.parameters.json)。入口及清单：[`ventilation.ts`](ventilation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`ventilation.ts`](ventilation.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `lungsVentilation.restingTidalVolumeMl` | `500` | `mL` | `design` | `weightKg / 75` | — |
+| `lungsVentilation.restingRatePerMin` | `12` | `1/min` | `design` | 无 | — |
+| `lungsVentilation.maxRatePerMin` | `40` | `1/min` | `design` | 无 | — |
+| `lungsVentilation.restingVentilationMlMin` | `6000` | `mL/min` | `design` | `weightKg / 75` | — |
+| `lungsVentilation.maxVentilationMlMin` | `60000` | `mL/min` | `design` | `weightKg / 75` | — |
+| `lungsVentilation.inspiredO2Fraction` | `0.058333` | `1` | `design` | 无 | — |
+| `lungsVentilation.deadSpaceFactor` | `1.4` | `1` | `design` | 无 | — |
+| `lungsVentilation.pantingGain` | `1500` | `mL/(min·°C)` | `design` | `weightKg / 75` | — |
+| `lungsVentilation.deepSleepFloorFactor` | `0.82` | `1` | `design` | 无 | — |
+| `lungsVentilation.lightSleepFloorFactor` | `0.9` | `1` | `design` | 无 | — |
+| `lungsVentilation.sleepSympatheticBypassThresholdMm` | `20` | `mm` | `design` | 无 | — |
+| `lungsVentilation.sympatheticVentilationGainMlPerMinPerMm` | `80` | `mL/(min·mm)` | `design` | `weightKg / 75` | — |
+| `lungsVentilation.maxTidalVolumeMl` | `2100` | `mL` | `design` | `weightKg / 75` | — |
+| `lungsVentilation.tidalScaleVentilationMlMin` | `30000` | `mL/min` | `design` | `weightKg / 75` | — |
+| `lungsVentilation.restThermalThresholdOffsetC` | `0.8` | `°C` | `design` | 无 | — |
+| `lungsVentilation.exercisePantingFactor` | `0.35` | `1` | `design` | 无 | — |
+| `lungsVentilation.sympatheticTidalCompressionFactor` | `0.25` | `1` | `design` | 无 | — |
+
+### oxygen.parameters.json（共享）
+
+参数文件：[`oxygen.parameters.json`](../../human-compartments/blood-oxygen/oxygen.parameters.json)。入口及清单：[`ventilation.ts`](ventilation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`ventilation.ts`](ventilation.ts)。
+
+直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `bloodOxygen.basalMlMin` | `250` | `mL/min` | `design` | `weightKg / 75` | 含直接覆盖读取。 |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

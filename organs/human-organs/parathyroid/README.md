@@ -6,6 +6,33 @@
 
 **实现与挂载状态：** 脚本、参数、单元测试与真实 Gateway 集成测试（[`test/organs.parathyroid-gateway.test.mjs`](../../../test/organs.parathyroid-gateway.test.mjs)）已实现并统一为纯物理浓度单位 `pthPgMl`（不保留旧无量纲 `pthRelative` 字段），且**已正式挂载进三份身体清单**（[`body-modules.json`](../../../body-modules.json) 43 部位 / 39 份唯一参数文件、[`body-modules.female.json`](../../../body-modules.female.json) 46 / 42 与 [`body-modules.male.json`](../../../body-modules.male.json) 45 / 41）。五项参数全部 `design`、`source: null`。本文只描述离线模块与契约，未做真实 DSH 会话、PTH 实测或临床验证。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "parathyroid.referenceCalciumMgDl": 9.6 } }
+```
+
+### parathyroid.parameters.json
+
+参数文件：[`parathyroid.parameters.json`](parathyroid.parameters.json)。入口及清单：[`parathyroid.ts`](parathyroid.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`parathyroid.ts`](parathyroid.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `parathyroid.referenceCalciumMgDl` | `9.5` | `mg/dL` | `design` | 无 | — |
+| `parathyroid.baselinePthPgMl` | `30` | `pg/mL` | `design` | 无 | — |
+| `parathyroid.pthGainPgMlPerMgDl` | `15` | `pg/mL/(mg/dL)` | `design` | 无 | — |
+| `parathyroid.maxPthPgMl` | `90` | `pg/mL` | `design` | 无 | — |
+| `parathyroid.halfTimeMin` | `15` | `min` | `design` | 无 | — |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

@@ -6,6 +6,50 @@
 
 实现状态：`activity.ts`、`glucose-uptake.ts`（正常聚合器入口）、`glucose-uptake.no-limbs.ts`（缺四肢变体）与 `regions/{head,trunk,limbs}.ts` 均在 `organs/human-organs/skeletal-muscle/`；活动脚本无参数文件，模块定向测试见 [`test/organs.activity.test.mjs`](../../../test/organs.activity.test.mjs)；摄糖与区域脚本使用 `glucose-uptake.parameters.json`，测试见 [`test/organs.muscle-glucose.test.mjs`](../../../test/organs.muscle-glucose.test.mjs)、[`test/organs.muscle-regions.test.mjs`](../../../test/organs.muscle-regions.test.mjs) 与 [`test/organs.muscle-regions-gateway.test.mjs`](../../../test/organs.muscle-regions-gateway.test.mjs)。`exercise` / `sex` / `stop_exercise` 工具入口、皮肤/肺请求链、血氧需氧、根清单、体液出口、`glucose → muscleGlucose` 的实际支付 transfer 与 `muscleGlucose → 区域` 的分配 transfer 均已接入；当前根清单为 43 个部位、39 份唯一参数文件（女性清单 46 部位、42 份；男性清单 45 部位、41 份）。区域份额与消耗速率仍是 `design`，本文不把历史计数当作当前结果。完整契约见本文、[`regions/README.md`](regions/README.md)、[`skin`](../skin/README.md)、[`lungs`](../lungs/README.md) 与 [`sexual-response`](../sexual-response/README.md)。尚未做真实 DSH 会话、独立运动生理数据或临床验证。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "muscleGlucose.maxUptakeRateGPerMin": 0.6 } }
+```
+
+无本地参数文件的入口：[`activity.ts`](activity.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；输出字段和脚本内常量不是可覆盖 ID。
+
+### glucose-uptake.parameters.json
+
+参数文件：[`glucose-uptake.parameters.json`](glucose-uptake.parameters.json)。入口及清单：[`glucose-uptake.ts`](glucose-uptake.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`head.ts`](regions/head.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`trunk.ts`](regions/trunk.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`limbs.ts`](regions/limbs.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`glucose-uptake.no-limbs.ts`](glucose-uptake.no-limbs.ts)（可选缺四肢入口，替换普通聚合器，与移除 `regions/limbs.ts` 配套）。读取脚本：[`glucose-uptake-core.ts`](glucose-uptake-core.ts)、[`region-core.ts`](regions/region-core.ts)。
+
+共享脚本各入口消费的键不完全相同，以逐行标出的消费入口为准。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `muscleGlucose.glycogenUseRateGPerMin` | `0.5` | `g/min` | `design` | `weightKg / 75` | 由分区 core 在活动时按区域份额和强度取用，不控制聚合器的摄糖。读取：`region-core.ts`。消费入口：[`head.ts`](regions/head.ts)、[`trunk.ts`](regions/trunk.ts)、[`limbs.ts`](regions/limbs.ts)。 |
+| `muscleGlucose.maxUptakeRateGPerMin` | `0.5` | `g/min` | `design` | `weightKg / 75` | 读取：`glucose-uptake-core.ts`。消费入口：[`glucose-uptake.ts`](glucose-uptake.ts)、[`glucose-uptake.no-limbs.ts`](glucose-uptake.no-limbs.ts)。 |
+| `muscleGlucose.halfMaxExcessG` | `20` | `g` | `design` | `weightKg / 75` | 读取：`glucose-uptake-core.ts`。消费入口：[`glucose-uptake.ts`](glucose-uptake.ts)、[`glucose-uptake.no-limbs.ts`](glucose-uptake.no-limbs.ts)。 |
+| `muscleGlucose.insulinSensitivity` | `1` | `1` | `design` | 无 | 读取：`glucose-uptake-core.ts`。消费入口：[`glucose-uptake.ts`](glucose-uptake.ts)、[`glucose-uptake.no-limbs.ts`](glucose-uptake.no-limbs.ts)。 |
+| `muscleGlucose.exerciseUptakeRateGPerMin` | `0.15` | `g/min` | `design` | `weightKg / 75` | 读取：`glucose-uptake-core.ts`。消费入口：[`glucose-uptake.ts`](glucose-uptake.ts)、[`glucose-uptake.no-limbs.ts`](glucose-uptake.no-limbs.ts)。 |
+
+### response.parameters.json（共享）
+
+参数文件：[`response.parameters.json`](../sexual-response/response.parameters.json)。入口及清单：[`activity.ts`](activity.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`response.ts`](../sexual-response/response.ts)。
+
+`nsfw: false` 时 Gateway 拒绝新 `sex` / `orgasm` 动作，模块不发生主动或自动释放。下游 `body_state` 的性反应文案与内感受的相关输入也受门控；这不清除存档。`response.ts` 仍推进已有活动计时、唤起与阶段，并衰减已有余韵。参数覆盖不打开门控。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `sexualResponse.orgasmAllowedMm` | `70` | `mm` | `design` | 无 | 主动释放要求门控开启；该阈值也参与旧的尝试阻断标记处理。 |
+| `sexualResponse.orgasmForcedMm` | `95` | `mm` | `design` | 无 | 自动释放要求门控开启且未处于不应期。 |
+| `sexualResponse.refractoryMin` | `20` | `min` | `design` | 无 | 其余清单分支的不应期基线，另有 PRL 影响。 |
+| `sexualResponse.femalePostOrgasmPauseMin` | `2` | `min` | `design` | 无 | 有卵巢且无睾丸时的停顿分支。 |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与部位
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |

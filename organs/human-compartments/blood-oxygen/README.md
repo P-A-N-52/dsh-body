@@ -6,6 +6,32 @@
 
 实现状态（2026-11-26）：脚本与参数在 `organs/human-compartments/blood-oxygen/`，已加入根清单。当前根清单为 43 部位、39 份唯一参数文件，女性清单 46 部位、42 份，男性清单 45 部位、41 份；硬 transfer 闭包为根/男性 15 部位、女性 17 部位，本切片不新增 transfer。同期相关部位包括 `lungsVentilation`（见 [`lungs`](../../human-organs/lungs/README.md)）、`heart` / `blood`（见 [`heart`](../../human-organs/heart/README.md) 与 [`blood`](../blood/README.md)）、`interoception.dyspneaMm`（见 [`brain`](../../human-organs/brain/README.md)）与 `thyroid.thyroxineRelative`（见 [`thyroid`](../../human-organs/thyroid/README.md)）。本切片有模块测试与真实 Gateway 进程的离线集成测试；未做真实 DSH 会话、独立人体氧耗/通气/SpO2 数据或临床验证。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+示例（只合并这一小段，数值仅用于演示）：
+
+```json
+{ "parameters": { "bloodOxygen.basalMlMin": 260 } }
+```
+
+### oxygen.parameters.json
+
+参数文件：[`oxygen.parameters.json`](oxygen.parameters.json)。入口及清单：[`oxygen.ts`](oxygen.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`oxygen.ts`](oxygen.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `bloodOxygen.basalMlMin` | `250` | `mL/min` | `design` | `weightKg / 75` | — |
+| `bloodOxygen.activityGainMlMin` | `1000` | `mL/min` | `design` | `weightKg / 75` | — |
+| `bloodOxygen.digestionGain` | `0.1` | `1` | `design` | 无 | — |
+| `bloodOxygen.baselineSpo2Percent` | `97` | `%` | `design` | 无 | — |
+
+<!-- organ-parameters:end -->
+
 ## 1. 脚本与读写关系
 
 | 脚本 | 部位 id | 写什么 | 读什么 | 参数文件 |
