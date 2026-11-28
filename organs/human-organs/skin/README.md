@@ -61,21 +61,21 @@
 
 ## 3. 方程、纯函数与参数
 
-设轮初活动剩余分钟 `R`、相对强度 `I`、环境温度 `T`、核心温度 `C` 与设定点 `setpointC`（`thermoregulation` 未加载时均按 `37 °C`）、`dtMin = io.dt / 60`：
+设轮初活动剩余分钟 `R`、相对强度 `I`、环境温度 `T`、核心温度 `C` 与昼夜/睡眠目标 `setpointC`、`dtMin = io.dt / 60`。`B = io.getThermalProfile().baselineCoreC` 来自 `thermoregulation.setpointC`（缺省 `37 °C`）；温控部位未加载时 `C` 和 `setpointC` 回退到静态参照 `S`：相对模式（`coreBandRelative: true`，本具身体显式提供核心带边界）`S = B`，legacy 模式 `S = 37 °C`，与引入本契约前逐字段一致。
 
 ```text
 temperatureFactor  = max(0, 1 + 0.04 × (T − 25))
 exercising         = R > 0 && I > 0
 exerciseRate       = exercising ? referenceRateMlPerMin × I × temperatureFactor : 0
-deadbandC          = exercising ? 0 : (setpointC < 37 ? nocturnalDeadbandOffsetC : interthresholdOffsetC)
-thermalThresholdC  = (exercising ? max(37, setpointC) : setpointC + deadbandC) + feverSetpointOffsetC
+deadbandC          = exercising ? 0 : (setpointC < S ? nocturnalDeadbandOffsetC : interthresholdOffsetC)
+thermalThresholdC  = (exercising ? max(S, setpointC) : setpointC + deadbandC) + feverSetpointOffsetC
 thermalRate        = heatGain × max(0, C − thermalThresholdC)
 rate               = min(maxRateMlPerMin, max(0, exerciseRate + thermalRate))
 sweatRequestMl     = rate × dtMin
 write.sweatVolumeMl = 0
 ```
 
-核心温度采用**运动与静息（含阈间死区）区分的热致出汗**：非运动静息与运动停止后的压力反射卸荷期（参考 `SRC-KENNY-2008` 与 `SRC-WENGER-1976` / 夜间阈间带展宽机制），热汗阈值相对动态 `setpointC` 增加 `interthresholdOffsetC = 0.25 °C`（昼夜低谷 `setpointC < 37 °C` 时进一步展宽为 `nocturnalDeadbandOffsetC = 0.45 °C`），消除轻度余温或清晨零汗液噪声引起的持续渗汗死循环；运动期间则保留 `max(37, setpointC)` 及时散热并按 `scaleByBodyWeight` 缩放速率与上限。`thermoregulation` 已加载但 `coreTemperatureC` 缺失或非有限时抛错，本轮不写状态。
+核心温度采用**运动与静息（含阈间死区）区分的热致出汗**：非运动静息与运动停止后的压力反射卸荷期（参考 `SRC-KENNY-2008` 与 `SRC-WENGER-1976` / 夜间阈间带展宽机制），热汗阈值相对动态 `setpointC` 增加 `skin.interthresholdOffsetC = 0.25 °C`（动态目标低于静态参照 `S` 时改用 `skin.nocturnalDeadbandOffsetC = 0.45 °C`）。运动用 `max(S, setpointC)`；空气舒适带与核心正常带不改变这些分支、蒸发或实际汗液支付。速率与上限依旧按体重缩放。`thermoregulation` 已加载但 `coreTemperatureC` 缺失或非有限时抛错，本轮不写状态。
 
 `R = 0` 且未越过 `thermalThresholdC`（或未加载 `thermoregulation`）时请求为 0；`I = 0` 的合法活动且未越阈时请求也为 0。温度因子在 0 处截断；上限只作用于总速率（默认 75 kg 为 15 mL/min，随体重缩放），请求量仍按 `dtMin` 缩放。
 
@@ -88,11 +88,11 @@ write.sweatVolumeMl = 0
 | `skin.sweat.maxRateMlPerMin` | 15 | `mL/min` | `design` | `source: null`；75 kg 基准工程速率上限（按体重缩放） |
 | `skin.heatGain` | 5 | `mL/(min·°C)` | `design` | `source: null`；越过热汗阈值后每升高 1°C 叠加的热致出汗率增益（按体重缩放） |
 | `skin.interthresholdOffsetC` | 0.25 | `°C` | `design` | `SRC-WENGER-1976`（工程占位，参考日间阈间带 ~0.2 °C 与停运后非热抑汗）：非运动静息态相对动态设定点的热汗死区偏置 |
-| `skin.nocturnalDeadbandOffsetC` | 0.45 | `°C` | `design` | `SRC-WENGER-1976`（工程占位，参考夜间 03:00–05:00 阈间带加宽）：`setpointC < 37 °C` 时静息死区展宽 |
+| `skin.nocturnalDeadbandOffsetC` | 0.45 | `°C` | `design` | `SRC-WENGER-1976`（工程占位，参考夜间 03:00–05:00 阈间带加宽）：`setpointC < S`（相对模式 `S = B`，legacy `S = 37 °C`）时静息死区展宽 |
 
 参数全部标为 `design`，没有独立人体验证；`range` 只是工程调参范围。25 °C 仍是出汗温度因子的参考温度，原 `skin.sweat.ambientTemperatureC` 仅供旧档缺气温时迁移，不再是运行参数。
 
-纯函数 `sweatRequestMl` 只按上式计算请求，不读写状态。心跳从轮初快照传入气温、核心温和基础设定点；先按**基础**设定点选档再加轮初 `feverSetpointOffsetC`（仅本次运行已采用的发布，缺省 0）。空气湿度与衣层不直接改出汗曲线，详见[实汗与蒸发分账](../brain/README.md#thermoregulation)。
+纯函数 `sweatRequestMl` 只按上式计算请求，不读写状态。心跳从轮初快照传入气温、核心温和静态参照 `S`；先按静态参照选档再加轮初 `feverSetpointOffsetC`（仅本次运行已采用的发布，缺省 0）。空气湿度与衣层不直接改出汗曲线，详见[实汗与蒸发分账](../brain/README.md#thermoregulation)。
 
 ## 4. 默认时序：第 1 轮活动、第 2 轮请求、第 3 轮实际
 

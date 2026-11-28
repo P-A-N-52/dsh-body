@@ -11,7 +11,7 @@
  *
  * 公式（demand 为轮初需氧，mL/min；coreTemperatureC 为轮初核心温度，未加载按缺失）：
  *   metabolicVentilation = demand × deadSpaceFactor / inspiredO2Fraction
- *   thermalThresholdC = max(37, setpointC) + (exercising ? 0 : restThermalThresholdOffsetC) + feverOffsetC
+ *   thermalThresholdC = max(baselineCoreC, setpointC) + (exercising ? 0 : restThermalThresholdOffsetC) + feverOffsetC
  *   pantingMlMin = (exercising ? pantingGain × exercisePantingFactor : pantingGain)
  *                  × max(0, coreTemperatureC − thermalThresholdC)
  *   targetVentilation = max(minVentilationMlMin, metabolicVentilation) + pantingMlMin + sympatheticVentilationMlMin
@@ -24,6 +24,7 @@
  * `metabolicVentilation` 是满足该需氧所需的通气量；低于静息通气时先回到静息基线，核心温度
  * 高于设定点时再在其上叠加喘息项，最后钳位到静息/上限区间；`thermoregulation` 未加载时喘息项为 0。
  * 只在旧静息/运动阈值算完后加轮初已采用的发热增量；未有本次运行的发布时增量为 0。
+ * `baselineCoreC` 取本体静态温度参考（不再固定 37 °C）；空气舒适带不进入喘息或失水计算。
  * `alveolarO2MlMin` 是本轮实际通气量对应的供氧读数，受轮初需氧与一轮滞后影响；
  * `alveolarO2CapacityMlMin` 是通气能力上限（默认约 2500 mL/min），
  * 由参数直接决定、与需氧无关。`bloodOxygen` 用能力上限判定 SpO2
@@ -48,6 +49,7 @@
  */
 import {
   getNumericParameterOverride,
+  getThermalProfile,
   loadParameters,
   requireParameter,
   scaleByBodyWeight,
@@ -75,6 +77,7 @@ type ThermoregulationReading = {
 };
 
 type IO = PublishedThermalInput & {
+  getThermalProfile?: typeof getThermalProfile;
   read(partId: 'bloodOxygen'): Readonly<BloodOxygenReading> | null | undefined;
   read(partId: 'thermoregulation'): Readonly<ThermoregulationReading> | null | undefined;
   write(next: LungsVentilationState): void;
@@ -170,10 +173,10 @@ function readDemandMlMin(io: IO): number {
   return demand;
 }
 
-function readThermoregulation(io: IO): { coreTemperatureC: number; setpointC: number } | undefined {
+function readThermoregulation(io: IO, staticReferenceC: number): { coreTemperatureC: number; setpointC: number } | undefined {
   const thermoregulation = io.read('thermoregulation');
   if (thermoregulation === undefined) return undefined;
-  const coreTemperatureC = thermoregulation.coreTemperatureC;
+  const coreTemperatureC = thermoregulation?.coreTemperatureC;
   if (typeof coreTemperatureC !== 'number' || !Number.isFinite(coreTemperatureC)) {
     throw new Error(
       'lungsVentilation: thermoregulation.coreTemperatureC must be a finite number',
@@ -182,13 +185,16 @@ function readThermoregulation(io: IO): { coreTemperatureC: number; setpointC: nu
   const setpointC = typeof thermoregulation.setpointC === 'number'
     && Number.isFinite(thermoregulation.setpointC)
     ? thermoregulation.setpointC
-    : thermoregulationSetpointC;
+    : staticReferenceC;
   return { coreTemperatureC, setpointC };
 }
 
 export function heartbeat(io: IO): void {
   const demandMlMin = readDemandMlMin(io);
-  const thermoregulation = readThermoregulation(io);
+  const { baselineCoreC, coreBandRelative } = io.getThermalProfile?.() ?? getThermalProfile();
+  // 相对模式以本体基线为静态参照；legacy 模式保持固定 37 °C 旧轨迹。
+  const staticReferenceC = coreBandRelative ? baselineCoreC : thermoregulationSetpointC;
+  const thermoregulation = readThermoregulation(io, staticReferenceC);
   const readAny = (partId: string) => (io as { read(id: string): Readonly<Record<string, unknown>> | undefined }).read(partId);
   const sleep = readAny('sleep');
   const sleeping = sleep?.sleeping === true;
@@ -208,13 +214,13 @@ export function heartbeat(io: IO): void {
   const minVentilationMlMin = restingVentilationMlMin * sleepFloorFactor;
   const minRatePerMin = restingRatePerMin * sleepFloorFactor;
 
-  const baseThermalThresholdC = thermoregulation === undefined
-    ? thermoregulationSetpointC
-    : Math.max(thermoregulationSetpointC, thermoregulation.setpointC);
+  const baseThermalThresholdC = Math.max(staticReferenceC, thermoregulation?.setpointC ?? staticReferenceC);
   const publishedOffsetC = io.readPublished?.('thermoregulation')?.feverSetpointOffsetC;
   const feverOffsetC = typeof publishedOffsetC === 'number' && Number.isFinite(publishedOffsetC)
     ? Math.max(0, publishedOffsetC) : 0;
-  const thermalThresholdC = baseThermalThresholdC + (exercising ? 0 : restThermalThresholdOffsetC) + feverOffsetC;
+  const thermalThresholdC = baseThermalThresholdC
+    + (exercising ? 0 : restThermalThresholdOffsetC)
+    + feverOffsetC;
   const effectivePantingGain = exercising ? pantingGain * exercisePantingFactor : pantingGain;
   const pantingMlMin = thermoregulation === undefined
     ? 0

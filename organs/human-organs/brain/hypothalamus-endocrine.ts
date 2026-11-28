@@ -11,7 +11,7 @@
  *   `stressDrive` 施加最多 `rewardBufferingGain` 比例的温和缓冲。
  */
 import { resolveCircadianHour } from '../../../lib/circadian.js';
-import { loadParameters, requireParameter } from '../../../lib/parameters.js';
+import { getDefaultCoreBaselineC, getThermalProfile, loadParameters, requireParameter } from '../../../lib/parameters.js';
 import { evaluateSleepTransition } from './wake-evaluation.ts';
 
 export const id = 'hypothalamusEndocrine';
@@ -24,6 +24,7 @@ type HypothalamusEndocrineState = {
 };
 
 type IO = {
+  getThermalProfile?: typeof getThermalProfile;
   read(id: 'hypothalamusEndocrine'): Readonly<HypothalamusEndocrineState> | undefined;
   read(id: 'thyroid'): Readonly<{ thyroxineRelative?: unknown }> | undefined;
   read(id: 'adrenal'): Readonly<{ cortisolNmolL?: unknown }> | undefined;
@@ -65,8 +66,7 @@ const RESPONSE_HALF_TIME_MIN = 30;
 const REFERENCE_CORTISOL_NMOL_L = 180;
 const MIN_RELATIVE = 0;
 const MAX_RELATIVE = 3;
-const REFERENCE_CORE_TEMP_C = 37;
-const COLD_STRESS_THRESHOLD_C = 36.8;
+const COLD_STRESS_OFFSET_C = 0.2;
 const COLD_TRH_GAIN_PER_C = 0.3;
 const REFERENCE_GLUCOSE_MG_DL = 90;
 const HYPOGLYCEMIA_THRESHOLD_MG_DL = 80;
@@ -115,9 +115,11 @@ export function heartbeat(io: IO): void {
   const cortisolRatio = cortisolNmolL / REFERENCE_CORTISOL_NMOL_L;
 
   const thermoregulation = io.read('thermoregulation');
-  const thermoSetpointC = finiteOr(thermoregulation?.setpointC, REFERENCE_CORE_TEMP_C);
+  const { baselineCoreC, coreBandRelative } = io.getThermalProfile?.() ?? getThermalProfile();
+  // 相对模式回退本体基线；legacy 模式回退固定 37 °C 旧参照。
+  const thermoSetpointC = finiteOr(thermoregulation?.setpointC, coreBandRelative ? baselineCoreC : getDefaultCoreBaselineC());
   const coreTemperatureC = finiteOr(thermoregulation?.coreTemperatureC, thermoSetpointC);
-  const coldThresholdC = thermoSetpointC - (REFERENCE_CORE_TEMP_C - COLD_STRESS_THRESHOLD_C);
+  const coldThresholdC = thermoSetpointC - COLD_STRESS_OFFSET_C;
   const concentrationMgDl = Math.max(
     0,
     finiteOr(io.read('glucose')?.concentrationMgDl, REFERENCE_GLUCOSE_MG_DL),

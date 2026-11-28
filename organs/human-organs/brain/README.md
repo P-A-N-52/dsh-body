@@ -293,6 +293,10 @@
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
 | `thermoregulation.setpointC` | `37` | `°C` | `design` | 无 | — |
+| `thermoregulation.normalCoreMinC` | `null` | `°C` | `unset` | 无 | 经清单预设或存档覆盖进入 `io.getThermalProfile()`；缺省取本体基线。未设值，不是 0。 |
+| `thermoregulation.normalCoreMaxC` | `null` | `°C` | `unset` | 无 | 经清单预设或存档覆盖进入 `io.getThermalProfile()`；缺省取本体基线。未设值，不是 0。 |
+| `thermoregulation.ambientComfortMinC` | `null` | `°C` | `unset` | 无 | 经清单预设或存档覆盖进入 `io.getThermalProfile()`；与上界成对生效，缺省未知。未设值，不是 0。 |
+| `thermoregulation.ambientComfortMaxC` | `null` | `°C` | `unset` | 无 | 经清单预设或存档覆盖进入 `io.getThermalProfile()`；与下界成对生效，缺省未知。未设值，不是 0。 |
 | `thermoregulation.heatCapacityKcalPerC` | `60` | `kcal/°C` | `design` | `weightKg / 75` | — |
 | `thermoregulation.metabolicFactor` | `0.005` | `kcal/mL` | `design` | 无 | — |
 | `thermoregulation.shiveringGain` | `2` | `kcal/(min·°C)` | `design` | `weightKg / 75` | — |
@@ -419,8 +423,8 @@
 | `stressMm` | `mm` | 压力的 0–100 mm 代理；结合 `adrenal.cortisolNmolL / 180` 归一化皮质醇与 `autonomic.sympatheticMm`，并受 `hedonicCalmMm × 0.2` 轻度缓冲，不是应激量表、皮质醇浓度或临床压力评估 |
 | `sleepinessMm` | `mm` | 困倦的 0–100 mm 代理；未加载 `sleep` 时保留松果体公式；加载 `sleep` 时结合 `pineal.melatoninRelative`（Process C）、`sleep.sleepPressureMm`（Process S）、`sleepInertiaMm` 与清醒期交感/上行唤醒拮抗（`sympatheticMm` / 运动 / 性唤起 / 高皮质醇），非实测睡眠量表 |
 | `dryMouthMm` | `mm` | 口干的 0–100 mm 代理；`salivaryGlands.mouthMoistureMm` 有限时为 `clamp(100 − mouthMoistureMm, 0, 100)`，未加载、缺失或非有限时按 `0`；不是口干量表、口腔黏膜湿度、唾液渗透压或临床干燥症指标 |
-| `heatMm` | `mm` | 越过轮初热阈值的 0–100 mm 工程代理；热阈值为 `max(体感参考点, 基础设定点) + 发热增量` |
-| `coldMm` | `mm` | 低于轮初冷阈值的 0–100 mm 工程代理；清醒用体感参考点、睡中用 `min(体感参考点, 基础设定点)`，随后加发热增量。不是冷感觉量表或临床低体温分级 |
+| `heatMm` | `mm` | 越过轮初热阈值的 0–100 mm 工程代理；相对模式热阈值为 `max(体感参考点, 基础设定点) + 正常带上界偏置 + 发热增量`（legacy 模式无带偏置、参照固定 `37`，见下文「个体冷热参考」） |
+| `coldMm` | `mm` | 低于轮初冷阈值的 0–100 mm 工程代理；清醒用体感参考点、睡中用 `min(体感参考点, 基础设定点)`，相对模式各加正常带下界偏置，再加发热增量。不是冷感觉量表或临床低体温分级 |
 | `hypocalcemiaMm` | `mm` | 低钙症状代理 0–100 mm；`clamp(50 × (9.5 − bloodCalcium.mgDl), 0, 100)`（未加载或非有限按 `9.5`，即 `0`），不是麻木/抽搐或临床低钙评分 |
 | `hypercalcemiaMm` | `mm` | 高钙症状代理 0–100 mm；`clamp(50 × (bloodCalcium.mgDl − 9.5), 0, 100)`（未加载或非有限按 `9.5`，即 `0`），不是临床高钙评估 |
 | `hypoglycemiaMm` | `mm` | 低血糖乏力心慌代理 0–100 mm；`glucose.concentrationMgDl` 有限时为 `clamp((75 − concentrationMgDl) × 4, 0, 100)`，未加载或非有限按 `0`；不是血糖测量或临床低血糖分级 |
@@ -469,8 +473,9 @@ sleepinessMm    = sleep 未加载 ? melatoninMm
 dryMouthMm     = salivaryGlands.mouthMoistureMm 有限
   ? clamp(100 − salivaryGlands.mouthMoistureMm, 0, 100)
   : 0                                                       // 未加载、缺失或非有限按 0
-heatMm         = clamp(50 × (轮初核心温 − (max(体感参考点, 轮初基础设定点) + 发热增量)), 0, 100)
-coldMm         = clamp(50 × (旧冷阈值 + 发热增量 − 轮初核心温), 0, 100)
+heatMm         = clamp(50 × (轮初核心温 − (max(体感参考点, 轮初基础设定点) + 正常带上界偏置 + 发热增量)), 0, 100)
+coldMm         = clamp(50 × (旧冷阈值 + 正常带下界偏置 + 发热增量 − 轮初核心温), 0, 100)
+# 相对模式才有带偏置与本体基线参照；legacy 模式偏置为 0、参照固定 37，见下文「个体冷热参考」。
 hypocalcemiaMm = clamp(50 × (9.5 − finiteOr(bloodCalcium.mgDl, 9.5)), 0, 100)
 hypercalcemiaMm = clamp(50 × (finiteOr(bloodCalcium.mgDl, 9.5) − 9.5), 0, 100)
 hypoglycemiaMm = glucose.concentrationMgDl 有限
@@ -553,12 +558,24 @@ next   = current + (1 − exp(−dtMin / timeConstantMin)) × (target − curren
 
 一阶滞后只提供工程反应延迟；`timeConstantMin` 是 `design`，不是 Andersen 的拟合值。只读轮初 `bodyFluid.waterDeficit` 与轮初 `blood.bloodVolumeMl`，缺失或非有限时 `waterDeficit` 按 0、血容量按 5000 mL；已加载但字段非法时抛错。5000 mL 是 `blood.referenceBloodVolumeMl` 的 `design` 基线，不是实测血容量或血浆容量；`blood` 未加载时血容量项为 0。低血容量抬高 ADH，与低水量亏缺同向。
 
+### 个体冷热参考
+
+所有温度用 `°C`。`io.getThermalProfile()` 只读当前身体的静态参考；[配置及脚本示例](../../../docs/gateway-and-scripts.md#按身体配置温度参考)说明清单和个体档的优先级。参数在 [`thermoregulation.parameters.json`](thermoregulation.parameters.json)，不是库存或实测数据：
+
+- `thermoregulation.setpointC`：静态基线，工程默认 `37`（`design`）。新核心温以它为初值；已有核心温按存档恢复。
+- `thermoregulation.normalCoreMinC` / `thermoregulation.normalCoreMaxC`：`unset`，缺的一侧取本体基线；两侧可不对称，不限制核心温积分。任一键被显式提供（个体数字或清单预设）才启用相对参考（`coreBandRelative: true`）。
+- `thermoregulation.ambientComfortMinC` / `thermoregulation.ambientComfortMaxC`：`unset`，缺省成对未知，只供脚本比较真实空气输入，不参与热账/水账，也不启用相对核心参考。
+
+**legacy 与相对模式。** 本具身体未显式提供任何核心带键时 `coreBandRelative: false`，消费者保持引入本契约前的旧公式与数值——内感受参照固定 `37`（或存档对 `interoception.thermoregulation.setpointC` 的显式覆盖）、出汗夜间死区与运动热阈按 `37` 分支、热喘基础阈 `max(37, D)`、交感清醒冷阈用绝对参数 `36.5`、TRH 缺动态目标回退 `37`；只改 `thermoregulation.setpointC` 的旧档仍走这条 legacy 轨迹。显式提供核心带键后：内感受以静态基线 `B` 为中心，以轮初昼夜/睡眠目标 `D` 区分分支（缺 `D` 回退中心）。热阈为 `max(B, D) + (normalCoreMaxC − B)`；清醒冷阈为 `normalCoreMinC`，睡时为 `min(B, D) + (normalCoreMinC − B)`。若存档显式覆盖 `interoception.thermoregulation.setpointC`，其绝对值替代内感受的中心，带的上下偏置仍按全身参考计算；该旧 ID 不更改温控基线。不把空气温度当核心温度；缺核心读数时冷热读数为 0。
+
+相对模式下清醒交感默认冷阈为 `B − 0.5 °C`（`autonomic.coldThresholdC` 的默认 `36.5` 相对人体基线 `37`）；显式个体覆盖仍用绝对阈。睡眠继续用动态目标减 `autonomic.sleepColdThresholdOffsetC`（缺动态目标时以清醒阈为起点）。下丘脑 TRH 仍用 `D − 0.2 °C` 的工程冷应激阈值，温控目标缺失时回退 `B`。这些是相互独立的防御偏置，不随正常带宽一同关闭。未标定非人物种、临床热/冷损伤、外温型或异温/冬眠。
+
 ### `thermoregulation`
 
 | 字段 | 单位 | 含义 |
 | --- | --- | --- |
-| `coreTemperatureC` | `°C` | 轮末核心温度代理，初值 37 °C，数值钳位 `[25, 45]` °C；不是皮温、实测核心体温或诊断 |
-| `setpointC` | `°C` | 原昼夜/睡眠基线（按本地钟点余弦，默认 `37 ± 0.25`，睡中再减 `0.2`） |
+| `coreTemperatureC` | `°C` | 轮末核心温度代理，缺失时按本体静态基线初始化（缺省 37 °C），数值钳位 `[25, 45]` °C；不是皮温、实测核心体温或诊断 |
+| `setpointC` | `°C` | 昼夜/睡眠动态目标：本体静态基线按本地钟点余弦（缺省振幅 ±0.25），睡中再减 0.2；不含发热增量 |
 | `feverSetpointOffsetC` | `°C`（温差） | 本轮采用的可选 `feverDrive.setpointOffsetC`，只读本次运行上一成功轮实际提交的非负有限值，缺省 0 |
 | `effectiveSetpointC` | `°C` | `setpointC + feverSetpointOffsetC`；寒战和舒张使用该点 |
 | `heatBalance` | 记录 | 最近一次积分的水热观测（无记录时 `null`），不回写水量或其他器官 |

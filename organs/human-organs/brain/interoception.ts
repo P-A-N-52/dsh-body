@@ -110,9 +110,11 @@
  *   按 0，负值也按 0。它只是 0–100 mm 读数，不参与 `discomfort`，也不产生动作或通知；
  *   `defecate` 由会话显式触发，没有自动排便反射。
  * - 轮初 `thermoregulation` 核心温与冷热阈值的单侧偏差 × 50 mm/°C 并钳至 [0, 100]。
- *   热阈值取 `max(37, setpointC)`；清醒冷阈值取 37，睡眠取 `min(37, setpointC)`。
- *   两个旧阈值随后都加轮初已采用的有效发热增量（仅本次运行发布，默认 0）。工程代理，
- *   不是实际感觉量表。两个读数不参与 `discomfort`，本模块不产生动作或通知，不诊断发热。
+ *   阈值相对本体静态基线计算：热阈取基线与昼夜/睡眠目标的较高者，加正常带上界相对基线
+ *   的偏置；清醒冷阈以基线为起点，睡时取基线与动态目标的较低者，再加正常带下界偏置；
+ *   两个旧阈值随后都加轮初已采用的有效发热增量（仅本次运行发布，默认 0，不重复平移）。
+ *   软读缺失为无偏差。工程代理，不是实际感觉量表。两个读数不参与 `discomfort`，本模块
+ *   不产生动作或通知，不诊断发热。
  * - `hypocalcemiaMm = clamp(50 × (9.5 − bloodCalcium.mgDl), 0, 100)` 与
  *   `hypercalcemiaMm = clamp(50 × (bloodCalcium.mgDl − 9.5), 0, 100)` 是 `bloodCalcium`
  *   的软读（`design` 口径，不是麻木/痉挛/临床高钙症状量表）：只读轮初 `mgDl`；部位未
@@ -144,6 +146,8 @@
  */
 import {
   getNsfwSetting,
+  getThermalProfile,
+  hasParameterOverride,
   loadParameters,
   requireParameter,
   scaleByBodyWeight,
@@ -270,7 +274,8 @@ type TestesReading = {
 };
 
 type ThermoregulationReading = {
-  coreTemperatureC?: number;
+  coreTemperatureC?: unknown;
+  setpointC?: unknown;
 };
 
 type BloodCalciumReading = {
@@ -374,6 +379,7 @@ function collectExtensibleInputs(
 }
 
 type IO = PublishedThermalInput & {
+  getThermalProfile?: typeof getThermalProfile;
   readonly dt?: number;
   readonly simulatedSeconds?: number;
   read(): Readonly<SnapshotReading> | undefined;
@@ -438,10 +444,8 @@ const urinaryUrgencyReferenceVolumeMl = requireParameter(
 );
 const discomfortOnsetMm = requireParameter(parameters, 'interoception.discomfort.onsetMm');
 
-const thermoregulationSetpointC = requireParameter(
-  parameters,
-  'interoception.thermoregulation.setpointC',
-);
+const localSetpointId = 'interoception.thermoregulation.setpointC';
+const thermoregulationSetpointC = requireParameter(parameters, localSetpointId);
 const temperatureReadoutGainMmPerC = requireParameter(
   parameters,
   'interoception.temperatureReadoutGainMmPerC',
@@ -824,22 +828,27 @@ export function heartbeat(io: IO): void {
       0,
       100,
     );
-  const thermoregulation = io.read('thermoregulation') as Readonly<{
-    coreTemperatureC?: unknown;
-    setpointC?: unknown;
-  }> | undefined;
-  const thermoSetpointC = finiteOr(
-    thermoregulation?.setpointC,
-    thermoregulationSetpointC,
-  );
-  const coreTemperatureC = finiteOr(
-    thermoregulation?.coreTemperatureC,
-    thermoSetpointC,
-  );
-  const heatThresholdC = Math.max(thermoregulationSetpointC, thermoSetpointC);
-  const coldThresholdC = sleep?.sleeping === true
-    ? Math.min(thermoregulationSetpointC, thermoSetpointC)
-    : thermoregulationSetpointC;
+  const thermoregulation = io.read('thermoregulation');
+  const { baselineCoreC, coreBandRelative, normalCoreMinC, normalCoreMaxC } = io.getThermalProfile?.() ?? getThermalProfile();
+  const thermoSetpointC = finiteOr(thermoregulation?.setpointC, thermoregulationSetpointC);
+  let coreTemperatureC = finiteOr(thermoregulation?.coreTemperatureC, thermoSetpointC);
+  let heatThresholdC: number;
+  let coldThresholdC: number;
+  if (coreBandRelative) {
+    // 相对模式：以本体基线为中心、正常带上下界给偏置；显式局部设定点仍可替代中心。
+    const referenceC = hasParameterOverride(localSetpointId) ? thermoregulationSetpointC : baselineCoreC;
+    const relativeSetpointC = finiteOr(thermoregulation?.setpointC, referenceC);
+    coreTemperatureC = finiteOr(thermoregulation?.coreTemperatureC, referenceC);
+    heatThresholdC = Math.max(referenceC, relativeSetpointC) + (normalCoreMaxC - baselineCoreC);
+    const coldReferenceC = sleep?.sleeping === true ? Math.min(referenceC, relativeSetpointC) : referenceC;
+    coldThresholdC = coldReferenceC + (normalCoreMinC - baselineCoreC);
+  } else {
+    // legacy 模式：未提供新核心参考，保持固定体感参照的旧公式与数值。
+    heatThresholdC = Math.max(thermoregulationSetpointC, thermoSetpointC);
+    coldThresholdC = sleep?.sleeping === true
+      ? Math.min(thermoregulationSetpointC, thermoSetpointC)
+      : thermoregulationSetpointC;
+  }
   const feverOffsetC = appliedFeverOffsetC(io);
   const heatMm = clamp(
     temperatureReadoutGainMmPerC * (coreTemperatureC - (heatThresholdC + feverOffsetC)),

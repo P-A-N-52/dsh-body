@@ -5,11 +5,13 @@
  * `sweatVolumeMl` 归 0，实际汗液只由 transferIn 增加。
  *
  * `climate.airTemperatureC` 改变轮初活动请求的温度因子（缺省 25°C）。热致请求先依据活动与
- * 原昼夜/睡眠设定点选阈值，再加本次运行已采用的发热增量。湿度与衣层限制的是体温脚本的
- * 蒸发量，不改本脚本的请求曲线。不建皮温、湿润度或蒸发残余。参数见 `sweat.parameters.json`
+ * 原昼夜/睡眠设定点选阈值，再加本次运行已采用的发热增量；阈值的静态参照是本体基线
+ * `baselineCoreC`（不再固定 37 °C），夜间死区按动态目标是否低于本体基线选择，空气舒适带
+ * 不进入出汗请求。湿度与衣层限制的是体温脚本的蒸发量，不改本脚本的请求曲线。不建皮温、
+ * 湿润度或蒸发残余。参数见 `sweat.parameters.json`
  * （design）；`SRC-WENGER-1976`（脑体温证据笔记）只作阈间带机制参考。
  */
-import { loadParameters, requireParameter, scaleByBodyWeight } from '../../../lib/parameters.js';
+import { getThermalProfile, loadParameters, requireParameter, scaleByBodyWeight } from '../../../lib/parameters.js';
 import { defaultClimate } from '../../body-inputs/climate-state.js';
 import { appliedFeverOffsetC, type PublishedThermalInput } from '../brain/thermoregulation-fever.ts';
 
@@ -46,6 +48,7 @@ export const fields = {
 };
 
 type IO = PublishedThermalInput & {
+  getThermalProfile?: typeof getThermalProfile;
   read(partId: 'skin'): Readonly<SkinState> | undefined;
   read(partId: 'physicalActivity'): Readonly<ActivityReading> | undefined;
   read(partId: 'thermoregulation'): Readonly<ThermoregulationReading> | null | undefined;
@@ -79,6 +82,8 @@ type SweatRequestInput = {
   intensity: number;
   dtMin: number;
   ambientTemperatureC: number;
+  baselineCoreC?: number;
+  coreBandRelative?: boolean;
   coreTemperatureC?: number;
   setpointC?: number;
   feverSetpointOffsetC?: number;
@@ -89,8 +94,10 @@ export function sweatRequestMl({
   intensity,
   dtMin,
   ambientTemperatureC: temperatureC,
-  coreTemperatureC = thermoregulationSetpointC,
-  setpointC = thermoregulationSetpointC,
+  baselineCoreC = getThermalProfile().baselineCoreC,
+  coreBandRelative = true,
+  coreTemperatureC = coreBandRelative ? baselineCoreC : thermoregulationSetpointC,
+  setpointC = coreBandRelative ? baselineCoreC : thermoregulationSetpointC,
   feverSetpointOffsetC = 0,
 }: SweatRequestInput): number {
   const temperatureFactor = Math.max(0, 1 + ambientGainPerC * (temperatureC - referenceTemperatureC));
@@ -98,12 +105,14 @@ export function sweatRequestMl({
   const exerciseRateMlPerMin = exercising
     ? referenceRateMlPerMin * intensity * temperatureFactor
     : 0;
+  // 相对模式以本体基线为静态参照选死区与运动热阈；legacy 模式保持固定 37 °C 旧轨迹。
+  const staticReferenceC = coreBandRelative ? baselineCoreC : thermoregulationSetpointC;
   // 非运动静息（含刚停运动压力反射卸载期）保留阈间带死区，避免轻度微热或夜间昼夜谷值时误出汗
   const deadbandC = exercising
     ? 0
-    : (setpointC < thermoregulationSetpointC ? nocturnalDeadbandOffsetC : interthresholdOffsetC);
+    : (setpointC < staticReferenceC ? nocturnalDeadbandOffsetC : interthresholdOffsetC);
   const thermalThresholdC = (exercising
-    ? Math.max(thermoregulationSetpointC, setpointC)
+    ? Math.max(staticReferenceC, setpointC)
     : setpointC + deadbandC) + feverSetpointOffsetC;
   const thermalRateMlPerMin = heatGain * Math.max(0, coreTemperatureC - thermalThresholdC);
   const rateMlPerMin = Math.min(maxRateMlPerMin, exerciseRateMlPerMin + thermalRateMlPerMin);
@@ -131,33 +140,32 @@ function readActivity(io: IO): { remainingExerciseMin: number; intensity: number
   return { remainingExerciseMin, intensity };
 }
 
-function readThermoregulation(io: IO): { coreTemperatureC: number; setpointC: number } {
+function readThermoregulation(io: IO, baselineCoreC: number): { coreTemperatureC: number; setpointC: number } {
   const thermoregulation = io.read('thermoregulation');
-  if (thermoregulation === undefined) {
-    return {
-      coreTemperatureC: thermoregulationSetpointC,
-      setpointC: thermoregulationSetpointC,
-    };
-  }
-  const coreTemperatureC = thermoregulation.coreTemperatureC;
+  if (thermoregulation === undefined) return { coreTemperatureC: baselineCoreC, setpointC: baselineCoreC };
+  const coreTemperatureC = thermoregulation?.coreTemperatureC;
   if (typeof coreTemperatureC !== 'number' || !Number.isFinite(coreTemperatureC)) {
     throw new Error('skin: thermoregulation.coreTemperatureC must be a finite number');
   }
   const setpointC = typeof thermoregulation.setpointC === 'number'
     && Number.isFinite(thermoregulation.setpointC)
     ? thermoregulation.setpointC
-    : thermoregulationSetpointC;
+    : baselineCoreC;
   return { coreTemperatureC, setpointC };
 }
 
 export function heartbeat(io: IO): void {
   const activity = readActivity(io);
-  const { coreTemperatureC, setpointC } = readThermoregulation(io);
+  const { baselineCoreC, coreBandRelative } = io.getThermalProfile?.() ?? getThermalProfile();
+  const staticReferenceC = coreBandRelative ? baselineCoreC : thermoregulationSetpointC;
+  const { coreTemperatureC, setpointC } = readThermoregulation(io, staticReferenceC);
   const requestMl = sweatRequestMl({
     remainingExerciseMin: activity?.remainingExerciseMin ?? 0,
     intensity: activity?.intensity ?? 0,
     dtMin: io.dt / 60,
     ambientTemperatureC: io.read('climate')?.airTemperatureC ?? defaultClimate.airTemperatureC,
+    baselineCoreC: staticReferenceC,
+    coreBandRelative,
     coreTemperatureC,
     setpointC,
     feverSetpointOffsetC: appliedFeverOffsetC(io),

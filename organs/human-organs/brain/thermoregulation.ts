@@ -4,6 +4,13 @@
  * SRC-CRAMER-2019 / cramer-2019（skin/references/notes，§§2–3）支持热量分账和压差上限；
  * SRC-ALBERWALLERSTROM-1985 / alber-wallerstrom-1985（同目录，§§2–3、原文摘要）支持湿热下
  * 汗液实际分泌量不等于蒸发量。这不是量热法复刻：参考面温度、传导系数与衣层倍率均为 design。
+ *
+ * `thermoregulation.setpointC` 配置静态正常基线，可经清单预设与个体参数覆盖；正常核心带与
+ * 空气舒适带不进入热账。轮末写出的 `setpointC` 是含昼夜/睡眠调整的动态目标，不含发热；
+ * `feverSetpointOffsetC` 是当轮从 `feverDrive` 一次采用的有效偏移，`effectiveSetpointC`
+ * 为动态目标加该偏移；发热不写回参数配置。参数证据见同目录
+ * `thermoregulation.parameters.json`；昼夜振幅与睡眠下调为工程假设，不建皮肤分区温度、
+ * 寒战肌肉做功、临床发热或低温症；不能称 validated。
  */
 import { resolveCircadianHour } from '../../../lib/circadian.js';
 import {

@@ -75,6 +75,10 @@ test('thermoregulation parameters are design defaults with no source', () => {
 
   const expected = {
     'thermoregulation.setpointC': { value: 37, unit: '°C' },
+    'thermoregulation.normalCoreMinC': { value: null, unit: '°C' },
+    'thermoregulation.normalCoreMaxC': { value: null, unit: '°C' },
+    'thermoregulation.ambientComfortMinC': { value: null, unit: '°C' },
+    'thermoregulation.ambientComfortMaxC': { value: null, unit: '°C' },
     'thermoregulation.heatCapacityKcalPerC': { value: 60, unit: 'kcal/°C' },
     'thermoregulation.metabolicFactor': { value: 0.005, unit: 'kcal/mL' },
     'thermoregulation.shiveringGain': { value: 2, unit: 'kcal/(min·°C)' },
@@ -98,7 +102,7 @@ test('thermoregulation parameters are design defaults with no source', () => {
     assert.ok(parameter, `${parameterId} must be declared`);
     assert.equal(parameter.value, value, `${parameterId}: value`);
     assert.equal(parameter.unit, unit, `${parameterId}: unit`);
-    assert.equal(parameter.status, 'design', `${parameterId}: status`);
+    assert.equal(parameter.status, value === null ? 'unset' : 'design', `${parameterId}: status`);
     const expectedSource = parameterId === 'thermoregulation.vasodilationGain'
       ? 'SRC-KRAUCHI-1994'
       : parameterId === 'thermoregulation.maxVasodilationKcalMin'

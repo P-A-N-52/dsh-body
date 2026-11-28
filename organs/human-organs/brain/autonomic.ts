@@ -13,7 +13,10 @@
  *   3. 入睡当轮即抑除运动驱动并加速平复残余交感、转入副交感主导；自然醒当轮立即释放副交感；
  *   4. 清醒期强烈疼痛/不适与性高潮推动一过性交感升高，但高潮不置 `startleActive`。
  */
-import { getNsfwSetting, loadParameters, requireParameter } from '../../../lib/parameters.js';
+import {
+  getDefaultCoreBaselineC, getNsfwSetting, getThermalProfile, hasParameterOverride,
+  loadParameters, requireParameter,
+} from '../../../lib/parameters.js';
 import { evaluateSexualRelease } from '../sexual-response/response.ts';
 import {
   evaluateSleepTransition,
@@ -31,6 +34,7 @@ export interface AutonomicState {
 }
 
 interface AutonomicIo {
+  getThermalProfile?: typeof getThermalProfile;
   read(id: 'autonomic'): Readonly<AutonomicState> | undefined;
   read(id: 'sleep'): Readonly<{
     sleeping?: unknown;
@@ -169,12 +173,16 @@ export function heartbeat(io: AutonomicIo): void {
     * Math.max(0, hypotensionThresholdMmHg - systolicMmHg);
 
   const thermoregulation = io.read('thermoregulation');
-  const coreTempC = finiteOr(thermoregulation?.coreTemperatureC, 37);
-  const effectiveColdThresholdC = endingSleepingLikely
-    ? (typeof thermoregulation?.setpointC === 'number' && Number.isFinite(thermoregulation.setpointC)
-      ? thermoregulation.setpointC - sleepColdThresholdOffsetC
-      : coldThresholdC - sleepColdThresholdOffsetC)
+  const { baselineCoreC, coreBandRelative } = io.getThermalProfile?.() ?? getThermalProfile();
+  // 相对模式以本体基线为清醒冷阈参照（显式绝对覆盖优先）；legacy 模式保持绝对阈旧轨迹。
+  const awakeColdThresholdC = coreBandRelative && !hasParameterOverride('autonomic.coldThresholdC')
+    ? baselineCoreC + (coldThresholdC - getDefaultCoreBaselineC())
     : coldThresholdC;
+  const coreTempC = finiteOr(thermoregulation?.coreTemperatureC, coreBandRelative ? baselineCoreC : getDefaultCoreBaselineC());
+  const sleepColdBaseC = coreBandRelative ? awakeColdThresholdC : coldThresholdC;
+  const effectiveColdThresholdC = endingSleepingLikely
+    ? finiteOr(thermoregulation?.setpointC, sleepColdBaseC) - sleepColdThresholdOffsetC
+    : awakeColdThresholdC;
   const rawColdDrive = coldGainPerC * Math.max(0, effectiveColdThresholdC - coreTempC);
 
   const nremDamping = endingSleepingLikely && sleepStage !== 'rem'

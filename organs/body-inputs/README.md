@@ -10,6 +10,8 @@
 
 兼容默认是工程约定，不是实测环境。无存档时直接采用已启用 `climate` 部位 `initialState` 的完整温湿对；标准清单仍为 25 °C / 50% RH。气候不读取参数文件，也不在运行中由参数或提醒改动；旧温度键仅在缺气温的旧档迁移时使用。没有空气温湿度模型、风速、日晒或衣物蓄水。动作、回执与迁移细则见[开发指南](../../docs/gateway-and-scripts.md#身体气候与衣层当前模块)。
 
+`thermoregulation.ambientComfortMinC` / `ambientComfortMaxC` 与本目录无关：它们是[按身体配置温度参考](../../docs/gateway-and-scripts.md#按身体配置温度参考)里的独立空气舒适带，只供脚本把真实空气输入与自己的接受范围比较，不改变 `climate` 部位、天气、热账或水账；本目录也不读取任何核心温度参考。
+
 <!-- organ-parameters:start -->
 ## 个体可自定义参数与默认值
 
