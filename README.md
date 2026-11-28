@@ -9,7 +9,7 @@
 整个项目围绕“数据驱动配置 + 独立模块化器官”设计，无需改动 Gateway 主干即可按个人需求自由定制各部位内容、数值与交互体验：
 
 - **自由组合与替换器官模块：** 通过脚本清单（默认 [`body-modules.json`](body-modules.json)、[`body-modules.female.json`](body-modules.female.json)、[`body-modules.male.json`](body-modules.male.json) 或自定义 `manifestPath`）自由增删、重排或替换任意部位的 `.ts` 脚本（例如按需切换到独立的中枢/肾性尿崩症变体清单，或只保留关心的一组器官）。新增一个器官只需编写单个模块（导出 `id`、`fields`、`initialState` 与 `heartbeat(io)`）并登记进清单；跨器官参数直读已解耦，替换某一器官实现时不会牵连其他部位。
-- **参数外置与单具身体精细定制：** 所有生理数值与策略阈值均外置在同目录 `*.parameters.json` 中，可直接调整默认模型行为；也可不改代码，仅在单具身体的存档 `body-state.json` 顶层通过 `profile`（`weightKg`、`heightCm`、`timezoneOffsetMin`、女性静息泌乳预设 `lactating`）、稀疏字典 `parameters`（按参数 ID 精准覆盖任意默认值）以及 `nsfw` 开关，为不同设定定制专属体质与内容边界。
+- **参数外置与单具身体精细定制：** 可调参数在器官同目录 `*.parameters.json` 中；单具身体可在 `body-state.json` 顶层设置 `profile`（`weightKg`、`heightCm`、可选 `bodyFatPercent`、`timezoneOffsetMin`、女性静息泌乳预设 `lactating`）、稀疏字典 `parameters`（按 ID 覆盖默认值）与 `nsfw` 开关。三份成人清单都提供[全身体成分](organs/human-compartments/body-composition/README.md)和[乳房组织组成](organs/human-organs/mammary-glands/README.md#乳房组织组成)的只读读数：缺体脂或组织输入则相应读数未知，不根据性别、BMI 或外形估算；不会自动启用泌乳或重算其他生理量。
 - **可扩展的体感、通知与动作场景：** 自定义器官或拓展逻辑可向 `interoception.sensations` 写入任意自定义体感（自带强度、阈值与定性描述），自动无缝接入 [`body_state`](tools.js) 的零数字主观感受汇总、[`brainNotify`](organs/human-organs/brain/notify.ts) 的主动提醒与睡眠唤醒链路；具体的饮食、生活剧本或特殊状态也可自由维护在 `scenarios/`、`startupScripts` 初始化脚本与动作载荷中（具体接入规范见 [`docs/gateway-and-scripts.md`](docs/gateway-and-scripts.md)）。
 
 ## Gateway 设计
@@ -68,6 +68,8 @@
 | 甲状旁腺 | 血钙负反馈调控的血浆 PTH 物理浓度代理（`pthPgMl`，`pg/mL`，参考基线 `30`、上限 `90`、`15 min` 半时） |
 | 松果体 | 仿真昼夜褪黑素相对信号（含清醒光照抑制与 39.4 min 平滑），协同 `sleep.sleepPressureMm` 驱动 `sleepinessMm` |
 | 心脏 | 活动强度、自主神经交感张力、睡眠分期副交感下调、血容量前负荷及共享睡醒/危机判定驱动的心率、搏出量与心输出量代理 |
+| 全身体成分 | `bodyComposition`：给定体重与可选脂肪质量百分数，派生脂肪和去脂质量；未知不估算，不记入物质账本 |
+| 乳房组织组成 | `breastComposition`：独立输入双侧组织总体积（mL）及纤维腺体体积百分数（%），缺省均为 `null`；三清单可用，与女性泌乳模块无关 |
 | 体液隔室 | 体液水与水分亏缺，按肾 → 肺 → 汗结算（女性清单再加子宫 → 乳腺） |
 | 葡萄糖隔室 | 可及池质量与浓度代理，含基础非胰岛素耗糖（0.12 g/min），按肾 → 肝 → 肌结算摄糖请求；女性变体末位加乳腺乳糖汇 |
 | 血液隔室 | 血容量与体液水联动（`waterVolumeMl / 30000`，钳位 2500–6000 mL），由心输出、自主交感与 SpO2 推出氧输送能力、血压（静息 120/80 mmHg）与肾滤过（GFR）代理 |
@@ -89,9 +91,9 @@
 | 睾丸 | 睾酮相对量（基线 1、昼夜波动、60 min 半时、`sleepDebtDays` 多日睡眠债与应激/高 PRL 抑制），放大性反应唤醒并产生 `libidoMm`（受 `nsfw` 门控） |
 | 附睾 | 精液储存（上限 5 mL，按速率回补），高潮后排空为 `ejaculatedMl` |
 
-**膳食长链脂质选配清单**：[`organs/presets/human-lipid/body-modules.json`](organs/presets/human-lipid/body-modules.json) 在根清单上只替换共享胃入口并增加七个部位（共 52 部位、47 份唯一参数文件、19 部位 transfer 闭包）。按[中文启用说明](organs/presets/human-lipid/README.md)设置 `manifestPath` 与独立 `statePath`，沿用 `body_act(eat/drink)`；`fatG` 可选，明确为零填 `0`、未知省略，不从热量反推。胆囊回补、胰外分泌和肠淋巴推动已知餐源脂质账，不改变默认、女性或男性清单，也不新增内脏动作。选配清单保留根清单的气候与衣层输入。
+**膳食长链脂质选配清单**：[`organs/presets/human-lipid/body-modules.json`](organs/presets/human-lipid/body-modules.json) 在根清单上只替换共享胃入口并增加七个部位（共 54 部位、48 份唯一参数文件、19 部位 transfer 闭包）。按[中文启用说明](organs/presets/human-lipid/README.md)设置 `manifestPath` 与独立 `statePath`，沿用 `body_act(eat/drink)`；`fatG` 可选，明确为零填 `0`、未知省略，不从热量反推。胆囊回补、胰外分泌和肠淋巴推动已知餐源脂质账，不改变默认、女性或男性清单，也不新增内脏动作。选配清单保留根清单的气候与衣层输入以及两个组成读数部位。
 
-仓库共有 55 份 `.parameters.json` 文件（根清单 40 份 + 女性新增 3 份 + 男性新增 2 份 + 3 份未挂入主清单的 DI 变体 + 脂质预设新增 7 份）。`parathyroid` 与 `calcium` 已挂载进默认、女性和男性清单，各器官脚本只读取本目录参数文件（`blood.ts` / `duodenum` 已通过 `heart.maxCardiacOutputMlMin` 与各自参考参数完成跨器官参数文件解耦）。各身体使用独立存档。
+仓库共有 56 份 `.parameters.json` 文件（根清单 41 份 + 女性新增 3 份 + 男性新增 2 份 + 3 份未挂入主清单的 DI 变体 + 脂质预设新增 7 份）。`parathyroid` 与 `calcium` 已挂载进默认、女性和男性清单，各器官脚本只读取本目录参数文件（`blood.ts` / `duodenum` 已通过 `heart.maxCardiacOutputMlMin` 与各自参考参数完成跨器官参数文件解耦）。全身体成分直接读存档 `profile`，不新增参数文件；乳房组成在同目录新增 1 份参数文件，未配置时两个输入为 `unset`（`null`）。各身体使用独立存档。
 
 Gateway 现同时在 `<bodyDir>/logs/` 维护滚动历史（均设有界保留上限，默认各 `500` 条）：`logs/state-history.jsonl` 仅在状态发生变化或初始/补算提交时追加变更字段，`logs/notification-history.json` 记录每条通知从 `queued` → `acked`（绑定投递 `messageId`）→ `inserted`（由 DSH `agent/inbox/inserted` 事件或 `/notifications/receipt` 确认进入会话收件箱）的状态与时间戳。
 
@@ -106,7 +108,7 @@ Gateway 现同时在 `<bodyDir>/logs/` 维护滚动历史（均设有界保留�
 - `index.js` 在宿主存在 `systemPrompt` 服务时注册静态纯感觉准则（`systemPrompt.section`）与已绑定激活态的轻度背景体感（`systemPrompt.context`，均零数值）；无该服务时安全旁路；存在 `ctx.on` 时监听 `agent/inbox/inserted` 并回写通知阅读回执到 `logs/notification-history.json`。
 - `brainNotify` 覆盖除食管呛咳与 `discomfort` 外的核心、扩展体感（含低钙/高钙）、漏尿边沿、高潮/受阻边沿与非标 `sensations`，采用普通（20–240 min）/高危（5–60 min）双轨指数退避、滞回与缓解重置、睡眠门控、NSFW 门控与多感受零数字聚合。
 - LLM 通过提交动作驱动身体，状态由器官脚本计算并整轮提交。
-- 参数全库共 55 份 `.parameters.json`、412 条参数：`prior` 19 项（有登记文献支撑）、`fitted_dev` 1 项（开发集拟合，不是独立验证）、`design` 372 项（工程假设，含选配脂链 22 项）、`policy` 20 项（提醒策略），无 `validated`。既有生理校准、解耦与多身体逻辑已有离线、真实 Gateway 集成及容器内 DSH 挂接观察。选配脂链和身体热输入以本版真实 Gateway 回放验账，未做对应的 DSH 宿主会话或独立人体、临床验证。
+- 参数全库共 56 份 `.parameters.json`、414 条参数：`prior` 19 项（有登记文献支撑）、`fitted_dev` 1 项（开发集拟合，不是独立验证）、`design` 372 项（工程假设，含选配脂链 22 项）、`policy` 20 项（提醒策略）、`unset` 2 项（乳房组成缺省输入，值为 `null`），无 `validated`。既有生理校准、解耦与多身体逻辑已有离线、真实 Gateway 集成及容器内 DSH 挂接观察。选配脂链和身体热输入以本版真实 Gateway 回放验账，未做对应的 DSH 宿主会话或独立人体、临床验证。
 
 ## 开发与验证
 

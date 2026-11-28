@@ -78,11 +78,11 @@ function assertClose(actual, expected, label, tolerance = 1e-12) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${label}: ${actual} != ${expected}`);
 }
 
-test('the female manifest boots all parts and pays menses and milk into the water ledger', async (t) => {
+test('the female manifest boots 50 parts and pays menses and milk into the water ledger', async (t) => {
   silence(t);
   const { gateway } = await startBody(t, { parts: { ovaries: { cycleDay: 0 } } });
   const booted = gateway.getState().parts;
-  assert.equal(Object.keys(booted).length, 48);
+  assert.equal(Object.keys(booted).length, 50);
   assert.ok(booted.reward, 'reward must be loaded');
   assert.ok(booted.ovaries, 'ovaries must be loaded');
   assert.ok(booted.uterus, 'uterus must be loaded');

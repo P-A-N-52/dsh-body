@@ -10,6 +10,7 @@
     "./organs/human-organs/small-intestine/water-absorption.ts",
     "./organs/human-organs/colon/colon.ts",
     "./organs/human-compartments/body-water/water.ts",
+    "./organs/human-compartments/body-composition/composition.ts",
     "./organs/human-compartments/glucose/glucose.ts",
     "./organs/human-organs/liver/glycogen.ts",
     "./organs/human-organs/kidney/gluconeogenesis.ts",
@@ -45,6 +46,7 @@
     "./organs/human-organs/lungs/respiratory-water-loss.ts",
     "./organs/human-organs/lungs/ventilation.ts",
     "./organs/human-organs/skin/sweat.ts",
+    "./organs/human-organs/mammary-glands/composition.ts",
     "./organs/human-organs/sexual-response/response.ts"
   ],
   "catchUpMinutes": 720,

@@ -9,6 +9,7 @@ import {
   getNumericParameterOverride,
   getParameterOverride,
   getProfileLactating,
+  getTimezoneOffsetMin,
   hasParameterOverride,
   loadParameters,
   requireParameter,
@@ -62,6 +63,7 @@ const parametersFiles = [
   { label: 'organs/human-organs/ovaries/menstrual-cycle.parameters.json', url: new URL('../organs/human-organs/ovaries/menstrual-cycle.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/uterus/uterus.parameters.json', url: new URL('../organs/human-organs/uterus/uterus.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/mammary-glands/milk.parameters.json', url: new URL('../organs/human-organs/mammary-glands/milk.parameters.json', import.meta.url) },
+  { label: 'organs/human-organs/mammary-glands/composition.parameters.json', url: new URL('../organs/human-organs/mammary-glands/composition.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/sexual-response/response.parameters.json', url: new URL('../organs/human-organs/sexual-response/response.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/testes/testosterone.parameters.json', url: new URL('../organs/human-organs/testes/testosterone.parameters.json', import.meta.url) },
   { label: 'organs/human-organs/epididymis/storage.parameters.json', url: new URL('../organs/human-organs/epididymis/storage.parameters.json', import.meta.url) },
@@ -115,6 +117,23 @@ test('setWorkerParameterConfig overrides loaded parameters and scales by weight 
   assert.equal(loaded['glucose.referenceBodyMassKg'], 75);
 });
 
+test('profile body fat uses an inclusive percent range and preserves existing getters', (t) => {
+  t.after(() => setWorkerParameterConfig({}));
+  for (const bodyFatPercent of [-0.01, 100.01, NaN, Infinity, '20', true, {}]) {
+    assert.throws(() => setWorkerParameterConfig({ profile: { bodyFatPercent } }), /bodyFatPercent/, String(bodyFatPercent));
+  }
+
+  for (const bodyFatPercent of [null, 0, 22.5, 100]) {
+    setWorkerParameterConfig({ profile: { bodyFatPercent, timezoneOffsetMin: 480, lactating: true } });
+    assert.deepEqual(getBodyProfile(), { weightKg: 75, heightCm: 170 });
+    assert.equal(getTimezoneOffsetMin(), 480);
+    assert.equal(getProfileLactating(), true);
+  }
+  setWorkerParameterConfig({ profile: { bodyFatPercent: 20 } });
+  assert.equal(getTimezoneOffsetMin(), null);
+  assert.equal(getProfileLactating(), false);
+});
+
 for (const { label, url } of parametersFiles) {
   test(`${label}: schema, ids, unset/null and sources are consistent`, () => {
     const data = readParameters(url);
@@ -144,6 +163,14 @@ for (const { label, url } of parametersFiles) {
     }
   });
 }
+
+test('breast composition has no default volume or fibroglandular percentage', () => {
+  const url = new URL('../organs/human-organs/mammary-glands/composition.parameters.json', import.meta.url);
+  assert.deepEqual(loadParameters(url), {
+    'breastComposition.bilateralTissueVolumeMl': null,
+    'breastComposition.fibroglandularVolumePct': null,
+  });
+});
 
 test('small intestine declares the colon residue fraction as a design parameter', () => {
   const data = readParameters(new URL(
@@ -213,8 +240,8 @@ test('glucose parameters keep the fixed design defaults', () => {
   assert.deepEqual(byId['glucose.residualDisposalHalfTimeMin'].range, [10, 300]);
 });
 
-test('the parameter inventory covers the 55 files across the adult manifests and optional chains', () => {
-  assert.equal(parametersFiles.length, 55);
+test('the parameter inventory covers fifty-six files across the adult manifests, optional chains and breast composition', () => {
+  assert.equal(parametersFiles.length, 56);
   const labels = parametersFiles.map(({ label }) => label);
   assert.equal(
     labels.some((label) => label.includes('/skeletal-muscle/regions/')),
@@ -241,6 +268,7 @@ test('the parameter inventory covers the 55 files across the adult manifests and
   assert.ok(labels.includes('organs/human-organs/ovaries/menstrual-cycle.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/uterus/uterus.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/mammary-glands/milk.parameters.json'));
+  assert.ok(labels.includes('organs/human-organs/mammary-glands/composition.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/sexual-response/response.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/testes/testosterone.parameters.json'));
   assert.ok(labels.includes('organs/human-organs/epididymis/storage.parameters.json'));

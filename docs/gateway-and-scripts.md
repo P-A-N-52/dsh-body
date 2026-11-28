@@ -16,17 +16,17 @@
 
 | 文件 | 谁写、何时读 | 用来做什么 |
 | --- | --- | --- |
-| [`body-modules.json`](../body-modules.json)（`manifestPath`） | 开发者改，Gateway 启动时读 | 根清单：声明要加载的脚本、每个脚本读取的状态字段、补算上限和脚本超时（当前 45 部位、40 份唯一参数文件）。 |
-| [`body-modules.female.json`](../body-modules.female.json) | 开发者改，作为另一份 `manifestPath` 在启动时读 | 女性独立清单：根清单 + `ovaries` + `uterus` + `mammary-glands/milk.ts`，`body-water/water.ts` 换成 `water.female.ts`，`glucose.ts` 换成 `glucose.female.ts`，共 48 部位、43 份唯一参数文件（硬 transfer 闭包 17 部位）；必须配独立 `statePath`。 |
-| [`body-modules.male.json`](../body-modules.male.json) | 开发者改，作为另一份 `manifestPath` 在启动时读 | 男性独立清单：根清单 + `testes` + `epididymis`，共 47 部位、42 份唯一参数文件；必须配独立 `statePath`。 |
-| [`organs/presets/human-lipid/body-modules.json`](../organs/presets/human-lipid/body-modules.json) | 调用方选配，由 `manifestPath` 指定 | 根清单的胃入口换为 `hydration-lipid.ts`，其余部位（含气候与衣层）保持，再加七个脂质部位。共 52 部位、47 份唯一参数文件（硬 transfer 闭包 19 部位）；必须配独立 `statePath`。 |
-| `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active`、`profile`、`parameters` 或 `nsfw` | **一具身体一份存档**：所有部位的值、时钟、动作、通知，以及可选个体 `profile`（支持 `weightKg`、`heightCm`、`timezoneOffsetMin` 与女性静息泌乳预设 `lactating?: boolean`）、稀疏参数差异 `parameters`、`nsfw` 开关与 `boundSessionId` 都在一起。每份清单配独立存档，不要为每个器官或每个脚本再建存档，也不要在同一份存档上切换清单。 |
+| [`body-modules.json`](../body-modules.json)（`manifestPath`） | 开发者改，Gateway 启动时读 | 根清单：声明要加载的脚本、每个脚本读取的状态字段、补算上限和脚本超时（当前 47 部位、41 份唯一参数文件，含派生只读的 `bodyComposition` 与 `breastComposition` 两个组成读数部位）。 |
+| [`body-modules.female.json`](../body-modules.female.json) | 开发者改，作为另一份 `manifestPath` 在启动时读 | 女性独立清单：根清单 + `ovaries` + `uterus` + `mammary-glands/milk.ts`，`body-water/water.ts` 换成 `water.female.ts`，`glucose.ts` 换成 `glucose.female.ts`，共 50 部位、44 份唯一参数文件（硬 transfer 闭包 17 部位）；必须配独立 `statePath`。 |
+| [`body-modules.male.json`](../body-modules.male.json) | 开发者改，作为另一份 `manifestPath` 在启动时读 | 男性独立清单：根清单 + `testes` + `epididymis`，共 49 部位、43 份唯一参数文件；必须配独立 `statePath`。 |
+| [`organs/presets/human-lipid/body-modules.json`](../organs/presets/human-lipid/body-modules.json) | 调用方选配，由 `manifestPath` 指定 | 根清单的胃入口换为 `hydration-lipid.ts`，其余部位（含气候、衣层与两个组成读数）保持，再加七个脂质部位。共 54 部位、48 份唯一参数文件（硬 transfer 闭包 19 部位）；必须配独立 `statePath`。 |
+| `body-state.json`（`statePath`） | Gateway 创建、恢复和更新；用户只在停机时改顶层 `active`、`profile`、`parameters` 或 `nsfw` | **一具身体一份存档**：所有部位的值、时钟、动作、通知，以及可选个体 `profile`（支持 `weightKg`、`heightCm`、`bodyFatPercent`（0–100，缺失或 `null` 为未知）、`timezoneOffsetMin` 与女性静息泌乳预设 `lactating?: boolean`）、稀疏参数差异 `parameters`、`nsfw` 开关与 `boundSessionId` 都在一起。每份清单配独立存档，不要为每个器官或每个脚本再建存档，也不要在同一份存档上切换清单。 |
 | [`package.json`](../package.json) | 项目维护者改，由 Node/npm 使用 | 声明 ESM、Node 版本、测试命令和发布文件，不登记心跳脚本，也不存身体数据。`files` 收录三份主清单，选配脂质清单随 `organs/` 一起打包；[`cordis.patch.yml`](../cordis.patch.yml) 是 DSH 插件装载描述，不是身体 JSON。 |
-| `organs/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官、隔室与衣层的默认值、单位、证据状态、范围及来源。全库共 55 份，含 3 份仅供 DI 变体使用的参数。各清单的参数文件数见上表；共享参数只计一次，`climate` 无参数文件，`clothing` 有 1 份。 |
+| `organs/**/*.parameters.json` | 模块在 import 时读；标定者改，Gateway 不写 | 器官、隔室与衣层的默认值、单位、证据状态、范围及来源。全库共 56 份，含 3 份仅供 DI 变体使用的参数。各清单的参数文件数见上表；共享参数只计一次，`climate` 无参数文件，`clothing` 有 1 份；`bodyComposition` 只读存档 `profile`，无参数文件，`breastComposition` 使用 mammary-glands 目录 1 份共用参数文件（两个输入缺省 `unset`，值为 `null`）。 |
 
 **清单的四个字段。** `scripts` 是心跳脚本数组，支持 `{ "path": "...", "inject": { ... } }` 和旧版字符串路径。`startupScripts`、`catchUpMinutes`（720）与 `scriptTimeoutMs`（10000）含义不变。三份主清单的硬 transfer 闭包仍为根/男性 15 部位、女性 17 部位。
 
-**女性与男性清单。** [`body-modules.female.json`](../body-modules.female.json) 与 [`body-modules.male.json`](../body-modules.male.json) 各自使用独立 `statePath`；部位和参数数量见上表。女性生殖链已升级为：`ovaries` 采用 `SRC-STRICKER-2006` 每日血清中位数插值物理浓度（`estradiolPmolL`、`progesteroneNmolL`、`lhIuL`、`fshIuL`）与慢性高催乳素/泌乳抑制度 `cycleSuppression`；`uterus` 经量参考调整为 `30 mL/周期`（对齐 `SRC-HALLBERG-1966` 总体中位数，保留单口径水账）、支持黄体平台 `0.9`（`SRC-BAKOS-1994`）以及高潮/催产素相关 `contractionMm` 与 `pelvicCongestionMm`；`mammaryGlands` 实现非妊娠高 PRL + 机械排空刺激诱导状态机（区分 `galactorrhea` 溢乳与 `lactating` 规整产奶，支持 `profile.lactating: true`）、局部充盈自抑制 `1 − DF²` 与催产素门控 `express_milk` / `breastfeed` 喷乳反射（保持合成入池一次记水账、绝不双扣体液）；详见 [`ovaries`](../organs/human-organs/ovaries/README.md)、[`uterus`](../organs/human-organs/uterus/README.md) 与 [`mammary-glands`](../organs/human-organs/mammary-glands/README.md)。
+**女性与男性清单。** [`body-modules.female.json`](../body-modules.female.json) 与 [`body-modules.male.json`](../body-modules.male.json) 各自使用独立 `statePath`；部位和参数数量见上表。`bodyComposition` 与 `breastComposition` 在三份成人清单都可用；泌乳模块 `mammaryGlands` 仍仅在女性清单加载。女性生殖链已升级为：`ovaries` 采用 `SRC-STRICKER-2006` 每日血清中位数插值物理浓度（`estradiolPmolL`、`progesteroneNmolL`、`lhIuL`、`fshIuL`）与慢性高催乳素/泌乳抑制度 `cycleSuppression`；`uterus` 经量参考调整为 `30 mL/周期`（对齐 `SRC-HALLBERG-1966` 总体中位数，保留单口径水账）、支持黄体平台 `0.9`（`SRC-BAKOS-1994`）以及高潮/催产素相关 `contractionMm` 与 `pelvicCongestionMm`；`mammaryGlands` 实现非妊娠高 PRL + 机械排空刺激诱导状态机（区分 `galactorrhea` 溢乳与 `lactating` 规整产奶，支持 `profile.lactating: true`）、局部充盈自抑制 `1 − DF²` 与催产素门控 `express_milk` / `breastfeed` 喷乳反射（保持合成入池一次记水账、绝不双扣体液）；详见 [`ovaries`](../organs/human-organs/ovaries/README.md)、[`uterus`](../organs/human-organs/uterus/README.md) 与 [`mammary-glands`](../organs/human-organs/mammary-glands/README.md)。
 
 清单与存档在启动时解析。状态查询、动作排队和心跳使用主进程内存中的存档对象。BodyWorker 只加载一次模块和它们登记的函数。
 
@@ -35,7 +35,7 @@
 | 字段 | 含义 |
 | --- | --- |
 | `schemaVersion`、顶层 `active` | 现在写 v2。`active` 必须是布尔值，旧档缺字段默认 `true`；非法值拒绝启动，不改原档。 |
-| 顶层 `profile`、顶层 `parameters`、顶层 `nsfw`、顶层 `boundSessionId`（均可选） | 每具身体的**个体差异、内容门控与绑定状态**。`profile` 为 `{ weightKg?: number, heightCm?: number, timezoneOffsetMin?: number, lactating?: boolean }`（身高体重缺省按 `75 kg / 170 cm`，`lactating: true` 为女性清单提供静息稳态已建立泌乳预设）；`parameters` 为稀疏字典 `{ [parameterId]: number | null }`；`nsfw` 为布尔开关（缺省按 `startGateway({ defaultNsfw })` 的默认值 `false`，停机修改重启生效，控制 `sex` / `orgasm` / `express_milk` / `breastfeed`、乳腺泌乳与性相关体感/通知）；`boundSessionId` 为当前绑定的会话 ID（`string | null`，由 `POST /bind`、`POST /unbind` 或 `body_bind` 维护）。Gateway 启动先 `store.load()`，再在 `BodyWorker` 导入任何器官前把 `{ profile, parameters, nsfw }` 注入 [`lib/parameters.js`](../lib/parameters.js)。 |
+| 顶层 `profile`、顶层 `parameters`、顶层 `nsfw`、顶层 `boundSessionId`（均可选） | `profile` 含可选 `weightKg`、`heightCm`（缺省 `75 kg / 170 cm`）、`bodyFatPercent`（数值百分数或 `null`）、`timezoneOffsetMin`（缺省用宿主时区）、`lactating`（缺省 `false`；`true` 在女性清单开启 `nsfw` 时提供已建立泌乳预设）。`parameters` 是参数 ID 到有限数值或 `null` 的稀疏字典。`nsfw` 是布尔开关（缺省 `false`，可由 `startGateway({ defaultNsfw })` 设置默认；控制性与泌乳的动作、感受及通知）。`boundSessionId` 是绑定会话 ID 或 `null`，通过绑定/解绑入口维护。Gateway 启动先 `store.load()`，再在 BodyWorker 导入器官前把 `{ profile, parameters, nsfw }` 注入 [`lib/parameters.js`](../lib/parameters.js)。 |
 | `snapshot.simulatedSeconds`、`snapshot.parts`、`wallTimeMs` | 最近一次提交的仿真秒数、按模块 `id` 存放的部位值，以及计算下一轮用的现实时间锚点（毫秒）。从 `active: false` 恢复或从休眠绑定激活时，Gateway 会把 `wallTimeMs`（及在途批次 `targetWallTimeMs`）重锚到当前 `now()`，不补算暂停/休眠时长。 |
 | `actions`、`pendingActionIds`、`activeBatch`、`lastEffectiveAt` | 按 ID 查的动作记录、排队顺序、已锁定待完成的批次和最近分配的生效时刻。`activeBatch` **不是**启停开关。补算轮失败后保留的批次还会带 `suppressNotifications: true`，在线重试继续按补算语义抑制通知；旧档没有这个键时按 `false`。排队和在途动作不裁剪；启用时，已结束的记录默认最多留最近 2000 条，且不超过 30 天。记录被裁剪后，再用相同 ID 可能被视为新动作。 |
 | `notifications`、`startup` | 尚未确认的通知和上次启动记录。`startup.active`、`startup.resumedFromPause` 由 Gateway 写，供恢复与诊断，不要手改。 |
@@ -46,9 +46,28 @@ DSH 插件的默认存档是 `$DSH_HOME/dsh-body/body-state.json`（通常是 `~
 
 `POST /actions` 的请求体、`GET /state` 的返回值也是 JSON，但不是要维护的文件。当 `startGateway({ requireBinding: true })` 开启时（DSH 插件默认开启），通过存档 `boundSessionId` 与 `POST /bind` / `POST /unbind` / `body_bind` 实现单会话独占绑定与未绑定休眠：身体已绑定时，其他会话的 `body_bind`、`body_state`、`body_act` 与不同 `sessionId` 的 `/bind` / `/actions` 均会被拒绝，解绑时会清理该会话尚未投递的通知队列；`<bodyDir>/logs/state-history.jsonl` 与 `<bodyDir>/logs/notification-history.json` 分别记录有界状态变更滚动历史与通知投递/ACK/`agent/inbox/inserted` 阅读回执历史（独立落盘于存档旁 `logs/` 目录，不混入 `body-state.json`）；目前仍无多会话并发绑定。
 
+### 单具身体的组成设置
+
+停 Gateway 后，把需要的字段合并到实际 `statePath` 的**完整存档**；保留 `profile`、`parameters` 中的其他键和原 `snapshot`，再重启。以下是合成示例，不是人群默认或推荐值：
+
+```json
+{
+  "profile": { "weightKg": 65, "bodyFatPercent": 20 },
+  "parameters": {
+    "breastComposition.bilateralTissueVolumeMl": 600,
+    "breastComposition.fibroglandularVolumePct": 20
+  }
+}
+```
+
+- `profile.bodyFatPercent` 为全身脂肪**质量百分数**，填 `20` 表示 20%；省略或填 `null` 表示未知。示例的 `parts.bodyComposition` 给出 `13 kg` 脂肪与 `52 kg` 去脂质量；未知时两项都为 `null`，不按 BMI 或清单估计。
+- `breastComposition.*` 参数来自[同目录组成参数文件](../organs/human-organs/mammary-glands/composition.parameters.json)（均为 `unset` / `null`），用存档里的同名键覆盖。体积必须是正有限 mL；百分数为匹配口径的双侧**体积百分数**。示例给出 `120 mL` 纤维腺体与 `480 mL` 脂肪。只给一项会保留该输入，但不推导分量；显式 `null` 同样表示未知。
+- 两种百分数都接受 `[0,100]` 的有限数值，不接受数字字符串或越界值。正常启动以配置而非旧 `snapshot` 为准；如恢复时仍有未结算批次，首个成功心跳刷新读数。暂停档不加载模块，保留已提交快照。
+- 根、男性、女性清单均可通过本机 `GET /state` 或 `gateway.getState()` 查看这两个部位。只改形态不重算水、糖、乳汁或其他库存，乳房体积也不另计全身脂肪。三个工具及定性的 `body_state` 不变。见[全身体成分](../organs/human-compartments/body-composition/README.md)与[乳房组织组成](../organs/human-organs/mammary-glands/README.md#乳房组织组成)的输入口径与对照。
+
 ## 3. 写 TS 时，参数谁给，结果给谁？
 
-模块用 ESM **具名导出**：`id` 是唯一、稳定的部位键（改名就不再读原部位），`heartbeat(io)` 是每轮入口，可同步或异步，`fields` 声明本部位字段（每个字段写 `unit` 与 `mode`，规则见 [`docs/gateway-operations.md`](./gateway-operations.md)；不能省略，只做 `io.write` 的模块也要 `export const fields = {};`）。常用的两个可选导出是 `initialState`（部位初值，默认 `{}`）和 `actionTypes`（能处理的动作名，默认 `[]`，只靠时钟推进的模块可以不声明动作）。已有部位只补缺少的初值，不会每次启动都重置。
+模块用 ESM **具名导出**：`id` 是唯一、稳定的部位键（改名就不再读原部位），`heartbeat(io)` 是每轮入口，可同步或异步，`fields` 声明本部位字段（每个字段写 `unit` 与 `mode`，规则见 [`docs/gateway-operations.md`](./gateway-operations.md)；不能省略，只做 `io.write` 的模块也要 `export const fields = {};`）。常用的两个可选导出是 `initialState`（部位初值，默认 `{}`）和 `actionTypes`（能处理的动作名，默认 `[]`，只靠时钟推进的模块可以不声明动作）。已有部位只补缺少的初值。若模块还导出 `resetOnStart` 字段清单，标准 `startup/reset-parts.js` 会在无在途批次、无补算错误的启用启动时重建这些字段；不要用它清除需持久保留的库存。
 
 | 谁提供 | 脚本怎么取、怎么交回 |
 | --- | --- |
@@ -70,6 +89,7 @@ DSH 插件的默认存档是 `$DSH_HOME/dsh-body/body-state.json`（通常是 `~
 | `loadParameters(parametersUrl)` | 读 JSON，返回 `{ [参数 ID]: 值 }`。校验 `schemaVersion === 1`、`owner` 非空、每个参数 `id` 以 `owner.` 开头且不重复、`status: "unset"` 与 `value: null` 一一对应；若当前 Worker 所属身体存档顶层 `parameters` 存在同名 key，返回稀疏覆盖后的值。 |
 | `requireParameter(values, id)` | 返回值；若值为 `null` 或缺失，抛出带参数 ID 的错误。脚本需要的参数还没标定时，应当在这里失败，而不是拿 `0` 继续跑。 |
 | `getBodyProfile()` / `hasParameterOverride(id)` / `getNumericParameterOverride(id)` / `scaleByBodyWeight(value, parameterId)` | 返回当前身体 `{ weightKg, heightCm }`、查询是否显式覆盖，并按 `weightKg / 75` 自动缩放体格相关参数（`75 kg` 原值逐位不变；`parameters` 显式覆盖优先于自动缩放）。核心隔室、血液、心脏、血氧、肺通气、体温调节、肝糖原、肾糖异生、肌糖原、下丘脑 ADH 与产尿基线已同步接入，保证不同体重下静息 `37.0 °C` 与空腹 `90.0 mg/dL` 平衡不被拆散。 |
+| `getProfileBodyFatPercent()` | 返回 `profile.bodyFatPercent`（0–100 的质量百分数）或 `null`；`getBodyProfile()` 的返回形状不变。 |
 | `getNsfwSetting()` | 返回当前 Worker 配置的 `nsfw` 布尔开关（在脱离 Worker 的独立单元测试中未配置时返回 `null`）。`mammaryGlands`、`interoception` 与 `brainNotify` 以 `getNsfwSetting() !== false` 判断是否启用，即在 Gateway 运行态 `nsfw: false` 时严格禁用。 |
 
 `parametersUrl` 可以是文件 URL（`URL` 对象）或文件系统路径；相对路径按进程工作目录解析，所以模块里用 `new URL('./motility.parameters.json', import.meta.url)` 最稳：
@@ -357,7 +377,7 @@ mouthMoistureMm    = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100
 
 - **默认非泌乳、预设与诱导状态机。** 默认女性身体未在哺乳；可通过存档顶层 `profile.lactating: true`（在 `nsfw: true` 下把 `inductionProgress` / `lactating` 设为已建立稳态）或持续高 PRL（`>= 45 ng/mL`）+ 机械刺激（`express_milk` / `breastfeed`）逐步推进 `inductionProgress ∈ [0, 1]`（≥ `0.25` 出现 `galactorrhea` 溢乳、达到 `1.0` 进入 `lactating` 产奶；停止刺激按 `7 d` 半衰期退化）。`nsfw: false` 时清零泌乳请求与排乳并让充盈回落。
 - **水/糖单口径守恒与两段池。** 新合成乳汁先通过 `milkRequestMl`（`bodyFluid → mammaryGlands.milkMl`）与 `lactoseRequestG`（`glucose → mammaryGlands.lactoseG`）一次记账进入腺泡池 `storedMilkMl`（上限 `360 mL`，按 `DF = storedMilkMl / 360` 产生 `1 − DF²` 局部自抑制并推导 `fullnessMm`）；`express_milk` / `breastfeed` 在 `oxytocinPgMl >= 5 pg/mL` 门控下将 `storedMilkMl` 按单次 PAMR 排出为 `ejectedMilkMl`，后续刺激延续不重复套用 PAMR，且绝不双扣 `bodyFluid` 或 `glucose`。
-- **清单与证据。** 女性清单数量见 §2；`milk.parameters.json` 现含 14 项参数（其中 `basalMilkRateMlPerMin = 0.54`、`storageCapacityMl = 360`、`breastfeedPamr = 0.673` 挂 `SRC-KENT-2006`，`expressPamr = 0.75` 挂 `SRC-PRIME-2012`，其余 `design`）。详细方程与文献边界见 [`mammary-glands`](../organs/human-organs/mammary-glands/README.md)。
+- **清单与证据。** 女性清单数量见 §2；`mammaryGlands` 是女性清单独有的泌乳部位，三份成人清单共用的 `breastComposition` 是独立派生读数，不参与泌乳、库存或 transfer。`milk.parameters.json` 现含 14 项参数（其中 `basalMilkRateMlPerMin = 0.54`、`storageCapacityMl = 360`、`breastfeedPamr = 0.673` 挂 `SRC-KENT-2006`，`expressPamr = 0.75` 挂 `SRC-PRIME-2012`，其余 `design`）。详细方程与文献边界见 [`mammary-glands`](../organs/human-organs/mammary-glands/README.md)。
 
 ### 性行为与性反应周期（当前模块）
 

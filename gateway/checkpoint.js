@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { isPlainObject as isRecord } from '../json-safe.js';
+import { isPercent } from '../lib/parameters.js';
 import { digestAction, makeActionRecord, pruneActions, setAction } from './actions.js';
 import { heartbeatSeconds, maxNotificationTextLength } from './config.js';
 
@@ -140,6 +141,10 @@ function assertCheckpointProfile(profile, statePath) {
   }
   if (profile.heightCm !== undefined) {
     assertPositiveFinite(profile.heightCm, 'profile.heightCm', statePath);
+  }
+  const { bodyFatPercent } = profile;
+  if (bodyFatPercent !== undefined && bodyFatPercent !== null && !isPercent(bodyFatPercent)) {
+    throw new Error(`Invalid profile.bodyFatPercent in body checkpoint at ${statePath}: expected null or a number in [0, 100]`);
   }
   if (profile.timezoneOffsetMin !== undefined && profile.timezoneOffsetMin !== null) {
     if (

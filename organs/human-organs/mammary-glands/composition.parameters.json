@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "owner": "breastComposition",
+  "parameters": [
+    {
+      "id": "breastComposition.bilateralTissueVolumeMl",
+      "unit": "mL",
+      "value": null,
+      "status": "unset",
+      "source": null,
+      "note": "双侧脂肪与纤维腺体组织的总体积；不含皮肤、胸肌及储奶。仅接受正有限数或 null；不随体重缩放。"
+    },
+    {
+      "id": "breastComposition.fibroglandularVolumePct",
+      "unit": "%",
+      "value": null,
+      "status": "unset",
+      "range": [0, 100],
+      "source": null,
+      "note": "同一双侧组织口径下纤维腺体占总体积的百分数（不是 0–1 分数或影像定性分级）；不指定人群默认值。"
+    }
+  ]
+}
