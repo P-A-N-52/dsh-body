@@ -1618,7 +1618,8 @@ export function createBodyTools(gateway, options = {}) {
       }
       const status = currentBindStatus(target);
 
-      if (status.bound && status.boundSessionId !== sessionId) {
+      // bind 放行到 target.bindSession：死持有者由插件层先解绑再接管，活持有者由网关 409 走下方 catch 回执。
+      if (status.bound && status.boundSessionId !== sessionId && action !== 'bind') {
         return {
           ok: false,
           bound: false,

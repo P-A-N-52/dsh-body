@@ -275,21 +275,25 @@ test('apply integrates optional systemPrompt, keeps a stale boundSessionId acros
   // 重启保活：绑定会话暂不存活（agents.get 取不到）时启动保留绑定，存档不清空。
   assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).boundSessionId, 'stale-session');
 
-  // 对其他会话，陈旧持有的身体按未绑定且休眠呈现，且不泄漏持有者 ID。
+  // 其他会话视角维持「已被其他会话占用」语义，且不泄漏持有者 ID。
   const initialStatus = await registeredTools.get('body_bind').execute(
     { action: 'status' },
     { agent: { session: { id: 'session-a' } } },
   );
-  assert.equal(initialStatus.dormant, true);
+  assert.equal(initialStatus.ok, false);
   assert.equal(initialStatus.bound, false);
+  assert.equal(initialStatus.dormant, true);
   assert.equal(initialStatus.boundSessionId, null);
+  assert.equal(initialStatus.error, 'Body is bound to another session');
+  assert.equal(JSON.stringify(initialStatus).includes('stale-session'), false);
   assert.equal(feelingsContext({ agent: { session: { id: 'session-a' } } }), '');
 
   const staleAct = await registeredTools.get('body_act').execute(
     { type: 'eat', volumeMl: 100, energyKcal: 50, mealKind: 'liquid' },
     { agent: { session: { id: 'session-a' } }, callId: 'call-stale' },
   );
-  assert.equal(staleAct.statusCode, 409);
+  assert.equal(staleAct.ok, false);
+  assert.equal(staleAct.statusCode, 403);
 
   // session-a 通过 body_bind 接管陈旧持有的身体：死持有者先解绑，再绑定新会话。
   const bound = await registeredTools.get('body_bind').execute(
@@ -678,15 +682,16 @@ test('apply keeps a dead-holder binding alive at boot and lets a live session ta
   assert.equal(savedAtBoot.boundSessionId, 'session-gone');
   assert.ok(savedAtBoot.snapshot.simulatedSeconds >= 2000);
 
-  // 其他会话视角：陈旧持有的身体按未绑定且休眠呈现，不泄漏持有者 ID。
+  // 其他会话视角维持「已被其他会话占用」语义，不泄漏持有者 ID。
   const staleStatus = await registeredTools.get('body_bind').execute(
     { action: 'status' },
     { agent: { session: { id: 'session-new' } } },
   );
-  assert.equal(staleStatus.ok, true);
+  assert.equal(staleStatus.ok, false);
   assert.equal(staleStatus.bound, false);
   assert.equal(staleStatus.boundSessionId, null);
   assert.equal(staleStatus.dormant, true);
+  assert.equal(staleStatus.error, 'Body is bound to another session');
   assert.equal(JSON.stringify(staleStatus).includes('session-gone'), false);
 
   const staleState = await registeredTools.get('body_state').execute(
@@ -701,7 +706,7 @@ test('apply keeps a dead-holder binding alive at boot and lets a live session ta
     { agent: { session: { id: 'session-new' } }, callId: 'call-stale-act' },
   );
   assert.equal(staleAct.ok, false);
-  assert.equal(staleAct.statusCode, 409);
+  assert.equal(staleAct.statusCode, 403);
 
   // ④ 死持有者接管：存活会话通过 body_bind 接管成功。
   const takeover = await registeredTools.get('body_bind').execute(

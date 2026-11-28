@@ -236,44 +236,21 @@ export async function apply(ctx, config = {}) {
     return scoped.bindSession(sessionId);
   }
 
-  const toolScopedGateways = new WeakMap();
-  function resolveToolScopedGateway(sessionId) {
-    const scoped = gateway.gatewayForSession(sessionId);
-    if (!scoped || typeof scoped.bindSession !== 'function') return scoped;
-    let bySession = toolScopedGateways.get(scoped);
-    if (!bySession) {
-      bySession = new Map();
-      toolScopedGateways.set(scoped, bySession);
-    }
-    let wrapper = bySession.get(sessionId);
-    if (!wrapper) {
-      const holderIsStale = () => {
-        const holder = scoped.getBoundSessionId?.();
-        return typeof holder === 'string' && holder !== '' && holder !== sessionId && isSessionDead(holder);
-      };
-      wrapper = Object.create(scoped);
-      wrapper.getBoundSessionId = () => (holderIsStale() ? null : scoped.getBoundSessionId?.());
-      wrapper.getHealth = () => {
-        const health = scoped.getHealth?.();
-        if (!holderIsStale() || !health || typeof health !== 'object') return health;
-        return { ...health, boundSessionId: null };
-      };
-      wrapper.isDormant = () => holderIsStale() || Boolean(scoped.isDormant?.());
-      wrapper.bindSession = (target) => bindSessionWithTakeover(scoped, target);
-      bySession.set(sessionId, wrapper);
-    }
-    return wrapper;
-  }
-
+  // 只包每身体一个的 bindSession（与会话无关）：tools.js 的 body_bind 预检放行 bind 动作后落到这里；
+  // body_state / body_act / status / unbind 仍走网关原方法，维持「已被其他会话占用」语义。
+  const takeoverGateways = new WeakMap();
   const toolGateway = {
     ...gateway,
-    gatewayForSession: resolveToolScopedGateway,
-    bindSession: (sessionId) => {
+    gatewayForSession: (sessionId) => {
       const scoped = gateway.gatewayForSession(sessionId);
-      if (!scoped || typeof scoped.bindSession !== 'function') {
-        return gateway.bindSession(sessionId);
+      if (!scoped || typeof scoped.bindSession !== 'function') return scoped;
+      let wrapper = takeoverGateways.get(scoped);
+      if (!wrapper) {
+        wrapper = Object.create(scoped);
+        wrapper.bindSession = (target) => bindSessionWithTakeover(scoped, target);
+        takeoverGateways.set(scoped, wrapper);
       }
-      return bindSessionWithTakeover(scoped, sessionId);
+      return wrapper;
     },
   };
 

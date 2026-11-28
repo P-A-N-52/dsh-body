@@ -903,6 +903,66 @@ test('body_bind binds, unbinds, reports status, and gates dormant body_act with 
   assert.match(invalidAction.error, /bind.*unbind.*status/);
 });
 
+test('body_bind bind reaches the gateway when bound to another session: alive holder 409 receipt stays field-identical', async (t) => {
+  // 活持有者：bind 预检放行后落到 bindSession 桩，桩抛 409（statusCode 409），
+  // catch 回执与旧「已被其他会话占用」预检逐字段一致，且不泄漏持有者 ID、不触发 unbind。
+  const conflictError = new Error('Body Gateway is already bound to another session');
+  conflictError.statusCode = 409;
+  const calls = [];
+  const boundGateway = {
+    getHealth: () => ({ active: true, dormant: false, nsfw: false, boundSessionId: 'session-holder' }),
+    getBoundSessionId: () => 'session-holder',
+    isDormant: () => false,
+    getNsfw: () => false,
+    getState: () => ({ simulatedSeconds: 0, parts: {} }),
+    bindSession: async (sessionId) => {
+      calls.push(['bindSession', sessionId]);
+      throw conflictError;
+    },
+    unbindSession: async () => {
+      calls.push(['unbindSession']);
+      return {};
+    },
+  };
+  const aliveTools = createBodyTools(boundGateway);
+  const hijack = await aliveTools.body_bind.execute({ action: 'bind' }, fakeExec({ sessionId: 'session-new' }));
+  assert.deepEqual(hijack, {
+    ok: false,
+    bound: false,
+    dormant: true,
+    active: true,
+    nsfw: false,
+    boundSessionId: null,
+    error: 'Body is already bound to another session',
+  });
+  assert.deepEqual(calls, [['bindSession', 'session-new']]);
+  assert.equal(JSON.stringify(hijack).includes('session-holder'), false);
+
+  // 死持有者的解绑由插件层（index.js 包装 bindSession）完成；工具层只负责把 bind 送到网关。
+  const takeoverCalls = [];
+  const takeoverGateway = {
+    getHealth: () => ({ active: true, dormant: false, nsfw: false, boundSessionId: 'session-gone' }),
+    getBoundSessionId: () => 'session-gone',
+    isDormant: () => false,
+    getNsfw: () => false,
+    getState: () => ({ simulatedSeconds: 0, parts: {} }),
+    bindSession: async (sessionId) => {
+      takeoverCalls.push(['bindSession', sessionId]);
+      return { ok: true, active: true, dormant: false, boundSessionId: sessionId, nsfw: false };
+    },
+    unbindSession: async (holder) => {
+      takeoverCalls.push(['unbindSession', holder]);
+      return {};
+    },
+  };
+  const takeoverTools = createBodyTools(takeoverGateway);
+  const takeover = await takeoverTools.body_bind.execute({ action: 'bind' }, fakeExec({ sessionId: 'session-new' }));
+  assert.equal(takeover.ok, true);
+  assert.equal(takeover.bound, true);
+  assert.equal(takeover.boundSessionId, 'session-new');
+  assert.deepEqual(takeoverCalls, [['bindSession', 'session-new']]);
+});
+
 test('buildActionPayload overrides id and sessionId', () => {
   const payload = buildActionPayload(
     { id: 'client-id', sessionId: 'client-session', type: 'drink', volumeMl: 200 },
