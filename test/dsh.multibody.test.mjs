@@ -208,11 +208,6 @@ test('apply mounts peer bodies from bodies.json with independent routing, notifi
       async inject(message) { delivered.push({ sessionId: 'qq-group-232970112', method: 'inject', message }); },
       async followup(message) { delivered.push({ sessionId: 'qq-group-232970112', method: 'followup', message }); },
     }],
-    // group-pref-999 绑定 beta 后持有者必须存活，group-pref-888 的抢占才会维持 409。
-    ['group-pref-999', {
-      async inject() {},
-      async followup() {},
-    }],
   ]);
 
   let streamSeq = 0;

@@ -295,7 +295,28 @@ test('apply integrates optional systemPrompt, keeps a stale boundSessionId acros
   assert.equal(staleAct.ok, false);
   assert.equal(staleAct.statusCode, 403);
 
-  // session-a 通过 body_bind 接管陈旧持有的身体：死持有者先解绑，再绑定新会话。
+  // 即使原绑定会话尚未加载进 agents，其他会话直接 body_bind 也必须被拒绝（守住冷启动独占）。
+  const blockedBind = await registeredTools.get('body_bind').execute(
+    { action: 'bind' },
+    { agent: { session: { id: 'session-a' } } },
+  );
+  assert.equal(blockedBind.ok, false);
+  assert.equal(blockedBind.bound, false);
+  assert.equal(blockedBind.dormant, true);
+  assert.equal(blockedBind.boundSessionId, null);
+  assert.equal(blockedBind.error, 'Body is already bound to another session');
+  assert.equal(JSON.stringify(blockedBind).includes('stale-session'), false);
+  assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).boundSessionId, 'stale-session');
+
+  // 显式解除旧绑定后，session-a 才能绑定成功。
+  const explicitUnbind = await registeredTools.get('body_bind').execute(
+    { action: 'unbind' },
+    { agent: { session: { id: 'stale-session' } } },
+  );
+  assert.equal(explicitUnbind.ok, true);
+  assert.equal(explicitUnbind.dormant, true);
+  assert.equal(explicitUnbind.boundSessionId, null);
+
   const bound = await registeredTools.get('body_bind').execute(
     { action: 'bind' },
     { agent: { session: { id: 'session-a' } } },
@@ -639,7 +660,7 @@ test('apply records agent/inbox/inserted notification read receipt into logs/not
   assert.equal(listeners.get('agent/inbox/inserted').size, 0);
 });
 
-test('apply keeps a dead-holder binding alive at boot and lets a live session take over via body_bind, while a live holder still gets 409', async (t) => {
+test('apply keeps a non-loaded boundSessionId across boot and preserves cold-start exclusivity until explicitly unbound', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-index-keepalive-'));
   const home = join(dir, 'profile');
   const statePath = join(dir, 'state', 'body-state.json');
@@ -677,12 +698,12 @@ test('apply keeps a dead-holder binding alive at boot and lets a live session ta
 
   await apply(ctx, { manifestPath, statePath, port: 0 });
 
-  // ① 绑定保留：session-gone 不存活也解绑存档绑定；补算照常运行（身体不休眠）。
+  // ① 绑定保留：session-gone 不存活也不解绑存档绑定；补算照常运行（身体不休眠）。
   const savedAtBoot = JSON.parse(readFileSync(statePath, 'utf8'));
   assert.equal(savedAtBoot.boundSessionId, 'session-gone');
   assert.ok(savedAtBoot.snapshot.simulatedSeconds >= 2000);
 
-  // 其他会话视角维持「已被其他会话占用」语义，不泄漏持有者 ID。
+  // ② 冷启动独占：其他会话视角维持「已被其他会话占用」语义，bind/status/body_state/body_act 均拒绝且不泄漏持有者 ID。
   const staleStatus = await registeredTools.get('body_bind').execute(
     { action: 'status' },
     { agent: { session: { id: 'session-new' } } },
@@ -708,18 +729,39 @@ test('apply keeps a dead-holder binding alive at boot and lets a live session ta
   assert.equal(staleAct.ok, false);
   assert.equal(staleAct.statusCode, 403);
 
-  // ④ 死持有者接管：存活会话通过 body_bind 接管成功。
-  const takeover = await registeredTools.get('body_bind').execute(
+  const coldStartHijack = await registeredTools.get('body_bind').execute(
     { action: 'bind' },
     { agent: { session: { id: 'session-new' } } },
   );
-  assert.equal(takeover.ok, true);
-  assert.equal(takeover.bound, true);
-  assert.equal(takeover.boundSessionId, 'session-new');
-  assert.equal(takeover.dormant, false);
+  assert.equal(coldStartHijack.ok, false);
+  assert.equal(coldStartHijack.bound, false);
+  assert.equal(coldStartHijack.boundSessionId, null);
+  assert.equal(coldStartHijack.dormant, true);
+  assert.equal(coldStartHijack.feeling, undefined);
+  assert.equal(coldStartHijack.error, 'Body is already bound to another session');
+  assert.equal(JSON.stringify(coldStartHijack).includes('session-gone'), false);
+  assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).boundSessionId, 'session-gone');
+
+  // ③ 显式解绑后，新会话可正常绑定。
+  const explicitUnbind = await registeredTools.get('body_bind').execute(
+    { action: 'unbind' },
+    { agent: { session: { id: 'session-gone' } } },
+  );
+  assert.equal(explicitUnbind.ok, true);
+  assert.equal(explicitUnbind.dormant, true);
+  assert.equal(explicitUnbind.boundSessionId, null);
+
+  const rebind = await registeredTools.get('body_bind').execute(
+    { action: 'bind' },
+    { agent: { session: { id: 'session-new' } } },
+  );
+  assert.equal(rebind.ok, true);
+  assert.equal(rebind.bound, true);
+  assert.equal(rebind.boundSessionId, 'session-new');
+  assert.equal(rebind.dormant, false);
   assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).boundSessionId, 'session-new');
 
-  // ⑤ 活持有者：其他会话仍被 409 拒绝，回执不泄漏持有者信息。
+  // ④ 绑定后其他会话仍被拒绝，回执不泄漏持有者信息。
   const hijack = await registeredTools.get('body_bind').execute(
     { action: 'bind' },
     { agent: { session: { id: 'session-new2' } } },

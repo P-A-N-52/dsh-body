@@ -222,39 +222,7 @@ export async function apply(ctx, config = {}) {
     }
   }
 
-  // 重启保活：启动不因绑定会话暂不存活而解绑；只有持有者会话确已死亡（agents.get 取不到）时，
-  // 才允许新会话在绑定时先解绑旧持有者再接管。
-  function isSessionDead(sessionId) {
-    return typeof agents?.get === 'function' && !agents.get(sessionId);
-  }
-
-  async function bindSessionWithTakeover(scoped, sessionId) {
-    const holder = scoped.getBoundSessionId?.();
-    if (typeof holder === 'string' && holder && holder !== sessionId && isSessionDead(holder)) {
-      await scoped.unbindSession?.(holder);
-    }
-    return scoped.bindSession(sessionId);
-  }
-
-  // 只包每身体一个的 bindSession（与会话无关）：tools.js 的 body_bind 预检放行 bind 动作后落到这里；
-  // body_state / body_act / status / unbind 仍走网关原方法，维持「已被其他会话占用」语义。
-  const takeoverGateways = new WeakMap();
-  const toolGateway = {
-    ...gateway,
-    gatewayForSession: (sessionId) => {
-      const scoped = gateway.gatewayForSession(sessionId);
-      if (!scoped || typeof scoped.bindSession !== 'function') return scoped;
-      let wrapper = takeoverGateways.get(scoped);
-      if (!wrapper) {
-        wrapper = Object.create(scoped);
-        wrapper.bindSession = (target) => bindSessionWithTakeover(scoped, target);
-        takeoverGateways.set(scoped, wrapper);
-      }
-      return wrapper;
-    },
-  };
-
-  registerBodyTools(ctx, toolGateway, { translator });
+  registerBodyTools(ctx, gateway, { translator });
 
   function findBoundGateway(sessionId) {
     if (typeof sessionId !== 'string' || !sessionId) return null;
