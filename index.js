@@ -212,11 +212,10 @@ export async function apply(ctx, config = {}) {
   for (const entry of readyEntries) {
     const initialBoundId = entry.gateway.getBoundSessionId?.();
     if (!initialBoundId) continue;
-    const isDead = typeof agents?.get === 'function' && !agents.get(initialBoundId);
     const mappedTarget = gateway.resolveSessionTarget?.(initialBoundId);
     const conflictsExplicitMapping = mappedTarget?.explicitlyMapped && mappedTarget.id !== entry.id;
     const duplicateOwner = claimedSessions.has(initialBoundId);
-    if (isDead || conflictsExplicitMapping || duplicateOwner) {
+    if (conflictsExplicitMapping || duplicateOwner) {
       await entry.gateway.unbindSession(initialBoundId);
     } else {
       claimedSessions.set(initialBoundId, entry.id);

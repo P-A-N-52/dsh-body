@@ -17,6 +17,7 @@
    - `organs/human-organs/brain/notify.ts`：`latestSessionId` 改为优先使用权威 `io.boundSessionId`，仅当其为空时才回退动作 `sessionId` 或 `prev.lastSessionId`。
    - `gateway/simulation.js` / `notifications.js` / `index.js`：`unbind()` 时清理该解绑会话尚未投递的 `notifications`；通知泵投递前校验身体非休眠且 `notification.sessionId === gateway.getBoundSessionId()`；`agent/disposed` 传入 `disposedSessionId` 做期望匹配解绑。
    - `gateway.js` / `gateway/checkpoint.js` / `index.js`：DSH 插件启动传入 `legacyStatePath: null`，避免新建身体误克隆清单同目录的 `body-state.json`；启动时自动解绑与 `bodies.json` 显式规则冲突或跨身体重复占用的 `boundSessionId`。
+     - **2026-11-28 更新（重启保活）**：启动不再因绑定会话暂不存活（`agents.get` 取不到，QQ 会话要等收到消息才重建）而解绑——存档绑定保留、身体不休眠；仅保留上述映射冲突与跨身体重复占用的启动解绑。为守住冷启动期间的独占性，不根据 `agents.get` 是否存在而允许其他会话自动接管：身体已绑定时，其他会话的 `body_bind`、`body_state`、`body_act` 与回环 `POST /bind` 均维持拒绝且不泄漏持有者 ID；`agent/disposed` 即时解绑不变。真正废弃的陈旧绑定由用户显式解除：回环 `POST /unbind`（不带 `sessionId` 即解绑当前持有者）后重新绑定，或停机改存档顶层 `boundSessionId`。
 
 ---
 
@@ -25,6 +26,7 @@
 1. **静态显式配置**：保持无 `bodies.json` 时单身体单会话独占；有 `bodies.json` 时仅 `sessions` 显式映射的会话可连入对应身体，不自动为未映射会话或通配符派生新身体。
 2. **换绑继承身体连续性**：同一具身体解绑后由另一会话显式绑定时，继承该身体的生理快照与 `<bodyDir>/logs/action-translations.json` 翻译参考历史；`brainNotify` 按 `sessionId` 各自记录提醒水位与退避步数。
 3. **保留显式 `body_bind` 与停机手改存档**：允许用户在对话中明确要求绑定时通过 `body_bind` 操作，也允许停机时直接手动修改 `body-state.json` 顶层的 `boundSessionId`、`active`、`nsfw`、`profile` 与 `parameters`。
+4. **重启保活与冷启动独占（2026-11-28 用户拍板）**：① 只修启动误解绑，启动保留存档 `boundSessionId`（绑定会话暂不存活不解绑）；② 守住冷启动独占，不引入基于 `agents.get` 的自动接管、pending 标记、宽限计时器或新存档字段/配置项；③ 真正废弃的旧绑定由用户显式解除（持有者解绑、回环 `POST /unbind` 或停机改存档）。
 
 ---
 

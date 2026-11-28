@@ -506,6 +506,69 @@ test('boot timeout on one body does not block healthy peer body and explicitly m
   assert.equal(healthyStatus.boundSessionId, 'qq-healthy');
 });
 
+test('boot still unbinds explicit-mapping conflicts and cross-body duplicate bindings even when the session is not alive', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-multibody-conflict-'));
+  const home = join(dir, 'profile');
+  const dshBodyDir = join(home, 'dsh-body');
+  mkdirSync(dshBodyDir, { recursive: true });
+  const manifestPath = setupSleepAndCounterManifest(dir);
+
+  const alphaDir = join(dshBodyDir, 'bodies', 'alpha');
+  const betaDir = join(dshBodyDir, 'bodies', 'beta');
+  const gammaDir = join(dshBodyDir, 'bodies', 'gamma');
+  mkdirSync(alphaDir, { recursive: true });
+  mkdirSync(betaDir, { recursive: true });
+  mkdirSync(gammaDir, { recursive: true });
+  const alphaStatePath = join(alphaDir, 'body-state.json');
+  const betaStatePath = join(betaDir, 'body-state.json');
+  const gammaStatePath = join(gammaDir, 'body-state.json');
+
+  // 三个会话都不在 agents 中（不存活）：映射冲突与跨身体重复占用的启动解绑仍必须生效。
+  writeFileSync(alphaStatePath, JSON.stringify({
+    ...checkpoint({ wallTimeMs: Date.now() }),
+    boundSessionId: 'session-x',
+  }));
+  writeFileSync(betaStatePath, JSON.stringify({
+    ...checkpoint({ wallTimeMs: Date.now() }),
+    boundSessionId: 'session-dup',
+  }));
+  writeFileSync(gammaStatePath, JSON.stringify({
+    ...checkpoint({ wallTimeMs: Date.now() }),
+    boundSessionId: 'session-dup',
+  }));
+
+  writeFileSync(join(dshBodyDir, 'bodies.json'), JSON.stringify({
+    bodies: {
+      alpha: { port: 0, statePath: alphaStatePath },
+      beta: { port: 0, statePath: betaStatePath },
+      gamma: { port: 0, statePath: gammaStatePath },
+    },
+    sessions: {
+      'session-x': 'beta',
+    },
+  }));
+
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  const { ctx, disposeAll } = makeContext(home, new Map());
+  t.after(async () => {
+    await disposeAll();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  await apply(ctx, { manifestPath, port: 0 });
+
+  // alpha 持有 session-x，但 bodies.json 把 session-x 显式映射给 beta → 启动解绑。
+  assert.equal(JSON.parse(readFileSync(alphaStatePath, 'utf8')).boundSessionId, null);
+  // beta 的 session-dup 未映射且首个占用 → 保留。
+  assert.equal(JSON.parse(readFileSync(betaStatePath, 'utf8')).boundSessionId, 'session-dup');
+  // gamma 与 beta 重复占用 session-dup → 启动解绑。
+  assert.equal(JSON.parse(readFileSync(gammaStatePath, 'utf8')).boundSessionId, null);
+
+  await disposeAll();
+});
+
 test('apply rejects cleanly when every configured body fails to boot', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-multibody-allfail-'));
   const home = join(dir, 'profile');
