@@ -21,7 +21,7 @@
 
 ### thyroid.parameters.json
 
-参数文件：[`thyroid.parameters.json`](thyroid.parameters.json)。入口及清单：[`thyroid.ts`](thyroid.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`thyroid.ts`](thyroid.ts)。
+参数文件：[`thyroid.parameters.json`](thyroid.parameters.json)。入口及清单：[`thyroid.ts`](thyroid.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`thyroid.ts`](thyroid.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |

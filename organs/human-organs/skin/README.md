@@ -20,16 +20,15 @@
 示例（只合并这一小段，数值仅用于演示）：
 
 ```json
-{ "parameters": { "skin.sweat.ambientTemperatureC": 26 } }
+{ "parameters": { "skin.sweat.maxRateMlPerMin": 12 } }
 ```
 
 ### sweat.parameters.json
 
-参数文件：[`sweat.parameters.json`](sweat.parameters.json)。入口及清单：[`sweat.ts`](sweat.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`sweat.ts`](sweat.ts)。
+参数文件：[`sweat.parameters.json`](sweat.parameters.json)。入口及清单：[`sweat.ts`](sweat.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`sweat.ts`](sweat.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
-| `skin.sweat.ambientTemperatureC` | `25` | `°C` | `design` | 无 | — |
 | `skin.sweat.referenceRateMlPerMin` | `0.6` | `mL/min` | `design` | `weightKg / 75` | — |
 | `skin.sweat.ambientGainPerC` | `0.04` | `1/°C` | `design` | 无 | — |
 | `skin.sweat.maxRateMlPerMin` | `15` | `mL/min` | `design` | `weightKg / 75` | — |

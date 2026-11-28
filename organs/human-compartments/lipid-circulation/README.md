@@ -12,3 +12,21 @@
 | `lipidCirculation.nefaClearancePerMin` | 0.12 | 1/min | [0, 5]；轮初 NEFA 当量摄取率 |
 
 [OpenStax A&P 2e §23.7 Lipid Absorption](https://openstax.org/books/anatomy-and-physiology-2e/pages/23-7-chemical-digestion-and-absorption-a-closer-look) 支持餐源脂质循环分流的方向。尚不计算血浆分布容积、总血清 TG/NEFA、组织摄取定量、内源 VLDL、重酯化、完整脂蛋白或供能。
+
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+### meal-lipids.parameters.json
+
+参数文件：[`meal-lipids.parameters.json`](meal-lipids.parameters.json)。入口及清单：[`meal-lipids.ts`](meal-lipids.ts)（[可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`meal-lipids.ts`](meal-lipids.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `lipidCirculation.mealTgClearancePerMin` | `0.06` | `1/min` | `design` | 无 | — |
+| `lipidCirculation.nefaClearancePerMin` | `0.12` | `1/min` | `design` | 无 | — |
+
+<!-- organ-parameters:end -->

@@ -15,16 +15,14 @@
 { "parameters": { "mammaryGlands.basalMilkRateMlPerMin": 0.55 } }
 ```
 
-无本地参数文件的入口：[`composition.ts`](composition.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；输出字段和脚本内常量不是可覆盖 ID。
-
 ### composition.parameters.json
 
-参数文件：[`composition.parameters.json`](composition.parameters.json)。正式清单和已登记可选入口没有读取这个文件。
+参数文件：[`composition.parameters.json`](composition.parameters.json)。入口及清单：[`composition.ts`](composition.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`composition.ts`](composition.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
-| `breastComposition.bilateralTissueVolumeMl` | `null` | `mL` | `unset` | 无 | 只登记；无读取，不作有效覆盖。未设值，不是 0。 |
-| `breastComposition.fibroglandularVolumePct` | `null` | `%` | `unset` | 无 | 只登记；无读取，不作有效覆盖。未设值，不是 0。 |
+| `breastComposition.bilateralTissueVolumeMl` | `null` | `mL` | `unset` | 无 | 组成读数直接输入；启动时要求 null 或正有限数，不随体重缩放。未设值，不是 0。 |
+| `breastComposition.fibroglandularVolumePct` | `null` | `%` | `unset` | 无 | 组成读数直接输入；启动时要求 null 或 [0,100] 的百分数。未设值，不是 0。 |
 
 ### milk.parameters.json
 

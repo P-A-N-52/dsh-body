@@ -19,11 +19,11 @@
 { "parameters": { "muscleGlucose.maxUptakeRateGPerMin": 0.6 } }
 ```
 
-无本地参数文件的入口：[`activity.ts`](activity.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；输出字段和脚本内常量不是可覆盖 ID。
+无本地参数文件的入口：[`activity.ts`](activity.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；输出字段和脚本内常量不是可覆盖 ID。
 
 ### glucose-uptake.parameters.json
 
-参数文件：[`glucose-uptake.parameters.json`](glucose-uptake.parameters.json)。入口及清单：[`glucose-uptake.ts`](glucose-uptake.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`head.ts`](regions/head.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`trunk.ts`](regions/trunk.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`limbs.ts`](regions/limbs.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`glucose-uptake.no-limbs.ts`](glucose-uptake.no-limbs.ts)（可选缺四肢入口，替换普通聚合器，与移除 `regions/limbs.ts` 配套）。读取脚本：[`glucose-uptake-core.ts`](glucose-uptake-core.ts)、[`region-core.ts`](regions/region-core.ts)。
+参数文件：[`glucose-uptake.parameters.json`](glucose-uptake.parameters.json)。入口及清单：[`glucose-uptake.ts`](glucose-uptake.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`head.ts`](regions/head.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`trunk.ts`](regions/trunk.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`limbs.ts`](regions/limbs.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`glucose-uptake.no-limbs.ts`](glucose-uptake.no-limbs.ts)（可选缺四肢入口，替换普通聚合器，与移除 `regions/limbs.ts` 配套）。读取脚本：[`glucose-uptake-core.ts`](glucose-uptake-core.ts)、[`region-core.ts`](regions/region-core.ts)。
 
 共享脚本各入口消费的键不完全相同，以逐行标出的消费入口为准。
 
@@ -37,7 +37,7 @@
 
 ### response.parameters.json（共享）
 
-参数文件：[`response.parameters.json`](../sexual-response/response.parameters.json)。入口及清单：[`activity.ts`](activity.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`response.ts`](../sexual-response/response.ts)。
+参数文件：[`response.parameters.json`](../sexual-response/response.parameters.json)。入口及清单：[`activity.ts`](activity.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`response.ts`](../sexual-response/response.ts)。
 
 `nsfw: false` 时 Gateway 拒绝新 `sex` / `orgasm` 动作，模块不发生主动或自动释放。下游 `body_state` 的性反应文案与内感受的相关输入也受门控；这不清除存档。`response.ts` 仍推进已有活动计时、唤起与阶段，并衰减已有余韵。参数覆盖不打开门控。
 

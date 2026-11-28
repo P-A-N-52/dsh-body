@@ -345,6 +345,101 @@ test('移出清单且无参数文件后，不让旧标记目录通过检查', (t
   }
 });
 
+test('parameter 助手、常量下标、模板展开与单参 require 助手都计为消费路径', (t) => {
+  const { put, get, addEntries, run } = fixture(t);
+  const organ = 'organs/human-compartments/meal-store';
+  put(`${organ}/README.md`, '# 脂库\n');
+  put(`${organ}/meal-storage.ts`, `
+    import { parameter } from '../demo/kinetics.ts';
+    const params = loadParameters(new URL('./meal-storage.parameters.json', import.meta.url));
+    const capacity = parameter(params, 'adipose.capacityG');
+    export const heartbeat = () => capacity;
+  `);
+  put(`${organ}/meal-storage.parameters.json`, JSON.stringify({ schemaVersion: 1, owner: 'adipose', parameters: [
+    { id: 'adipose.capacityG', value: 150, unit: 'g', status: 'design' },
+    { id: 'adipose.mobilizationMaxPerMin', value: 0.00035, unit: '1/min', status: 'design' },
+  ]}));
+  put(`${dir}/clothing.ts`, `
+    const parameters = loadParameters(new URL('./demo.parameters.json', import.meta.url));
+    const volumeId = 'demo.registered';
+    const direct = parameters[volumeId];
+    const layers = new Map(['tshirt', 'jacket'].map((layerId) => [
+      layerId,
+      requireParameter(parameters, \`demo.\${layerId}.rate\`),
+    ]));
+    function requirePositiveParameter(parameterId) {
+      return requireParameter(parameters, parameterId);
+    }
+    const half = requirePositiveParameter('demo.active');
+    export const heartbeat = () => direct + layers.get('tshirt') + half;
+  `);
+  const changed = JSON.parse(get(params));
+  changed.parameters.push(
+    { id: 'demo.tshirt.rate', value: 0.8, unit: '1', status: 'design' },
+    { id: 'demo.jacket.rate', value: 0.5, unit: '1', status: 'design' },
+  );
+  put(params, JSON.stringify(changed));
+  addEntries(`${dir}/clothing.ts`, `${organ}/meal-storage.ts`);
+  const result = run('--write');
+  assert.equal(result.status, 0, result.stderr);
+  const page = get(readme);
+  assert.doesNotMatch(rowFor(page, 'demo.registered'), /无读取/);
+  assert.match(rowFor(page, 'demo.tshirt.rate'), /`0\.8` \| `1` \| `design` \| 无/);
+  assert.match(rowFor(page, 'demo.jacket.rate'), /`0\.5` \| `1` \| `design` \| 无/);
+  assert.match(page, /读取脚本：.*\]\(clothing\.ts\)/);
+  assert.match(rowFor(page, 'demo.unknown'), /未设值，不是 0/);
+  const store = get(`${organ}/README.md`);
+  assert.match(store, /入口及清单：.*\]\(meal-storage\.ts\)/);
+  assert.doesNotMatch(rowFor(store, 'adipose.capacityG'), /无读取/);
+  assert.match(rowFor(store, 'adipose.mobilizationMaxPerMin'), /无读取/);
+  assert.equal(run('--check').status, 0);
+});
+
+test('模板占位符没有可静态解析的字面量列表时整批只读报错', (t) => {
+  const { put, get, addEntries, run } = fixture(t);
+  put(`${dir}/clothing.ts`, `
+    const parameters = loadParameters(new URL('./demo.parameters.json', import.meta.url));
+    export const heartbeat = () => requireParameter(parameters, \`demo.\${layerId}.rate\`);
+  `);
+  addEntries(`${dir}/clothing.ts`);
+  for (const mode of ['--check', '--write']) {
+    const result = run(mode);
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    assert.match(result.stderr, /clothing\.ts.*字面量列表/);
+    assert.equal(get(readme), manual);
+  }
+});
+
+test('单参 require 助手读到未登记 ID 时报错且不写入', (t) => {
+  const { put, get, addEntries, run } = fixture(t);
+  put(`${dir}/positive.ts`, `
+    const parameters = loadParameters(new URL('./demo.parameters.json', import.meta.url));
+    function requirePositiveParameter(parameterId) {
+      return requireParameter(parameters, parameterId);
+    }
+    export const heartbeat = () => requirePositiveParameter('demo.missing');
+  `);
+  addEntries(`${dir}/positive.ts`);
+  const result = run('--check');
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  assert.match(result.stderr, /positive\.ts.*未登记 demo\.missing/);
+  assert.equal(get(readme), manual);
+});
+
+test('profile-only 部位按存档 profile 口径说明而不是参数覆盖', (t) => {
+  const { put, get, addEntries, run } = fixture(t);
+  const organ = 'organs/human-compartments/body-composition';
+  put(`${organ}/README.md`, '# 组成\n');
+  put(`${organ}/composition.ts`, 'export const id = "bodyComposition";');
+  addEntries(`${organ}/composition.ts`);
+  const result = run('--write');
+  assert.equal(result.status, 0, result.stderr);
+  const markdown = get(`${organ}/README.md`);
+  assert.match(markdown, /此目录无独立参数 JSON/);
+  assert.match(markdown, /不通过 `parameters` 覆盖：输入只来自存档顶层 `profile`（如 `profile\.bodyFatPercent`）/);
+  assert.equal(run('--check').status, 0);
+});
+
 test('仓库中每个清单部位和本地 JSON 已同步到 README', () => {
   const result = spawnSync(process.execPath, [tool, '--check'], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);

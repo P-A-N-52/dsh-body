@@ -21,9 +21,18 @@
 { "parameters": { "pancreasEndocrine.referenceGlucoseMgDl": 92 } }
 ```
 
+### exocrine.parameters.json
+
+参数文件：[`exocrine.parameters.json`](exocrine.parameters.json)。入口及清单：[`exocrine.ts`](exocrine.ts)（[可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`exocrine.ts`](exocrine.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `pancreasExocrine.maxLipaseActivityU` | `3` | `LAU` | `design` | 无 | — |
+| `pancreasExocrine.mealHalfG` | `1` | `g` | `design` | 无 | — |
+
 ### insulin.parameters.json
 
-参数文件：[`insulin.parameters.json`](insulin.parameters.json)。入口及清单：[`insulin.ts`](insulin.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`insulin.ts`](insulin.ts)。
+参数文件：[`insulin.parameters.json`](insulin.parameters.json)。入口及清单：[`insulin.ts`](insulin.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`insulin.ts`](insulin.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |

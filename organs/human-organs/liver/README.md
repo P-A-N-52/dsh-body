@@ -19,9 +19,17 @@
 { "parameters": { "liver.basalOutputRateGPerMin": 0.1 } }
 ```
 
+### bile.parameters.json
+
+参数文件：[`bile.parameters.json`](bile.parameters.json)。入口及清单：[`bile.ts`](bile.ts)（[可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`bile.ts`](bile.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `liverBile.supplyActivityUPerMin` | `0.08` | `BAU/min` | `design` | 无 | — |
+
 ### glycogen.parameters.json
 
-参数文件：[`glycogen.parameters.json`](glycogen.parameters.json)。入口及清单：[`glycogen.ts`](glycogen.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`glycogen.ts`](glycogen.ts)。
+参数文件：[`glycogen.parameters.json`](glycogen.parameters.json)。入口及清单：[`glycogen.ts`](glycogen.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`glycogen.ts`](glycogen.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |

@@ -25,7 +25,7 @@
 
 ### water.parameters.json
 
-参数文件：[`water.parameters.json`](water.parameters.json)。入口及清单：[`water.ts`](water.ts)（[默认](../../../body-modules.json) / [男性](../../../body-modules.male.json)）；[`water.female.ts`](water.female.ts)（[女性](../../../body-modules.female.json)）。读取脚本：[`water-core.ts`](water-core.ts)。
+参数文件：[`water.parameters.json`](water.parameters.json)。入口及清单：[`water.ts`](water.ts)（[默认](../../../body-modules.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`water.female.ts`](water.female.ts)（[女性](../../../body-modules.female.json)）。读取脚本：[`water-core.ts`](water-core.ts)。
 
 普通与女性的入口使用同一 core 和同一份参数；女性清单追加月经与乳汁水出口。
 

@@ -21,7 +21,7 @@
 
 ### respiratory-water-loss.parameters.json
 
-参数文件：[`respiratory-water-loss.parameters.json`](respiratory-water-loss.parameters.json)。入口及清单：[`respiratory-water-loss.ts`](respiratory-water-loss.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`respiratory-water-loss.ts`](respiratory-water-loss.ts)。
+参数文件：[`respiratory-water-loss.parameters.json`](respiratory-water-loss.parameters.json)。入口及清单：[`respiratory-water-loss.ts`](respiratory-water-loss.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`respiratory-water-loss.ts`](respiratory-water-loss.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
@@ -29,7 +29,7 @@
 
 ### ventilation.parameters.json
 
-参数文件：[`ventilation.parameters.json`](ventilation.parameters.json)。入口及清单：[`ventilation.ts`](ventilation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`ventilation.ts`](ventilation.ts)。
+参数文件：[`ventilation.parameters.json`](ventilation.parameters.json)。入口及清单：[`ventilation.ts`](ventilation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`ventilation.ts`](ventilation.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
@@ -53,7 +53,7 @@
 
 ### oxygen.parameters.json（共享）
 
-参数文件：[`oxygen.parameters.json`](../../human-compartments/blood-oxygen/oxygen.parameters.json)。入口及清单：[`ventilation.ts`](ventilation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`ventilation.ts`](ventilation.ts)。
+参数文件：[`oxygen.parameters.json`](../../human-compartments/blood-oxygen/oxygen.parameters.json)。入口及清单：[`ventilation.ts`](ventilation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`ventilation.ts`](ventilation.ts)。
 
 直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。
 

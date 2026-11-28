@@ -33,6 +33,8 @@ const rowNotes = {
   'calcium.referencePthPgMl': '有有效 `parathyroid.pthPgMl` 时作比例分母；未加载甲状旁腺时用相对基线 1，此键不参与该回退。',
   'glucose.distributionVolumeDlPerKg': '是每 kg 的系数；与模型参考质量相乘，形成分布容积。',
   'interoception.thirst.fallbackMm': '用于初值及上游口渴缺失或非有限时的回退；正常优先使用 `hypothalamusThirst.thirst`，不是慢渴模型的调节项。',
+  'interoception.thirst.oralReliefHalfTimeMin': '实际入胃饮水后短暂解渴的半时；只削主观渴读数，不补体液、不回写 ADH。',
+  'interoception.thirst.oralReliefHalfDoseMl': '产生该快路缓解的实际入胃水量参考半剂量；同样只作用于主观渴读数。',
   'interoception.bowelUrgency.referenceStoolG': '仅在 `colon.bowelUrgencyMm` 缺失或非有限时，用 `colon.stoolG` 换算便意；正常优先使用结肠给出的有限便意读数。',
   'liver.initialGlycogenG': '补种子或缺失值，不用此值覆盖已存肝糖原。',
   'muscleGlucose.glycogenUseRateGPerMin': '由分区 core 在活动时按区域份额和强度取用，不控制聚合器的摄糖。',
@@ -50,6 +52,8 @@ const rowNotes = {
   'uterus.orgasmContractionPeakMm': '仅性反应门控开启时参与。',
   'uterus.contractionHalfTimeMin': '仅性反应门控开启时参与。',
   'uterus.congestionHalfTimeMin': '仅性反应门控开启时参与，且仅用于回落。',
+  'breastComposition.bilateralTissueVolumeMl': '组成读数直接输入；启动时要求 null 或正有限数，不随体重缩放。',
+  'breastComposition.fibroglandularVolumePct': '组成读数直接输入；启动时要求 null 或 [0,100] 的百分数。',
 };
 const fileNotes = {
   'autonomic.parameters.json': '交感/副交感另有睡眠、活动等路径；性反应相关路径受 `nsfw` 门控。',
@@ -64,6 +68,10 @@ const fileNotes = {
   'reward.parameters.json': '一般奖赏仍运行，性相关信号路径受 `nsfw` 门控。',
   'uterus.parameters.json': '月经请求/痛经依赖卵巢周期输入；月经不随 `nsfw` 关闭，性反应收缩和充血路径则关闭。',
   'water.parameters.json': '普通与女性的入口使用同一 core 和同一份参数；女性清单追加月经与乳汁水出口。',
+  'clothing.parameters.json': '只有存档 `wornLayerIds` 里穿戴的层参与透过率乘积；`wear_layer` / `remove_layer` 动作改穿戴状态，未穿戴层不参与热交换。',
+};
+const profileOnlyNotes = {
+  'organs/human-compartments/body-composition': '该部位不通过 `parameters` 覆盖：输入只来自存档顶层 `profile`（如 `profile.bodyFatPercent`），不是下文的参数 ID；具体口径见下文手写说明。',
 };
 const examples = {
   adrenal: ['adrenal.referenceCortisolNmolL', 185],
@@ -91,7 +99,7 @@ const examples = {
   'salivary-glands': ['salivaryGlands.basalRateMlPerMin', 0.6],
   'sexual-response': ['sexualResponse.arousalHalfTimeMin', 6],
   'skeletal-muscle': ['muscleGlucose.maxUptakeRateGPerMin', 0.6],
-  skin: ['skin.sweat.ambientTemperatureC', 26],
+  skin: ['skin.sweat.maxRateMlPerMin', 12],
   'small-intestine': ['smallIntestine.absorption.halfTimeMin', 25],
   stomach: ['stomach.emptying.halfTimeMin', 15],
   testes: ['testes.baselineRelative', 1.05],
@@ -108,19 +116,48 @@ const sourcePattern = /\.[cm]?[jt]s$/;
 const sourcePaths = (text) => [...text.matchAll(/\b(?:from|import)\s*['"](\.[^'"]+)['"]/g)].map((m) => m[1]);
 
 function scanSource(file, parameters, ids) {
-  // 只识别项目使用的静态相对 import、loadParameters(new URL(...)) 和字面量 ID，不运行仿真脚本。
+  // 只识别项目实际使用的静态写法：相对 import、loadParameters(new URL(...))、requireParameter 或
+  // 同语义 parameter 助手的字面量 ID、绑定常量作下标、字面量数组 map 出的模板 ID，以及直接读取
+  // 覆盖；不运行仿真脚本。模板解析不了或读到未登记 ID 时直接报错；引入新的读取写法时先扩展本
+  // 函数并手工核对目录，避免把已消费的键静默标成“无读取”。
   const text = read(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/[^\n]*/gm, '');
   const bindings = new Map([...text.matchAll(/\bconst\s+(\w+)\s*=\s*loadParameters\(\s*new URL\(\s*['"]([^'"]+)['"]/g)]
     .map(([, name, path]) => [name, fromDir(dirname(file), path)]));
+  const consts = new Map([...text.matchAll(/\bconst\s+(\w+)\s*=\s*['"]([^'"]+)['"]/g)]
+    .map(([, name, value]) => [name, value]));
+  const listVars = new Map([...text.matchAll(/\[((?:\s*['"][^'"]+['"]\s*,)*\s*['"][^'"]+['"]\s*)\]\s*\.\s*(?:map|forEach|filter|flatMap)\(\s*\(?\s*(\w+)\s*[),]/g)]
+    .map(([, items, name]) => [name, [...items.matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1])]));
   const scaled = new Set([...text.matchAll(/\bscaleByBodyWeight\(\s*(?:requireParameter\([^)]*\)|[^,()]+),\s*['"]([^'"]+)['"]/g)]
     .map(([, id]) => id));
   const uses = new Map();
-  for (const [, required, requiredId, indexed, indexedId] of text.matchAll(/\brequireParameter\(\s*(\w+)\s*,\s*['"]([^'"]+)['"]|\b(\w+)\s*\[\s*['"]([^'"]+)['"]\s*\]/g)) {
-    const path = bindings.get(required ?? indexed);
-    const id = requiredId ?? indexedId;
-    if (!path) continue;
+  const record = (id, bound) => {
+    const path = bindings.get(bound);
+    if (!path) return;
     if (!parameters.get(path)?.parameters.some((p) => p.id === id)) throw new Error(`${file}：${path} 未登记 ${id}`);
     uses.set(id, { id, path, file, scaled: scaled.has(id) });
+  };
+  for (const [, required, requiredId, indexed, indexedId] of text.matchAll(/\b(?:requireParameter|parameter)\(\s*(\w+)\s*,\s*['"]([^'"]+)['"]|\b(\w+)\s*\[\s*['"]([^'"]+)['"]\s*\]/g)) {
+    record(requiredId ?? indexedId, required ?? indexed);
+  }
+  for (const [, bound, name] of text.matchAll(/\b(\w+)\s*\[\s*(\w+)\s*\]/g)) {
+    if (consts.has(name)) record(consts.get(name), bound);
+  }
+  for (const [, bound, template] of text.matchAll(/\brequireParameter\(\s*(\w+)\s*,\s*`([^`]+)`\s*\)/g)) {
+    const parts = template.split(/\$\{(\w+)\}/g);
+    if (parts.length === 1) {
+      record(template, bound);
+      continue;
+    }
+    if (parts.length !== 3) throw new Error(`${file}：参数模板 \`${template}\` 的占位符多于一个，无法静态解析；请先手工核对目录`);
+    const items = listVars.get(parts[1]);
+    if (!items?.length) throw new Error(`${file}：参数模板 \`${template}\` 的 ${parts[1]} 没有可静态解析的字面量列表；请先手工核对目录`);
+    for (const item of items) record(parts[0] + item + parts[2], bound);
+  }
+  const sole = bindings.size === 1 ? [...bindings.values()][0] : undefined;
+  for (const [, id] of text.matchAll(/\brequire\w*Parameter\(\s*['"]([^'"]+)['"]\s*\)/g)) {
+    if (!sole) throw new Error(`${file}：单参调用 require…Parameter('${id}') 无法确定参数文件；请先手工核对目录`);
+    if (!parameters.get(sole)?.parameters.some((p) => p.id === id)) throw new Error(`${file}：${sole} 未登记 ${id}`);
+    uses.set(id, { id, path: sole, file, scaled: false });
   }
   for (const [, id, rest] of text.matchAll(/\bget(?:Numeric)?ParameterOverride\(\s*['"]([^'"]+)['"]\s*\)([^;]*)/g)) {
     if (!ids.has(id)) throw new Error(`${file}：未找到直接读取的覆盖 ${id} 的参数 JSON`);
@@ -227,8 +264,9 @@ function render(dir, doc, { params, entries, ids }) {
     if (example[2]) out.push(example[2], '');
   }
   if (![...doc.groups.keys()].some((path) => dirname(path) === dir)) {
-    out.push('此目录无独立参数 JSON。若下文列有共享 ID，只覆盖原 ID，不能给这个部位另造一套参数键。', '',
-      `入口：${entryList(doc.entries)}。`, '');
+    out.push('此目录无独立参数 JSON。若下文列有共享 ID，只覆盖原 ID，不能给这个部位另造一套参数键。', '');
+    if (profileOnlyNotes[dir]) out.push(profileOnlyNotes[dir], '');
+    out.push(`入口：${entryList(doc.entries)}。`, '');
   } else {
     const unconfigured = doc.entries.filter((entry) => ![...doc.groups].some(([path, uses]) => dirname(path) === dir && uses.some((u) => u.entry === entry)));
     if (unconfigured.length) out.push(`无本地参数文件的入口：${entryList(unconfigured)}；输出字段和脚本内常量不是可覆盖 ID。`, '');

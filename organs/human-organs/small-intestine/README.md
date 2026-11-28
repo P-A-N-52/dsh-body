@@ -21,9 +21,21 @@
 { "parameters": { "smallIntestine.absorption.halfTimeMin": 25 } }
 ```
 
+### lipid-absorption.parameters.json
+
+参数文件：[`lipid-absorption.parameters.json`](lipid-absorption.parameters.json)。入口及清单：[`lipid-absorption.ts`](lipid-absorption.ts)（[可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`lipid-absorption.ts`](lipid-absorption.ts)。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `intestinalLipid.hydrolysisMaxPerMin` | `0.16` | `1/min` | `design` | 无 | — |
+| `intestinalLipid.absorptionMaxPerMin` | `0.22` | `1/min` | `design` | 无 | — |
+| `intestinalLipid.residuePerMin` | `0.0085` | `1/min` | `design` | 无 | — |
+| `intestinalLipid.bileHalfActivityU` | `0.1` | `BAU` | `design` | 无 | — |
+| `intestinalLipid.lipaseHalfActivityU` | `0.5` | `LAU` | `design` | 无 | — |
+
 ### water-absorption.parameters.json
 
-参数文件：[`water-absorption.parameters.json`](water-absorption.parameters.json)。入口及清单：[`water-absorption.ts`](water-absorption.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`water-absorption.ts`](water-absorption.ts)。
+参数文件：[`water-absorption.parameters.json`](water-absorption.parameters.json)。入口及清单：[`water-absorption.ts`](water-absorption.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`water-absorption.ts`](water-absorption.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |

@@ -21,7 +21,7 @@
 
 ### glucose.parameters.json
 
-参数文件：[`glucose.parameters.json`](glucose.parameters.json)。入口及清单：[`glucose.ts`](glucose.ts)（[默认](../../../body-modules.json) / [男性](../../../body-modules.male.json)）；[`glucose.female.ts`](glucose.female.ts)（[女性](../../../body-modules.female.json)）。读取脚本：[`glucose-core.ts`](glucose-core.ts)。
+参数文件：[`glucose.parameters.json`](glucose.parameters.json)。入口及清单：[`glucose.ts`](glucose.ts)（[默认](../../../body-modules.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`glucose.female.ts`](glucose.female.ts)（[女性](../../../body-modules.female.json)）。读取脚本：[`glucose-core.ts`](glucose-core.ts)。
 
 普通与女性的入口使用同一 core 和同一份参数；女性清单追加乳糖结算，不独立覆盖葡萄糖参数。
 

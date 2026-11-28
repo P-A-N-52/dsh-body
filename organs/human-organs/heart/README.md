@@ -21,7 +21,7 @@
 
 ### heart.parameters.json
 
-参数文件：[`heart.parameters.json`](heart.parameters.json)。入口及清单：[`heart.ts`](heart.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`heart.ts`](heart.ts)。
+参数文件：[`heart.parameters.json`](heart.parameters.json)。入口及清单：[`heart.ts`](heart.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`heart.ts`](heart.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
@@ -40,7 +40,7 @@
 
 ### blood.parameters.json（共享）
 
-参数文件：[`blood.parameters.json`](../../human-compartments/blood/blood.parameters.json)。入口及清单：[`heart.ts`](heart.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`heart.ts`](heart.ts)。
+参数文件：[`blood.parameters.json`](../../human-compartments/blood/blood.parameters.json)。入口及清单：[`heart.ts`](heart.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`heart.ts`](heart.ts)。
 
 直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。
 

@@ -21,7 +21,7 @@
 
 ### saliva.parameters.json
 
-参数文件：[`saliva.parameters.json`](saliva.parameters.json)。入口及清单：[`saliva.ts`](saliva.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`saliva.ts`](saliva.ts)。
+参数文件：[`saliva.parameters.json`](saliva.parameters.json)。入口及清单：[`saliva.ts`](saliva.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`saliva.ts`](saliva.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
@@ -102,7 +102,7 @@ mouthMoistureMm    = clamp(100 × salivaRateMlPerMin / basalRateMlPerMin, 0, 100
 - **吞咽与食管：** 不建吞咽动作、食管蠕动、胃食管反流或误吸；唾液不进入胃或小肠。
 - **口腔疾病与腺体病理：** 不建唾液腺结石、炎症、干燥综合征、放疗损伤、药物性口干或口腔感染。
 - **味觉与食欲：** 不建味觉、嗅觉、食物口感、咀嚼或餐前唾液条件反射；`eat` / `drink` 只看动作类型与体积。
-- **口咽解渴：** 不建吸收前口咽刺激对 thirst 的短暂抑制；`interoception.dryMouthMm` 不改变口渴或自动饮水，现已作为独立通道接入 `brainNotify` 与纯定性 `body_state`。
+- **口咽解渴：** 唾液腺不负责快渴，也不建“口咽刺激直接抑制口渴”的路径；实际入胃的饮水经内感受产生短暂解渴（见[脑 README](../brain/README.md)），只削主观渴读数，不补体液、不回写 ADH。`interoception.dryMouthMm` 仍按轮初唾液湿润度计算，但不改变口渴或自动饮水，作为独立通道接入 `brainNotify` 与纯定性 `body_state`。
 - **个体差异与节律：** 年龄、性别、体重、腺体体积、昼夜节律、睡眠、运动、环境湿度和温度都不进入方程；四个参数是证据默认值，不是个体标定。
 - **其他唾液功能：** 不建免疫（IgA）、缓冲、牙釉质保护、消化脂肪的舌脂酶或口腔微生物组。
 

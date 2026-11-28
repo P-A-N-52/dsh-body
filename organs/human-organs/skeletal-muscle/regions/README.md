@@ -21,11 +21,11 @@
 
 此目录无独立参数 JSON。若下文列有共享 ID，只覆盖原 ID，不能给这个部位另造一套参数键。
 
-入口：[`head.ts`](head.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json)）；[`trunk.ts`](trunk.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json)）；[`limbs.ts`](limbs.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json)）。
+入口：[`head.ts`](head.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json) / [可选清单 human-lipid](../../../presets/human-lipid/body-modules.json)）；[`trunk.ts`](trunk.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json) / [可选清单 human-lipid](../../../presets/human-lipid/body-modules.json)）；[`limbs.ts`](limbs.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json) / [可选清单 human-lipid](../../../presets/human-lipid/body-modules.json)）。
 
 ### glucose-uptake.parameters.json（共享）
 
-参数文件：[`glucose-uptake.parameters.json`](../glucose-uptake.parameters.json)。入口及清单：[`head.ts`](head.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json)）；[`trunk.ts`](trunk.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json)）；[`limbs.ts`](limbs.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json)）。读取脚本：[`region-core.ts`](region-core.ts)。
+参数文件：[`glucose-uptake.parameters.json`](../glucose-uptake.parameters.json)。入口及清单：[`head.ts`](head.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json) / [可选清单 human-lipid](../../../presets/human-lipid/body-modules.json)）；[`trunk.ts`](trunk.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json) / [可选清单 human-lipid](../../../presets/human-lipid/body-modules.json)）；[`limbs.ts`](limbs.ts)（[默认](../../../../body-modules.json) / [女性](../../../../body-modules.female.json) / [男性](../../../../body-modules.male.json) / [可选清单 human-lipid](../../../presets/human-lipid/body-modules.json)）。读取脚本：[`region-core.ts`](region-core.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |

@@ -20,7 +20,7 @@
 <details>
 <summary>autonomic.parameters.json</summary>
 
-参数文件：[`autonomic.parameters.json`](autonomic.parameters.json)。入口及清单：[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`autonomic.ts`](autonomic.ts)。
+参数文件：[`autonomic.parameters.json`](autonomic.parameters.json)。入口及清单：[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`autonomic.ts`](autonomic.ts)。
 
 交感/副交感另有睡眠、活动等路径；性反应相关路径受 `nsfw` 门控。
 
@@ -65,7 +65,7 @@
 <details>
 <summary>hypothalamus-adh.parameters.json</summary>
 
-参数文件：[`hypothalamus-adh.parameters.json`](hypothalamus-adh.parameters.json)。入口及清单：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)。
+参数文件：[`hypothalamus-adh.parameters.json`](hypothalamus-adh.parameters.json)。入口及清单：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
@@ -80,7 +80,7 @@
 <details>
 <summary>hypothalamus-endocrine.parameters.json</summary>
 
-参数文件：[`hypothalamus-endocrine.parameters.json`](hypothalamus-endocrine.parameters.json)。入口及清单：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)。
+参数文件：[`hypothalamus-endocrine.parameters.json`](hypothalamus-endocrine.parameters.json)。入口及清单：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
@@ -99,7 +99,7 @@
 <details>
 <summary>hypothalamus-thirst.parameters.json</summary>
 
-参数文件：[`hypothalamus-thirst.parameters.json`](hypothalamus-thirst.parameters.json)。入口及清单：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)。
+参数文件：[`hypothalamus-thirst.parameters.json`](hypothalamus-thirst.parameters.json)。入口及清单：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
@@ -114,7 +114,7 @@
 <details>
 <summary>interoception.parameters.json</summary>
 
-参数文件：[`interoception.parameters.json`](interoception.parameters.json)。入口及清单：[`interoception.ts`](interoception.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`interoception.ts`](interoception.ts)。
+参数文件：[`interoception.parameters.json`](interoception.parameters.json)。入口及清单：[`interoception.ts`](interoception.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`interoception.ts`](interoception.ts)。
 
 一般体感继续运行；`nsfw: false` 将性唤起和性欲读数置零，并屏蔽放松评分中的余韵输入，不清除性反应部位的存档状态。
 
@@ -129,6 +129,8 @@
 | `interoception.hunger.nutrientGain` | `-5` | `mm/(kcal/min)` | `design` | 无 | — |
 | `interoception.fullness.nutrientGain` | `10` | `mm/(kcal/min)` | `design` | 无 | — |
 | `interoception.thirst.fallbackMm` | `0` | `mm` | `design` | 无 | 用于初值及上游口渴缺失或非有限时的回退；正常优先使用 `hypothalamusThirst.thirst`，不是慢渴模型的调节项。 |
+| `interoception.thirst.oralReliefHalfTimeMin` | `2` | `min` | `design` | 无 | 实际入胃饮水后短暂解渴的半时；只削主观渴读数，不补体液、不回写 ADH。 |
+| `interoception.thirst.oralReliefHalfDoseMl` | `20` | `mL` | `design` | 无 | 产生该快路缓解的实际入胃水量参考半剂量；同样只作用于主观渴读数。 |
 | `interoception.urinaryUrgency.referenceVolumeMl` | `410` | `mL` | `design` | 无 | — |
 | `interoception.discomfort.onsetMm` | `70` | `mm` | `design` | 无 | — |
 | `interoception.thermoregulation.setpointC` | `37` | `°C` | `design` | 无 | — |
@@ -164,7 +166,7 @@
 <details>
 <summary>notify.parameters.json</summary>
 
-参数文件：[`notify.parameters.json`](notify.parameters.json)。入口及清单：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`sleep.ts`](sleep.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`notify.ts`](notify.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`wake-evaluation.ts`](wake-evaluation.ts)、[`notify.ts`](notify.ts)。
+参数文件：[`notify.parameters.json`](notify.parameters.json)。入口及清单：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`sleep.ts`](sleep.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`notify.ts`](notify.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`wake-evaluation.ts`](wake-evaluation.ts)、[`notify.ts`](notify.ts)。
 
 通知策略，不是生理阈值；普通通知、睡眠阈值和紧急路径不同，NSFW 信号另受 `nsfw` 门控。
 
@@ -197,7 +199,7 @@
 <details>
 <summary>pituitary.parameters.json</summary>
 
-参数文件：[`pituitary.parameters.json`](pituitary.parameters.json)。入口及清单：[`pituitary.ts`](pituitary.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`pituitary.ts`](pituitary.ts)。
+参数文件：[`pituitary.parameters.json`](pituitary.parameters.json)。入口及清单：[`pituitary.ts`](pituitary.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`pituitary.ts`](pituitary.ts)。
 
 普通轴仍运行；哺乳/性反应相关的 PRL、催产素调节支路受 `nsfw` 门控。
 
@@ -225,7 +227,7 @@
 <details>
 <summary>reward.parameters.json</summary>
 
-参数文件：[`reward.parameters.json`](reward.parameters.json)。入口及清单：[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`reward.ts`](reward.ts)。
+参数文件：[`reward.parameters.json`](reward.parameters.json)。入口及清单：[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`reward.ts`](reward.ts)。
 
 一般奖赏仍运行，性相关信号路径受 `nsfw` 门控。
 
@@ -251,7 +253,7 @@
 <details>
 <summary>sleep.parameters.json</summary>
 
-参数文件：[`sleep.parameters.json`](sleep.parameters.json)。入口及清单：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`sleep.ts`](sleep.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`notify.ts`](notify.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`wake-evaluation.ts`](wake-evaluation.ts)、[`sleep.ts`](sleep.ts)。
+参数文件：[`sleep.parameters.json`](sleep.parameters.json)。入口及清单：[`hypothalamus-endocrine.ts`](hypothalamus-endocrine.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`sleep.ts`](sleep.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`notify.ts`](notify.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`wake-evaluation.ts`](wake-evaluation.ts)、[`sleep.ts`](sleep.ts)。
 
 共享脚本各入口消费的键不完全相同，以逐行标出的消费入口为准。
 
@@ -286,17 +288,18 @@
 <details>
 <summary>thermoregulation.parameters.json</summary>
 
-参数文件：[`thermoregulation.parameters.json`](thermoregulation.parameters.json)。入口及清单：[`thermoregulation.ts`](thermoregulation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`thermoregulation.ts`](thermoregulation.ts)。
+参数文件：[`thermoregulation.parameters.json`](thermoregulation.parameters.json)。入口及清单：[`thermoregulation.ts`](thermoregulation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`thermoregulation.ts`](thermoregulation.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
 | `thermoregulation.setpointC` | `37` | `°C` | `design` | 无 | — |
-| `thermoregulation.ambientTemperatureC` | `25` | `°C` | `design` | 无 | — |
 | `thermoregulation.heatCapacityKcalPerC` | `60` | `kcal/°C` | `design` | `weightKg / 75` | — |
 | `thermoregulation.metabolicFactor` | `0.005` | `kcal/mL` | `design` | 无 | — |
 | `thermoregulation.shiveringGain` | `2` | `kcal/(min·°C)` | `design` | `weightKg / 75` | — |
 | `thermoregulation.lossGain` | `0.104167` | `kcal/(min·°C)` | `design` | `weightKg / 75` | — |
 | `thermoregulation.evaporationKcalPerMl` | `0.58` | `kcal/mL` | `design` | 无 | — |
+| `thermoregulation.evaporationReferenceTemperatureC` | `32` | `°C` | `design` | 无 | — |
+| `thermoregulation.evaporationConductanceMlMinPerKpa` | `3` | `mL/(min·kPa)` | `design` | `weightKg / 75` | — |
 | `thermoregulation.circadianAmplitudeC` | `0.25` | `°C` | `design` | 无 | — |
 | `thermoregulation.circadianPeakHour` | `17` | `h` | `design` | 无 | — |
 | `thermoregulation.sleepSetpointOffsetC` | `0.2` | `°C` | `design` | 无 | — |
@@ -308,7 +311,7 @@
 <details>
 <summary>blood.parameters.json（共享）</summary>
 
-参数文件：[`blood.parameters.json`](../../human-compartments/blood/blood.parameters.json)。入口及清单：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)。
+参数文件：[`blood.parameters.json`](../../human-compartments/blood/blood.parameters.json)。入口及清单：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`hypothalamus-adh.ts`](hypothalamus-adh.ts)。
 
 直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。
 
@@ -321,7 +324,7 @@
 <details>
 <summary>water.parameters.json（共享）</summary>
 
-参数文件：[`water.parameters.json`](../../human-compartments/body-water/water.parameters.json)。入口及清单：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)。
+参数文件：[`water.parameters.json`](../../human-compartments/body-water/water.parameters.json)。入口及清单：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`hypothalamus-thirst.ts`](hypothalamus-thirst.ts)。
 
 普通与女性的入口使用同一 core 和同一份参数；女性清单追加月经与乳汁水出口。
 
@@ -337,7 +340,7 @@
 <details>
 <summary>response.parameters.json（共享）</summary>
 
-参数文件：[`response.parameters.json`](../sexual-response/response.parameters.json)。入口及清单：[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`response.ts`](../sexual-response/response.ts)。
+参数文件：[`response.parameters.json`](../sexual-response/response.parameters.json)。入口及清单：[`autonomic.ts`](autonomic.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`reward.ts`](reward.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`response.ts`](../sexual-response/response.ts)。
 
 `nsfw: false` 时 Gateway 拒绝新 `sex` / `orgasm` 动作，模块不发生主动或自动释放。下游 `body_state` 的性反应文案与内感受的相关输入也受门控；这不清除存档。`response.ts` 仍推进已有活动计时、唤起与阶段，并衰减已有余韵。参数覆盖不打开门控。
 
@@ -353,13 +356,29 @@
 <details>
 <summary>oxygen.parameters.json（共享）</summary>
 
-参数文件：[`oxygen.parameters.json`](../../human-compartments/blood-oxygen/oxygen.parameters.json)。入口及清单：[`thermoregulation.ts`](thermoregulation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`thermoregulation.ts`](thermoregulation.ts)。
+参数文件：[`oxygen.parameters.json`](../../human-compartments/blood-oxygen/oxygen.parameters.json)。入口及清单：[`thermoregulation.ts`](thermoregulation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`thermoregulation.ts`](thermoregulation.ts)。
 
 直接读取覆盖的脚本不加载此参数文件；未覆盖时用其代码内的基线或缺省路径。下表基础默认仍来自原参数 JSON。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
 | `bloodOxygen.basalMlMin` | `250` | `mL/min` | `design` | `weightKg / 75` | 含直接覆盖读取。 |
+
+</details>
+
+<details>
+<summary>clothing.parameters.json（共享）</summary>
+
+参数文件：[`clothing.parameters.json`](../../body-inputs/clothing.parameters.json)。入口及清单：[`thermoregulation.ts`](thermoregulation.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`clothing.ts`](../../body-inputs/clothing.ts)。
+
+只有存档 `wornLayerIds` 里穿戴的层参与透过率乘积；`wear_layer` / `remove_layer` 动作改穿戴状态，未穿戴层不参与热交换。
+
+| 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
+| --- | ---: | --- | --- | --- | --- |
+| `clothing.tshirt.dryExchangeMultiplier` | `0.85` | `1` | `design` | 无 | — |
+| `clothing.tshirt.evaporationMultiplier` | `0.8` | `1` | `design` | 无 | — |
+| `clothing.jacket.dryExchangeMultiplier` | `0.55` | `1` | `design` | 无 | — |
+| `clothing.jacket.evaporationMultiplier` | `0.45` | `1` | `design` | 无 | — |
 
 </details>
 

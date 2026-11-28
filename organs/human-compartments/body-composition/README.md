@@ -4,6 +4,21 @@
 
 **数值与留存。** 当前数值可在本机 `GET /state`、`gateway.getState()` 或模块 `io.read('bodyComposition')` 中查看；定性宿主工具 `body_state` 不返回原始数值。提交过的数值也可能写入存档旁的 `logs/state-history.jsonl`，按现有滚动保留策略管理，可经本机 `GET /logs/state` 或 `gateway.getStateHistory()` 读取。将 `profile.bodyFatPercent` 改为 `null` 或移除该字段只影响之后的读数，不会追溯擦除历史。分享日志前先检查其中是否含个人数据。
 
+<!-- organ-parameters:start -->
+## 个体可自定义参数与默认值
+
+先停止 Gateway，备份该身体实际的 `body-state.json`，将要改的 ID 合并到存档顶层 `parameters`（[稀疏覆盖示例](../../../CONTRIBUTING.md#个体参数覆盖示例)），随后重启。没有覆盖的键沿用参数 JSON 的基础默认（直接覆盖读取例外见下）；不要为个体修改仓库 JSON。覆盖在模块加载时生效，已有存量、周期等不会因此自动重置。
+
+表中“体重缩放”指参数值是否在对应脚本按 `profile.weightKg / 75` 缩放；带参数 ID 的缩放遇到显式数值覆盖时不重复缩放。“无”不表示整个公式与体重或其他模块无关。`status` 是 JSON 的证据标签；`range` 是元数据，模块并不统一强制校验。不要把输出字段、保留键或诊断代理当成独立临床调节项。
+
+此目录无独立参数 JSON。若下文列有共享 ID，只覆盖原 ID，不能给这个部位另造一套参数键。
+
+该部位不通过 `parameters` 覆盖：输入只来自存档顶层 `profile`（如 `profile.bodyFatPercent`），不是下文的参数 ID；具体口径见下文手写说明。
+
+入口：[`composition.ts`](composition.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。
+
+<!-- organ-parameters:end -->
+
 ## 需要什么数据
 
 只读 `body-state.json` 顶层 `profile`，没有独立 `*.parameters.json`。`weightKg` 是身体质量（kg，正有限数），缺省沿用 [`lib/parameters.js`](../../../lib/parameters.js) 的 `75 kg` 工程默认；`heightCm` 仍默认 `170 cm`，**不参与此计算**。`bodyFatPercent` 是脂肪质量占身体总质量的**百分数（不是 0–1 小数）**，可来自已有同口径资料，也可为虚构角色直接指定。省略或写 `null` 都表示未知：不从体重、身高、BMI、清单或性别推测。`0` 和 `100` 是数学端点，不是成年人的生理默认值；字符串、非有限值或超出闭区间 `[0,100]` 的数值会被拒绝，不静默钳位。

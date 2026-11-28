@@ -19,7 +19,7 @@
 
 ### gastric-sensory.parameters.json
 
-参数文件：[`gastric-sensory.parameters.json`](gastric-sensory.parameters.json)。入口及清单：[`gastric-sensory.ts`](gastric-sensory.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`gastric-sensory.ts`](gastric-sensory.ts)。
+参数文件：[`gastric-sensory.parameters.json`](gastric-sensory.parameters.json)。入口及清单：[`gastric-sensory.ts`](gastric-sensory.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`gastric-sensory.ts`](gastric-sensory.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
@@ -28,7 +28,7 @@
 
 ### ghrelin.parameters.json
 
-参数文件：[`ghrelin.parameters.json`](ghrelin.parameters.json)。入口及清单：[`ghrelin.ts`](ghrelin.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）。读取脚本：[`ghrelin.ts`](ghrelin.ts)。
+参数文件：[`ghrelin.parameters.json`](ghrelin.parameters.json)。入口及清单：[`ghrelin.ts`](ghrelin.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json) / [可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）。读取脚本：[`ghrelin.ts`](ghrelin.ts)。
 
 | 完整参数 ID | 基础默认 | 单位 | status | 体重缩放 | 使用条件或限制 |
 | --- | ---: | --- | --- | --- | --- |
@@ -45,7 +45,7 @@
 
 ### motility.parameters.json
 
-参数文件：[`motility.parameters.json`](motility.parameters.json)。入口及清单：[`hydration.ts`](hydration.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`motility.ts`](motility.ts)（可选旧入口，替换水链胃，不跟踪水或碳水转移）。读取脚本：[`motility-core.ts`](motility-core.ts)。
+参数文件：[`motility.parameters.json`](motility.parameters.json)。入口及清单：[`hydration.ts`](hydration.ts)（[默认](../../../body-modules.json) / [女性](../../../body-modules.female.json) / [男性](../../../body-modules.male.json)）；[`hydration-lipid.ts`](hydration-lipid.ts)（[可选清单 human-lipid](../../presets/human-lipid/body-modules.json)）；[`motility.ts`](motility.ts)（可选旧入口，替换水链胃，不跟踪水或碳水转移）。读取脚本：[`motility-core.ts`](motility-core.ts)。
 
 胃动力入口共用核心；`ghrelin.ts` 在导入核心时加载此文件，但只借用摄入解析，排空参数不直接调饥饿素。
 
