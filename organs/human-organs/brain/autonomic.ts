@@ -173,13 +173,15 @@ export function heartbeat(io: AutonomicIo): void {
     * Math.max(0, hypotensionThresholdMmHg - systolicMmHg);
 
   const thermoregulation = io.read('thermoregulation');
-  const { baselineCoreC } = io.getThermalProfile?.() ?? getThermalProfile();
-  const coreTempC = finiteOr(thermoregulation?.coreTemperatureC, baselineCoreC);
-  const awakeColdThresholdC = hasParameterOverride('autonomic.coldThresholdC')
-    ? coldThresholdC
-    : baselineCoreC + (coldThresholdC - getDefaultCoreBaselineC());
+  const { baselineCoreC, coreBandRelative } = io.getThermalProfile?.() ?? getThermalProfile();
+  // 相对模式以本体基线为清醒冷阈参照（显式绝对覆盖优先）；legacy 模式保持绝对阈旧轨迹。
+  const awakeColdThresholdC = coreBandRelative && !hasParameterOverride('autonomic.coldThresholdC')
+    ? baselineCoreC + (coldThresholdC - getDefaultCoreBaselineC())
+    : coldThresholdC;
+  const coreTempC = finiteOr(thermoregulation?.coreTemperatureC, coreBandRelative ? baselineCoreC : getDefaultCoreBaselineC());
+  const sleepColdBaseC = coreBandRelative ? awakeColdThresholdC : coldThresholdC;
   const effectiveColdThresholdC = endingSleepingLikely
-    ? finiteOr(thermoregulation?.setpointC, awakeColdThresholdC) - sleepColdThresholdOffsetC
+    ? finiteOr(thermoregulation?.setpointC, sleepColdBaseC) - sleepColdThresholdOffsetC
     : awakeColdThresholdC;
   const rawColdDrive = coldGainPerC * Math.max(0, effectiveColdThresholdC - coreTempC);
 

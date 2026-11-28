@@ -7,11 +7,11 @@
 - 同目录 `thermoregulation.parameters.json` 是 `thermoregulation.setpointC` 的唯一身体基线默认（37 °C，`design`）。`normalCoreMinC/MaxC`、`ambientComfortMinC/MaxC` 同用 `thermoregulation.` 前缀和 `°C`，未提供默认观测（`unset`）。
 - 逐 ID 优先：个体 `parameters` 数值 > 清单可选 `thermalDefaults` 数值 > 参数文件。清单只接受这五个完整 ID 的有限数字；四个可选边界的个体 `null` 等同未覆盖；`thermoregulation.setpointC` 显式 `null` 仍报必填错误，其他参数的 `null` 语义不变。
 - 生效参考的核心区间含基线，缺的一侧在基线结束；两侧可不对称、可等于基线。不设空气区间时两端为 `null`；若生效后只有一端或上下颠倒则报完整 ID。允许负空气温度，不把未知当成 0。启用的身体在脚本导入／追赶积分前验证有效组合；暂停档不运行模块，重启启用时验证。
-- `io.getThermalProfile()` 在普通、DI、包外自定义 `heartbeat` 中返回同样的冻结标量记录：`baselineCoreC`、`normalCoreMinC`、`normalCoreMaxC` 为 number，`ambientComfortMinC`、`ambientComfortMaxC` 为 number 或 null。每具身体只在启动时解析自己的参考。核心温及库存依旧从存档恢复，静态参考不是新存档状态。
+- `io.getThermalProfile()` 在普通、DI、包外自定义 `heartbeat` 中返回同样的冻结标量记录：`baselineCoreC`、`normalCoreMinC`、`normalCoreMaxC` 为 number，`ambientComfortMinC`、`ambientComfortMaxC` 为 number 或 null，另有派生布尔 `coreBandRelative`。每具身体只在启动时解析自己的参考。核心温及库存依旧从存档恢复，静态参考不是新存档状态。
 
 ## 消费与兼容
 
-内感受按核心下界、上界分别计算单侧超差（保留原有 50 mm/°C 工程增益、昼夜/睡眠分支与显式局部覆盖）；核心带不约束积分。皮肤和肺以本体基线代替 37 °C 的分支参考，保留各自原有阈间带和增益；交感清醒冷阈保留原人体基线相对的 −0.5 °C 默认偏置与显式绝对阈覆盖。下丘脑 TRH 保持相对昼夜/睡眠目标，不把低基线当持续冷应激。未设新参数的人体仍走原人体阈值曲线。
+**相对参考仅在显式提供核心带边界时启用。** `coreBandRelative` 为 `true` 当且仅当 `normalCoreMinC` / `normalCoreMaxC` 经个体数字覆盖或清单预设后任一非 `null`；此时内感受按核心下界、上界分别计算单侧超差（保留原有 50 mm/°C 工程增益、昼夜/睡眠分支与显式局部覆盖），核心带不约束积分，皮肤和肺以本体基线代替 37 °C 的分支参考，交感清醒冷阈相对本体基线。为 `false` 时——包括只设空气舒适带、未设核心带的身体——上述消费者精确保持引入本契约前的公式与数值（固定 37 °C 参照、原夜间死区分支、绝对冷阈、TRH 回退 37），未设新参数的人体仍走原人体阈值曲线；只改 `thermoregulation.setpointC` 的旧档同样保持 legacy。空气舒适带只是脚本可读的独立参考，不启用也不改变核心阈值。
 
 实际核心温、静态参考、轮初昼夜/睡眠目标是三个不同输入。合入 M31 后，内感受/汗/喘只平移上一成功轮温控已采用的发热偏移一次；交感和 HPT/HPA 不额外加发热。无有效发布回退 0；不读未采用的请求/陈旧存档偏移。自定义脚本只在确有有限 `climate.airTemperatureC` 及一对空气舒适边界时比较；缺任何输入输出 `null`。不改变 M31 的干交换、出汗支付或蒸发账。
 

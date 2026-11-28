@@ -128,12 +128,15 @@ const halfTimeMin = requireParameter(parameters, 'stomach.emptying.halfTimeMin')
 | 脚本读取字段 | `thermalDefaults` / 存档 `parameters` 的完整 ID | 缺省 |
 | --- | --- | --- |
 | `baselineCoreC` | `thermoregulation.setpointC` | 参数文件的 37 °C（`design`） |
+| `coreBandRelative` | —（派生布尔，不占参数 ID） | `false` |
 | `normalCoreMinC` | `thermoregulation.normalCoreMinC` | 本体 `baselineCoreC` |
 | `normalCoreMaxC` | `thermoregulation.normalCoreMaxC` | 本体 `baselineCoreC` |
 | `ambientComfortMinC` | `thermoregulation.ambientComfortMinC` | `null`，未知 |
 | `ambientComfortMaxC` | `thermoregulation.ambientComfortMaxC` | `null`，未知 |
 
 顺序是本具身体的 `parameters` **有限数字** > 该清单的 `thermalDefaults` > [原参数文件](../organs/human-organs/brain/thermoregulation.parameters.json)。省略键可继承；四个可选边界写 `null` 也继承，但必填基线 `thermoregulation.setpointC` 显式写 `null` 仍会报错。核心范围须包含基线；可只填一侧，另一侧取基线。空气边界允许负值和 0，生效后必须两侧齐备且下界 ≤ 上界，否则启用时在导入脚本、补算或积分前报错，原存档不改。默认空气舒适带未知，不是 `0 °C` 也不是热收支用的默认气温。
+
+`coreBandRelative` 标记相对核心参考是否生效：只有本具身体显式提供任一核心带边界（`normalCoreMinC` / `normalCoreMaxC` 经个体数字覆盖或清单预设后非 `null`）才为 `true`。`true` 时人体冷热体感、出汗死区、热喘基础阈与交感清醒冷阈以本体基线和带偏置计算；`false`（未设任何核心带键，包括只设空气舒适带的身体）时这些消费者保持未相对化的旧公式与数值——旧固定 37 °C 参照、既有的阈间死区分支与绝对冷阈——轨迹与引入本契约前逐字段一致。只设空气舒适带不改核心阈值，空气带仅供脚本读取比较。`thermoregulation.setpointC` 本身从来不是开关：只改设定点的旧档仍是 legacy。
 
 例如在新目录中建立以下独立 `body-modules.json`。给人体清单加参考时，保留原 `scripts` / `startupScripts`，合入 `thermalDefaults` 并追加脚本即可。32 °C 对照只是虚构工程预设，不是已标定物种。
 
@@ -191,7 +194,7 @@ export function heartbeat(io) {
 
 这个独立清单即使没有两个测量部位，也会报静态 `baselineCoreC: 32`、两个判定 `null`。若轮初有 `climate.airTemperatureC: 16` 和核心温 `32`，未加存档覆盖时输出核心 `true`、空气 `false`；若空气字段缺失，不用核心温或配置值代替。第三方也可用自己的核心/气温部位替换两个 `io.read`，或在清单中用 `inject` 取得真实轮初输入。`tools/replay.mjs --manifest` 同样读清单预设，不读身体存档。
 
-人体内感受用相对核心带计算冷热；皮肤、肺与内分泌仍使用各自原有的动态偏置和热防御，当轮已采用的发热增量只平移一次，不写回温度配置。静态参考不是体温钳位，也不替代昼夜/睡眠目标或实际核心温；空气舒适带不参与散热、出汗结算或肺失水。未实现外温型热平衡、异温或冬眠、非人物种热适应、临床阈值或新行为策略。
+人体内感受仅在 `coreBandRelative` 为 `true` 时用相对核心带计算冷热，否则保持引入本契约前的旧阈值；皮肤、肺与内分泌在两种模式下都保留各自原有的动态偏置和热防御，当轮已采用的发热增量只平移一次，不写回温度配置。静态参考不是体温钳位，也不替代昼夜/睡眠目标或实际核心温；空气舒适带不参与散热、出汗结算或肺失水。未实现外温型热平衡、异温或冬眠、非人物种热适应、临床阈值或新行为策略。
 
 ### 水链的 transfer 配对（当前模块）
 

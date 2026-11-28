@@ -445,8 +445,7 @@ const urinaryUrgencyReferenceVolumeMl = requireParameter(
 const discomfortOnsetMm = requireParameter(parameters, 'interoception.discomfort.onsetMm');
 
 const localSetpointId = 'interoception.thermoregulation.setpointC';
-const localThermalSetpointC = hasParameterOverride(localSetpointId)
-  ? requireParameter(parameters, localSetpointId) : undefined;
+const thermoregulationSetpointC = requireParameter(parameters, localSetpointId);
 const temperatureReadoutGainMmPerC = requireParameter(
   parameters,
   'interoception.temperatureReadoutGainMmPerC',
@@ -830,13 +829,26 @@ export function heartbeat(io: IO): void {
       100,
     );
   const thermoregulation = io.read('thermoregulation');
-  const { baselineCoreC, normalCoreMinC, normalCoreMaxC } = io.getThermalProfile?.() ?? getThermalProfile();
-  const referenceC = localThermalSetpointC ?? baselineCoreC;
-  const thermoSetpointC = finiteOr(thermoregulation?.setpointC, referenceC);
-  const coreTemperatureC = finiteOr(thermoregulation?.coreTemperatureC, referenceC);
-  const heatThresholdC = Math.max(referenceC, thermoSetpointC) + (normalCoreMaxC - baselineCoreC);
-  const coldReferenceC = sleep?.sleeping === true ? Math.min(referenceC, thermoSetpointC) : referenceC;
-  const coldThresholdC = coldReferenceC + (normalCoreMinC - baselineCoreC);
+  const { baselineCoreC, coreBandRelative, normalCoreMinC, normalCoreMaxC } = io.getThermalProfile?.() ?? getThermalProfile();
+  const thermoSetpointC = finiteOr(thermoregulation?.setpointC, thermoregulationSetpointC);
+  let coreTemperatureC = finiteOr(thermoregulation?.coreTemperatureC, thermoSetpointC);
+  let heatThresholdC: number;
+  let coldThresholdC: number;
+  if (coreBandRelative) {
+    // 相对模式：以本体基线为中心、正常带上下界给偏置；显式局部设定点仍可替代中心。
+    const referenceC = hasParameterOverride(localSetpointId) ? thermoregulationSetpointC : baselineCoreC;
+    const relativeSetpointC = finiteOr(thermoregulation?.setpointC, referenceC);
+    coreTemperatureC = finiteOr(thermoregulation?.coreTemperatureC, referenceC);
+    heatThresholdC = Math.max(referenceC, relativeSetpointC) + (normalCoreMaxC - baselineCoreC);
+    const coldReferenceC = sleep?.sleeping === true ? Math.min(referenceC, relativeSetpointC) : referenceC;
+    coldThresholdC = coldReferenceC + (normalCoreMinC - baselineCoreC);
+  } else {
+    // legacy 模式：未提供新核心参考，保持固定体感参照的旧公式与数值。
+    heatThresholdC = Math.max(thermoregulationSetpointC, thermoSetpointC);
+    coldThresholdC = sleep?.sleeping === true
+      ? Math.min(thermoregulationSetpointC, thermoSetpointC)
+      : thermoregulationSetpointC;
+  }
   const feverOffsetC = appliedFeverOffsetC(io);
   const heatMm = clamp(
     temperatureReadoutGainMmPerC * (coreTemperatureC - (heatThresholdC + feverOffsetC)),

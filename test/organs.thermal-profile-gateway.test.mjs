@@ -15,11 +15,11 @@ const lowCore = {
   'thermoregulation.normalCoreMaxC': 32.5,
 };
 const lowReference = {
-  baselineCoreC: 32, normalCoreMinC: 31.5, normalCoreMaxC: 32.5,
+  baselineCoreC: 32, coreBandRelative: true, normalCoreMinC: 31.5, normalCoreMaxC: 32.5,
   ambientComfortMinC: null, ambientComfortMaxC: null,
 };
 const humanReference = {
-  baselineCoreC: 37, normalCoreMinC: 37, normalCoreMaxC: 37,
+  baselineCoreC: 37, coreBandRelative: false, normalCoreMinC: 37, normalCoreMaxC: 37,
   ambientComfortMinC: null, ambientComfortMaxC: null,
 };
 
@@ -305,4 +305,33 @@ test('explicit local sensation and autonomic cold thresholds remain intentional 
   assertNear(parts.interoception.coldMm, 12.5);
   assert.ok(parts.autonomic.sympatheticMm > 1 && parts.autonomic.sympatheticMm < 10);
   assert.deepEqual(parts.thermalReport.reference, lowReference);
+});
+
+test('a pre-contract 36.7 °C archive keeps the main trajectories until a core band is set', async (t) => {
+  const f = fixture(t, { human: true });
+  const base = { 'thermoregulation.setpointC': 36.7, 'thermoregulation.circadianAmplitudeC': 0 };
+  const seedParts = { thermoregulation: { coreTemperatureC: 37.93, setpointC: 36.7 } };
+  const legacy = await f.start(f.seed('legacy-36', { parameters: base, parts: seedParts }));
+  const relative = await f.start(f.seed('relative-36', { parameters: {
+    ...base, 'thermoregulation.normalCoreMinC': 36.2, 'thermoregulation.normalCoreMaxC': 37.2,
+  }, parts: seedParts }));
+  const airOnly = await f.start(f.seed('air-only-36', { parameters: {
+    ...base, 'thermoregulation.ambientComfortMinC': 10, 'thermoregulation.ambientComfortMaxC': 26,
+  }, parts: seedParts }));
+  const [x, y, z] = await f.advance(legacy, relative, airOnly);
+  assert.equal(x.thermalReport.reference.coreBandRelative, false);
+  assert.equal(y.thermalReport.reference.coreBandRelative, true);
+  assert.equal(z.thermalReport.reference.coreBandRelative, false);
+  assertNear(x.interoception.heatMm, 50 * (37.93 - 37)); // main: fixed 37 sensation reference
+  assertNear(y.interoception.heatMm, 50 * (37.93 - 37.2)); // band offset 37.2 − 36.7 above the dynamic target
+  assertNear(z.interoception.heatMm, x.interoception.heatMm);
+  assertNear(x.skin.sweatRequestMl, 3.9); // setpointC < 37 picks the night band 36.7 + 0.45
+  assertNear(y.skin.sweatRequestMl, 4.9); // setpointC = B picks the interthreshold band 36.7 + 0.25
+  assertNear(z.skin.sweatRequestMl, x.skin.sweatRequestMl);
+  assertNear(x.lungsVentilation.ventilationMlMin, 6195.034285910205); // max(37, 36.7) + 0.8
+  assertNear(y.lungsVentilation.ventilationMlMin, 6645.034285910205); // max(36.7, 36.7) + 0.8
+  assertNear(z.lungsVentilation.ventilationMlMin, x.lungsVentilation.ventilationMlMin);
+  // The air-only body still reads its comfort band for its own judgments while consumers stay legacy.
+  assert.equal(z.thermalReport.airInRange, true);
+  assert.equal(z.thermalReport.coreInRange, false);
 });

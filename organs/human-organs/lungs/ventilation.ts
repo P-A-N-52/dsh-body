@@ -137,6 +137,7 @@ const sympatheticTidalCompressionFactor = requireParameter(
 
 const fallbackBasalDemandMlMin =
   getNumericParameterOverride('bloodOxygen.basalMlMin') ?? scaleByBodyWeight(250);
+const thermoregulationSetpointC = 37;
 const alveolarO2CapacityMlMin = maxVentilationMlMin * (inspiredO2Fraction / deadSpaceFactor);
 
 export const initialState: LungsVentilationState = {
@@ -172,7 +173,7 @@ function readDemandMlMin(io: IO): number {
   return demand;
 }
 
-function readThermoregulation(io: IO, baselineCoreC: number): { coreTemperatureC: number; setpointC: number } | undefined {
+function readThermoregulation(io: IO, staticReferenceC: number): { coreTemperatureC: number; setpointC: number } | undefined {
   const thermoregulation = io.read('thermoregulation');
   if (thermoregulation === undefined) return undefined;
   const coreTemperatureC = thermoregulation?.coreTemperatureC;
@@ -184,14 +185,16 @@ function readThermoregulation(io: IO, baselineCoreC: number): { coreTemperatureC
   const setpointC = typeof thermoregulation.setpointC === 'number'
     && Number.isFinite(thermoregulation.setpointC)
     ? thermoregulation.setpointC
-    : baselineCoreC;
+    : staticReferenceC;
   return { coreTemperatureC, setpointC };
 }
 
 export function heartbeat(io: IO): void {
   const demandMlMin = readDemandMlMin(io);
-  const { baselineCoreC } = io.getThermalProfile?.() ?? getThermalProfile();
-  const thermoregulation = readThermoregulation(io, baselineCoreC);
+  const { baselineCoreC, coreBandRelative } = io.getThermalProfile?.() ?? getThermalProfile();
+  // 相对模式以本体基线为静态参照；legacy 模式保持固定 37 °C 旧轨迹。
+  const staticReferenceC = coreBandRelative ? baselineCoreC : thermoregulationSetpointC;
+  const thermoregulation = readThermoregulation(io, staticReferenceC);
   const readAny = (partId: string) => (io as { read(id: string): Readonly<Record<string, unknown>> | undefined }).read(partId);
   const sleep = readAny('sleep');
   const sleeping = sleep?.sleeping === true;
@@ -211,7 +214,7 @@ export function heartbeat(io: IO): void {
   const minVentilationMlMin = restingVentilationMlMin * sleepFloorFactor;
   const minRatePerMin = restingRatePerMin * sleepFloorFactor;
 
-  const baseThermalThresholdC = Math.max(baselineCoreC, thermoregulation?.setpointC ?? baselineCoreC);
+  const baseThermalThresholdC = Math.max(staticReferenceC, thermoregulation?.setpointC ?? staticReferenceC);
   const publishedOffsetC = io.readPublished?.('thermoregulation')?.feverSetpointOffsetC;
   const feverOffsetC = typeof publishedOffsetC === 'number' && Number.isFinite(publishedOffsetC)
     ? Math.max(0, publishedOffsetC) : 0;

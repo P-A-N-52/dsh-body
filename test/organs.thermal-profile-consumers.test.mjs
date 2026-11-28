@@ -6,7 +6,11 @@ import { heartbeat as endocrine } from '../organs/human-organs/brain/hypothalamu
 import { sweatRequestMl } from '../organs/human-organs/skin/sweat.ts';
 
 const thermal = Object.freeze({
-  baselineCoreC: 32, normalCoreMinC: 31.5, normalCoreMaxC: 32.5,
+  baselineCoreC: 32, coreBandRelative: true, normalCoreMinC: 31.5, normalCoreMaxC: 32.5,
+  ambientComfortMinC: null, ambientComfortMaxC: null,
+});
+const legacyThermal = Object.freeze({
+  baselineCoreC: 32, coreBandRelative: false, normalCoreMinC: 32, normalCoreMaxC: 32,
   ambientComfortMinC: null, ambientComfortMaxC: null,
 });
 
@@ -18,12 +22,20 @@ test('exercise sweating has no fixed 37 °C floor', () => {
   assert.equal(sweat, 5.6);
 });
 
+test('legacy sweat keeps the fixed 37 °C floor the main gateway used', () => {
+  const sweat = sweatRequestMl({
+    remainingExerciseMin: 1, intensity: 1, dtMin: 1, ambientTemperatureC: 25,
+    baselineCoreC: 32, coreBandRelative: false, coreTemperatureC: 33, setpointC: 32,
+  });
+  assert.equal(sweat, 0.6); // thermal rate = 5 × max(0, 33 − max(37, 32)) = 0; only the exercise request remains
+});
+
 test('TRH uses the static reference as a fallback for a missing dynamic target', () => {
-  function trh(state) {
+  function trh(state, profile = thermal) {
     let output;
     endocrine({
       read: (partId) => partId === 'thermoregulation' ? state : undefined,
-      getThermalProfile: () => thermal,
+      getThermalProfile: () => profile,
       dt: 60, actions: [], write: (next) => { output = next; },
     });
     return output.trhRelative;
@@ -31,6 +43,9 @@ test('TRH uses the static reference as a fallback for a missing dynamic target',
   assert.equal(trh({ coreTemperatureC: 32 }), 1);
   assert.equal(trh({ coreTemperatureC: 31.4, setpointC: 31.5 }), 1);
   assert.ok(trh({ coreTemperatureC: 31.1, setpointC: 31.5 }) > 1);
+  // legacy mode keeps the main fixed-37 reference: the same reading that is quiet in relative mode drives TRH.
+  assert.ok(trh({ coreTemperatureC: 32 }, legacyThermal) > 1);
+  assert.ok(trh({ coreTemperatureC: 36.5 }, legacyThermal) > 1);
 });
 
 test('the brain README catalog documents the thermal reference ids as consumed', () => {

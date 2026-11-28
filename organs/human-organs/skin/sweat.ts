@@ -75,6 +75,7 @@ const interthresholdOffsetC = requireParameter(parameters, 'skin.interthresholdO
 const nocturnalDeadbandOffsetC = requireParameter(parameters, 'skin.nocturnalDeadbandOffsetC');
 
 const referenceTemperatureC = 25;
+const thermoregulationSetpointC = 37;
 
 type SweatRequestInput = {
   remainingExerciseMin: number;
@@ -82,6 +83,7 @@ type SweatRequestInput = {
   dtMin: number;
   ambientTemperatureC: number;
   baselineCoreC?: number;
+  coreBandRelative?: boolean;
   coreTemperatureC?: number;
   setpointC?: number;
   feverSetpointOffsetC?: number;
@@ -93,8 +95,9 @@ export function sweatRequestMl({
   dtMin,
   ambientTemperatureC: temperatureC,
   baselineCoreC = getThermalProfile().baselineCoreC,
-  coreTemperatureC = baselineCoreC,
-  setpointC = baselineCoreC,
+  coreBandRelative = true,
+  coreTemperatureC = coreBandRelative ? baselineCoreC : thermoregulationSetpointC,
+  setpointC = coreBandRelative ? baselineCoreC : thermoregulationSetpointC,
   feverSetpointOffsetC = 0,
 }: SweatRequestInput): number {
   const temperatureFactor = Math.max(0, 1 + ambientGainPerC * (temperatureC - referenceTemperatureC));
@@ -102,12 +105,14 @@ export function sweatRequestMl({
   const exerciseRateMlPerMin = exercising
     ? referenceRateMlPerMin * intensity * temperatureFactor
     : 0;
+  // 相对模式以本体基线为静态参照选死区与运动热阈；legacy 模式保持固定 37 °C 旧轨迹。
+  const staticReferenceC = coreBandRelative ? baselineCoreC : thermoregulationSetpointC;
   // 非运动静息（含刚停运动压力反射卸载期）保留阈间带死区，避免轻度微热或夜间昼夜谷值时误出汗
   const deadbandC = exercising
     ? 0
-    : (setpointC < baselineCoreC ? nocturnalDeadbandOffsetC : interthresholdOffsetC);
+    : (setpointC < staticReferenceC ? nocturnalDeadbandOffsetC : interthresholdOffsetC);
   const thermalThresholdC = (exercising
-    ? Math.max(baselineCoreC, setpointC)
+    ? Math.max(staticReferenceC, setpointC)
     : setpointC + deadbandC) + feverSetpointOffsetC;
   const thermalRateMlPerMin = heatGain * Math.max(0, coreTemperatureC - thermalThresholdC);
   const rateMlPerMin = Math.min(maxRateMlPerMin, exerciseRateMlPerMin + thermalRateMlPerMin);
@@ -151,14 +156,16 @@ function readThermoregulation(io: IO, baselineCoreC: number): { coreTemperatureC
 
 export function heartbeat(io: IO): void {
   const activity = readActivity(io);
-  const { baselineCoreC } = io.getThermalProfile?.() ?? getThermalProfile();
-  const { coreTemperatureC, setpointC } = readThermoregulation(io, baselineCoreC);
+  const { baselineCoreC, coreBandRelative } = io.getThermalProfile?.() ?? getThermalProfile();
+  const staticReferenceC = coreBandRelative ? baselineCoreC : thermoregulationSetpointC;
+  const { coreTemperatureC, setpointC } = readThermoregulation(io, staticReferenceC);
   const requestMl = sweatRequestMl({
     remainingExerciseMin: activity?.remainingExerciseMin ?? 0,
     intensity: activity?.intensity ?? 0,
     dtMin: io.dt / 60,
     ambientTemperatureC: io.read('climate')?.airTemperatureC ?? defaultClimate.airTemperatureC,
-    baselineCoreC,
+    baselineCoreC: staticReferenceC,
+    coreBandRelative,
     coreTemperatureC,
     setpointC,
     feverSetpointOffsetC: appliedFeverOffsetC(io),

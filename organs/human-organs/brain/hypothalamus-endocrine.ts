@@ -11,7 +11,7 @@
  *   `stressDrive` 施加最多 `rewardBufferingGain` 比例的温和缓冲。
  */
 import { resolveCircadianHour } from '../../../lib/circadian.js';
-import { getThermalProfile, loadParameters, requireParameter } from '../../../lib/parameters.js';
+import { getDefaultCoreBaselineC, getThermalProfile, loadParameters, requireParameter } from '../../../lib/parameters.js';
 import { evaluateSleepTransition } from './wake-evaluation.ts';
 
 export const id = 'hypothalamusEndocrine';
@@ -115,8 +115,9 @@ export function heartbeat(io: IO): void {
   const cortisolRatio = cortisolNmolL / REFERENCE_CORTISOL_NMOL_L;
 
   const thermoregulation = io.read('thermoregulation');
-  const { baselineCoreC } = io.getThermalProfile?.() ?? getThermalProfile();
-  const thermoSetpointC = finiteOr(thermoregulation?.setpointC, baselineCoreC);
+  const { baselineCoreC, coreBandRelative } = io.getThermalProfile?.() ?? getThermalProfile();
+  // 相对模式回退本体基线；legacy 模式回退固定 37 °C 旧参照。
+  const thermoSetpointC = finiteOr(thermoregulation?.setpointC, coreBandRelative ? baselineCoreC : getDefaultCoreBaselineC());
   const coreTemperatureC = finiteOr(thermoregulation?.coreTemperatureC, thermoSetpointC);
   const coldThresholdC = thermoSetpointC - COLD_STRESS_OFFSET_C;
   const concentrationMgDl = Math.max(
